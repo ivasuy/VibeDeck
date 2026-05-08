@@ -152,7 +152,7 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
     assert.match(installed, /^notify\s*=\s*\[.+\]\s*$/m);
     assert.ok(!installed.includes('["echo", "hello"]'), "expected init to override notify");
 
-    const cursorsPath = path.join(tmp, ".tokentracker", "tracker", "cursors.json");
+    const cursorsPath = path.join(tmp, ".vibedeck", "tracker", "cursors.json");
     const cursorsRaw = await waitForFile(cursorsPath);
     assert.ok(cursorsRaw, "expected init to trigger sync and write cursors");
     const cursors = JSON.parse(cursorsRaw);
@@ -166,7 +166,7 @@ test("init then uninstall restores original Codex notify (when pre-existing noti
       "expected uninstall to restore original notify",
     );
 
-    const notifyHandlerPath = path.join(tmp, ".tokentracker", "bin", "notify.cjs");
+    const notifyHandlerPath = path.join(tmp, ".vibedeck", "bin", "notify.cjs");
     await assert.rejects(fs.stat(notifyHandlerPath), /ENOENT/);
   } finally {
     process.stdout.write = prevWrite;
@@ -457,7 +457,7 @@ test("init then uninstall manages Claude hooks without removing existing hooks",
 
     const installedRaw = await fs.readFile(settingsPath, "utf8");
     const installed = JSON.parse(installedRaw);
-    const hookCommand = buildClaudeHookCommand(path.join(tmp, ".tokentracker", "bin", "notify.cjs"));
+    const hookCommand = buildClaudeHookCommand(path.join(tmp, ".vibedeck", "bin", "notify.cjs"));
     const sessionEnd = installed?.hooks?.SessionEnd || [];
     const allCommands = sessionEnd
       .flatMap((entry) => (Array.isArray(entry?.hooks) ? entry.hooks : [entry]))
@@ -539,7 +539,7 @@ test("init then uninstall manages Gemini hooks without removing existing hooks",
     const installed = JSON.parse(installedRaw);
     assert.equal(installed?.tools?.enableHooks, true);
     assert.deepEqual(installed?.hooks?.disabled, ["existing-disabled"]);
-    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".tokentracker", "bin", "notify.cjs"));
+    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".vibedeck", "bin", "notify.cjs"));
     const sessionEnd = installed?.hooks?.SessionEnd || [];
     const hooks = flattenHookEntries(sessionEnd);
     const allCommands = hooks.map((h) => h?.command);
@@ -655,7 +655,7 @@ test("init creates Gemini settings when directory exists but file is missing", a
     assert.equal(created?.tools?.enableHooks, true);
     const sessionEnd = created?.hooks?.SessionEnd || [];
     const hooks = flattenHookEntries(sessionEnd);
-    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".tokentracker", "bin", "notify.cjs"));
+    const hookCommand = buildGeminiHookCommand(path.join(tmp, ".vibedeck", "bin", "notify.cjs"));
     const hasTracker = hooks.some((hook) => hook?.command === hookCommand);
     assert.ok(hasTracker, "expected tracker Gemini hook to be created in settings.json");
   } finally {

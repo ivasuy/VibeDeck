@@ -125,9 +125,9 @@ async function configureCodex({ home, silent }) {
   try {
     // 使用现有的 codex-config 模块
     const { upsertCodexNotify } = require("./codex-config");
-    const notifyCmd = path.join(home, ".tokentracker", "bin", "notify.cjs");
+    const notifyCmd = path.join(home, ".vibedeck", "bin", "notify.cjs");
     const codexConfigPath = path.join(home, ".codex", "config.toml");
-    const notifyOriginalPath = path.join(home, ".tokentracker", "backups", "codex-notify-original.json");
+    const notifyOriginalPath = path.join(home, ".vibedeck", "backups", "codex-notify-original.json");
     
     await upsertCodexNotify({
       codexConfigPath,
@@ -277,7 +277,7 @@ async function configureEveryCode({ home, silent }) {
       content = "";
     }
     
-    const notifyCmd = path.join(home, ".tokentracker", "bin", "notify.cjs");
+    const notifyCmd = path.join(home, ".vibedeck", "bin", "notify.cjs");
     const notifyLine = `notify = ["/usr/bin/env", "node", "${notifyCmd}"]`;
 
     if (!content.includes("tokentracker")) {

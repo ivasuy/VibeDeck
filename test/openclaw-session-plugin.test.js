@@ -16,7 +16,7 @@ const {
 test("probeOpenclawSessionPluginState detects linked + enabled plugin", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
   const home = path.join(tmp, "home");
-  const trackerDir = path.join(home, ".tokentracker", "tracker");
+  const trackerDir = path.join(home, ".vibedeck", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({
@@ -70,7 +70,7 @@ test("probeOpenclawSessionPluginState detects linked + enabled plugin", async ()
 test("installOpenclawSessionPlugin returns skipped when openclaw CLI is missing", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
   const home = path.join(tmp, "home");
-  const trackerDir = path.join(home, ".tokentracker", "tracker");
+  const trackerDir = path.join(home, ".vibedeck", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const result = await installOpenclawSessionPlugin({
@@ -89,7 +89,7 @@ test("installOpenclawSessionPlugin returns skipped when openclaw CLI is missing"
 test("removeOpenclawSessionPluginConfig removes linked config and plugin dir", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
   const home = path.join(tmp, "home");
-  const trackerDir = path.join(home, ".tokentracker", "tracker");
+  const trackerDir = path.join(home, ".vibedeck", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { pluginEntryDir, openclawConfigPath } = resolveOpenclawSessionPluginPaths({
@@ -159,7 +159,7 @@ test("removeOpenclawSessionPluginConfig removes linked config and plugin dir", a
 test("ensureOpenclawSessionPluginFiles includes agent/session lifecycle hooks", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-openclaw-plugin-"));
   const home = path.join(tmp, "home");
-  const trackerDir = path.join(home, ".tokentracker", "tracker");
+  const trackerDir = path.join(home, ".vibedeck", "tracker");
   await fs.mkdir(trackerDir, { recursive: true });
 
   const { pluginEntryDir } = resolveOpenclawSessionPluginPaths({ home, trackerDir, env: {} });

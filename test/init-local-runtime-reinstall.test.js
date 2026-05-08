@@ -48,7 +48,7 @@ test("init can rerun from installed local runtime without self-deleting app sour
       `expected first init to succeed\nstdout:\n${firstInit.stdout}\nstderr:\n${firstInit.stderr}`,
     );
 
-    const trackerBinPath = path.join(tmp, ".tokentracker", "tracker", "app", "bin", "vibedeck.js");
+    const trackerBinPath = path.join(tmp, ".vibedeck", "tracker", "app", "bin", "vibedeck.js");
     await fs.stat(trackerBinPath);
 
     const secondInit = runLocalTracker(
@@ -62,7 +62,7 @@ test("init can rerun from installed local runtime without self-deleting app sour
       `expected local runtime init to succeed\nstdout:\n${secondInit.stdout}\nstderr:\n${secondInit.stderr}`,
     );
 
-    await fs.stat(path.join(tmp, ".tokentracker", "tracker", "app", "src", "commands", "init.js"));
+    await fs.stat(path.join(tmp, ".vibedeck", "tracker", "app", "src", "commands", "init.js"));
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

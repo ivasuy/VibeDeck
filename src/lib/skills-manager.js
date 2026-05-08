@@ -48,7 +48,7 @@ async function mapWithConcurrency(items, limit, worker) {
 }
 
 function dataDir() {
-  return path.join(os.homedir(), ".tokentracker", "skills");
+  return path.join(os.homedir(), ".vibedeck", "skills");
 }
 
 function registryPath() {

@@ -87,7 +87,7 @@ async function cmdUninstall(argv) {
   await fs.rm(path.join(trackerDir, "app"), { recursive: true, force: true }).catch(() => {});
 
   if (opts.purge) {
-    await fs.rm(path.join(home, ".tokentracker"), { recursive: true, force: true }).catch(() => {});
+    await fs.rm(path.join(home, ".vibedeck"), { recursive: true, force: true }).catch(() => {});
   }
 
   process.stdout.write(
@@ -147,7 +147,7 @@ async function cmdUninstall(argv) {
         : openclawHookRemove?.skippedReason === "openclaw-config-missing"
           ? "- OpenClaw hook (legacy): skipped (openclaw config not found)"
           : "- OpenClaw hook (legacy): no change",
-      opts.purge ? `- Purged: ${path.join(home, ".tokentracker")}` : "- Purge: skipped (use --purge)",
+      opts.purge ? `- Purged: ${path.join(home, ".vibedeck")}` : "- Purge: skipped (use --purge)",
       "",
     ].join("\n"),
   );

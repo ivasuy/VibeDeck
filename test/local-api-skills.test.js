@@ -70,7 +70,7 @@ describe("/functions/tokentracker-skills auth + input", () => {
   it("rejects POST without the local-auth header with 401", async () => {
     const { status, body } = await call({
       method: "POST",
-      headers: { origin: "http://localhost:7680" },
+      headers: { origin: "http://localhost:7690" },
       body: { action: "add_repo", repo: { owner: "anthropics", name: "skills" } },
     });
     assert.equal(status, 401);
@@ -81,7 +81,7 @@ describe("/functions/tokentracker-skills auth + input", () => {
     const { status } = await call({
       method: "POST",
       headers: {
-        origin: "http://localhost:7680",
+        origin: "http://localhost:7690",
         "x-tokentracker-local-auth": "not-the-right-token",
       },
       body: { action: "add_repo", repo: { owner: "anthropics", name: "skills" } },
@@ -93,7 +93,7 @@ describe("/functions/tokentracker-skills auth + input", () => {
     const { status, body } = await call({
       method: "POST",
       headers: {
-        origin: "http://localhost:7680",
+        origin: "http://localhost:7690",
         "x-tokentracker-local-auth": token,
       },
       body: { action: "not-a-real-action" },
@@ -115,7 +115,7 @@ describe("/functions/tokentracker-skills auth + input", () => {
     const { status } = await call({
       method: "PUT",
       headers: {
-        origin: "http://localhost:7680",
+        origin: "http://localhost:7690",
         "x-tokentracker-local-auth": token,
       },
     });
@@ -133,7 +133,7 @@ describe("/functions/tokentracker-skills auth + input", () => {
     const { status, body } = await call({
       method: "POST",
       headers: {
-        origin: "http://localhost:7680",
+        origin: "http://localhost:7690",
         "x-tokentracker-local-auth": token,
       },
       body: { action: "add_repo", repo: { owner: "..", name: "skills" } },

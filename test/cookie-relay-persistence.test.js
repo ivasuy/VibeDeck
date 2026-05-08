@@ -52,7 +52,7 @@ async function withTempHome(run) {
 }
 
 function getCookiePath(home) {
-  return path.join(home, ".tokentracker", "tracker", "relay-cookies.json");
+  return path.join(home, ".vibedeck", "tracker", "relay-cookies.json");
 }
 
 test("auth proxy loads persisted relay cookies into outbound requests", async () => {

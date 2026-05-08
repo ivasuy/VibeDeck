@@ -32,7 +32,7 @@ test("sync --from-openclaw records last OpenClaw trigger marker", async () => {
 
     await cmdSync(["--from-openclaw"]);
 
-    const markerPath = path.join(tmp, ".tokentracker", "tracker", "openclaw.signal");
+    const markerPath = path.join(tmp, ".vibedeck", "tracker", "openclaw.signal");
     const marker = (await fs.readFile(markerPath, "utf8")).trim();
     assert.ok(marker.length > 0, "expected openclaw marker to be written");
     assert.ok(!Number.isNaN(Date.parse(marker)), "expected openclaw marker to be ISO timestamp");
@@ -105,7 +105,7 @@ test("sync --from-openclaw falls back to previous session totals when jsonl has 
 
     await cmdSync(["--from-openclaw"]);
 
-    const queuePath = path.join(tmp, ".tokentracker", "tracker", "queue.jsonl");
+    const queuePath = path.join(tmp, ".vibedeck", "tracker", "queue.jsonl");
     const firstRunRows = await readJsonl(queuePath);
     assert.ok(firstRunRows.length > 0, "expected at least one queued row");
     const firstLast = firstRunRows[firstRunRows.length - 1];

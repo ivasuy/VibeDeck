@@ -61,8 +61,8 @@ async function setupInitEnv() {
 
   await runInit(env);
 
-  const notifyPath = path.join(tmp, ".tokentracker", "bin", "notify.cjs");
-  const trackerDir = path.join(tmp, ".tokentracker", "tracker");
+  const notifyPath = path.join(tmp, ".vibedeck", "bin", "notify.cjs");
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
   const debugLogPath = path.join(trackerDir, "notify.debug.jsonl");
   await fs.mkdir(trackerDir, { recursive: true });
   await fs.writeFile(path.join(trackerDir, "config.json"), "{}", "utf8");

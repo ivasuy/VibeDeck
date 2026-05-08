@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { before, describe, it } = require("node:test");
 
-// Isolate ~/.tokentracker/skills + target skill dirs into a temp HOME. Must run
+// Isolate ~/.vibedeck/skills + target skill dirs into a temp HOME. Must run
 // before requiring the module so that every `os.homedir()` callback resolves
 // within the sandbox.
 const sandboxHome = fs.mkdtempSync(path.join(os.tmpdir(), "tt-skills-mgr-"));

@@ -186,7 +186,7 @@ function renderWelcome() {
       "This tool will:",
       "  - Detect your AI CLI tools (Codex, Claude, Gemini, OpenCode, Cursor, OpenClaw)",
       "  - Set up lightweight hooks to track token usage",
-      "  - View your dashboard at http://localhost:7680",
+      "  - View your dashboard at http://localhost:7690",
       "",
       "(Nothing will be changed until you confirm below)",
       "",
@@ -938,7 +938,7 @@ async function isDir(p) {
 }
 
 async function installLocalTrackerApp({ appDir }) {
-  // Copy the current package's runtime (bin + src) into ~/.tokentracker so notify can run sync without npx.
+  // Copy the current package's runtime (bin + src) into ~/.vibedeck so notify can run sync without npx.
   const packageRoot = path.resolve(__dirname, "../..");
   const srcFrom = path.join(packageRoot, "src");
   const binFrom = path.join(packageRoot, "bin", "vibedeck.js");

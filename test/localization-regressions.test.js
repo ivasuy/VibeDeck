@@ -12,20 +12,20 @@ test("zh locale keeps CLI subcommands executable", () => {
 
   assert.match(
     dashboardCopy,
-    /"dashboard\.install\.cmd\.init":\s*"npx --yes tokentracker-cli init"/,
+    /"dashboard\.install\.cmd\.init":\s*"npx --yes vibedeck-cli init"/,
     "expected zh install init command to keep the init subcommand",
   );
   assert.match(
     dashboardCopy,
-    /"dashboard\.install\.cmd\.sync":\s*"npx --yes tokentracker-cli sync"/,
+    /"dashboard\.install\.cmd\.sync":\s*"npx --yes vibedeck-cli sync"/,
     "expected zh sync command to keep the sync subcommand",
   );
   assert.match(
     dashboardCopy,
-    /"dashboard\.upgrade_alert\.install_command":\s*"npx --yes tokentracker-cli init"/,
+    /"dashboard\.upgrade_alert\.install_command":\s*"npx --yes vibedeck-cli init"/,
     "expected zh upgrade alert command to keep the init subcommand",
   );
-  assert.doesNotMatch(dashboardCopy, /tokentracker-cli (初始化|同步)/);
+  assert.doesNotMatch(dashboardCopy, /vibedeck-cli (初始化|同步)/);
 });
 
 test("native macOS strings are wired through the Swift localization helpers", () => {

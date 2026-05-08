@@ -11,7 +11,7 @@ const { serveStaticFile } = require("../lib/static-server");
 const { openInBrowser } = require("../lib/browser-auth");
 
 const DEFAULT_PORT = 7690;
-const NPM_PACKAGE_NAME = "tokentracker-cli";
+const NPM_PACKAGE_NAME = "vibedeck-cli";
 const LOCAL_BIND_HOST = "127.0.0.1";
 
 function buildPortInUseHint(port) {

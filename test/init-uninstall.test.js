@@ -37,7 +37,7 @@ async function runGeneratedNotifyHandler({ trackerDir, notify }) {
   const notifyPath = path.join(trackerDir, "notify.cjs");
   await fs.writeFile(
     notifyPath,
-    buildNotifyHandler({ trackerDir, packageName: "tokentracker-cli" }),
+    buildNotifyHandler({ trackerDir, packageName: "vibedeck-cli" }),
     "utf8",
   );
   await fs.chmod(notifyPath, 0o755);

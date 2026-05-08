@@ -27,7 +27,7 @@ test("probeOpenclawSessionPluginState detects linked + enabled plugin", async ()
   await ensureOpenclawSessionPluginFiles({
     pluginDir: path.dirname(pluginEntryDir),
     trackerDir,
-    packageName: "tokentracker-cli",
+    packageName: "vibedeck-cli",
   });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
   await fs.writeFile(
@@ -76,7 +76,7 @@ test("installOpenclawSessionPlugin returns skipped when openclaw CLI is missing"
   const result = await installOpenclawSessionPlugin({
     home,
     trackerDir,
-    packageName: "tokentracker-cli",
+    packageName: "vibedeck-cli",
     env: { PATH: "", OPENCLAW_CONFIG_PATH: path.join(home, ".openclaw", "openclaw.json") },
   });
 
@@ -100,7 +100,7 @@ test("removeOpenclawSessionPluginConfig removes linked config and plugin dir", a
   await ensureOpenclawSessionPluginFiles({
     pluginDir: path.dirname(pluginEntryDir),
     trackerDir,
-    packageName: "tokentracker-cli",
+    packageName: "vibedeck-cli",
   });
   await fs.mkdir(path.dirname(openclawConfigPath), { recursive: true });
 
@@ -166,7 +166,7 @@ test("ensureOpenclawSessionPluginFiles includes agent/session lifecycle hooks", 
   await ensureOpenclawSessionPluginFiles({
     pluginDir: path.dirname(pluginEntryDir),
     trackerDir,
-    packageName: "tokentracker-cli",
+    packageName: "vibedeck-cli",
   });
 
   const pkg = JSON.parse(await fs.readFile(path.join(pluginEntryDir, "package.json"), "utf8"));

@@ -37,7 +37,7 @@ function resolveOpenclawSessionPluginPaths({
 async function installOpenclawSessionPlugin({
   home = os.homedir(),
   trackerDir,
-  packageName = "tokentracker-cli",
+  packageName = "vibedeck-cli",
   env = process.env,
 } = {}) {
   const paths = resolveOpenclawSessionPluginPaths({ home, trackerDir, env });
@@ -84,7 +84,7 @@ async function installOpenclawSessionPlugin({
 async function ensureOpenclawSessionPluginFiles({
   pluginDir,
   trackerDir,
-  packageName = "tokentracker-cli",
+  packageName = "vibedeck-cli",
   openclawHome,
 } = {}) {
   if (!pluginDir || !trackerDir) throw new Error("pluginDir and trackerDir are required");
@@ -337,9 +337,9 @@ function buildSessionPluginMeta() {
   )}\n`;
 }
 
-function buildSessionPluginIndex({ trackerDir, packageName = "tokentracker-cli", openclawHome }) {
+function buildSessionPluginIndex({ trackerDir, packageName = "vibedeck-cli", openclawHome }) {
   const trackerBinPath = path.join(trackerDir, "app", "bin", "vibedeck.js");
-  const fallbackPkg = packageName || "tokentracker-cli";
+  const fallbackPkg = packageName || "vibedeck-cli";
   const safeOpenclawHome = openclawHome || path.join(os.homedir(), ".openclaw");
 
   return (

@@ -47,7 +47,7 @@ test("workflow sets npm registry URL", () => {
 test("workflow checks version before publishing", () => {
   const content = loadWorkflow();
   assert.ok(
-    content.includes("npm view tokentracker-cli"),
+    content.includes("npm view vibedeck-cli"),
     "should check if version already exists on npm"
   );
 });

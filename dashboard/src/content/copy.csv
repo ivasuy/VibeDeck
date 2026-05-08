@@ -56,7 +56,7 @@ landing.seo.title,landing,LandingPage,LandingPage,seo_title,"Secure Token Usage 
 landing.seo.summary,landing,LandingPage,LandingPage,seo_summary,"Automatically monitor token usage across Claude Code, Cursor, Codex, and more. Local-first, privacy-focused, and zero manual configuration.",,active
 landing.install.title,landing,LandingPage,LandingPage,install_title,"INSTALL IN ONE COMMAND",,active
 landing.install.prompt,landing,LandingPage,LandingPage,install_prompt,"Run this in your terminal:",,active
-landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes tokentracker-cli",,active
+landing.install.command,landing,LandingPage,LandingPage,install_command,"npx --yes vibedeck-cli",,active
 landing.install.helper,landing,LandingPage,LandingPage,install_helper,"Then connect your account and start syncing usage.",,active
 landing.install.action.copy,landing,LandingPage,LandingPage,install_copy,"COPY COMMAND",,active
 landing.install.action.copied,landing,LandingPage,LandingPage,install_copied,"COPIED",,active
@@ -223,7 +223,7 @@ dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle
 dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,"A new version of TokenTracker is available.",,active
 dashboard.upgrade_alert.prompt,ui,UpgradeAlertModal,UpgradeAlertModal,prompt,"$",,active
 dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,"✨",,active
-dashboard.upgrade_alert.install_command,ui,UpgradeAlertModal,UpgradeAlertModal,install_command,"npx --yes tokentracker-cli init",,active
+dashboard.upgrade_alert.install_command,ui,UpgradeAlertModal,UpgradeAlertModal,install_command,"npx --yes vibedeck-cli init",,active
 dashboard.upgrade_alert.copy,ui,UpgradeAlertModal,UpgradeAlertModal,copy,"[ COPY ]",,active
 dashboard.upgrade_alert.copied,ui,UpgradeAlertModal,UpgradeAlertModal,copied,"[ COPIED ]",,active
 dashboard.upgrade_alert.ignore,ui,UpgradeAlertModal,UpgradeAlertModal,ignore,"Dismiss",,active
@@ -433,7 +433,7 @@ dashboard.session_expired.title,dashboard,DashboardPage,AsciiBox,title,"Session 
 dashboard.session_expired.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"Sign in again",,active
 dashboard.session_expired.body,dashboard,DashboardPage,AsciiBox,body,"Your session expired.",,active
 dashboard.session_expired.body_tail,dashboard,DashboardPage,AsciiBox,body,"Sign in again to refresh private usage data.",,active
-dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes tokentracker-cli init",,active
+dashboard.session_expired.copy_label,dashboard,DashboardPage,AsciiBox,body,"run npx --yes vibedeck-cli init",,active
 dashboard.session_expired.copied,dashboard,DashboardPage,AsciiBox,body,"copied",,active
 
 dashboard.auth_optional.title,dashboard,DashboardPage,AsciiBox,title,"Connect your account",,active
@@ -443,14 +443,14 @@ dashboard.auth_optional.body,dashboard,DashboardPage,AsciiBox,body,"Sign in / si
 dashboard.install.title,dashboard,DashboardPage,AsciiBox,title,"Install",,active
 dashboard.install.subtitle,dashboard,DashboardPage,AsciiBox,subtitle,"CLI",,active
 dashboard.install.prompt,dashboard,DashboardPage,AsciiBox,install_prompt,"Install Node.js 18+ then run:",,active
-dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init",,active
-dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli init --link-code {{link_code}}",,active
+dashboard.install.cmd.init,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes vibedeck-cli init",,active
+dashboard.install.cmd.init_link_code,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes vibedeck-cli init --link-code {{link_code}}",,active
 dashboard.install.copy,dashboard,DashboardPage,AsciiBox,install_copy,"Copy install command",,active
 dashboard.install.copy_base,dashboard,DashboardPage,AsciiBox,install_copy,"Copy init command",,active
 dashboard.install.copied,dashboard,DashboardPage,AsciiBox,install_copy,"Copied to clipboard",,active
 dashboard.install.link_code.loading,dashboard,DashboardPage,AsciiBox,install_status,"Generating private code...",,active
 dashboard.install.link_code.failed,dashboard,DashboardPage,AsciiBox,install_status,"Private code unavailable",,active
-dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes tokentracker-cli sync",,active
+dashboard.install.cmd.sync,dashboard,DashboardPage,AsciiBox,install_cmd,"npx --yes vibedeck-cli sync",,active
 
 dashboard.public_view.title,dashboard,DashboardPage,AsciiBox,title,"Public profile",,active
 dashboard.public_view.status.enabled,dashboard,DashboardPage,AsciiBox,status,"On",,active

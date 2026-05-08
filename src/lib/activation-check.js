@@ -329,7 +329,7 @@ async function configureOpenclaw({ home, silent }) {
     const result = await installOpenclawSessionPlugin({
       home,
       trackerDir,
-      packageName: "tokentracker-cli",
+      packageName: "vibedeck-cli",
       env: process.env,
     });
     

@@ -13,7 +13,6 @@ import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
-import { LandingPage } from "./pages/LandingPage.jsx";
 import { LimitsPage } from "./pages/LimitsPage.jsx";
 import { LoginPage } from "./pages/LoginPage.jsx";
 import { NativeAuthCallbackPage } from "./pages/NativeAuthCallbackPage.jsx";
@@ -67,8 +66,7 @@ export default function App() {
     };
   }, [cloudAuthSignedIn, insforge]);
 
-  let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "landing";
-  if (normalizedPath === "/landing") gate = "landing";
+  let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "login";
   if (normalizedPath === "/dashboard") gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
@@ -102,8 +100,8 @@ export default function App() {
     content = <NativeAuthCallbackPage />;
   } else if (normalizedPath === "/login") {
     content = <LoginPage />;
-  } else if (gate === "landing") {
-    content = <LandingPage signInUrl="/login" signUpUrl="/login" />;
+  } else if (gate === "login") {
+    content = <LoginPage />;
   } else {
     const pageNode = (
       <PageComponent

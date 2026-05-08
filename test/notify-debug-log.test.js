@@ -16,7 +16,7 @@ async function runNotify(notifyPath, env) {
 
 async function runInit(env) {
   const root = path.resolve(__dirname, "..");
-  const entry = path.join(root, "bin", "tracker.js");
+  const entry = path.join(root, "bin", "vibedeck.js");
 
   await new Promise((resolve, reject) => {
     cp.execFile(

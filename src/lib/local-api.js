@@ -12,7 +12,7 @@ const {
 } = require("./source-metadata");
 
 const SYNC_TIMEOUT_MS = 120_000;
-const TRACKER_BIN = path.resolve(__dirname, "../../bin/tracker.js");
+const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
 
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/

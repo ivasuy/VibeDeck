@@ -931,7 +931,7 @@ async function proxyToLocalCli(req, res) {
     res.statusCode = 502;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
-      error: `Local CLI not reachable on :7680 — start it with: node bin/tracker.js serve --no-sync --no-open`,
+      error: `Local CLI not reachable on :7680 — start it with: node bin/vibedeck.js serve --no-sync --no-open`,
       detail: String(error?.message || error),
     }));
   }

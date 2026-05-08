@@ -283,7 +283,7 @@ Triggers non-blocking 'tokentracker sync --auto --from-openclaw' runs when OpenC
 }
 
 function buildHookHandler({ trackerDir, packageName = "tokentracker-cli", openclawHome }) {
-  const trackerBinPath = path.join(trackerDir, "app", "bin", "tracker.js");
+  const trackerBinPath = path.join(trackerDir, "app", "bin", "vibedeck.js");
   const fallbackPkg = packageName || "tokentracker-cli";
   const safeOpenclawHome = openclawHome || path.join(os.homedir(), ".openclaw");
 
@@ -297,7 +297,7 @@ function buildHookHandler({ trackerDir, packageName = "tokentracker-cli", opencl
     `const fallbackPkg = ${JSON.stringify(fallbackPkg)};\n` +
     `const openclawHome = ${JSON.stringify(safeOpenclawHome)};\n` +
     `const throttlePath = path.join(trackerDir, 'openclaw.sync.throttle');\n` +
-    `const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');\n` +
+    `const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'vibedeck.js');\n` +
     `const THROTTLE_MS = 15_000;\n` +
     `\n` +
     `module.exports = async function handler(event) {\n` +

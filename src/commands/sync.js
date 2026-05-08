@@ -927,7 +927,7 @@ async function scheduleAutoRetry({
 
   spawnAutoRetryProcess({
     retryPath,
-    trackerBinPath: path.join(trackerDir, "app", "bin", "tracker.js"),
+    trackerBinPath: path.join(trackerDir, "app", "bin", "vibedeck.js"),
     fallbackPkg: "tokentracker-cli",
     delayMs,
   });

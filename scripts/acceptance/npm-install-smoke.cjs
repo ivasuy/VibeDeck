@@ -33,7 +33,7 @@ try {
 }
 
 const files = new Set((data[0]?.files || []).map((file) => file.path));
-const required = ["package.json", "bin/tracker.js", "src/cli.js"];
+const required = ["package.json", "bin/vibedeck.js", "src/cli.js"];
 const missing = required.filter((file) => !files.has(file));
 
 if (missing.length > 0) {

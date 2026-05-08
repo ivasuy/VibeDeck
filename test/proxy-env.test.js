@@ -54,7 +54,7 @@ test("relaunchWithProxyEnvIfNeeded only relaunches serve-like commands once", ()
   const calls = [];
   const result = relaunchWithProxyEnvIfNeeded({
     argv: ["serve", "--no-open"],
-    originalArgv: ["bin/tracker.js", "serve", "--no-open"],
+    originalArgv: ["bin/vibedeck.js", "serve", "--no-open"],
     env: {},
     platform: "darwin",
     nodePath: "/usr/local/bin/node",
@@ -72,7 +72,7 @@ test("relaunchWithProxyEnvIfNeeded only relaunches serve-like commands once", ()
 
   assert.deepEqual(result, { status: 0 });
   assert.equal(calls[1].command, "/usr/local/bin/node");
-  assert.deepEqual(calls[1].args, ["bin/tracker.js", "serve", "--no-open"]);
+  assert.deepEqual(calls[1].args, ["bin/vibedeck.js", "serve", "--no-open"]);
   assert.equal(calls[1].options.env.NODE_USE_ENV_PROXY, "1");
   assert.equal(calls[1].options.env.HTTPS_PROXY, "http://127.0.0.1:7897");
   assert.equal(calls[1].options.env.TOKENTRACKER_PROXY_ENV_APPLIED, "1");

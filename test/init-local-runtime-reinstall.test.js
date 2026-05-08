@@ -9,7 +9,7 @@ const { installLocalTrackerApp } = require("../src/commands/init");
 const repoRoot = path.join(__dirname, "..");
 
 function runTracker(args, env) {
-  return spawnSync(process.execPath, [path.join(repoRoot, "bin", "tracker.js"), ...args], {
+  return spawnSync(process.execPath, [path.join(repoRoot, "bin", "vibedeck.js"), ...args], {
     cwd: repoRoot,
     env,
     encoding: "utf8",
@@ -48,7 +48,7 @@ test("init can rerun from installed local runtime without self-deleting app sour
       `expected first init to succeed\nstdout:\n${firstInit.stdout}\nstderr:\n${firstInit.stderr}`,
     );
 
-    const trackerBinPath = path.join(tmp, ".tokentracker", "tracker", "app", "bin", "tracker.js");
+    const trackerBinPath = path.join(tmp, ".tokentracker", "tracker", "app", "bin", "vibedeck.js");
     await fs.stat(trackerBinPath);
 
     const secondInit = runLocalTracker(
@@ -75,14 +75,14 @@ test("installLocalTrackerApp replaces stale installed runtime and writes a packa
     await fs.mkdir(path.join(appDir, "src", "lib"), { recursive: true });
     await fs.mkdir(path.join(appDir, "bin"), { recursive: true });
     await fs.writeFile(path.join(appDir, "src", "lib", "cursor-config.js"), "stale parser\n", "utf8");
-    await fs.writeFile(path.join(appDir, "bin", "tracker.js"), "stale bin\n", "utf8");
+    await fs.writeFile(path.join(appDir, "bin", "vibedeck.js"), "stale bin\n", "utf8");
 
     await installLocalTrackerApp({ appDir });
 
     const copiedParser = await fs.readFile(path.join(appDir, "src", "lib", "cursor-config.js"), "utf8");
     const marker = JSON.parse(await fs.readFile(path.join(appDir, "package.json"), "utf8"));
     assert.notEqual(copiedParser, "stale parser\n");
-    assert.equal(marker.name, "tokentracker-cli");
+    assert.equal(marker.name, "vibedeck-cli");
     assert.equal(typeof marker.version, "string");
     await fs.stat(path.join(appDir, "dashboard", "dist", "index.html"));
   } finally {

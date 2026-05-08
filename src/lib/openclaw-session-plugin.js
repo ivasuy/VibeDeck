@@ -338,7 +338,7 @@ function buildSessionPluginMeta() {
 }
 
 function buildSessionPluginIndex({ trackerDir, packageName = "tokentracker-cli", openclawHome }) {
-  const trackerBinPath = path.join(trackerDir, "app", "bin", "tracker.js");
+  const trackerBinPath = path.join(trackerDir, "app", "bin", "vibedeck.js");
   const fallbackPkg = packageName || "tokentracker-cli";
   const safeOpenclawHome = openclawHome || path.join(os.homedir(), ".openclaw");
 
@@ -351,7 +351,7 @@ function buildSessionPluginIndex({ trackerDir, packageName = "tokentracker-cli",
     `const trackerBinPath = ${JSON.stringify(trackerBinPath)};\n` +
     `const fallbackPkg = ${JSON.stringify(fallbackPkg)};\n` +
     `const openclawHome = ${JSON.stringify(safeOpenclawHome)};\n` +
-    `const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'tracker.js');\n` +
+    `const depsMarkerPath = path.join(trackerDir, 'app', 'bin', 'vibedeck.js');\n` +
     `const triggerStatePath = path.join(trackerDir, 'openclaw.session-sync.trigger-state.json');\n` +
     `const SESSION_TRIGGER_THROTTLE_MS = 15_000;\n` +
     `\n` +

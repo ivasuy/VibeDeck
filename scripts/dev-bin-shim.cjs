@@ -10,8 +10,8 @@ const binDir = path.join(root, "node_modules", ".bin");
 fs.mkdirSync(binDir, { recursive: true });
 
 const targets = [
-  { name: "tracker", rel: "../../bin/tracker.js" },
-  { name: "tokentracker", rel: "../../bin/tracker.js" },
+  { name: "vibedeck", rel: "../../bin/vibedeck.js" },
+  { name: "vd", rel: "../../bin/vibedeck.js" },
 ];
 
 for (const t of targets) {

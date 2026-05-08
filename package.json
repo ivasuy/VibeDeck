@@ -1,13 +1,11 @@
 {
-  "name": "tokentracker-cli",
+  "name": "vibedeck-cli",
   "version": "0.8.1",
-  "description": "Token usage tracker for AI agent CLIs (Claude Code, Codex, Cursor, Gemini, Kiro, OpenCode, OpenClaw, Every Code, Hermes, GitHub Copilot, Kimi Code, CodeBuddy, oh-my-pi, pi, Craft Agents)",
+  "description": "Local-first cost & provenance cockpit for AI coding agents",
   "main": "src/cli.js",
   "bin": {
-    "tokentracker-cli": "bin/tracker.js",
-    "tracker": "bin/tracker.js",
-    "tokentracker": "bin/tracker.js",
-    "tokentracker-tracker": "bin/tracker.js"
+    "vibedeck": "bin/vibedeck.js",
+    "vd": "bin/vibedeck.js"
   },
   "files": [
     "bin/",
@@ -47,24 +45,21 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mm7894215/TokenTracker.git"
+    "url": "git+https://github.com/PLACEHOLDER/vibedeck.git"
   },
-  "homepage": "https://www.tokentracker.cc",
+  "homepage": "",
   "bugs": {
     "url": "https://github.com/mm7894215/TokenTracker/issues"
   },
   "keywords": [
-    "token",
-    "tracker",
     "ai",
-    "claude",
-    "codex",
+    "agents",
+    "tokens",
+    "cost",
+    "claude-code",
     "cursor",
-    "gemini",
-    "kiro",
-    "opencode",
-    "usage",
-    "cost"
+    "codex",
+    "local-first"
   ],
   "license": "MIT",
   "engines": {

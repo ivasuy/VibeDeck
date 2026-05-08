@@ -3,7 +3,6 @@ import { Link, useLocation } from "react-router-dom";
 import {
   BarChart3,
   Gauge,
-  Trophy,
   LayoutGrid,
   Globe,
   Puzzle,
@@ -36,7 +35,6 @@ function getNavGroups() {
       items: [
         { id: "usage", to: "/dashboard", icon: BarChart3, label: copy("nav.usage") },
         { id: "limits", to: "/limits", icon: Gauge, label: copy("nav.limits") },
-        { id: "leaderboard", to: "/leaderboard", icon: Trophy, label: copy("nav.leaderboard") },
       ],
     },
     {
@@ -101,9 +99,6 @@ function isActive(pathname, to) {
   const normalized = pathname.replace(/\/+$/, "") || "/";
   if (to === "/dashboard") {
     return normalized === "/dashboard" || normalized === "/";
-  }
-  if (to === "/leaderboard") {
-    return normalized === "/leaderboard" || normalized.startsWith("/leaderboard/");
   }
   return normalized === to;
 }

@@ -15,8 +15,6 @@ import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
 import IpCheckPage from "./pages/IpCheckPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
-import { LeaderboardPage } from "./pages/LeaderboardPage.jsx";
-import { LeaderboardProfilePage } from "./pages/LeaderboardProfilePage.jsx";
 import { LimitsPage } from "./pages/LimitsPage.jsx";
 import { LoginPage } from "./pages/LoginPage.jsx";
 import { NativeAuthCallbackPage } from "./pages/NativeAuthCallbackPage.jsx";
@@ -55,9 +53,6 @@ export default function App() {
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
-  const leaderboardProfileMatch = normalizedPath.match(/^\/leaderboard\/u\/([^/]+)$/i);
-  const leaderboardProfileUserId = leaderboardProfileMatch ? leaderboardProfileMatch[1] : null;
-  const isLeaderboardPath = normalizedPath === "/leaderboard" || Boolean(leaderboardProfileUserId);
 
   const cloudAuthSignedIn = Boolean(insforge.enabled && insforge.signedIn);
   const signedIn = isLocalMode || cloudAuthSignedIn;
@@ -76,7 +71,6 @@ export default function App() {
   let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "landing";
   if (normalizedPath === "/landing") gate = "landing";
   if (normalizedPath === "/dashboard") gate = "dashboard";
-  if (isLeaderboardPath) gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
   const isSettingsPath = normalizedPath === "/settings";
@@ -86,11 +80,7 @@ export default function App() {
   if (isLimitsPath || isSettingsPath || isSkillsPath || isWidgetsPath || isIpCheckPath) gate = "dashboard";
 
   let PageComponent = DashboardPage;
-  if (leaderboardProfileUserId) {
-    PageComponent = LeaderboardProfilePage;
-  } else if (normalizedPath === "/leaderboard") {
-    PageComponent = LeaderboardPage;
-  } else if (isLimitsPath) {
+  if (isLimitsPath) {
     PageComponent = LimitsPage;
   } else if (isSettingsPath) {
     PageComponent = SettingsPage;
@@ -102,16 +92,10 @@ export default function App() {
     PageComponent = IpCheckPage;
   }
 
-  // /leaderboard/u/:id (LeaderboardProfilePage) still ships its own
-  // min-h-screen + sticky header/footer chrome, so it must NOT be wrapped
-  // in AppLayout — that would double-stack the nav and break scrolling.
-  // Only the index /leaderboard route is migrated to AppLayout for now.
-  const isLeaderboardIndexPath = normalizedPath === "/leaderboard";
   const showSidebar =
     !publicMode &&
     (normalizedPath === "/dashboard" ||
       normalizedPath === "/" ||
-      isLeaderboardIndexPath ||
       isLimitsPath ||
       isSettingsPath ||
       isSkillsPath ||
@@ -136,7 +120,6 @@ export default function App() {
         signOut={() => (insforge.enabled ? insforge.signOut() : Promise.resolve())}
         publicMode={publicMode}
         publicToken={publicToken}
-        userId={leaderboardProfileUserId}
         signInUrl="/login"
         signUpUrl="/login"
       />

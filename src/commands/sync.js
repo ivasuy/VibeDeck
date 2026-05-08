@@ -43,13 +43,6 @@ const {
 } = require("../lib/rollout");
 const { createProgress, renderBar, formatNumber, formatBytes } = require("../lib/progress");
 const {
-  normalizeState: normalizeUploadState,
-  decideAutoUpload,
-  recordUploadFailure,
-  recordUploadSuccess,
-  parseRetryAfterMs,
-} = require("../lib/upload-throttle");
-const {
   isCursorInstalled,
   extractCursorSessionToken,
   fetchCursorUsageCsv,
@@ -57,7 +50,6 @@ const {
 } = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
-const { resolveRuntimeConfig } = require("../lib/runtime-config");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -87,12 +79,9 @@ async function cmdSync(argv) {
     const queueStatePath = path.join(trackerDir, "queue.state.json");
     const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
     const projectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
-    const uploadThrottlePath = path.join(trackerDir, "upload.throttle.json");
 
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
-    const uploadThrottle = normalizeUploadState(await readJson(uploadThrottlePath));
-    let uploadThrottleState = uploadThrottle;
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
     const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -571,69 +560,7 @@ async function cmdSync(argv) {
 
     progress?.stop();
 
-    const runtime = resolveRuntimeConfig({ config: config || {}, env: process.env });
-
-    let uploadResult = { inserted: 0, skipped: 0 };
-    let uploadAttempted = false;
-
-    if (runtime.deviceToken && runtime.baseUrl) {
-      uploadAttempted = true;
-      try {
-        uploadResult = await drainQueueToCloud({
-          baseUrl: runtime.baseUrl,
-          deviceToken: runtime.deviceToken,
-          queuePath,
-          queueStatePath,
-          maxBatches: opts.drain ? 100 : 5,
-          batchSize: 200,
-        });
-        // Record success so the exponential backoff step resets — otherwise
-        // a single past failure keeps us pessimistically throttled forever.
-        uploadThrottleState = recordUploadSuccess({
-          nowMs: Date.now(),
-          state: uploadThrottleState,
-        });
-        await writeJson(uploadThrottlePath, uploadThrottleState);
-      } catch (e) {
-        // Persist a backoff on 429 / 5xx so the next auto-sync waits instead
-        // of retrying immediately and making the rate-limit worse. The
-        // throttle module already parses Retry-After when we surface it on
-        // the error object (drainQueueToCloud stamps err.status + err.retryAfterMs).
-        uploadThrottleState = recordUploadFailure({
-          nowMs: Date.now(),
-          state: uploadThrottleState,
-          error: e,
-        });
-        await writeJson(uploadThrottlePath, uploadThrottleState);
-        if (!opts.auto) {
-          process.stderr.write(`Upload error: ${e?.message || e}\n`);
-        }
-      }
-    }
-
-    const afterState = (await readJson(queueStatePath)) || { offset: 0 };
-    const queueSize = await safeStatSize(queuePath);
-    const projectAfterState = (await readJson(projectQueueStatePath)) || { offset: 0 };
-    const projectQueueSize = await safeStatSize(projectQueuePath);
-    const pendingBytes =
-      Math.max(0, queueSize - Number(afterState.offset || 0)) +
-      Math.max(0, projectQueueSize - Number(projectAfterState.offset || 0));
-
-    if (pendingBytes <= 0) {
-      await clearAutoRetry(trackerDir);
-    } else if (opts.auto && uploadAttempted) {
-      const retryAtMs = Number(uploadThrottleState?.nextAllowedAtMs || 0);
-      if (retryAtMs > Date.now()) {
-        await scheduleAutoRetry({
-          trackerDir,
-          retryAtMs,
-          reason: "backlog",
-          pendingBytes,
-          source: "auto-backlog",
-          autoRetryNoSpawn: runtime.autoRetryNoSpawn,
-        });
-      }
-    }
+    await clearAutoRetry(trackerDir);
 
     if (!opts.auto) {
       const totalParsed =
@@ -673,12 +600,6 @@ async function cmdSync(argv) {
           "Sync finished:",
           `- Parsed files: ${totalParsed}`,
           `- New 30-min buckets queued: ${totalBuckets}`,
-          runtime.deviceToken
-            ? `- Uploaded: ${uploadResult.inserted} inserted, ${uploadResult.skipped} skipped`
-            : "- Uploaded: skipped (no device token)",
-          runtime.deviceToken && pendingBytes > 0 && !opts.drain
-            ? `- Remaining: ${formatBytes(pendingBytes)} pending (run sync again, or use --drain)`
-            : null,
           "",
         ]
           .filter(Boolean)
@@ -996,98 +917,6 @@ async function writeOpenclawSignal(trackerDir) {
 
 const AUTO_RETRY_FILENAME = "auto.retry.json";
 const AUTO_RETRY_MAX_DELAY_MS = 2 * 60 * 60 * 1000;
-
-const INGEST_SLUG = "tokentracker-ingest";
-const MAX_INGEST_BUCKETS = 500;
-
-async function drainQueueToCloud({ baseUrl, deviceToken, queuePath, queueStatePath, maxBatches = 5, batchSize = 200 }) {
-  const state = (await readJson(queueStatePath)) || { offset: 0 };
-  let offset = Number(state.offset || 0);
-  let inserted = 0;
-  let skipped = 0;
-
-  const queueSize = await safeStatSize(queuePath);
-  const limit = Math.min(Math.max(1, Math.floor(Number(batchSize || 200))), MAX_INGEST_BUCKETS);
-
-  for (let batch = 0; batch < maxBatches; batch++) {
-    if (offset >= queueSize) break;
-    const result = await readQueueBatch(queuePath, offset, limit);
-    if (result.buckets.length === 0) break;
-
-    const root = baseUrl.replace(/\/$/, "");
-    const anonKey = process.env.TOKENTRACKER_INSFORGE_ANON_KEY || "";
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      Authorization: `Bearer ${deviceToken}`,
-    };
-    if (anonKey) headers.apikey = anonKey;
-    const res = await fetch(`${root}/functions/${INGEST_SLUG}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ hourly: result.buckets }),
-    });
-
-    const rawText = await res.text().catch(() => "");
-    let data = {};
-    try { data = JSON.parse(rawText); } catch { data = {}; }
-    if (!res.ok) {
-      const err = new Error(`HTTP ${res.status}: ${rawText.substring(0, 500)}`);
-      err.status = res.status;
-      const retryAfter = res.headers?.get?.("Retry-After") ?? null;
-      const retryAfterMs = parseRetryAfterMs(retryAfter);
-      if (retryAfterMs !== null) err.retryAfterMs = retryAfterMs;
-      throw err;
-    }
-
-    inserted += Number(data?.inserted || 0);
-    skipped += Number(data?.skipped || 0);
-
-    offset = result.nextOffset;
-    state.offset = offset;
-    state.updatedAt = new Date().toISOString();
-    await writeJson(queueStatePath, state);
-  }
-
-  return { inserted, skipped };
-}
-
-async function readQueueBatch(queuePath, startOffset, maxBuckets) {
-  const st = await fs.stat(queuePath).catch(() => null);
-  if (!st || !st.isFile()) return { buckets: [], nextOffset: startOffset };
-  if (startOffset >= st.size) return { buckets: [], nextOffset: startOffset };
-
-  const stream = fssync.createReadStream(queuePath, { encoding: "utf8", start: startOffset });
-  const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
-
-  const bucketMap = new Map();
-  let offset = startOffset;
-  let linesRead = 0;
-  for await (const line of rl) {
-    const bytes = Buffer.byteLength(line, "utf8") + 1;
-    offset += bytes;
-    if (!line.trim()) continue;
-    let bucket;
-    try {
-      bucket = JSON.parse(line);
-    } catch (_e) {
-      continue;
-    }
-    const hourStart = typeof bucket?.hour_start === "string" ? bucket.hour_start : null;
-    if (!hourStart) continue;
-    const source = (typeof bucket?.source === "string" ? bucket.source.trim().toLowerCase() : "") || "codex";
-    const model = (typeof bucket?.model === "string" ? bucket.model.trim() : "") || "unknown";
-    bucket.source = source;
-    bucket.model = model;
-    bucketMap.set(`${source}|${model}|${hourStart}`, bucket);
-    linesRead += 1;
-    if (linesRead >= maxBuckets) break;
-  }
-
-  rl.close();
-  stream.close?.();
-  return { buckets: Array.from(bucketMap.values()), nextOffset: offset };
-}
 
 async function migrateCursorUnknownBuckets({ cursors, queuePath }) {
   if (!cursors || typeof cursors !== "object") return;

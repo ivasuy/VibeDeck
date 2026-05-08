@@ -816,18 +816,10 @@ if (debugEnabled) {
 // Throttle spawn: at most once per 20 seconds.
 try {
     const throttlePath = path.join(trackerDir, 'sync.throttle');
-    let deviceToken = process.env.TOKENTRACKER_DEVICE_TOKEN || null;
-    if (!deviceToken) {
-      try {
-        const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (cfg && typeof cfg.deviceToken === 'string') deviceToken = cfg.deviceToken;
-      } catch (_) {}
-    }
-    const canSync = Boolean(deviceToken && deviceToken.length > 0);
     const now = Date.now();
     let last = 0;
     try { last = Number(fs.readFileSync(throttlePath, 'utf8')) || 0; } catch (_) {}
-    if (canSync && now - last > 20_000) {
+    if (now - last > 20_000) {
     try { fs.writeFileSync(throttlePath, String(now), 'utf8'); } catch (_) {}
     const hasLocalRuntime = fs.existsSync(trackerBinPath);
     const hasLocalDeps = fs.existsSync(depsMarkerPath);

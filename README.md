@@ -1,33 +1,21 @@
  <div align="center">
 
-# Token Tracker
+# VibeDeck
+
+> Local-first cost & provenance cockpit for AI coding agents — a fork of TokenTracker.
 
 **English** · [简体中文](./README.zh-CN.md)
 
-### Know exactly what you're spending on AI — across every CLI
-
-Auto-collect token counts from **13 AI coding tools**, aggregate them locally, see real cost trends in a beautiful dashboard, **and install the same Skills across every agent in one click**. No cloud account, no API keys, no setup — just one command.
-
-[![npm version](https://img.shields.io/npm/v/tokentracker-cli.svg?color=blue)](https://www.npmjs.com/package/tokentracker-cli)
-[![npm downloads](https://img.shields.io/npm/dm/tokentracker-cli.svg?color=brightgreen)](https://www.npmjs.com/package/tokentracker-cli)
-[![Homebrew](https://img.shields.io/github/v/release/mm7894215/TokenTracker?label=brew&color=F8B73E&logo=homebrew&logoColor=white)](https://github.com/mm7894215/homebrew-tokentracker)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/macOS-supported-lightgrey.svg)](https://www.apple.com/macos/)
-[![GitHub stars](https://img.shields.io/github/stars/mm7894215/TokenTracker?style=social)](https://github.com/mm7894215/TokenTracker/stargazers)
-
-<br/>
-
-<img src="https://raw.githubusercontent.com/mm7894215/tokentracker/main/docs/screenshots/dashboard-dark.png" alt="Token Tracker Dashboard" width="820" />
-
-<br/><br/>
-
-⭐ **If TokenTracker saves you time, please [star it on GitHub](https://github.com/mm7894215/TokenTracker) — it helps other developers find it.**
-
-<br/>
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/M4M11XSNWD)
 
 </div>
+
+---
+
+## Origin
+
+VibeDeck is a hard fork of [TokenTracker](https://github.com/mm7894215/TokenTracker), stripped of its consumer/cloud features (leaderboard, share cards, cloud sync) and extended for session/branch attribution and Entire CLI integration. License inherited from TokenTracker (MIT).
 
 ---
 
@@ -36,43 +24,27 @@ Auto-collect token counts from **13 AI coding tools**, aggregate them locally, s
 > **Requirements**: Node.js **20+** (CLI runs on macOS / Linux / Windows; menu bar app and Cursor SQLite reader are macOS-only).
 
 ```bash
-npx tokentracker-cli
+npx vibedeck-cli
 ```
 
-That's it. First run installs hooks, syncs your data, and opens the dashboard at `http://localhost:7680`.
+That's it. First run installs hooks, syncs your data, and opens the dashboard at `http://localhost:7690`.
 
 **What you get in 30 seconds:**
-- 📊 A local dashboard at `localhost:7680` with usage trends, model breakdown, cost analysis
+- 📊 A local dashboard at `localhost:7690` with usage trends, model breakdown, cost analysis
 - 🔌 Auto-detected hooks for every supported AI tool you have installed
 - 🧩 **Skills manager** — browse 250+ public skills, install once, sync to Claude · Codex · Gemini · OpenCode · Hermes
-- 🏠 100% local — no account, no API keys, no network calls (except optional leaderboard)
-
-> **Want a native macOS menu bar app?** [Download `TokenTrackerBar.dmg`](https://github.com/mm7894215/TokenTracker/releases/latest) → drag to Applications. Includes desktop widgets, menu bar status icon, and the same dashboard in a WKWebView.
+- 🏠 100% local — no account, no API keys, no network calls
 
 Install globally for shorter commands:
 
 ```bash
-npm i -g tokentracker-cli
+npm install -g vibedeck-cli   # not yet published to npm
 
-tokentracker              # Open the dashboard
-tokentracker sync         # Manual sync
-tokentracker status       # Check hook status
-tokentracker doctor       # Health check
+vibedeck              # Open the dashboard
+vibedeck sync         # Manual sync
+vibedeck status       # Check hook status
+vibedeck doctor       # Health check
 ```
-
-### 🍺 Homebrew (macOS)
-
-Prefer `brew`? Install directly — no extra tap step needed:
-
-```bash
-# macOS menu bar app (DMG)
-brew install --cask mm7894215/tokentracker/tokentracker
-
-# CLI only
-brew install mm7894215/tokentracker/tokentracker
-```
-
-Upgrade with `brew upgrade --cask mm7894215/tokentracker/tokentracker`. The tap auto-bumps within an hour of every new release.
 
 ---
 

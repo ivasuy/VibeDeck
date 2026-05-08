@@ -4,17 +4,15 @@ const { test } = require("node:test");
 const { resolveRuntimeConfig } = require("../src/lib/runtime-config");
 
 test("resolveRuntimeConfig prefers CLI flags over config and env", () => {
-  const config = { baseUrl: "https://config.example", deviceToken: "cfg" };
   const result = resolveRuntimeConfig({
-    cli: { baseUrl: "https://cli.example" },
-    config,
-    env: { TOKENTRACKER_DEVICE_TOKEN: "env" },
+    cli: { dashboardUrl: "https://cli.dashboard" },
+    config: { dashboardUrl: "https://config.dashboard" },
+    env: { TOKENTRACKER_DEBUG: "1" },
   });
 
-  assert.equal(result.baseUrl, "https://cli.example");
-  assert.equal(result.deviceToken, "cfg");
-  assert.equal(result.sources.baseUrl, "cli");
-  assert.equal(result.sources.deviceToken, "config");
+  assert.equal(result.dashboardUrl, "https://cli.dashboard");
+  assert.equal(result.sources.dashboardUrl, "cli");
+  assert.equal(result.debug, true);
 });
 
 test("resolveRuntimeConfig ignores non-TOKENTRACKER env inputs", () => {
@@ -25,8 +23,8 @@ test("resolveRuntimeConfig ignores non-TOKENTRACKER env inputs", () => {
     },
   });
 
-  assert.equal(result.deviceToken, null);
-  assert.equal(result.sources.deviceToken, "default");
+  assert.equal(result.dashboardUrl, "https://www.vibedeck.cc");
+  assert.equal(result.sources.dashboardUrl, "default");
 });
 
 test("resolveRuntimeConfig normalizes timeout and flags", () => {

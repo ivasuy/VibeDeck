@@ -16,11 +16,22 @@ async function cmdDoctor(argv = []) {
   const configStatus = await readJsonStrict(configPath);
   const config =
     configStatus.status === "ok" && isPlainObject(configStatus.value) ? configStatus.value : {};
-  const runtime = resolveRuntimeConfig({
-    cli: { baseUrl: opts.baseUrl },
+  const baseRuntime = resolveRuntimeConfig({
     config,
     env: process.env,
   });
+  // baseUrl and deviceToken are cloud-only fields removed from resolveRuntimeConfig.
+  // Pass baseUrl through for the network health check (CLI override still supported).
+  const runtime = {
+    ...baseRuntime,
+    baseUrl: opts.baseUrl || null,
+    deviceToken: null,
+    sources: {
+      ...baseRuntime.sources,
+      baseUrl: opts.baseUrl ? "cli" : "default",
+      deviceToken: "default",
+    },
+  };
   const diagnostics = await collectTrackerDiagnostics({ home });
   const cliPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
 

@@ -13,7 +13,6 @@ import { isMockEnabled } from "./lib/mock-data";
 import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
 import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
-import IpCheckPage from "./pages/IpCheckPage.jsx";
 import { LandingPage } from "./pages/LandingPage.jsx";
 import { LimitsPage } from "./pages/LimitsPage.jsx";
 import { LoginPage } from "./pages/LoginPage.jsx";
@@ -76,8 +75,7 @@ export default function App() {
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
-  const isIpCheckPath = normalizedPath === "/ip-check";
-  if (isLimitsPath || isSettingsPath || isSkillsPath || isWidgetsPath || isIpCheckPath) gate = "dashboard";
+  if (isLimitsPath || isSettingsPath || isSkillsPath || isWidgetsPath) gate = "dashboard";
 
   let PageComponent = DashboardPage;
   if (isLimitsPath) {
@@ -88,8 +86,6 @@ export default function App() {
     PageComponent = SkillsPage;
   } else if (isWidgetsPath) {
     PageComponent = WidgetsPage;
-  } else if (isIpCheckPath) {
-    PageComponent = IpCheckPage;
   }
 
   const showSidebar =
@@ -99,8 +95,7 @@ export default function App() {
       isLimitsPath ||
       isSettingsPath ||
       isSkillsPath ||
-      isWidgetsPath ||
-      isIpCheckPath);
+      isWidgetsPath);
 
   let content = null;
   if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {

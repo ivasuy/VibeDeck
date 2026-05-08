@@ -4,7 +4,6 @@ import {
   BarChart3,
   Gauge,
   LayoutGrid,
-  Globe,
   Puzzle,
   Settings as SettingsIcon,
   ChevronLeft,
@@ -43,7 +42,6 @@ function getNavGroups() {
       items: [
         { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
-        { id: "ip-check", to: "/ip-check", icon: Globe, label: copy("nav.ip_check") },
       ],
     },
     {

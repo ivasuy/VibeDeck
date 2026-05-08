@@ -18,7 +18,7 @@ test("help output uses TokenTracker identifiers", async () => {
     process.stdout.write = prevWrite;
   }
 
-  assert.match(out, /tokentracker/);
+  assert.match(out, /vibedeck/);
   assert.ok(!out.includes("@vibescore/tracker"));
   assert.match(out, /doctor/);
 });

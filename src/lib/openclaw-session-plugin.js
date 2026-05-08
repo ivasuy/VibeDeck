@@ -324,7 +324,7 @@ function buildSessionPluginMeta() {
   return `${JSON.stringify(
     {
       id: OPENCLAW_SESSION_PLUGIN_ID,
-      name: "TokenTracker OpenClaw Session Sync",
+      name: "VibeDeck OpenClaw Session Sync",
       description: "Trigger tokentracker sync on OpenClaw agent/session lifecycle events.",
       configSchema: {
         type: "object",

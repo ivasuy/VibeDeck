@@ -178,7 +178,7 @@ function renderWelcome() {
     [
       ASCII_LOGO,
       "",
-      `${BOLD}Welcome to Token Tracker${RESET}`,
+      `${BOLD}Welcome to VibeDeck${RESET}`,
       DIVIDER,
       `${CYAN}Privacy First: Your data stays local. Only token counts are tracked — never prompts or responses.${RESET}`,
       DIVIDER,
@@ -207,7 +207,7 @@ function renderLocalSuccess() {
       // this is the only place a CLI user naturally sees the project's
       // GitHub URL — and they're at peak satisfaction. No prompts in
       // status/doctor/sync/etc, which run in scripts and would be noisy.
-      `  ${color("⭐ Liking it? Star us at https://github.com/mm7894215/TokenTracker", DIM)}`,
+      `  ${color("⭐ Liking it? Star us at https://github.com/mm7894215/VibeDeck", DIM)}`,
       "",
     ].join("\n"),
   );

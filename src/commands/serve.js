@@ -28,7 +28,7 @@ async function cmdServe(argv) {
   // 0. First-time setup: if tracker dir doesn't exist, run init first
   const { trackerDir } = await resolveTrackerPaths();
   if (!fssync.existsSync(path.join(trackerDir, "cursors.json"))) {
-    process.stdout.write("First time? Setting up Token Tracker...\n\n");
+    process.stdout.write("First time? Setting up VibeDeck...\n\n");
     try {
       const { cmdInit } = require("./init");
       await cmdInit(["--yes"]);

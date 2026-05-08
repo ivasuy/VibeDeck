@@ -276,7 +276,7 @@ metadata:
   { "openclaw": { "emoji": "📈", "events": ["command:new", "command:reset", "command:stop"], "requires": { "bins": ["node"] } } }
 ---
 
-# TokenTracker OpenClaw Sync Hook
+# VibeDeck OpenClaw Sync Hook
 
 Triggers non-blocking 'tokentracker sync --auto --from-openclaw' runs when OpenClaw command events indicate session rollover/reset/stop.
 `;

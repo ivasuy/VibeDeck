@@ -5,7 +5,6 @@ import { cn } from "../../lib/cn";
 import { getDashboardEntryPath } from "../../lib/host-mode";
 import { HeaderGithubStar } from "../openai/components/HeaderGithubStar.jsx";
 import { InsforgeUserHeaderControls } from "../../components/InsforgeUserHeaderControls.jsx";
-import { useInsforgeAuth } from "../../contexts/InsforgeAuthContext.jsx";
 import LaserFlow from "./components/LaserFlow.jsx";
 import LightRays from "./components/LightRays.jsx";
 
@@ -82,7 +81,8 @@ export function MarketingLanding({
   const isLocalMode =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  const { signedIn, loading: authLoading } = useInsforgeAuth();
+  const signedIn = true;
+  const authLoading = false;
 
   const modelAgentLabels = useMemo(
     () => ({

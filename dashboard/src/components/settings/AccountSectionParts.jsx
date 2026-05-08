@@ -1,6 +1,5 @@
 import React from "react";
 import { Pencil } from "lucide-react";
-import { useLoginModal } from "../../contexts/LoginModalContext.jsx";
 import { copy } from "../../lib/copy";
 import { SectionCard, ToggleSwitch } from "./Controls.jsx";
 
@@ -244,23 +243,8 @@ function GithubProfileField({ github }) {
 }
 
 export function SignedOutAccountSection() {
-  const { openLoginModal } = useLoginModal();
-  return (
-    <SectionCard title={copy("settings.section.account")}>
-      <div className="flex items-center justify-between gap-4 py-3">
-        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("settings.account.signedOutHint")}
-        </p>
-        <button
-          type="button"
-          onClick={openLoginModal}
-          className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-oai-gray-900 px-4 text-xs font-medium text-white transition-colors hover:bg-oai-gray-800 dark:bg-white dark:text-oai-gray-900 dark:hover:bg-oai-gray-100"
-        >
-          {copy("settings.account.signIn")}
-        </button>
-      </div>
-    </SectionCard>
-  );
+  // VibeDeck: local-only, no sign-in needed.
+  return null;
 }
 
 export function PublicProfileFields({ name, github }) {

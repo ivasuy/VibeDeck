@@ -1,12 +1,9 @@
 import React, { useState, useCallback } from "react";
 import { motion } from "motion/react";
-import { useLoginModal } from "../../../contexts/LoginModalContext.jsx";
-import { useInsforgeAuth } from "../../../contexts/InsforgeAuthContext.jsx";
 import { ClawdAnimated } from "../../foundation/ClawdAnimated.jsx";
 import { useClawdState } from "../../../hooks/useClawdState.js";
 
 const DISMISS_KEY = "macAppBannerDismissed";
-const LOGIN_DISMISS_KEY = "leaderboardBannerDismissed";
 const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1) */
@@ -23,16 +20,12 @@ const isNativeApp = (() => {
 
 
 /**
- * Context-aware banner:
- * - Native app + signed in → Leaderboard entry
- * - Native app + not signed in → Login CTA
- * - Browser → Download App CTA
+ * Download App CTA banner (VibeDeck: local-only, no cloud auth).
+ * In native app context the banner is suppressed since the app is already installed.
  */
 export function MacAppBanner({ todayTokens = 0, isSyncing = false, enterDelay = 0 }) {
-  const { openLoginModal } = useLoginModal();
-  const { signedIn: cloudSignedIn } = useInsforgeAuth();
   const clawdState = useClawdState({ todayTokens, isSyncing });
-  const dismissKey = isNativeApp ? LOGIN_DISMISS_KEY : DISMISS_KEY;
+  const dismissKey = DISMISS_KEY;
 
   const [dismissed, setDismissed] = useState(() => {
     try {
@@ -56,47 +49,21 @@ export function MacAppBanner({ todayTokens = 0, isSyncing = false, enterDelay = 
     }
   }, [dismissKey]);
 
-  if (dismissed) return null;
+  // In the native app context we don't show this banner at all.
+  if (dismissed || isNativeApp) return null;
 
-  // Determine banner content based on context
-  let title, subtitle, buttonLabel, buttonIcon, onButtonClick, buttonHref;
+  const title = "Try the Menu Bar App";
+  const subtitle = "Always-on stats with Clawd companion";
+  const buttonLabel = "Download";
+  const buttonIcon = (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-70">
+      <path d="M6 2v6m0 0L3.5 5.5M6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+  const buttonHref = RELEASE_URL;
 
-  if (isNativeApp && cloudSignedIn) {
-    title = "View the Leaderboard";
-    subtitle = "Compare your usage globally";
-    buttonLabel = "Leaderboard";
-    buttonIcon = (
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-70">
-        <path d="M2 8.5V10h8V8.5M6 1.5v6m0 0L3.5 5M6 7.5l2.5-2.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" transform="rotate(180 6 6)"/>
-      </svg>
-    );
-    onButtonClick = () => { window.location.pathname = "/leaderboard"; };
-  } else if (isNativeApp) {
-    title = "Join the Leaderboard";
-    subtitle = "Log in to compare your usage with others";
-    buttonLabel = "Log In";
-    buttonIcon = (
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-70">
-        <path d="M6.5 1.5h3a1 1 0 011 1v7a1 1 0 01-1 1h-3M5 8.5L7.5 6 5 3.5M7.5 6H1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
-    onButtonClick = openLoginModal;
-  } else {
-    title = "Try the Menu Bar App";
-    subtitle = "Always-on stats with Clawd companion";
-    buttonLabel = "Download";
-    buttonIcon = (
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="opacity-70">
-        <path d="M6 2v6m0 0L3.5 5.5M6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
-    buttonHref = RELEASE_URL;
-  }
-
-  const ButtonTag = buttonHref ? motion.a : motion.button;
-  const buttonProps = buttonHref
-    ? { href: buttonHref, target: "_blank", rel: "noopener noreferrer" }
-    : { onClick: onButtonClick };
+  const ButtonTag = motion.a;
+  const buttonProps = { href: buttonHref, target: "_blank", rel: "noopener noreferrer" };
 
   return (
     <motion.div

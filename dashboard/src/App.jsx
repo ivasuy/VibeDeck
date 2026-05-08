@@ -5,17 +5,9 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
-import { useInsforgeAuth } from "./contexts/InsforgeAuthContext.jsx";
-import { LoginModalProvider } from "./contexts/LoginModalContext.jsx";
-import { LoginModal } from "./components/LoginModal.jsx";
 import { getBackendBaseUrl } from "./lib/config";
-import { isMockEnabled } from "./lib/mock-data";
-import { isScreenshotModeEnabled } from "./lib/screenshot-mode";
-import { useCloudUsageSync } from "./hooks/use-cloud-usage-sync";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
 import { LimitsPage } from "./pages/LimitsPage.jsx";
-import { LoginPage } from "./pages/LoginPage.jsx";
-import { NativeAuthCallbackPage } from "./pages/NativeAuthCallbackPage.jsx";
 import { SettingsPage } from "./pages/SettingsPage.jsx";
 import { SkillsPage } from "./pages/SkillsPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
@@ -27,13 +19,6 @@ export default function App() {
   // across the tree — without unmounting lazy-loaded pages.
   const { resolvedLocale } = useLocale();
   const location = useLocation();
-  const insforge = useInsforgeAuth();
-  useCloudUsageSync();
-  const mockEnabled = isMockEnabled();
-  const screenshotMode = useMemo(() => {
-    if (typeof window === "undefined") return false;
-    return isScreenshotModeEnabled(window.location.search);
-  }, []);
   const pathname = location?.pathname || "/";
   const pageUrl = new URL(window.location.href);
   const sharePathname = pageUrl.pathname.replace(/\/+$/, "") || "/";
@@ -46,34 +31,13 @@ export default function App() {
     sharePathname === "/share.html" ||
     sharePathname.startsWith("/share/");
 
-  const isLocalMode =
-    typeof window !== "undefined" &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
-
-  const cloudAuthSignedIn = Boolean(insforge.enabled && insforge.signedIn);
-  const signedIn = isLocalMode || cloudAuthSignedIn;
-  const sessionSoftExpired = false;
   const baseUrl = getBackendBaseUrl();
-
-  const authObject = useMemo(() => {
-    if (!insforge.enabled || !cloudAuthSignedIn) return null;
-    return {
-      getAccessToken: () => insforge.getAccessToken(),
-      name: insforge.displayName || "",
-      userId: insforge.user?.id || null,
-    };
-  }, [cloudAuthSignedIn, insforge]);
-
-  let gate = isLocalMode || mockEnabled || screenshotMode ? "dashboard" : "login";
-  if (normalizedPath === "/dashboard") gate = "dashboard";
 
   const isLimitsPath = normalizedPath === "/limits";
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
-  if (isLimitsPath || isSettingsPath || isSkillsPath || isWidgetsPath) gate = "dashboard";
 
   let PageComponent = DashboardPage;
   if (isLimitsPath) {
@@ -95,44 +59,29 @@ export default function App() {
       isSkillsPath ||
       isWidgetsPath);
 
-  let content = null;
-  if (normalizedPath === "/auth/callback" || normalizedPath === "/auth/native-callback") {
-    content = <NativeAuthCallbackPage />;
-  } else if (normalizedPath === "/login") {
-    content = <LoginPage />;
-  } else if (gate === "login") {
-    content = <LoginPage />;
-  } else {
-    const pageNode = (
-      <PageComponent
-        key={resolvedLocale}
-        baseUrl={baseUrl}
-        auth={authObject}
-        signedIn={signedIn}
-        sessionSoftExpired={sessionSoftExpired}
-        signOut={() => (insforge.enabled ? insforge.signOut() : Promise.resolve())}
-        publicMode={publicMode}
-        publicToken={publicToken}
-        signInUrl="/login"
-        signUpUrl="/login"
-      />
-    );
-    if (showSidebar) {
-      content = <AppLayout>{pageNode}</AppLayout>;
-    } else {
-      content = pageNode;
-    }
-  }
+  const pageNode = (
+    <PageComponent
+      key={resolvedLocale}
+      baseUrl={baseUrl}
+      auth={null}
+      signedIn={true}
+      sessionSoftExpired={false}
+      signOut={() => Promise.resolve()}
+      publicMode={publicMode}
+      publicToken={publicToken}
+      signInUrl="/"
+      signUpUrl="/"
+    />
+  );
+
+  const content = showSidebar ? <AppLayout>{pageNode}</AppLayout> : pageNode;
 
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <LoginModalProvider>
-          {content}
-          <LoginModal />
-          <Analytics />
-          <SpeedInsights />
-        </LoginModalProvider>
+        {content}
+        <Analytics />
+        <SpeedInsights />
       </ThemeProvider>
     </ErrorBoundary>
   );

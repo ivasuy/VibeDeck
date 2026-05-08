@@ -27,11 +27,13 @@ test("App.jsx does not contain leaderboard routes (stripped)", () => {
   assert.equal(source.includes("LeaderboardPage"), false, "LeaderboardPage should not be referenced");
 });
 
-test("App.jsx routes to /login page", () => {
+test("App.jsx has no login route (local-only, no auth gate)", () => {
   const appPath = path.join(repoRoot, "dashboard/src/App.jsx");
   const source = fs.readFileSync(appPath, "utf8");
-  assert.equal(source.includes('"/login"'), true, "/login route should exist");
-  assert.equal(source.includes("LoginPage"), true, "LoginPage should be referenced");
+  assert.equal(source.includes("LoginPage"), false, "LoginPage should not be referenced (stripped in Task 9)");
+  assert.equal(source.includes("NativeAuthCallbackPage"), false, "NativeAuthCallbackPage should not be referenced (stripped in Task 9)");
+  assert.equal(source.includes("InsforgeAuth"), false, "InsforgeAuth should not be referenced (stripped in Task 9)");
+  assert.equal(source.includes("LoginModalProvider"), false, "LoginModalProvider should not be referenced (stripped in Task 9)");
 });
 
 test("App.jsx keeps menu bar configuration inside /widgets", () => {

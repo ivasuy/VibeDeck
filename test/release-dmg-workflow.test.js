@@ -1,0 +1,128 @@
+const assert = require("node:assert/strict");
+const { test } = require("node:test");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const WORKFLOW_PATH = path.join(
+  __dirname,
+  "..",
+  ".github",
+  "workflows",
+  "release-dmg.yml"
+);
+
+function loadWorkflow() {
+  return fs.readFileSync(WORKFLOW_PATH, "utf8");
+}
+
+test("release-dmg workflow file exists", () => {
+  assert.ok(fs.existsSync(WORKFLOW_PATH));
+});
+
+test("workflow triggers on workflow_dispatch with version input", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("workflow_dispatch:"));
+  assert.ok(content.includes("version:"));
+});
+
+test("workflow uses macOS runner", () => {
+  const content = loadWorkflow();
+  assert.ok(
+    /runs-on:\s*macos-/.test(content),
+    "should use macOS runner for xcodebuild"
+  );
+});
+
+test("workflow verifies version matches package.json", () => {
+  const content = loadWorkflow();
+  assert.ok(
+    content.includes("Verify version"),
+    "should have a version verification step"
+  );
+});
+
+test("workflow builds dashboard before bundling", () => {
+  const content = loadWorkflow();
+  const dashBuild = content.indexOf("dashboard:build");
+  const bundle = content.indexOf("bundle-node.sh");
+  assert.ok(dashBuild > 0, "should build dashboard");
+  assert.ok(bundle > 0, "should bundle EmbeddedServer");
+  assert.ok(
+    dashBuild < bundle,
+    "dashboard build must come before EmbeddedServer bundle"
+  );
+});
+
+test("workflow bundles EmbeddedServer via bundle-node.sh", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("bundle-node.sh"));
+});
+
+test("workflow installs xcodegen", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("brew install xcodegen"));
+});
+
+test("workflow generates Xcode project and patches icon", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("xcodegen generate"));
+  assert.ok(content.includes("patch-pbxproj-icon.rb"));
+});
+
+test("workflow builds with xcodebuild Release config", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("xcodebuild"));
+  assert.ok(content.includes("-configuration Release"));
+  assert.ok(content.includes("-scheme TokenTrackerBar"));
+});
+
+test("workflow creates DMG via create-dmg.sh", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("create-dmg.sh"));
+});
+
+test("workflow creates GitHub release with DMG asset", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("gh release create"));
+  assert.ok(content.includes("TokenTrackerBar.dmg"));
+});
+
+test("workflow has correct step order: dashboard → bundle → xcode → dmg → release", () => {
+  const content = loadWorkflow();
+  const steps = [
+    "dashboard:build",
+    "bundle-node.sh",
+    "xcodegen generate",
+    "patch-pbxproj-icon.rb",
+    "xcodebuild",
+    "create-dmg.sh",
+    "gh release create",
+  ];
+  let lastIndex = -1;
+  for (const step of steps) {
+    const idx = content.indexOf(step);
+    assert.ok(idx > lastIndex, `"${step}" should come after previous step`);
+    lastIndex = idx;
+  }
+});
+
+test("workflow has concurrency guard", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("concurrency:"));
+});
+
+test("workflow has write permissions for release creation", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("contents: write"));
+});
+
+test("create-dmg.sh supports CI headless mode", () => {
+  const dmgScript = fs.readFileSync(
+    path.join(__dirname, "..", "TokenTrackerBar", "scripts", "create-dmg.sh"),
+    "utf8"
+  );
+  assert.ok(
+    dmgScript.includes('CI:-}'),
+    "create-dmg.sh should check CI env var for headless mode"
+  );
+});

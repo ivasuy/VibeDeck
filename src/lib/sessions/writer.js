@@ -124,16 +124,25 @@ function upsertSessionFromEvents(dbPath, events) {
       throw new Error('upsertSessionFromEvents: no started_at available (need a start event or existing row)');
     }
 
-    const endTimes = validated.filter((e) => e.kind === 'end').map((e) => e.ended_at);
-    let endedAtFromEvents = null;
-    for (const t of endTimes) endedAtFromEvents = maxIso(endedAtFromEvents, t);
+  const endTimes = validated.filter((e) => e.kind === 'end').map((e) => e.ended_at);
+  let endedAtFromEvents = null;
+  for (const t of endTimes) endedAtFromEvents = maxIso(endedAtFromEvents, t);
 
-    let ended_at = null;
-    if (existing && existing.ended_at != null) ended_at = existing.ended_at;
-    if (endedAtFromEvents != null) ended_at = maxIso(ended_at, endedAtFromEvents);
+    const endReasons = validated
+      .filter((e) => e.kind === 'end')
+      .map((e) => (e.end_reason == null ? null : e.end_reason));
+    const endReasonFromEvents = lastNonNull(null, endReasons);
 
-    const endReasons = validated.filter((e) => e.kind === 'end').map((e) => (e.end_reason == null ? null : e.end_reason));
-    const end_reason = lastNonNull(existing ? existing.end_reason : null, endReasons);
+    let ended_at = existing && existing.ended_at != null ? existing.ended_at : null;
+    let end_reason = existing && existing.end_reason != null ? existing.end_reason : null;
+
+    if (endedAtFromEvents != null) {
+      const shouldAdvance = ended_at == null || endedAtFromEvents > ended_at;
+      if (shouldAdvance) {
+        ended_at = endedAtFromEvents;
+        if (endReasonFromEvents != null) end_reason = endReasonFromEvents;
+      }
+    }
 
     const cwdCandidates = validated.map((e) => normalizeCwd(e.cwd));
     const cwd = firstNonNull(existing ? existing.cwd : null, cwdCandidates);

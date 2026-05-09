@@ -10,8 +10,10 @@ const codebuddy = require('../src/lib/hook-merger/codebuddy');
 const cursor = require('../src/lib/hook-merger/cursor');
 const gemini = require('../src/lib/hook-merger/gemini');
 const factory = require('../src/lib/hook-merger/factory');
+const codex = require('../src/lib/hook-merger/codex');
 
 const SEED = Number(process.env.VIBEDECK_SOAK_SEED || 1);
+const TOML_SEED = Number(process.env.VIBEDECK_SOAK_TOML_SEED || 1);
 
 function makeRng(seed) {
   let state = (Number.isFinite(seed) ? seed : 1) | 0;
@@ -164,6 +166,175 @@ test('hook-merger property soak: 1000 random JSON states preserve non-vibedeck e
       const msg =
         `Soak failure (seed=${SEED} iter=${i} provider=${provider}). ` +
         `Repro: VIBEDECK_SOAK_SEED=${SEED} node --test test/hook-merger-soak.test.js`;
+      err.message = `${msg}\n${err.message}`;
+      throw err;
+    }
+  }
+});
+
+function buildTomlFixture(rng) {
+  const lines = [];
+
+  const leadingKeys = randInt(rng, 4); // 0-3
+  for (let i = 0; i < leadingKeys; i++) {
+    const kind = randInt(rng, 4);
+    if (kind === 0) lines.push(`name = \"x-${randInt(rng, 1000)}\"${randInt(rng, 2) === 0 ? '' : ' # name'}`);
+    else if (kind === 1) lines.push(`port = ${7600 + randInt(rng, 200)}${randInt(rng, 2) === 0 ? '' : ' # port'}`);
+    else if (kind === 2) lines.push(`# leading comment ${randInt(rng, 1000)}`);
+    else lines.push(`enabled = ${randInt(rng, 2) === 0 ? 'true' : 'false'}${randInt(rng, 2) === 0 ? '' : ' # enabled'}`);
+  }
+
+  // Optional table to ensure injectNotifyArray inserts before the first table header.
+  if (randInt(rng, 2) === 0) {
+    lines.push('[telemetry]');
+    lines.push(`enabled = ${randInt(rng, 2) === 0 ? 'true' : 'false'}`);
+  }
+
+  const entireCount = randInt(rng, 6); // 0-5
+  const manualCount = randInt(rng, 4); // 0-3
+
+  const entire = [];
+  for (let i = 0; i < entireCount; i++) entire.push(`/usr/local/bin/entire hook session-end --id=e${i}`);
+
+  const manual = [];
+  for (let i = 0; i < manualCount; i++) manual.push(`echo manual-${i}`);
+
+  const notifyValues = shuffleInPlace(rng, entire.concat(manual));
+
+  const notifyMode = randInt(rng, 4); // 0=absent,1=string,2=array,3=multiline+comments
+  if (notifyMode !== 0) {
+    if (notifyValues.length === 0) notifyValues.push(`echo manual-solo-${randInt(rng, 1000)}`);
+    if (notifyMode === 1) {
+      const v = notifyValues[0] || `echo solo-${randInt(rng, 1000)}`;
+      lines.push(`notify = \"${v}\"${randInt(rng, 2) === 0 ? '' : ' # notify string'}`);
+    } else if (notifyMode === 2) {
+      const parts = notifyValues.map((v) => `\"${v}\"`);
+      lines.push(`notify = [${parts.join(', ')}]${randInt(rng, 2) === 0 ? '' : ' # notify array'}`);
+    } else {
+      lines.push('notify = [');
+      for (const v of notifyValues) {
+        const tail = randInt(rng, 3) === 0 ? ` # entry ${randInt(rng, 1000)}` : '';
+        lines.push(`  \"${v}\",${tail}`);
+        if (randInt(rng, 5) === 0) lines.push(`  # mid comment ${randInt(rng, 1000)}`);
+      }
+      lines.push(']');
+    }
+  }
+
+  lines.push(`# trailing comment ${randInt(rng, 1000)}`);
+  return `${lines.join('\n')}\n`;
+}
+
+function extractNotifyValuesFromFixtureToml(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(/^\s*notify\s*=\s*(.*)\s*$/);
+    if (!m) continue;
+    const rhs = String(m[1] || '');
+    if (rhs.trim().startsWith('[')) {
+      const chunks = [rhs];
+      while (i + 1 < lines.length && !chunks.join('\n').includes(']')) {
+        i += 1;
+        chunks.push(lines[i]);
+      }
+      const joined = chunks.join('\n');
+      const re = /["']([^"']*)["']/g;
+      let mm;
+      // eslint-disable-next-line no-cond-assign
+      while ((mm = re.exec(joined))) out.push(mm[1]);
+    } else {
+      const mm = rhs.match(/^\s*["']([^"']*)["']/);
+      if (mm) out.push(mm[1]);
+    }
+  }
+  return out;
+}
+
+function hasNotifyAssignment(text) {
+  return /^\s*notify\s*=\s*/m.test(String(text || ''));
+}
+
+function extractNonNotifyLines(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const m = line.match(/^\s*notify\s*=\s*(.*)\s*$/);
+    if (!m) {
+      if (line) out.push(line);
+      continue;
+    }
+    const rhs = String(m[1] || '');
+    if (rhs.trim().startsWith('[')) {
+      while (i + 1 < lines.length && !lines[i].includes(']')) i += 1;
+    }
+  }
+  return out;
+}
+
+test('hook-merger property soak: 500 random TOML states preserve non-notify lines and notify semantics', async () => {
+  const rng = makeRng(TOML_SEED);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-soak-toml-'));
+
+  for (let i = 0; i < 500; i++) {
+    const filePath = path.join(dir, `codex-${i}.toml`);
+    const initial = buildTomlFixture(rng);
+    fs.writeFileSync(filePath, initial);
+
+    const originalText = fs.readFileSync(filePath, 'utf8');
+    const originalHadNotify = hasNotifyAssignment(originalText);
+    const originalNotify = extractNotifyValuesFromFixtureToml(originalText);
+    const originalEntire = new Set(originalNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
+    const originalManual = new Set(
+      originalNotify.filter((v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v)),
+    );
+
+    const preservedLines = extractNonNotifyLines(originalText);
+
+    try {
+      await codex.install(filePath);
+      const afterInstallText = fs.readFileSync(filePath, 'utf8');
+
+      for (const line of preservedLines) assert.ok(afterInstallText.includes(line));
+
+      const afterInstallNotify = extractNotifyValuesFromFixtureToml(afterInstallText);
+      assert.ok(hasNotifyAssignment(afterInstallText));
+      assert.strictEqual(afterInstallNotify.filter((v) => signature.isVibedeckCommandStringTOML(v)).length, 1);
+
+      const afterInstallEntire = new Set(afterInstallNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
+      const afterInstallManual = new Set(
+        afterInstallNotify.filter(
+          (v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v),
+        ),
+      );
+      assert.deepStrictEqual(afterInstallEntire, originalEntire);
+      assert.deepStrictEqual(afterInstallManual, originalManual);
+
+      await codex.remove(filePath);
+      const afterRemoveText = fs.readFileSync(filePath, 'utf8');
+
+      for (const line of preservedLines) assert.ok(afterRemoveText.includes(line));
+
+      if (originalHadNotify) assert.ok(hasNotifyAssignment(afterRemoveText));
+      else assert.ok(!hasNotifyAssignment(afterRemoveText));
+
+      const afterRemoveNotify = extractNotifyValuesFromFixtureToml(afterRemoveText);
+      assert.strictEqual(afterRemoveNotify.filter((v) => signature.isVibedeckCommandStringTOML(v)).length, 0);
+
+      const afterRemoveEntire = new Set(afterRemoveNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
+      const afterRemoveManual = new Set(
+        afterRemoveNotify.filter(
+          (v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v),
+        ),
+      );
+      assert.deepStrictEqual(afterRemoveEntire, originalEntire);
+      assert.deepStrictEqual(afterRemoveManual, originalManual);
+    } catch (err) {
+      const msg =
+        `TOML soak failure (seed=${TOML_SEED} iter=${i}). ` +
+        `Repro: VIBEDECK_SOAK_TOML_SEED=${TOML_SEED} node --test test/hook-merger-soak.test.js`;
       err.message = `${msg}\n${err.message}`;
       throw err;
     }

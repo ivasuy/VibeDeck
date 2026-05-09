@@ -71,3 +71,31 @@ test('requireWriteAuth uses constant-time comparison', () => {
   assert.strictEqual(auth.requireWriteAuth(req, res, { tokenPath }), false);
   assert.strictEqual(status, 401);
 });
+
+test('issueConfirmToken returns a single-use token consumable for 30 seconds', () => {
+  auth._resetConfirmTokensForTests();
+  const t = auth.issueConfirmToken({ op: 'rewindCheckpoint' });
+  assert.match(t, /^[a-f0-9]{32}$/);
+  assert.strictEqual(auth.consumeConfirmToken({ token: t, op: 'rewindCheckpoint' }), true);
+  // Single-use:
+  assert.strictEqual(auth.consumeConfirmToken({ token: t, op: 'rewindCheckpoint' }), false);
+});
+
+test('issueConfirmToken rejects mismatched op on consume', () => {
+  auth._resetConfirmTokensForTests();
+  const t = auth.issueConfirmToken({ op: 'rewindCheckpoint' });
+  assert.strictEqual(auth.consumeConfirmToken({ token: t, op: 'cleanEntire' }), false);
+});
+
+test('issueConfirmToken expires after TTL', () => {
+  auth._resetConfirmTokensForTests();
+  const t = auth.issueConfirmToken({ op: 'rewindCheckpoint', _now: 1000, ttlMs: 30000 });
+  assert.strictEqual(auth.consumeConfirmToken({ token: t, op: 'rewindCheckpoint', _now: 30001 }), false);
+});
+
+test('issueConfirmToken cleans up expired entries on each issue', () => {
+  auth._resetConfirmTokensForTests();
+  for (let i = 0; i < 5; i++) auth.issueConfirmToken({ op: 'x', _now: 1000 });
+  auth.issueConfirmToken({ op: 'x', _now: 60000 });
+  assert.strictEqual(auth._getConfirmTokenCountForTests(), 1);
+});

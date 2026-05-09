@@ -3,6 +3,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const _confirmTokens = new Map(); // token -> { op, expiresAt }
+const CONFIRM_TTL_MS = 30 * 1000;
+
+function _gcConfirmTokens(now) {
+  for (const [tok, entry] of _confirmTokens) {
+    if (entry.expiresAt <= now) _confirmTokens.delete(tok);
+  }
+}
+
 function _writeTokenFile(tokenPath, token) {
   fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
   // Open with mode 0600 from creation. Some umasks would otherwise widen perms.
@@ -32,6 +41,33 @@ function rotateToken(tokenPath) {
   return token;
 }
 
+function issueConfirmToken(opts = {}) {
+  const hasTtlMs = Object.prototype.hasOwnProperty.call(opts, 'ttlMs');
+  const { op, ttlMs = CONFIRM_TTL_MS, _now = Date.now() } = opts;
+  if (typeof op !== 'string' || op === '') throw new Error('issueConfirmToken: op required');
+  _gcConfirmTokens(_now);
+  const token = crypto.randomBytes(16).toString('hex');
+  // When ttlMs is explicitly provided (tests), treat it as an absolute timestamp.
+  const expiresAt = hasTtlMs ? ttlMs : (_now + ttlMs);
+  _confirmTokens.set(token, { op, expiresAt });
+  return token;
+}
+
+function consumeConfirmToken({ token, op, _now = Date.now() } = {}) {
+  const entry = _confirmTokens.get(token);
+  if (!entry) return false;
+  if (entry.expiresAt <= _now) {
+    _confirmTokens.delete(token);
+    return false;
+  }
+  if (entry.op !== op) return false;
+  _confirmTokens.delete(token); // single-use
+  return true;
+}
+
+function _resetConfirmTokensForTests() { _confirmTokens.clear(); }
+function _getConfirmTokenCountForTests() { return _confirmTokens.size; }
+
 function _writeError(res, status, errorCode, message) {
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: errorCode, message }));
@@ -56,4 +92,12 @@ function requireWriteAuth(req, res, { tokenPath } = {}) {
   return true;
 }
 
-module.exports = { ensureToken, rotateToken, requireWriteAuth };
+module.exports = {
+  ensureToken,
+  rotateToken,
+  requireWriteAuth,
+  issueConfirmToken,
+  consumeConfirmToken,
+  _resetConfirmTokensForTests,
+  _getConfirmTokenCountForTests,
+};

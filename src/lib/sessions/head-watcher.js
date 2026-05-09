@@ -62,14 +62,22 @@ function addRepoWatches(watcher, repoRoot) {
 function startHeadWatcher({ dbPath, repos, polling } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('startHeadWatcher: dbPath must be a non-empty string');
 
-  const forcedPolling = process.env.VIBEDECK_WATCHER_POLLING === '1';
-  const usePolling = Boolean(forcedPolling || polling === true);
+  // Polling is the safe default for .git/HEAD: git uses atomic-replace (open
+  // temp, fsync, rename) which native fsevents/inotify often miss because the
+  // inode changes. Polling catches the new content reliably. HEAD changes
+  // happen at checkout granularity (rare), so polling overhead is negligible.
+  // env VIBEDECK_WATCHER_POLLING=1 force-on; explicit polling:false opts out.
+  const envOn = process.env.VIBEDECK_WATCHER_POLLING === '1';
+  const usePolling = envOn ? true : polling !== false;
+  const pollInterval = Number(process.env.VIBEDECK_WATCHER_POLL_MS) || 250;
 
   const watcher = chokidar.watch([], {
     persistent: true,
     ignoreInitial: true,
     awaitWriteFinish: false,
     usePolling,
+    interval: pollInterval,
+    binaryInterval: pollInterval,
   });
 
   const handle = {

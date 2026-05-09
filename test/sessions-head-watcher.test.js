@@ -72,7 +72,7 @@ test('watcher records HEAD changes for a repo', { timeout: 20000 }, async () => 
     fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
 
     const { startHeadWatcher, stopHeadWatcher } = require('../src/lib/sessions/head-watcher');
-    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [{ repo_root: repo.dir }], polling: false });
+    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [{ repo_root: repo.dir }] });
     await handle.ready;
     await new Promise((r) => setTimeout(r, 100));
 
@@ -110,7 +110,7 @@ test('polling fallback enabled when VIBEDECK_WATCHER_POLLING=1', { timeout: 2000
     fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
 
     const { startHeadWatcher, stopHeadWatcher } = require('../src/lib/sessions/head-watcher');
-    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [{ repo_root: repo.dir }], polling: false });
+    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [{ repo_root: repo.dir }] });
     assert.equal(handle.usePolling, true);
     await handle.ready;
     await new Promise((r) => setTimeout(r, 100));
@@ -139,7 +139,7 @@ test('registerActiveRepo adds repo at runtime and stopHeadWatcher stops recordin
     fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
 
     const { startHeadWatcher, stopHeadWatcher, registerActiveRepo } = require('../src/lib/sessions/head-watcher');
-    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [], polling: false });
+    const handle = startHeadWatcher({ dbPath: tmp.dbPath, repos: [] });
     await handle.ready;
 
     registerActiveRepo(handle, { repo_root: repo.dir, worktree_root: repo.dir });

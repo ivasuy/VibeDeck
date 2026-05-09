@@ -1264,6 +1264,46 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- vibedeck-attribution-stats (GET) ---
+    if (p === "/functions/vibedeck-attribution-stats") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      if (!fs.existsSync(dbPath)) {
+        json(res, { high: 0, medium: 0, low: 0, unattributed: 0, total: 0 });
+        return true;
+      }
+
+      const out = { high: 0, medium: 0, low: 0, unattributed: 0, total: 0 };
+      try {
+        const db = new DatabaseSync(dbPath, { readOnly: true });
+        try {
+          const rows = db
+            .prepare("SELECT confidence, COUNT(*) as c FROM vibedeck_sessions GROUP BY confidence")
+            .all();
+          for (const row of rows) {
+            const confidence = String(row.confidence || "");
+            const c = Number(row.c || 0);
+            if (confidence === "high") out.high += c;
+            else if (confidence === "medium") out.medium += c;
+            else if (confidence === "low") out.low += c;
+            else if (confidence === "unattributed") out.unattributed += c;
+            out.total += c;
+          }
+        } finally {
+          db.close();
+        }
+      } catch {
+        // Graceful fallback for DB/schema mismatch.
+      }
+
+      json(res, out);
+      return true;
+    }
+
     // --- project-usage-summary ---
     if (p === "/functions/tokentracker-project-usage-summary") {
       // Use the per-project bucket log that rollout.js emits — it already

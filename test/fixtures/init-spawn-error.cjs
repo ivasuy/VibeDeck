@@ -36,6 +36,17 @@ const cp = require("node:child_process");
       return emitter;
     };
 
+    const entireBridgePath = require.resolve("../../src/lib/entire-bridge");
+    delete require.cache[entireBridgePath];
+    require.cache[entireBridgePath] = {
+      id: entireBridgePath,
+      filename: entireBridgePath,
+      loaded: true,
+      exports: {
+        detectEntire: async () => ({ present: false, version: null }),
+      },
+    };
+
     delete require.cache[require.resolve("../../src/commands/init")];
     const { cmdInit } = require("../../src/commands/init");
 

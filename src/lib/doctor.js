@@ -3,6 +3,7 @@ const { constants } = require("node:fs");
 const fsSync = require("node:fs");
 const os = require("node:os");
 const pathMod = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 
 const { readJsonStrict } = require("./fs");
 const { detectEntire } = require("./entire-bridge");
@@ -35,6 +36,7 @@ async function runDoctorChecks({
   fetch = globalThis.fetch,
   paths = {},
   home = os.homedir(),
+  dbPath = null,
 } = {}) {
   const checks = [];
 
@@ -59,6 +61,7 @@ async function runDoctorChecks({
   }
 
   checks.push(...(await buildHookIntegrityChecks({ home })));
+  checks.push(...(await buildDbHealthChecks({ home, paths, dbPath })));
 
   return checks;
 }
@@ -174,6 +177,132 @@ async function buildHookIntegrityChecks({ home }) {
   }
 
   return checks;
+}
+
+function resolveDoctorDbPath({ home, paths, dbPath }) {
+  if (typeof dbPath === "string" && dbPath.trim()) return dbPath;
+  if (paths && typeof paths.trackerDir === "string" && paths.trackerDir.trim()) {
+    return pathMod.join(paths.trackerDir, "vibedeck.sqlite3");
+  }
+  return pathMod.join(home, ".vibedeck", "tracker", "vibedeck.sqlite3");
+}
+
+async function buildDbHealthChecks({ home, paths, dbPath }) {
+  const resolved = resolveDoctorDbPath({ home, paths, dbPath });
+  if (!fsSync.existsSync(resolved)) {
+    return [
+      {
+        id: "db.attribution_distribution",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+      {
+        id: "db.integrity",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+      {
+        id: "db.live_sessions_anomaly",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+    ];
+  }
+
+  /** @type {Array<any>} */
+  const checks = [];
+  const db = new DatabaseSync(resolved, { readOnly: true });
+  try {
+    // attribution_distribution
+    try {
+      const rows = db
+        .prepare("SELECT confidence, COUNT(*) as c FROM vibedeck_sessions GROUP BY confidence")
+        .all();
+      const counts = { high: 0, medium: 0, low: 0, unattributed: 0, total: 0 };
+      for (const r of rows) {
+        const confidence = String(r.confidence || "");
+        const c = Number(r.c || 0);
+        if (confidence === "high") counts.high += c;
+        else if (confidence === "medium") counts.medium += c;
+        else if (confidence === "low") counts.low += c;
+        else if (confidence === "unattributed") counts.unattributed += c;
+        counts.total += c;
+      }
+      const unattributedPct = counts.total > 0 ? counts.unattributed / counts.total : 0;
+      const pct = Math.round(unattributedPct * 1000) / 10;
+      checks.push({
+        id: "db.attribution_distribution",
+        status: unattributedPct >= 0.25 ? "warn" : "ok",
+        detail: `unattributed ${pct}% (total ${counts.total})`,
+        critical: false,
+        meta: { ...counts, unattributed_pct: unattributedPct },
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.attribution_distribution",
+        status: "fail",
+        detail: `failed to read vibedeck_sessions: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+    }
+
+    // db_integrity
+    try {
+      const row = db.prepare("PRAGMA integrity_check").get();
+      const value = row ? String(Object.values(row)[0] || "") : "";
+      checks.push({
+        id: "db.integrity",
+        status: value === "ok" ? "ok" : "fail",
+        detail: value === "ok" ? "integrity_check ok" : `integrity_check: ${value || "unknown"}`,
+        critical: value !== "ok",
+        meta: { value },
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.integrity",
+        status: "fail",
+        detail: `integrity_check failed: ${err?.message || String(err)}`,
+        critical: true,
+        meta: { path: resolved },
+      });
+    }
+
+    // live_sessions_anomaly
+    try {
+      const row = db
+        .prepare(
+          "SELECT COUNT(*) as c FROM vibedeck_sessions WHERE ended_at IS NULL AND started_at < datetime('now', '-24 hours')",
+        )
+        .get();
+      const count = Number(row?.c || 0);
+      checks.push({
+        id: "db.live_sessions_anomaly",
+        status: count > 0 ? "warn" : "ok",
+        detail: count > 0 ? `found ${count} stale live sessions (>24h)` : "no stale live sessions",
+        critical: false,
+        meta: { count },
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.live_sessions_anomaly",
+        status: "fail",
+        detail: `live session query failed: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+    }
+
+    return checks;
+  } finally {
+    db.close();
+  }
 }
 
 async function checkEntireCli() {

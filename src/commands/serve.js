@@ -10,6 +10,8 @@ const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
 const { ensurePricingLoaded } = require("../lib/pricing");
 const { serveStaticFile } = require("../lib/static-server");
 const { openInBrowser } = require("../lib/browser-auth");
+const { startHeadWatcher, stopHeadWatcher } = require("../lib/sessions/head-watcher");
+const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 
 const DEFAULT_PORT = 7690;
 const NPM_PACKAGE_NAME = "vibedeck-cli";
@@ -41,6 +43,15 @@ async function cmdServe(argv) {
   // 0.1 Ensure Plan 2 DB schema exists before serving local API.
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   ensureSchema(dbPath);
+  const headWatcher = startHeadWatcher({ dbPath, repos: "active" });
+  await headWatcher.ready;
+
+  let reaperInterval = setInterval(() => {
+    try {
+      reapOrphanedSessions(dbPath);
+    } catch (_e) {}
+  }, 5 * 60 * 1000);
+  if (typeof reaperInterval.unref === "function") reaperInterval.unref();
 
   try {
     const { installLocalTrackerApp } = require("./init");
@@ -59,6 +70,25 @@ async function cmdServe(argv) {
     } catch (e) {
       process.stdout.write(`Sync warning: ${e?.message || e}\n`);
     }
+  }
+
+  let syncInterval = null;
+  let syncing = false;
+  const syncEveryMs = Number(process.env.VIBEDECK_SERVE_SYNC_MS || "1000");
+  if (opts.sync && Number.isFinite(syncEveryMs) && syncEveryMs > 0) {
+    const { cmdSync } = require("./sync");
+    syncInterval = setInterval(async () => {
+      if (syncing) return;
+      syncing = true;
+      try {
+        await cmdSync(["--auto"]);
+      } catch (_e) {
+        // ignore background sync errors; surfaced via doctor/diagnostics
+      } finally {
+        syncing = false;
+      }
+    }, Math.trunc(syncEveryMs));
+    if (typeof syncInterval.unref === "function") syncInterval.unref();
   }
 
   // 2. Resolve paths
@@ -163,6 +193,13 @@ async function cmdServe(argv) {
   // 5. Graceful shutdown
   const shutdown = () => {
     process.stdout.write("\nShutting down...\n");
+    try {
+      if (syncInterval) clearInterval(syncInterval);
+    } catch (_e) {}
+    try {
+      if (reaperInterval) clearInterval(reaperInterval);
+    } catch (_e) {}
+    stopHeadWatcher(headWatcher).catch(() => {});
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000);
   };

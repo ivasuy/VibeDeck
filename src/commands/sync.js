@@ -50,6 +50,9 @@ const {
 } = require("../lib/cursor-config");
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
+const { ensureSchema } = require("../lib/db");
+const { reapOrphanedSessions } = require("../lib/sessions/reaper");
+const { processSessionEvent } = require("../lib/sessions/pipeline");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -60,6 +63,12 @@ async function cmdSync(argv) {
   const opts = parseArgs(argv);
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  ensureSchema(dbPath);
+
+  const onSessionEvent = (e) => {
+    processSessionEvent(dbPath, e).catch(() => {});
+  };
 
   await ensureDir(trackerDir);
   if (opts.fromOpenclaw) {
@@ -131,6 +140,7 @@ async function cmdSync(argv) {
       cursors,
       queuePath,
       projectQueuePath,
+      onSessionEvent,
       onProgress: (p) => {
         if (!progress?.enabled) return;
         const pct = p.total > 0 ? p.index / p.total : 1;
@@ -151,6 +161,7 @@ async function cmdSync(argv) {
         queuePath,
         projectQueuePath,
         source: "openclaw",
+        onSessionEvent,
       });
     }
 
@@ -179,6 +190,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         projectQueuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -205,6 +217,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         projectQueuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -231,6 +244,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         projectQueuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -259,6 +273,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         projectQueuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -303,6 +318,7 @@ async function cmdSync(argv) {
               records,
               cursors,
               queuePath,
+              onSessionEvent,
               onProgress: (p) => {
                 if (!progress?.enabled) return;
                 const pct = p.total > 0 ? p.index / p.total : 1;
@@ -336,6 +352,7 @@ async function cmdSync(argv) {
         jsonlPath: kiroJsonlPath,
         cursors,
         queuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -357,6 +374,7 @@ async function cmdSync(argv) {
         dbPath: hermesDbPath,
         cursors,
         queuePath,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -386,6 +404,7 @@ async function cmdSync(argv) {
           cursors,
           queuePath,
           env: process.env,
+          onSessionEvent,
           onProgress: (p) => {
             if (!progress?.enabled) return;
             const pct = p.total > 0 ? p.index / p.total : 1;
@@ -413,6 +432,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -437,6 +457,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -459,6 +480,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -486,6 +508,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -508,6 +531,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -530,6 +554,7 @@ async function cmdSync(argv) {
         cursors,
         queuePath,
         env: process.env,
+        onSessionEvent,
         onProgress: (p) => {
           if (!progress?.enabled) return;
           const pct = p.total > 0 ? p.index / p.total : 1;
@@ -561,6 +586,12 @@ async function cmdSync(argv) {
     progress?.stop();
 
     await clearAutoRetry(trackerDir);
+
+    try {
+      reapOrphanedSessions(dbPath);
+    } catch (_e) {
+      // ignore
+    }
 
     if (!opts.auto) {
       const totalParsed =

@@ -7,6 +7,15 @@ let cache = null;
 const CHECKPOINT_BRANCH = 'entire/checkpoints/v1';
 const _treeCache = new Map();
 let _gitListCalls = 0;
+const KNOWN_AGENTS = new Set([
+  'claude-code',
+  'codex',
+  'gemini',
+  'opencode',
+  'cursor',
+  'factoryai-droid',
+  'copilot-cli',
+]);
 
 async function detectEntire({ timeoutMs = 5000 } = {}) {
   const now = Date.now();
@@ -119,6 +128,77 @@ function _getInternalStats() {
   return { gitListCalls: _gitListCalls, cacheSize: _treeCache.size };
 }
 
+function validateAgentName(name) {
+  if (typeof name !== 'string' || !KNOWN_AGENTS.has(name)) {
+    throw new Error(
+      `Invalid agent name: ${name}. Allowed: ${Array.from(KNOWN_AGENTS).join(', ')}`,
+    );
+  }
+}
+
+async function validateBranchName(name) {
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new Error(`Invalid branch name: ${name}`);
+  }
+  try {
+    await execa('git', ['check-ref-format', '--branch', name], { timeout: 3000 });
+  } catch {
+    throw new Error(`Invalid branch name (git check-ref-format): ${name}`);
+  }
+}
+
+function _validateArgvStrings(args, { name } = {}) {
+  if (!Array.isArray(args)) throw new Error(`${name || 'args'} must be an array`);
+  for (const a of args) {
+    if (typeof a !== 'string' || a.length === 0 || a.includes('\0')) {
+      throw new Error(`Invalid ${name || 'args'} value: ${String(a)}`);
+    }
+  }
+}
+
+async function _runEntire(args, { cwd, timeoutMs = 30000 } = {}) {
+  _validateArgvStrings(args, { name: 'args' });
+  try {
+    const r = await execa('entire', args, { cwd, timeout: timeoutMs, reject: false });
+    return { exitCode: r.exitCode, stdout: String(r.stdout), stderr: String(r.stderr) };
+  } catch (err) {
+    return { exitCode: -1, stdout: '', stderr: String(err.shortMessage || err.message) };
+  }
+}
+
+async function enableEntire(repoRoot, agents = []) {
+  if (!Array.isArray(agents)) throw new Error('enableEntire: agents must be an array');
+  const args = ['enable'];
+  for (const a of agents) {
+    validateAgentName(a);
+    args.push('--agent', a);
+  }
+  return _runEntire(args, { cwd: repoRoot });
+}
+
+async function disableEntire(repoRoot) {
+  return _runEntire(['disable'], { cwd: repoRoot });
+}
+
+async function entireAgentAdd(repoRoot, agent) {
+  validateAgentName(agent);
+  return _runEntire(['agent', 'add', agent], { cwd: repoRoot });
+}
+
+async function entireAgentRemove(repoRoot, agent) {
+  validateAgentName(agent);
+  return _runEntire(['agent', 'remove', agent], { cwd: repoRoot });
+}
+
+async function entireStatus(repoRoot) {
+  return _runEntire(['status'], { cwd: repoRoot });
+}
+
+async function entireConfigure(repoRoot, args = []) {
+  _validateArgvStrings(args, { name: 'configure args' });
+  return _runEntire(['configure', ...args], { cwd: repoRoot });
+}
+
 module.exports = {
   detectEntire,
   _resetEntireCacheForTests,
@@ -128,4 +208,12 @@ module.exports = {
   listCheckpointsCached,
   _resetCheckpointCacheForTests,
   _getInternalStats,
+  validateAgentName,
+  validateBranchName,
+  enableEntire,
+  disableEntire,
+  entireAgentAdd,
+  entireAgentRemove,
+  entireStatus,
+  entireConfigure,
 };

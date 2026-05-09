@@ -936,6 +936,148 @@ These need user decisions before implementation, but do not block the spec:
 
 ---
 
+# 13. Implementation roadmap
+
+The spec is implemented across **four backend plans + one UI session**. Plan 1 is complete (fork + strip). The remaining plans are summarized below; each gets its own detailed plan document with bite-sized tasks before execution.
+
+## Plan 2 — Storage & Schema + Entire Bridge (~20 tasks)
+
+**Status:** next
+**File:** `docs/superpowers/plans/2026-05-09-vibedeck-v1-plan-2-storage-and-entire-bridge.md`
+
+**Schema layer:**
+- Versioned migration runner (`schema_version` table, idempotent upgrades, backup before migrate)
+- All `vibedeck_*` tables created: `vibedeck_sessions`, `vibedeck_session_buckets`, `vibedeck_session_branch_windows`, `vibedeck_session_entire_links`, `vibedeck_skills`, `vibedeck_head_history`, **`vibedeck_repos`** (per-repo Entire state cache)
+- WAL mode enabled, single-writer pattern (writes funnel through `serve` daemon)
+- Schema migrations wired into `serve` startup with backup before any change
+
+**Entire Bridge module (`src/lib/entire-bridge.js`):**
+- `detectEntire()` — PATH check via `entire version`, 60-second cache, wired into `doctor` and `serve` startup
+- Direct git read of `entire/checkpoints/v1`: `listCheckpoints(repoRoot)`, `readCheckpoint(repoRoot, path)` — pure git plumbing, never spawns CLI for reads, cached by branch tip SHA
+- Safe shell-outs: `enableEntire`, `disableEntire`, `agentAdd`, `agentRemove`, `getStatus`, `configure` — argv-form `execa`, 10s/30s timeouts, validated args (regex + `git check-ref-format`)
+- Destructive shell-outs: `rewindCheckpoint`, `cleanEntire` — placeholder confirm-token gate (real auth wired in Plan 4)
+- `getEntireRepoStatus(repoRoot)` — four-state machine (`not_installed` / `not_enabled` / `enabled_no_commits` / `active`), result persisted to `vibedeck_repos`
+
+**Onboarding hooks:**
+- `vibedeck init` extended with optional `entire login` prompt (skippable, `stdio: inherit` for the device-auth flow)
+- "Entire enabled, waiting for first commit" detection and clear messaging
+- Inherit Entire's existing local auth state — VibeDeck never touches Entire's credentials
+
+**Read-only API surface (writes deferred to Plan 4 with auth):**
+- `GET /functions/vibedeck-checkpoints` (proxy / direct read)
+- `GET /functions/vibedeck-checkpoint/:id`
+- `GET /functions/vibedeck-entire-status` (per-repo 4-state)
+- Stub `POST /functions/vibedeck-entire/:cmd` defined but returns 403 until Plan 4
+
+**Deliverable:** schema is durable, Entire bridge is functional and surfaceable via API, `vibedeck init` handles the Entire onboarding cliff. Ready for Plan 3 to write session data into the new tables.
+
+---
+
+## Plan 3 — Session Attribution + Hook Merger (~22 tasks)
+
+**File:** to be written after Plan 2 ships
+
+**Hook Merger (`src/lib/hook-merger.js`) — moved up from original sequencing because session detection depends on hooks firing correctly:**
+- Per-format mergers for all 7 formats: Claude JSON, Codex TOML, Cursor JSON, Gemini JSON, Factory JSON, CodeBuddy JSON, Copilot JSON, OpenCode TS plugin
+- Signature-based identification: every VibeDeck-written entry carries `_vibedeck: "v1"` field or unique command path; AST-aware merge for the OpenCode TS plugin
+- Two-phase atomic installer: (1) stage all writes to `.vibedeck-staging-<uuid>` temps, validate parses, (2) atomic-rename batch with rollback on failure
+- Read-merge-write contract: never overwrite malformed files; preserve Entire's, third-party, and user-manual entries; signature-only removal in `vibedeck disable`
+- Hook collision soak test (1000 random states) as part of the test suite
+
+**Session attribution (`src/lib/sessions.js`):**
+- Extend each parser in `src/lib/rollout.js` to emit `SessionEvent` stream alongside existing buckets (no change to bucket math)
+- Per-provider extraction tables (13 providers) with idle/end-detection rules
+- Repo + worktree resolution: `realpath` → `git rev-parse --show-toplevel`, worktree handling, submodule attribution, bare/zero-commit detection, repo identity by realpath
+- Branch resolution tiers A/B/C/D (Entire ground truth → live HEAD watcher → reflog → unattributed) with confidence levels stored on every session row
+- Branch-window splitting: sessions that span `git checkout` get pro-rata cost across windows
+- Orphan reaper: `live` sessions with no activity ≥ 30 min marked `ended_inferred`
+
+**Live infrastructure:**
+- Chokidar watcher on `.git/HEAD` and worktree HEADs across active repos (lazy-watch repos with no activity in 7 days)
+- `vibedeck_head_history` persistence so live attribution survives daemon restart
+- SSE endpoint: `GET /functions/vibedeck-sessions-live` streams session deltas to dashboard
+- File watcher on rollout files with 200ms debounce, idempotent inserts via `(provider, session_id)` PK
+
+**Deliverable:** every token bucket links to a session with a confidence-tagged branch attribution; live sessions stream to clients; hook collisions are a tested invariant.
+
+---
+
+## Plan 4 — Local Auth + API + Skills + Migration + Doctor (~16 tasks)
+
+**File:** to be written after Plan 3 ships
+
+**Local-auth tokens (`src/lib/local-auth.js`):**
+- 32-byte random token at `~/.vibedeck/auth.token` (chmod 600), `Authorization: Bearer` middleware on all write endpoints
+- Per-call destructive-confirm tokens (single-use, 30-second TTL) issued by `POST /functions/vibedeck-confirm-destructive` — required for `rewind`, `clean`, `repo migrate`
+- `vibedeck auth rotate` CLI
+
+**New write API endpoints (auth-gated):**
+- `POST /functions/vibedeck-entire/:cmd` (now wired to real auth)
+- `POST /functions/vibedeck-entire/rewind`, `/clean` (destructive-confirm required)
+- `POST /functions/vibedeck-skills/install`, `/remove`
+- `POST /functions/vibedeck-attribute` (manual session→branch override, sticky)
+
+**Skill management (`src/lib/skills.js`) — extends existing skill listing in TokenTracker:**
+- Install: from git URL or local path, target provider chosen by user; show source URL + README before clone; never auto-install; atomic-rename target dir; register skill hooks via hook-merger if applicable
+- Remove: confirm before destructive delete; idempotent; rollback hook entries via hook-merger
+- Audit: walk all known provider skill dirs, dedupe via realpath, last-used estimate via rollout grep (marked `(estimated)`)
+
+**TokenTracker → VibeDeck migration:**
+- First-run detection of `~/.tokentracker/`
+- Prompt: Migrate / Fresh / Coexist
+- Migrate path: read-only over old DB, copy to `~/.vibedeck/`, run schema migrations, best-effort tier C/D backfill of historical sessions
+- Recorded decision in `~/.vibedeck/install.json`
+
+**`vibedeck doctor` extension:**
+- Hook integrity per provider (signature check)
+- Entire on PATH + version compatibility + hook divergence
+- Inotify limit check (Linux)
+- DB integrity (`PRAGMA integrity_check`)
+- Port availability
+- Last sync age per provider
+- Live-session count anomaly (orphan reaper malfunction signal)
+- Attribution distribution (% high/medium/low/unattributed)
+
+**New CLIs:**
+- `vibedeck attribute --session <id> --branch <name>` (override)
+- `vibedeck repo migrate <old-path> <new-path>` (rare; for renamed repos)
+
+**Deliverable:** full v1 backend complete. All API endpoints functional with auth where required. Skill management works end-to-end. Existing TokenTracker users have a clear upgrade path. `doctor` reports actionable health.
+
+---
+
+## Plan 5 — UI session (separate spec, not in this document)
+
+**Will be written as its own spec after Plan 4 ships.** Brief outline only:
+
+- Three primary new views over the same attribution data model: **Live** (currently-active sessions with live token counters), **Per-branch cost** (recent branches, cost by branch with confidence indicators), **Retrospective monthly drill-down** (repo → branch → session → model)
+- **Entire panel** components: checkpoint list view, checkpoint detail (with metadata-only default; transcript display gated behind explicit click), enable/disable button per repo, repo-state indicator (4-state), rewind flow with confirmation modal
+- **Skill manager UI**: installed-skills table (per-provider, with origin), install dialog (URL/path input → README preview → confirm), remove dialog (destructive-confirm)
+- **Confidence surfacing**: every fuzzy attribution displays a small confidence icon (high/medium/low/unattributed) — non-negotiable design rule from the attribution spec
+- **Visual rebrand pass**: new color system, typography, "less is more" minimalist direction; rebranded macOS app icons + DMG identity; pruned `copy.csv` namespaces for legacy strings
+- **macOS app native panel updates**: existing native panels (summary cards, heatmap, model breakdown, usage limits, Clawd companion) updated for branding; new native panels for live sessions and Entire repo state where feasible (Charts module already conditionally hidden on macOS < 13)
+- **No new backend**: UI session consumes only Plan 2-4 endpoints. If a UI need exposes an API gap, that's a Plan 4 amendment, not new backend work.
+
+**v1 ships when Plan 5 (UI) is merged.** All distribution infrastructure (npm publish, DMG release, brew tap auto-update) is already wired from Plan 1.
+
+---
+
+## Sequencing summary
+
+```
+Plan 1 ✅ done — fork + strip
+Plan 2     — storage + Entire bridge (~20 tasks, ~2-3 days)
+Plan 3     — session attribution + hook merger (~22 tasks, ~3-4 days)
+Plan 4     — local auth + API + skills + migration + doctor (~16 tasks, ~2 days)
+Plan 5     — UI session (separate spec; estimated 1-2 weeks)
+                 ↓
+              v1 ship
+```
+
+Backend plans must run sequentially: Plan 3 needs Plan 2's schema; Plan 4 needs Plan 3's session data shape. UI starts after Plan 4 because the bulk of UI value (session views) requires the full attribution data model.
+
+---
+
 # Appendix A — Module map
 
 ```

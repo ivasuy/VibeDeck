@@ -6,6 +6,7 @@ const cp = require("node:child_process");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
+const { ensureToken: ensureAuthToken } = require("../lib/local-auth");
 const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
 const { ensurePricingLoaded } = require("../lib/pricing");
 const { serveStaticFile } = require("../lib/static-server");
@@ -43,6 +44,10 @@ async function cmdServe(argv) {
   // 0.1 Ensure Plan 2 DB schema exists before serving local API.
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   ensureSchema(dbPath);
+
+  // 0.2 Ensure local-auth token exists so write endpoints don't 500 on first hit
+  // when the user runs `vibedeck serve` before `vibedeck init`.
+  ensureAuthToken(path.join(path.dirname(trackerDir), "auth.token"));
   const headWatcher = startHeadWatcher({ dbPath, repos: "active" });
   await headWatcher.ready;
 

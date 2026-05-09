@@ -50,6 +50,7 @@ const {
   piAgentDirCollidesWithOmp,
 } = require("../lib/rollout");
 const { ensureToken } = require("../lib/local-auth");
+const migration = require("../lib/migration");
 const { resolveRuntimeConfig, DEFAULT_BASE_URL } = require("../lib/runtime-config");
 const {
   BOLD,
@@ -138,6 +139,25 @@ async function cmdInit(argv) {
     renderAccountNotLinked({ context: "dry-run" });
     return;
   }
+
+  const ui = {
+    info(message) {
+      process.stdout.write(`${String(message || '')}\n`);
+    },
+    async select(message, options) {
+      const items = Array.isArray(options) ? options : [];
+      if (items.length === 0) return null;
+      if (opts.yes || !isInteractive()) return items[1]?.value || items[0].value;
+      const label = await promptMenu({
+        message: `? ${message}`,
+        options: items.map((o) => o.label),
+        defaultIndex: 0,
+      });
+      const picked = items.find((o) => o.label === label) || items[0];
+      return picked.value;
+    },
+  };
+  await migration.detectAndPrompt({ ui });
 
   const spinner = createSpinner({ text: "Analyzing and configuring local environment..." });
   spinner.start();

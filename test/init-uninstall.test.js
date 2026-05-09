@@ -57,7 +57,7 @@ async function runGeneratedNotifyHandler({ trackerDir, notify }) {
     );
     child.stdin?.end();
   });
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
 test("notify handler skips SkyComputerUseClient and stale explicit original notify paths", async () => {

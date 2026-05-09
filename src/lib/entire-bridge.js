@@ -1,6 +1,11 @@
 'use strict';
 
 const execa = require('execa');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { resolveTrackerPaths } = require('./tracker-paths');
+const { upsertEntireState } = require('./db/repos');
 
 const CACHE_TTL_MS = 60 * 1000;
 let cache = null;
@@ -229,6 +234,76 @@ async function cleanEntire(repoRoot, confirmToken, { all = false } = {}) {
   return _runEntire(args, { cwd: repoRoot });
 }
 
+async function _getDbPath() {
+  const { trackerDir } = await resolveTrackerPaths();
+  return path.join(trackerDir, 'vibedeck.sqlite3');
+}
+
+async function getEntireRepoStatus(
+  repoRoot,
+  {
+    persist = true,
+    dbPathOverrideForTests = null,
+    detectionOverrideForTests = null,
+    checkpointsTipOverrideForTests,
+  } = {},
+) {
+  const detection = detectionOverrideForTests || (await detectEntire());
+  const dbPath = dbPathOverrideForTests || (await _getDbPath());
+
+  if (!detection.present) {
+    if (persist) upsertEntireState(dbPath, { repoRoot, entire_state: 'not_installed' });
+    return { state: 'not_installed' };
+  }
+
+  const settingsPath = path.join(repoRoot, '.entire', 'settings.json');
+  let enabled = false;
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const json = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      enabled = json.enabled !== false;
+    } catch {
+      enabled = false;
+    }
+  }
+
+  if (!enabled) {
+    if (persist) {
+      upsertEntireState(dbPath, {
+        repoRoot,
+        entire_state: 'not_enabled',
+        entire_version: detection.version,
+      });
+    }
+    return { state: 'not_enabled', version: detection.version };
+  }
+
+  const tip =
+    typeof checkpointsTipOverrideForTests === 'string'
+      ? checkpointsTipOverrideForTests
+      : await getCheckpointsBranchTip(repoRoot);
+
+  if (!tip) {
+    if (persist) {
+      upsertEntireState(dbPath, {
+        repoRoot,
+        entire_state: 'enabled_no_commits',
+        entire_version: detection.version,
+      });
+    }
+    return { state: 'enabled_no_commits', version: detection.version };
+  }
+
+  if (persist) {
+    upsertEntireState(dbPath, {
+      repoRoot,
+      entire_state: 'active',
+      entire_version: detection.version,
+    });
+  }
+  return { state: 'active', version: detection.version, checkpoint_branch_tip: tip };
+}
+
 module.exports = {
   detectEntire,
   _resetEntireCacheForTests,
@@ -249,4 +324,5 @@ module.exports = {
   validateCheckpointId,
   rewindCheckpoint,
   cleanEntire,
+  getEntireRepoStatus,
 };

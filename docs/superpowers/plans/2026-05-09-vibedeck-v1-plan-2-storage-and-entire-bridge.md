@@ -1,5 +1,31 @@
 # VibeDeck v1 — Plan 2: Storage & Schema + Entire Bridge
 
+> **STATUS: ✅ COMPLETE** — tagged `plan-2-storage-and-entire-bridge-complete` on 2026-05-09. 18 tasks executed, 19 commits, 502/502 tests passing. Implemented by Codex (gpt-5.2) under moderator review.
+
+## Post-completion review notes (action items rolled into Plan 3)
+
+Reviewer pass after tagging surfaced 6 actionable follow-ups. None are bugs in shipped functionality; all are hardening / cleanup that Plan 3 should address as an early-phase pass before adding new feature work:
+
+| # | Item | File / location | Severity |
+|---|---|---|---|
+| 1 | `rewindCheckpoint` validates checkpoint id before confirm token; should be reversed | `src/lib/entire-bridge.js:224-226` | low (ordering only) |
+| 2 | `_treeCache` is unbounded `Map`; add LRU cap (~100 entries) | `src/lib/entire-bridge.js:13` | low (real for long-running serve) |
+| 3 | `getSchemaVersion` opens with `openDb()` (writes WAL); should use `new DatabaseSync(dbPath, { readOnly: true })` | `src/lib/db/schema.js:30-31` | cosmetic |
+| 4 | `schema_version.updated_at` should be `applied_at` (semantic + matches spec) | `src/lib/db/schema.js` (table DDL + INSERT/UPDATE) | cosmetic |
+| 5 | Missing typed `entireDoctor()` shell-out wrapper | `src/lib/entire-bridge.js` exports | tracked for Plan 3/4 |
+| 6 | `getRepoState()` is exported but unused | `src/lib/db/repos.js:23` — first consumer comes when read API exposes repo state | tracked, not a defect |
+
+**Items deliberately not addressed (correctly flagged as non-gaps):**
+- `entire session resume` wrapper — explicitly post-v1.
+- `_checkConfirmToken` no-op — by design; Plan 4 replaces with real token validation.
+- DB filename `vibedeck.sqlite3` vs spec's earlier `db.sqlite` — code is consistent across `serve.js` and `entire-bridge.js`; spec roadmap updated to mark `vibedeck.sqlite3` as canonical. No code change needed.
+
+**Outcome:** Plan 3 begins with a small "Plan 2 hardening" task batch (items 1-4 + add `entireDoctor()`) before new feature work, then proceeds to hook merger and session attribution. See spec Section 13 for the rolled-up follow-up list.
+
+---
+
+## Original plan content (preserved for traceability)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Add the SQLite schema for VibeDeck's session attribution layer (`vibedeck_*` tables) and ship the Entire CLI integration module (PATH detection, direct git read of `entire/checkpoints/v1`, safe shell-outs for Entire commands, four-state per-repo status, and `entire login` onboarding). After this plan, the database is durable and Entire data flows into VibeDeck via read-only API endpoints. Write endpoints are stubbed (returning 403) until Plan 4 wires up auth.

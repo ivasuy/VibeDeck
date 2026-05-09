@@ -942,8 +942,22 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 
 ## Plan 2 — Storage & Schema + Entire Bridge (~20 tasks)
 
-**Status:** next
+**Status:** ✅ DONE — tagged `plan-2-storage-and-entire-bridge-complete` (2026-05-09). 18 tasks, 19 commits, 502/502 tests passing. Implemented by Codex (gpt-5.2) under moderator review.
 **File:** `docs/superpowers/plans/2026-05-09-vibedeck-v1-plan-2-storage-and-entire-bridge.md`
+
+**Implementation deviations from spec (accepted):**
+- DB filename is `vibedeck.sqlite3` (more specific than the spec's earlier `db.sqlite`); spec is the outlier — code is consistent across `serve.js` and `entire-bridge.js`. Treat `vibedeck.sqlite3` as canonical.
+- `schema_version` table uses `updated_at` instead of spec's `applied_at` — Plan 3 will rename to `applied_at` for semantic clarity (no users on disk yet, safe rename).
+- `node:sqlite` (built-in, requires Node ≥22.5) instead of `better-sqlite3` — preserves "no native deps" philosophy.
+- `execa@5.1.1` added to deps (was assumed-existing but absent in fork).
+
+**Plan 2 follow-up items rolled into Plan 3 (do early, before new feature work):**
+1. **Fix `rewindCheckpoint` validation order** — currently validates checkpoint id before confirm token; should be confirm-token first so an invalid id never masks an auth failure (`src/lib/entire-bridge.js:224-226`).
+2. **Add `_treeCache` LRU cap** (e.g., 100 entries) — currently unbounded `Map`; could grow over a long-lived `serve` watching many repos (`src/lib/entire-bridge.js:13`).
+3. **Make `getSchemaVersion` truly read-only** — currently uses the writable `openDb()` which sets WAL pragma; switch to `new DatabaseSync(dbPath, { readOnly: true })` so reads have no side effect (`src/lib/db/schema.js:30-31`).
+4. **Rename `schema_version.updated_at` → `applied_at`** — purely cosmetic but matches spec; needs migration v2 of the schema_version table (or, since no users yet, drop-and-recreate is acceptable).
+5. **Add typed `entireDoctor()` shell-out wrapper in `entire-bridge.js`** — Plan 4 needs it for the doctor write endpoint; preferable to add the wrapper in Plan 3 alongside other Entire writes for completeness.
+6. **Wire `getRepoState()` consumer** — exported from `src/lib/db/repos.js` but currently no caller; the new repo-state read API endpoint in Plan 3 (or Plan 4) becomes its first consumer.
 
 **Schema layer:**
 - Versioned migration runner (`schema_version` table, idempotent upgrades, backup before migrate)

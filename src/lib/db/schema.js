@@ -14,6 +14,7 @@ function openDb(dbPath) {
 function initSchema(dbPath) {
   const db = openDb(dbPath);
   try {
+    db.exec('PRAGMA journal_mode = WAL');
     const cols = db
       .prepare("PRAGMA table_info('schema_version')")
       .all()

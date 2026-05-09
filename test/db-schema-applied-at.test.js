@@ -24,12 +24,25 @@ test("schema_version exposes applied_at column (not updated_at)", () => {
   assert.ok(!cols.includes("updated_at"));
 });
 
-test("getSchemaVersion does not create -wal/-shm files (read-only open)", () => {
+test("getSchemaVersion is read-only: does not change journal_mode", () => {
   const dbPath = tmpDb();
   initSchema(dbPath);
-  const before = fs.existsSync(`${dbPath}-wal`);
+
+  function readJournalMode() {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      return db.prepare("PRAGMA journal_mode").get().journal_mode;
+    } finally {
+      db.close();
+    }
+  }
+
+  const before = readJournalMode();
+  assert.strictEqual(before, "wal", "initSchema must enable WAL per spec §5/§9.5");
+
   getSchemaVersion(dbPath, "never-exists");
-  const after = fs.existsSync(`${dbPath}-wal`);
-  assert.strictEqual(after, before, "getSchemaVersion must not flip WAL on");
+
+  const after = readJournalMode();
+  assert.strictEqual(after, before, "getSchemaVersion must not change journal_mode");
 });
 

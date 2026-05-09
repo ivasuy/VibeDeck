@@ -503,6 +503,29 @@ function json(res, data, status) {
   res.end(JSON.stringify(data));
 }
 
+function resolveRepoFromQuery(url) {
+  const raw = String(url.searchParams.get("repo") || "").trim();
+  if (!raw) return null;
+  try {
+    const resolved = fs.realpathSync(raw);
+    const st = fs.statSync(resolved);
+    if (!st.isDirectory()) return null;
+    return resolved;
+  } catch {
+    return null;
+  }
+}
+
+function isValidCheckpointPath(filePath) {
+  return (
+    typeof filePath === "string" &&
+    filePath.length > 0 &&
+    !filePath.includes("\0") &&
+    !filePath.startsWith("/") &&
+    !filePath.split("/").includes("..")
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main handler factory
 // ---------------------------------------------------------------------------
@@ -744,6 +767,66 @@ function createLocalApiHandler({ queuePath }) {
         from, to, days: 0, scope, excluded_sources: excludedSources, sources,
         pricing: { model: "per-model", pricing_mode: "per_token_type", source: "litellm", effective_from: new Date().toISOString().slice(0, 10) },
       });
+      return true;
+    }
+
+    // --- vibedeck-checkpoints (GET) ---
+    if (p === "/functions/vibedeck-checkpoints") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const repoRoot = resolveRepoFromQuery(url);
+      if (!repoRoot) {
+        json(res, { error: "invalid_repo" }, 400);
+        return true;
+      }
+      const { listCheckpointsCached } = require("./entire-bridge");
+      const result = await listCheckpointsCached(repoRoot);
+      json(res, result);
+      return true;
+    }
+
+    // --- vibedeck-checkpoint (GET) ---
+    if (p === "/functions/vibedeck-checkpoint") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const repoRoot = resolveRepoFromQuery(url);
+      if (!repoRoot) {
+        json(res, { error: "invalid_repo" }, 400);
+        return true;
+      }
+      const checkpointPath = String(url.searchParams.get("path") || "");
+      if (!isValidCheckpointPath(checkpointPath)) {
+        json(res, { error: "invalid_path" }, 400);
+        return true;
+      }
+      const { readCheckpoint } = require("./entire-bridge");
+      try {
+        const data = await readCheckpoint(repoRoot, checkpointPath);
+        json(res, data);
+      } catch (e) {
+        json(res, { error: "checkpoint_unavailable", message: e?.message || String(e) }, 500);
+      }
+      return true;
+    }
+
+    // --- vibedeck-entire-status (GET) ---
+    if (p === "/functions/vibedeck-entire-status") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const repoRoot = resolveRepoFromQuery(url);
+      if (!repoRoot) {
+        json(res, { error: "invalid_repo" }, 400);
+        return true;
+      }
+      const { getEntireRepoStatus } = require("./entire-bridge");
+      const status = await getEntireRepoStatus(repoRoot, { persist: false });
+      json(res, status);
       return true;
     }
 

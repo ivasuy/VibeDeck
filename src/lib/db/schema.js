@@ -8,18 +8,29 @@ const registry = new Map();
 
 function openDb(dbPath) {
   const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA journal_mode = WAL');
   return db;
 }
 
 function initSchema(dbPath) {
   const db = openDb(dbPath);
   try {
+    const cols = db
+      .prepare("PRAGMA table_info('schema_version')")
+      .all()
+      .map((r) => r.name);
+    const hasTable = cols.length > 0;
+    const hasUpdatedAt = cols.includes('updated_at');
+    const hasAppliedAt = cols.includes('applied_at');
+
+    if (hasTable && hasUpdatedAt && !hasAppliedAt) {
+      db.exec('DROP TABLE schema_version;');
+    }
+
     db.exec(`
       CREATE TABLE IF NOT EXISTS schema_version (
         component TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
-        updated_at TEXT NOT NULL
+        applied_at TEXT NOT NULL
       );
     `);
   } finally {
@@ -28,15 +39,8 @@ function initSchema(dbPath) {
 }
 
 function getSchemaVersion(dbPath, component) {
-  const db = openDb(dbPath);
+  const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS schema_version (
-        component TEXT PRIMARY KEY,
-        version INTEGER NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `);
     const row = db
       .prepare('SELECT version FROM schema_version WHERE component = ?')
       .get(component);
@@ -86,7 +90,7 @@ function runPendingMigrations(dbPath) {
       CREATE TABLE IF NOT EXISTS schema_version (
         component TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
-        updated_at TEXT NOT NULL
+        applied_at TEXT NOT NULL
       );
     `);
 
@@ -117,19 +121,19 @@ function runPendingMigrations(dbPath) {
         didBackup = true;
       }
 
-      const updatedAt = new Date().toISOString();
+      const appliedAt = new Date().toISOString();
       db.exec('BEGIN');
       try {
         migration.up(db);
         db.prepare(
           `
-            INSERT INTO schema_version (component, version, updated_at)
+            INSERT INTO schema_version (component, version, applied_at)
             VALUES (?, ?, ?)
             ON CONFLICT(component) DO UPDATE SET
               version = excluded.version,
-              updated_at = excluded.updated_at
+              applied_at = excluded.applied_at
           `,
-        ).run(migration.component, migration.version, updatedAt);
+        ).run(migration.component, migration.version, appliedAt);
         db.exec('COMMIT');
         appliedCount += 1;
       } catch (err) {
@@ -159,4 +163,3 @@ module.exports = {
   runPendingMigrations,
   _resetRegistryForTests,
 };
-

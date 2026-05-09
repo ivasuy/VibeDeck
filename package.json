@@ -39,6 +39,7 @@
     "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs"
   },
   "dependencies": {
+    "chokidar": "^3.6.0",
     "execa": "^5.1.1"
   },
   "devDependencies": {

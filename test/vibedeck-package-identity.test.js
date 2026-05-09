@@ -12,6 +12,6 @@ test('bin exposes vibedeck command', () => {
   assert.ok('vibedeck' in pkg.bin, 'bin.vibedeck must exist');
 });
 
-test('node engine still >=20', () => {
-  assert.match(pkg.engines.node, /^>=20/);
+test('node engine is >=22.5 (node:sqlite)', () => {
+  assert.match(pkg.engines.node, /^>=22\.5/);
 });

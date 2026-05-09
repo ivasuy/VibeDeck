@@ -5,6 +5,7 @@ const fssync = require("node:fs");
 const cp = require("node:child_process");
 
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
+const { ensureSchema } = require("../lib/db");
 const { createLocalApiHandler, resolveQueuePath } = require("../lib/local-api");
 const { ensurePricingLoaded } = require("../lib/pricing");
 const { serveStaticFile } = require("../lib/static-server");
@@ -36,6 +37,10 @@ async function cmdServe(argv) {
       process.stdout.write(`Init warning: ${e?.message || e}\n`);
     }
   }
+
+  // 0.1 Ensure Plan 2 DB schema exists before serving local API.
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  ensureSchema(dbPath);
 
   try {
     const { installLocalTrackerApp } = require("./init");

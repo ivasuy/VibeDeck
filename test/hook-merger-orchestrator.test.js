@@ -14,6 +14,10 @@ function readJson(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
+function copilotOwnedPath(repoRoot) {
+  return path.join(repoRoot, '.github', 'hooks', 'vibedeck.json');
+}
+
 test('installAll across 3 providers: all 3 written or none', async () => {
   const dir = tmpDir('vd-orch-');
   const claudePath = path.join(dir, 'claude.json');
@@ -51,7 +55,7 @@ test('removeAll removes only signed entries across all formats', async () => {
   const codexPath = path.join(dir, 'codex.toml');
   const factoryPath = path.join(dir, 'factory.json');
   const codebuddyPath = path.join(dir, 'codebuddy.json');
-  const copilotPath = path.join(dir, 'copilot.json');
+  const copilotPath = dir;
 
   await hookMerger.installAll({
     providers: ['claude', 'cursor', 'gemini', 'codex', 'factory', 'codebuddy', 'copilot'],
@@ -103,14 +107,17 @@ test('install is idempotent across the full set', async () => {
     codex: path.join(dir, 'codex.toml'),
     factory: path.join(dir, 'factory.json'),
     codebuddy: path.join(dir, 'codebuddy.json'),
-    copilot: path.join(dir, 'copilot.json'),
+    copilot: dir,
   };
 
   await hookMerger.installAll({ providers: Object.keys(paths), paths });
   const before = {};
-  for (const [k, p] of Object.entries(paths)) before[k] = fs.readFileSync(p, 'utf8');
+  for (const [k, p] of Object.entries(paths)) {
+    before[k] = fs.readFileSync(k === 'copilot' ? copilotOwnedPath(p) : p, 'utf8');
+  }
 
   await hookMerger.installAll({ providers: Object.keys(paths), paths });
-  for (const [k, p] of Object.entries(paths)) assert.strictEqual(fs.readFileSync(p, 'utf8'), before[k]);
+  for (const [k, p] of Object.entries(paths)) {
+    assert.strictEqual(fs.readFileSync(k === 'copilot' ? copilotOwnedPath(p) : p, 'utf8'), before[k]);
+  }
 });
-

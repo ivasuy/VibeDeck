@@ -10,7 +10,6 @@ const codebuddy = require('../src/lib/hook-merger/codebuddy');
 const cursor = require('../src/lib/hook-merger/cursor');
 const gemini = require('../src/lib/hook-merger/gemini');
 const factory = require('../src/lib/hook-merger/factory');
-const copilot = require('../src/lib/hook-merger/copilot');
 
 const SEED = Number(process.env.VIBEDECK_SOAK_SEED || 1);
 
@@ -114,7 +113,6 @@ const PROVIDERS = [
   { name: 'cursor', merger: cursor },
   { name: 'gemini', merger: gemini },
   { name: 'factory', merger: factory },
-  { name: 'copilot', merger: copilot },
 ];
 
 test('hook-merger property soak: 1000 random JSON states preserve non-vibedeck entries', async () => {

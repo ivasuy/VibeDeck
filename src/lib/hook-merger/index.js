@@ -39,9 +39,9 @@ function normalizeProviders(providers) {
 function resolveProviderTarget(provider, paths) {
   if (!paths || typeof paths !== 'object') throw new Error('paths is required');
   const raw = paths[provider];
-  if (provider === 'opencode') {
+  if (provider === 'opencode' || provider === 'copilot') {
     const repoRoot = String(raw || '').trim();
-    if (!repoRoot) throw new Error('paths.opencode must be a repo root');
+    if (!repoRoot) throw new Error(`paths.${provider} must be a repo root`);
     return path.resolve(repoRoot);
   }
   const filePath = String(raw || '').trim();
@@ -91,4 +91,3 @@ module.exports = {
   installAll,
   removeAll,
 };
-

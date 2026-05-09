@@ -1,90 +1,86 @@
 const fs = require('node:fs');
+const path = require('node:path');
 
 const { runBatch } = require('./atomic-batch');
 const signature = require('./signature');
-const { buildClaudeHookCommand } = require('../claude-config');
 
 function normalizeObject(raw) {
   return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
 }
 
-function normalizeArray(raw) {
-  return Array.isArray(raw) ? raw.slice() : [];
+function hooksFilePath(repoRoot) {
+  return path.join(repoRoot, '.github', 'hooks', 'vibedeck.json');
 }
 
-function canonicalEntry() {
-  const notifyPath = signature.canonicalCommandPath();
-  const hookCommand = buildClaudeHookCommand(notifyPath);
+function buildCommands() {
+  const canonical = signature.canonicalCommandPath();
+  const bash = `node ${canonical}`;
+  const windowsPath = path.win32.normalize(canonical);
+  const powershell = `node '${windowsPath}'`;
+  return { bash, powershell };
+}
+
+function buildHookJson() {
+  const { bash, powershell } = buildCommands();
   return {
-    _vibedeck: 'v1',
-    hooks: [{ type: 'command', command: hookCommand }],
+    version: 1,
+    hooks: {
+      sessionEnd: [
+        {
+          _vibedeck: 'v1',
+          type: 'command',
+          bash,
+          powershell,
+        },
+      ],
+    },
   };
 }
 
-function entriesEqual(a, b) {
-  try {
-    return JSON.stringify(a) === JSON.stringify(b);
-  } catch {
-    return false;
-  }
+function validateHooksJsonString(s) {
+  const j = JSON.parse(s);
+  if (!j || typeof j !== 'object') throw new Error('copilot hooks must be an object');
+  if (j.version !== 1) throw new Error('copilot hooks version must be 1');
+  const hooks = normalizeObject(j.hooks);
+  if (!Array.isArray(hooks.sessionEnd)) throw new Error('copilot hooks.hooks.sessionEnd must be an array');
+  return j;
 }
 
-function buildInstallPayload(settingsPath) {
-  const exists = fs.existsSync(settingsPath);
-  let current = {};
-  if (exists) {
-    const raw = fs.readFileSync(settingsPath, 'utf8');
-    current = JSON.parse(raw);
+function buildInstallPayload(repoRoot) {
+  const root = path.resolve(String(repoRoot || ''));
+  const filePath = hooksFilePath(root);
+
+  const nextObj = buildHookJson();
+  const content = `${JSON.stringify(nextObj, null, 2)}\n`;
+
+  if (fs.existsSync(filePath)) {
+    const current = fs.readFileSync(filePath, 'utf8');
+    if (current === content) return null;
   }
 
-  const settings = normalizeObject(current);
-  const hooks = normalizeObject(settings.hooks);
-  const entries = normalizeArray(hooks.SessionEnd);
-
-  const kept = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
-  const nextEntries = kept.concat([canonicalEntry()]);
-
-  if (entriesEqual(nextEntries, entries) && settings.hooks && hooks.SessionEnd) {
-    return null;
-  }
-
-  const nextHooks = { ...hooks, SessionEnd: nextEntries };
-  const nextSettings = { ...settings, hooks: nextHooks };
-  const content = `${JSON.stringify(nextSettings, null, 2)}\n`;
-
-  return { path: settingsPath, content, validate: (s) => JSON.parse(s) };
+  return { path: filePath, content, validate: validateHooksJsonString };
 }
 
-function buildRemovePayload(settingsPath) {
-  const exists = fs.existsSync(settingsPath);
-  if (!exists) return null;
-
-  const raw = fs.readFileSync(settingsPath, 'utf8');
-  const current = JSON.parse(raw);
-
-  const settings = normalizeObject(current);
-  const hooks = normalizeObject(settings.hooks);
-  const entries = normalizeArray(hooks.SessionEnd);
-
-  const nextEntries = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
-  if (entriesEqual(nextEntries, entries)) return null;
-
-  const nextHooks = { ...hooks, SessionEnd: nextEntries };
-  const nextSettings = { ...settings, hooks: nextHooks };
-  const content = `${JSON.stringify(nextSettings, null, 2)}\n`;
-
-  return { path: settingsPath, content, validate: (s) => JSON.parse(s) };
+function buildRemovePayload(repoRoot) {
+  const root = path.resolve(String(repoRoot || ''));
+  const filePath = hooksFilePath(root);
+  if (!fs.existsSync(filePath)) return null;
+  return {
+    path: filePath,
+    op: 'delete',
+    validate: () => {},
+  };
 }
 
-async function install(settingsPath) {
-  const payload = buildInstallPayload(settingsPath);
+async function install(repoRoot) {
+  const payload = buildInstallPayload(repoRoot);
   if (!payload) return { changed: false };
   await runBatch([payload]);
   return { changed: true };
 }
 
-async function remove(settingsPath) {
-  const payload = buildRemovePayload(settingsPath);
+async function remove(repoRoot) {
+  const payload = buildRemovePayload(repoRoot);
   if (!payload) return { changed: false };
   await runBatch([payload]);
   return { changed: true };
@@ -96,3 +92,4 @@ module.exports = {
   install,
   remove,
 };
+

@@ -49,6 +49,9 @@ async function run(argv) {
     case "auth":
       process.exitCode = await require("./commands/auth").run(rest);
       return;
+    case "repo":
+      process.exitCode = await require("./commands/repo").run(rest);
+      return;
     default:
       throw new Error(`Unknown command: ${command}`);
   }

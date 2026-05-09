@@ -49,6 +49,7 @@ const {
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
 } = require("../lib/rollout");
+const { ensureToken } = require("../lib/local-auth");
 const { resolveRuntimeConfig, DEFAULT_BASE_URL } = require("../lib/runtime-config");
 const {
   BOLD,
@@ -146,6 +147,7 @@ async function cmdInit(argv) {
       opts,
       home,
       baseUrl,
+      rootDir,
       trackerDir,
       binDir,
       configPath,
@@ -162,6 +164,14 @@ async function cmdInit(argv) {
     throw err;
   }
   spinner.stop();
+
+  if (setup?.authToken && setup?.authTokenPath) {
+    process.stdout.write("\n");
+    process.stdout.write(`${color("Local write-auth token created.", BOLD)}\n`);
+    process.stdout.write(`${color(`Token path: ${setup.authTokenPath}`, DIM)}\n`);
+    process.stdout.write(`${color("Use: Authorization: Bearer <token>", DIM)}\n`);
+    process.stdout.write(`${color(`Token: ${setup.authToken}`, DIM)}\n\n`);
+  }
 
   renderLocalReport({ summary: setup.summary, isDryRun: false });
 
@@ -289,6 +299,7 @@ async function runSetup({
   opts,
   home,
   baseUrl,
+  rootDir,
   trackerDir,
   binDir,
   configPath,
@@ -302,6 +313,8 @@ async function runSetup({
 }) {
   await ensureDir(trackerDir);
   await ensureDir(binDir);
+  const authTokenPath = path.join(rootDir, "auth.token");
+  const authToken = ensureToken(authTokenPath);
   let deviceToken = runtime?.deviceToken || null;
   let deviceId = existingConfig?.deviceId || null;
   const installedAt = existingConfig?.installedAt || new Date().toISOString();
@@ -336,6 +349,8 @@ async function runSetup({
     deviceToken,
     deviceId,
     installedAt,
+    authToken,
+    authTokenPath,
   };
 }
 

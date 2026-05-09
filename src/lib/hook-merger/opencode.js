@@ -1,6 +1,7 @@
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
 const path = require('node:path');
 
+const { runBatch } = require('./atomic-batch');
 const signature = require('./signature');
 
 const PLUGIN_MARKER = 'VIBEDECK_OPENCODE_PLUGIN';
@@ -33,32 +34,44 @@ function buildPluginTS({ notifyPath }) {
   );
 }
 
-async function install(repoRoot) {
+function buildInstallPayload(repoRoot) {
   if (!repoRoot) throw new Error('repoRoot is required');
   const pluginPath = resolvePluginPath(repoRoot);
   const next = buildPluginTS({ notifyPath: signature.canonicalCommandPath() });
-  const existing = await fs.readFile(pluginPath, 'utf8').catch(() => null);
+  const existing = fs.existsSync(pluginPath) ? fs.readFileSync(pluginPath, 'utf8') : null;
 
-  if (existing === next) return { changed: false, pluginPath };
+  if (existing === next) return null;
+  return { path: pluginPath, content: next, validate: () => {} };
+}
 
-  await fs.mkdir(path.dirname(pluginPath), { recursive: true });
-  await fs.writeFile(pluginPath, next, 'utf8');
-  return { changed: true, pluginPath };
+function buildRemovePayload(repoRoot) {
+  if (!repoRoot) throw new Error('repoRoot is required');
+  const pluginPath = resolvePluginPath(repoRoot);
+  const existing = fs.existsSync(pluginPath) ? fs.readFileSync(pluginPath, 'utf8') : null;
+  if (existing == null) return null;
+  if (typeof existing === 'string' && existing.includes(PLUGIN_MARKER)) {
+    return { path: pluginPath, op: 'delete', content: '', validate: () => {} };
+  }
+  return null;
+}
+
+async function install(repoRoot) {
+  const payload = buildInstallPayload(repoRoot);
+  if (!payload) return { changed: false, pluginPath: resolvePluginPath(repoRoot) };
+  await runBatch([payload]);
+  return { changed: true, pluginPath: payload.path };
 }
 
 async function remove(repoRoot) {
-  if (!repoRoot) throw new Error('repoRoot is required');
-  const pluginPath = resolvePluginPath(repoRoot);
-  const existing = await fs.readFile(pluginPath, 'utf8').catch(() => null);
-  if (existing == null) return { changed: false, pluginPath };
-  if (typeof existing === 'string' && existing.includes(PLUGIN_MARKER)) {
-    await fs.unlink(pluginPath).catch(() => {});
-    return { changed: true, pluginPath };
-  }
-  return { changed: false, pluginPath };
+  const payload = buildRemovePayload(repoRoot);
+  if (!payload) return { changed: false, pluginPath: resolvePluginPath(repoRoot) };
+  await runBatch([payload]);
+  return { changed: true, pluginPath: payload.path };
 }
 
 module.exports = {
+  buildInstallPayload,
+  buildRemovePayload,
   install,
   remove,
   resolvePluginDir,
@@ -66,4 +79,3 @@ module.exports = {
   PLUGIN_MARKER,
   buildPluginTS,
 };
-

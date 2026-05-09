@@ -28,7 +28,7 @@ function entriesEqual(a, b) {
   }
 }
 
-async function install(hooksPath) {
+function buildInstallPayload(hooksPath) {
   const exists = fs.existsSync(hooksPath);
   let current = {};
   if (exists) {
@@ -43,19 +43,18 @@ async function install(hooksPath) {
   const nextEntries = kept.concat([canonicalEntry()]);
 
   if (entriesEqual(nextEntries, entries) && hooks.SessionEnd) {
-    return { changed: false };
+    return null;
   }
 
   const nextHooks = { ...hooks, SessionEnd: nextEntries };
   const content = `${JSON.stringify(nextHooks, null, 2)}\n`;
 
-  await runBatch([{ path: hooksPath, content, validate: (s) => JSON.parse(s) }]);
-  return { changed: true };
+  return { path: hooksPath, content, validate: (s) => JSON.parse(s) };
 }
 
-async function remove(hooksPath) {
+function buildRemovePayload(hooksPath) {
   const exists = fs.existsSync(hooksPath);
-  if (!exists) return { changed: false };
+  if (!exists) return null;
 
   const raw = fs.readFileSync(hooksPath, 'utf8');
   const current = JSON.parse(raw);
@@ -64,17 +63,31 @@ async function remove(hooksPath) {
   const entries = normalizeArray(hooks.SessionEnd);
 
   const nextEntries = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
-  if (entriesEqual(nextEntries, entries)) return { changed: false };
+  if (entriesEqual(nextEntries, entries)) return null;
 
   const nextHooks = { ...hooks, SessionEnd: nextEntries };
   const content = `${JSON.stringify(nextHooks, null, 2)}\n`;
 
-  await runBatch([{ path: hooksPath, content, validate: (s) => JSON.parse(s) }]);
+  return { path: hooksPath, content, validate: (s) => JSON.parse(s) };
+}
+
+async function install(hooksPath) {
+  const payload = buildInstallPayload(hooksPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
+  return { changed: true };
+}
+
+async function remove(hooksPath) {
+  const payload = buildRemovePayload(hooksPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
   return { changed: true };
 }
 
 module.exports = {
+  buildInstallPayload,
+  buildRemovePayload,
   install,
   remove,
 };
-

@@ -29,7 +29,7 @@ function entriesEqual(a, b) {
   }
 }
 
-async function install(settingsPath) {
+function buildInstallPayload(settingsPath) {
   const exists = fs.existsSync(settingsPath);
   let current = {};
   if (exists) {
@@ -45,20 +45,19 @@ async function install(settingsPath) {
   const nextEntries = kept.concat([canonicalEntry()]);
 
   if (entriesEqual(nextEntries, entries) && settings.hooks && hooks.SessionEnd) {
-    return { changed: false };
+    return null;
   }
 
   const nextHooks = { ...hooks, SessionEnd: nextEntries };
   const nextSettings = { ...settings, hooks: nextHooks };
   const content = `${JSON.stringify(nextSettings, null, 2)}\n`;
 
-  await runBatch([{ path: settingsPath, content, validate: (s) => JSON.parse(s) }]);
-  return { changed: true };
+  return { path: settingsPath, content, validate: (s) => JSON.parse(s) };
 }
 
-async function remove(settingsPath) {
+function buildRemovePayload(settingsPath) {
   const exists = fs.existsSync(settingsPath);
-  if (!exists) return { changed: false };
+  if (!exists) return null;
 
   const raw = fs.readFileSync(settingsPath, 'utf8');
   const current = JSON.parse(raw);
@@ -67,19 +66,33 @@ async function remove(settingsPath) {
   const hooks = normalizeObject(settings.hooks);
   const entries = normalizeArray(hooks.SessionEnd);
 
-  const nextEntries = entries.filter((e) => !(e && typeof e === 'object' && e._vibedeck === 'v1'));
-  if (entriesEqual(nextEntries, entries)) return { changed: false };
+  const nextEntries = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
+  if (entriesEqual(nextEntries, entries)) return null;
 
   const nextHooks = { ...hooks, SessionEnd: nextEntries };
   const nextSettings = { ...settings, hooks: nextHooks };
   const content = `${JSON.stringify(nextSettings, null, 2)}\n`;
 
-  await runBatch([{ path: settingsPath, content, validate: (s) => JSON.parse(s) }]);
+  return { path: settingsPath, content, validate: (s) => JSON.parse(s) };
+}
+
+async function install(settingsPath) {
+  const payload = buildInstallPayload(settingsPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
+  return { changed: true };
+}
+
+async function remove(settingsPath) {
+  const payload = buildRemovePayload(settingsPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
   return { changed: true };
 }
 
 module.exports = {
+  buildInstallPayload,
+  buildRemovePayload,
   install,
   remove,
 };
-

@@ -21,8 +21,9 @@ async function remove(settingsPath = defaultSettingsPath()) {
 }
 
 module.exports = {
+  buildInstallPayload: (settingsPath = defaultSettingsPath()) => claude.buildInstallPayload(settingsPath),
+  buildRemovePayload: (settingsPath = defaultSettingsPath()) => claude.buildRemovePayload(settingsPath),
   install,
   remove,
   defaultSettingsPath,
 };
-

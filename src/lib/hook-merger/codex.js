@@ -256,7 +256,7 @@ function validateTomlWithNotify(content) {
   extractNotifyValues(content);
 }
 
-async function install(configPath) {
+function buildInstallPayload(configPath) {
   const exists = fs.existsSync(configPath);
   const raw = exists ? fs.readFileSync(configPath, 'utf8') : '';
 
@@ -269,17 +269,16 @@ async function install(configPath) {
 
   const currentOnly = normalized.filter((v) => typeof v === 'string');
   if (entriesEqual(nextNotify, currentOnly) && /^\s*notify\s*=/.test(raw)) {
-    return { changed: false };
+    return null;
   }
 
   const content = injectNotifyArray(raw, nextNotify);
-  await runBatch([{ path: configPath, content, validate: validateTomlWithNotify }]);
-  return { changed: true };
+  return { path: configPath, content, validate: validateTomlWithNotify };
 }
 
-async function remove(configPath) {
+function buildRemovePayload(configPath) {
   const exists = fs.existsSync(configPath);
-  if (!exists) return { changed: false };
+  if (!exists) return null;
 
   const raw = fs.readFileSync(configPath, 'utf8');
   const notify = extractNotifyValues(raw);
@@ -287,7 +286,7 @@ async function remove(configPath) {
   const { ours, entire, unknown } = signature.classifyEntries(normalized, 'toml');
 
   const nextNotify = entire.concat(unknown);
-  if (entriesEqual(nextNotify, normalized)) return { changed: false };
+  if (entriesEqual(nextNotify, normalized)) return null;
 
   // If the file's notify consisted solely of our injected hook, remove the notify
   // assignment entirely (restore the "notify absent" state).
@@ -297,12 +296,26 @@ async function remove(configPath) {
   }
 
   const content = injectNotifyArray(raw, nextNotify);
-  await runBatch([{ path: configPath, content, validate: validateTomlWithNotify }]);
+  return { path: configPath, content, validate: validateTomlWithNotify };
+}
+
+async function install(configPath) {
+  const payload = buildInstallPayload(configPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
+  return { changed: true };
+}
+
+async function remove(configPath) {
+  const payload = buildRemovePayload(configPath);
+  if (!payload) return { changed: false };
+  await runBatch([payload]);
   return { changed: true };
 }
 
 module.exports = {
+  buildInstallPayload,
+  buildRemovePayload,
   install,
   remove,
 };
-

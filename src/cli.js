@@ -46,6 +46,9 @@ async function run(argv) {
     case "attribute":
       await cmdAttribute(rest);
       return;
+    case "auth":
+      process.exitCode = await require("./commands/auth").run(rest);
+      return;
     default:
       throw new Error(`Unknown command: ${command}`);
   }

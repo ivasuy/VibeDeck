@@ -1,5 +1,25 @@
 # VibeDeck v1 — Plan 1: Fork & Strip
 
+> **STATUS: ✅ COMPLETE** — tagged `plan-1-fork-and-strip-complete` on 2026-05-08. 17 tasks executed via Claude Sonnet subagents (subagent-driven-development pattern). Final state: 476/476 tests passing, dashboard builds, CLI + server smoke tests pass.
+
+## Summary of what shipped
+
+Hard fork of TokenTracker bootstrapped at `~/Downloads/Projects/VibeDeck/` with a fresh git repo. Mechanical rename + strip:
+- Package renamed to `vibedeck-cli`; bin commands `vibedeck` and `vd`
+- Default port `7690` (TokenTracker uses 7680); data dir `~/.vibedeck/`
+- Stripped: leaderboard pages + endpoints, IP-check, marketing landing, share cards (Broadsheet + Annual Report variants), InsForge cloud auth + login pages, login modal context, cloud auth proxy `/api/auth/*`, cloud sync upload from `sync` command
+- CLI user-facing copy switched from "TokenTracker" to "VibeDeck"
+- `copy.csv` pruned from 746 → 354 entries
+- README rebranded with Origin section attributing TokenTracker upstream
+- LICENSE updated for fork attribution (MIT preserved)
+- `CLAUDE.md` preamble added documenting VibeDeck specifics
+
+**Implementation pattern used:** Claude Sonnet subagents via `superpowers:subagent-driven-development`. Plan 2 onwards switched to Codex (gpt-5.2) — see `docs/superpowers/codex-workflow.md`.
+
+---
+
+## Original plan content (preserved for traceability)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Produce a working VibeDeck CLI base at `~/Downloads/Projects/VibeDeck/` that builds, tests pass, and runs `vibedeck status` successfully — no new features, just a renamed and stripped chassis.

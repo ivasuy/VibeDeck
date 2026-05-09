@@ -39,36 +39,40 @@ Plus skill install / remove / audit across providers (extending TokenTracker's e
 
 ## What ships in v1
 
-| Capability | Provenance |
-|---|---|
-| Token usage across 13 providers | Inherited from TokenTracker, untouched |
-| Cost dashboard, model breakdown, heatmap, trend charts | Inherited |
-| Usage limits & rate-limit tracking | Inherited |
-| macOS menu bar app + native panels (visual rebrand only) | Inherited; UI rebrand in separate spec |
-| Local API server on configurable port | Inherited |
-| Hook system for all providers | Inherited; **extended with two-phase atomic installer** |
-| Session → branch → commit attribution (hybrid model) | **New** |
-| Entire CLI integration (read + write surface) | **New** |
-| Skill install / remove / audit | **New** (extends existing listing) |
-| Local-only auth token for write endpoints | **New** |
-| Hard rebrand (npm name, brew tap, bundle ID, logo, app name) | **New** (mechanical) |
+
+| Capability                                                   | Provenance                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------- |
+| Token usage across 13 providers                              | Inherited from TokenTracker, untouched                  |
+| Cost dashboard, model breakdown, heatmap, trend charts       | Inherited                                               |
+| Usage limits & rate-limit tracking                           | Inherited                                               |
+| macOS menu bar app + native panels (visual rebrand only)     | Inherited; UI rebrand in separate spec                  |
+| Local API server on configurable port                        | Inherited                                               |
+| Hook system for all providers                                | Inherited; **extended with two-phase atomic installer** |
+| Session → branch → commit attribution (hybrid model)         | **New**                                                 |
+| Entire CLI integration (read + write surface)                | **New**                                                 |
+| Skill install / remove / audit                               | **New** (extends existing listing)                      |
+| Local-only auth token for write endpoints                    | **New**                                                 |
+| Hard rebrand (npm name, brew tap, bundle ID, logo, app name) | **New** (mechanical)                                    |
+
 
 ## What gets stripped from TokenTracker
 
 These features are removed from the fork:
 
-| Component | Files (representative) |
-|---|---|
-| Leaderboard pages and endpoints | `LeaderboardPage.jsx`, `LeaderboardProfilePage.jsx`, leaderboard API routes |
-| Public profile system | leaderboard profile page + supporting context |
-| IP-check utility | `IpCheckPage.jsx` and route |
-| Marketing landing page | `LandingPage.jsx` |
-| Share cards (Broadsheet + Annual Report) | `ShareModal.tsx`, `BroadsheetCard.jsx`, `AnnualReportCard.jsx`, `capture-share-card.ts` |
-| Cloud sync (InsForge auth + leaderboard upload) | `InsforgeAuthContext.jsx`, related cloud-mode code, sync upload logic. Default off; can be removed entirely or feature-flagged off (decision: remove for v1, simpler) |
-| Cloud-mode auth flow | `LoginPage.jsx`, `NativeAuthCallbackPage.jsx`, native OAuth bridge for cloud (kept for local) |
-| Project-attribution feature where it duplicates session attribution | Decision below |
-| Login-modal context / global sign-in modal | `LoginModalContext.jsx` |
-| `/api/auth/*` cloud proxy endpoints | Removed |
+
+| Component                                                           | Files (representative)                                                                                                                                                |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Leaderboard pages and endpoints                                     | `LeaderboardPage.jsx`, `LeaderboardProfilePage.jsx`, leaderboard API routes                                                                                           |
+| Public profile system                                               | leaderboard profile page + supporting context                                                                                                                         |
+| IP-check utility                                                    | `IpCheckPage.jsx` and route                                                                                                                                           |
+| Marketing landing page                                              | `LandingPage.jsx`                                                                                                                                                     |
+| Share cards (Broadsheet + Annual Report)                            | `ShareModal.tsx`, `BroadsheetCard.jsx`, `AnnualReportCard.jsx`, `capture-share-card.ts`                                                                               |
+| Cloud sync (InsForge auth + leaderboard upload)                     | `InsforgeAuthContext.jsx`, related cloud-mode code, sync upload logic. Default off; can be removed entirely or feature-flagged off (decision: remove for v1, simpler) |
+| Cloud-mode auth flow                                                | `LoginPage.jsx`, `NativeAuthCallbackPage.jsx`, native OAuth bridge for cloud (kept for local)                                                                         |
+| Project-attribution feature where it duplicates session attribution | Decision below                                                                                                                                                        |
+| Login-modal context / global sign-in modal                          | `LoginModalContext.jsx`                                                                                                                                               |
+| `/api/auth/`* cloud proxy endpoints                                 | Removed                                                                                                                                                               |
+
 
 **Untouched (load-bearing core IP):**
 
@@ -211,9 +215,9 @@ Every hook write follows this sequence:
 1. **Read** the existing file. If parse fails, abort and emit error — never overwrite a malformed file (could be user-edited mid-write).
 2. **Detect** existing entries by signature: `{ours, theirs, unknown}`.
 3. **Plan** the merge:
-   - If a VibeDeck entry already exists and is current → no-op.
-   - If a VibeDeck entry exists but is outdated → replace in place.
-   - If no VibeDeck entry → append, preserving order of `theirs` and `unknown`.
+  - If a VibeDeck entry already exists and is current → no-op.
+  - If a VibeDeck entry exists but is outdated → replace in place.
+  - If no VibeDeck entry → append, preserving order of `theirs` and `unknown`.
 4. **Write to a temp file** in the same directory (atomic-rename target).
 5. **Validate** the temp file parses cleanly with strict parser.
 6. **Atomic rename** temp → real path (`fs.renameSync` is atomic on POSIX, near-atomic on macOS APFS).
@@ -288,21 +292,23 @@ type SessionEvent =
 
 ### Per-provider extraction
 
-| Provider | Session ID source | Start signal | End signal | cwd available |
-|---|---|---|---|---|
-| Claude Code | `session_id` in rollout JSONL | First message in rollout | `SessionEnd` hook fires | Often (in hook context) |
-| Codex | `session_id` in rollout | First entry | TOML `notify` end event / hook | Often |
-| Gemini | `sessionId` in rollout | First entry | `SessionEnd` hook | Often |
-| Cursor | `conversation_id` in CSV (acts as session_id) | First row in poll | New conversation_id appears or poll closes session | **Rarely** |
-| OpenCode | Plugin event `session.start` / `session.end` | Plugin event | Plugin event | Yes (plugin has cwd) |
-| OpenClaw | Session plugin events | Plugin | Plugin | Yes |
-| Every Code | `session_id` in rollout (same family as Codex) | TOML notify | TOML notify | Often |
-| Kiro | SQLite + JSONL hybrid; session row has start/end | DB row | DB row update | Sometimes |
-| Hermes | SQLite `sessions` table with explicit start/end timestamps | DB row | DB row update | Sometimes |
-| Copilot CLI | OTel trace_id (acts as session_id) | OTel span start | OTel span end | Via env at span time |
-| Kimi | Passive `wire.jsonl` reader | First event in file | Inferred from file gap or rotation | Sometimes |
-| oh-my-pi (omp) | Passive JSONL reader | First event | Inferred | Sometimes |
-| CodeBuddy | `SessionEnd` hook (Claude-Code fork) | First message | Hook | Often |
+
+| Provider       | Session ID source                                          | Start signal             | End signal                                         | cwd available           |
+| -------------- | ---------------------------------------------------------- | ------------------------ | -------------------------------------------------- | ----------------------- |
+| Claude Code    | `session_id` in rollout JSONL                              | First message in rollout | `SessionEnd` hook fires                            | Often (in hook context) |
+| Codex          | `session_id` in rollout                                    | First entry              | TOML `notify` end event / hook                     | Often                   |
+| Gemini         | `sessionId` in rollout                                     | First entry              | `SessionEnd` hook                                  | Often                   |
+| Cursor         | `conversation_id` in CSV (acts as session_id)              | First row in poll        | New conversation_id appears or poll closes session | **Rarely**              |
+| OpenCode       | Plugin event `session.start` / `session.end`               | Plugin event             | Plugin event                                       | Yes (plugin has cwd)    |
+| OpenClaw       | Session plugin events                                      | Plugin                   | Plugin                                             | Yes                     |
+| Every Code     | `session_id` in rollout (same family as Codex)             | TOML notify              | TOML notify                                        | Often                   |
+| Kiro           | SQLite + JSONL hybrid; session row has start/end           | DB row                   | DB row update                                      | Sometimes               |
+| Hermes         | SQLite `sessions` table with explicit start/end timestamps | DB row                   | DB row update                                      | Sometimes               |
+| Copilot CLI    | OTel trace_id (acts as session_id)                         | OTel span start          | OTel span end                                      | Via env at span time    |
+| Kimi           | Passive `wire.jsonl` reader                                | First event in file      | Inferred from file gap or rotation                 | Sometimes               |
+| oh-my-pi (omp) | Passive JSONL reader                                       | First event              | Inferred                                           | Sometimes               |
+| CodeBuddy      | `SessionEnd` hook (Claude-Code fork)                       | First message            | Hook                                               | Often                   |
+
 
 ### Idempotency
 
@@ -343,8 +349,8 @@ For every `cwd` observed in a session:
 
 Git worktrees mean one logical repository can have multiple checkout directories, each with independent `HEAD`.
 
-- **`git -C <cwd> rev-parse --show-toplevel`** returns the worktree root, not the main repo dir. **This is what we want** — different worktrees have different branches and different sessions.
-- **`git -C <cwd> rev-parse --git-common-dir`** returns the shared `.git` for the main repo. Useful for grouping worktrees in UI later (e.g., "all worktrees of `myproject`"). Stored as optional field `repo_common_dir`.
+- `**git -C <cwd> rev-parse --show-toplevel`** returns the worktree root, not the main repo dir. **This is what we want** — different worktrees have different branches and different sessions.
+- `**git -C <cwd> rev-parse --git-common-dir`** returns the shared `.git` for the main repo. Useful for grouping worktrees in UI later (e.g., "all worktrees of `myproject`"). Stored as optional field `repo_common_dir`.
 - Each worktree has its own `HEAD` at `.git/worktrees/<name>/HEAD`. Tier B watcher must watch all worktree `HEAD`s, not just the main one.
 - Concurrent sessions in two worktrees of the same repo on different branches → both attributed correctly because each session's cwd resolves to a different worktree root.
 
@@ -361,14 +367,16 @@ Git worktrees mean one logical repository can have multiple checkout directories
 
 ### Special cases
 
-| Case | Handling |
-|---|---|
-| `cwd` is a subdirectory of repo | Naturally resolved; `rev-parse --show-toplevel` walks up. |
-| `cwd` is in a git-ignored directory | Still works; ignore status doesn't affect ref resolution. |
-| Repo has no remote | Fine. Branch resolution doesn't need a remote. |
-| Repo with detached HEAD | Branch = `detached@<short-sha>` virtual branch. Cost still attributable. |
-| Multiple repos with same dirname (e.g., user has two `myapp/` clones) | Realpath disambiguates. |
-| Cwd inside `.git` (rare; tooling sometimes does this) | `rev-parse --show-toplevel` errors → `Unattributed`. |
+
+| Case                                                                  | Handling                                                                 |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `cwd` is a subdirectory of repo                                       | Naturally resolved; `rev-parse --show-toplevel` walks up.                |
+| `cwd` is in a git-ignored directory                                   | Still works; ignore status doesn't affect ref resolution.                |
+| Repo has no remote                                                    | Fine. Branch resolution doesn't need a remote.                           |
+| Repo with detached HEAD                                               | Branch = `detached@<short-sha>` virtual branch. Cost still attributable. |
+| Multiple repos with same dirname (e.g., user has two `myapp/` clones) | Realpath disambiguates.                                                  |
+| Cwd inside `.git` (rare; tooling sometimes does this)                 | `rev-parse --show-toplevel` errors → `Unattributed`.                     |
+
 
 ## 3.4 Branch resolution tiers
 
@@ -414,12 +422,14 @@ For retrospective sessions (no Entire match, no live history):
 
 ### Confidence summary
 
-| Tier | Confidence | Stored Value |
-|---|---|---|
-| A (Entire match) | `high` | `vibedeck_sessions.confidence = 'high'` |
-| B (live watcher) | `medium` | `'medium'` |
-| C (reflog) | `low` | `'low'` |
-| D (no resolution) | `unattributed` | `'unattributed'` |
+
+| Tier              | Confidence     | Stored Value                            |
+| ----------------- | -------------- | --------------------------------------- |
+| A (Entire match)  | `high`         | `vibedeck_sessions.confidence = 'high'` |
+| B (live watcher)  | `medium`       | `'medium'`                              |
+| C (reflog)        | `low`          | `'low'`                                 |
+| D (no resolution) | `unattributed` | `'unattributed'`                        |
+
 
 UI **must** surface confidence (deferred spec). Fuzzy attribution displayed as ground truth would erode user trust.
 
@@ -441,17 +451,19 @@ This is the path used for Tier A resolution and for populating the checkpoint li
 
 For write operations and complex commands where reimplementing logic is brittle:
 
-| Command | Use |
-|---|---|
-| `entire enable --agent <name>` | "Enable Entire on this repo" button |
-| `entire disable` | Disable button |
-| `entire agent add <name>` / `agent remove <name>` | Agent management |
-| `entire configure --telemetry=false` etc. | Settings updates |
-| `entire status` | Status check (proxy command) |
-| `entire checkpoint rewind --id <id>` | Rewind (destructive — confirm token required) |
-| `entire session resume <branch>` | Resume button (post-v1 likely) |
-| `entire doctor` | Health command (proxy) |
-| `entire clean --force` | Cleanup (destructive — confirm token required) |
+
+| Command                                           | Use                                            |
+| ------------------------------------------------- | ---------------------------------------------- |
+| `entire enable --agent <name>`                    | "Enable Entire on this repo" button            |
+| `entire disable`                                  | Disable button                                 |
+| `entire agent add <name>` / `agent remove <name>` | Agent management                               |
+| `entire configure --telemetry=false` etc.         | Settings updates                               |
+| `entire status`                                   | Status check (proxy command)                   |
+| `entire checkpoint rewind --id <id>`              | Rewind (destructive — confirm token required)  |
+| `entire session resume <branch>`                  | Resume button (post-v1 likely)                 |
+| `entire doctor`                                   | Health command (proxy)                         |
+| `entire clean --force`                            | Cleanup (destructive — confirm token required) |
+
 
 Every shell-out:
 
@@ -495,38 +507,40 @@ This is the only place we do "math" beyond joining — and it's pro-rata over ti
 
 ## 3.7 Edge cases (consolidated)
 
-| # | Case | Handling |
-|---|---|---|
-| 1 | Two parallel sessions, same cwd, same branch | Both attributed to that branch. Cost summed. Sessions listed separately. |
-| 2 | Two parallel sessions, same repo, different worktrees | Resolved naturally via cwd → different worktree roots. |
-| 3 | Session spans `git checkout` mid-flight | Split into branch-windows (Section 3.6). |
-| 4 | `cwd` outside any git repo | `Unattributed`. |
-| 5 | Provider doesn't expose cwd (often Cursor) | `cwd: null`, falls to `Unattributed` unless Entire window matches in time → tier A correlation. |
-| 6 | Multiple repos under same parent dir (rare) | `git rev-parse --show-toplevel` from session cwd, not heuristics. |
-| 7 | User manually overrides | `vibedeck attribute --session <id> --branch <name>` CLI. Override is sticky, never reverted by parser. |
-| 8 | Hook process killed (kill -9, sleep, crash) | Orphan reaper marks `ended_inferred` after 30 min. |
-| 9 | DST / clock skew | All session timestamps stored UTC. Reflog converted to UTC at parse time. |
-| 10 | Long idle gap mid-session | Don't split unless rollout file is also quiescent AND no end signal. |
-| 11 | Provider reuses session_id across reconnects | Dedupe by `(provider, session_id)`; merge new windows into existing row. |
-| 12 | Detached HEAD | Virtual branch `detached@<short-sha>`. |
-| 13 | Branch rename mid-session | Resolve branch by ref at query time, not stored name. |
-| 14 | Branch deleted before query | Show as `<name> (deleted)`. Cost row preserved. |
-| 15 | Submodule | Attribute to submodule. Optional `parent_repo` field for UI grouping. |
-| 16 | Bare repo | Detected; `Unattributed`. |
-| 17 | Zero-commit repo | Tier C empty; tier B works for live; else `Unattributed`. |
-| 18 | Symlinked cwd | `realpath` first, then resolve. |
-| 19 | `cwd` deleted between session and query | `Unattributed`; session still listed with `repo_root: null`. |
-| 20 | Repo moved/renamed by user | Manual `vibedeck repo migrate <old> <new>` CLI. |
-| 21 | Rollout file rotated/truncated | Parser tolerant; if session was active and file disappears, mark `ended_inferred`, lock totals at last-known. |
-| 22 | Cursor poll-based delay | Live view shows `last_observed_at`; UI labels "as of X seconds ago" (deferred to UI spec). |
-| 23 | Claude Code only emits SessionEnd | Mid-conversation token counter unavailable; live view shows "session active, totals at end". Documented. |
-| 24 | Same session, two Entire candidates overlap | Pick closest start time; `confidence: medium`; store all candidates. |
-| 25 | Entire installed but `entire/checkpoints/v1` not locally fetched | Tier A returns null silently; banner suggests fetch. |
-| 26 | Entire CLI errors / segfaults | Tier A unavailable; structured error logged; tier B/C continue. |
-| 27 | Skill-installed-from-URL pulls malicious code | v1 prompts user with source + README; never auto-installs (Section 4). |
-| 28 | Cwd contains sensitive path names | `--redact-paths` flag for diagnostics export. |
-| 29 | User has both old TokenTracker and VibeDeck running | Different ports, different data dirs, can coexist. |
-| 30 | Repository moved to different machine (sync data import) | Out of scope for v1 (no sync). |
+
+| #   | Case                                                             | Handling                                                                                                      |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | Two parallel sessions, same cwd, same branch                     | Both attributed to that branch. Cost summed. Sessions listed separately.                                      |
+| 2   | Two parallel sessions, same repo, different worktrees            | Resolved naturally via cwd → different worktree roots.                                                        |
+| 3   | Session spans `git checkout` mid-flight                          | Split into branch-windows (Section 3.6).                                                                      |
+| 4   | `cwd` outside any git repo                                       | `Unattributed`.                                                                                               |
+| 5   | Provider doesn't expose cwd (often Cursor)                       | `cwd: null`, falls to `Unattributed` unless Entire window matches in time → tier A correlation.               |
+| 6   | Multiple repos under same parent dir (rare)                      | `git rev-parse --show-toplevel` from session cwd, not heuristics.                                             |
+| 7   | User manually overrides                                          | `vibedeck attribute --session <id> --branch <name>` CLI. Override is sticky, never reverted by parser.        |
+| 8   | Hook process killed (kill -9, sleep, crash)                      | Orphan reaper marks `ended_inferred` after 30 min.                                                            |
+| 9   | DST / clock skew                                                 | All session timestamps stored UTC. Reflog converted to UTC at parse time.                                     |
+| 10  | Long idle gap mid-session                                        | Don't split unless rollout file is also quiescent AND no end signal.                                          |
+| 11  | Provider reuses session_id across reconnects                     | Dedupe by `(provider, session_id)`; merge new windows into existing row.                                      |
+| 12  | Detached HEAD                                                    | Virtual branch `detached@<short-sha>`.                                                                        |
+| 13  | Branch rename mid-session                                        | Resolve branch by ref at query time, not stored name.                                                         |
+| 14  | Branch deleted before query                                      | Show as `<name> (deleted)`. Cost row preserved.                                                               |
+| 15  | Submodule                                                        | Attribute to submodule. Optional `parent_repo` field for UI grouping.                                         |
+| 16  | Bare repo                                                        | Detected; `Unattributed`.                                                                                     |
+| 17  | Zero-commit repo                                                 | Tier C empty; tier B works for live; else `Unattributed`.                                                     |
+| 18  | Symlinked cwd                                                    | `realpath` first, then resolve.                                                                               |
+| 19  | `cwd` deleted between session and query                          | `Unattributed`; session still listed with `repo_root: null`.                                                  |
+| 20  | Repo moved/renamed by user                                       | Manual `vibedeck repo migrate <old> <new>` CLI.                                                               |
+| 21  | Rollout file rotated/truncated                                   | Parser tolerant; if session was active and file disappears, mark `ended_inferred`, lock totals at last-known. |
+| 22  | Cursor poll-based delay                                          | Live view shows `last_observed_at`; UI labels "as of X seconds ago" (deferred to UI spec).                    |
+| 23  | Claude Code only emits SessionEnd                                | Mid-conversation token counter unavailable; live view shows "session active, totals at end". Documented.      |
+| 24  | Same session, two Entire candidates overlap                      | Pick closest start time; `confidence: medium`; store all candidates.                                          |
+| 25  | Entire installed but `entire/checkpoints/v1` not locally fetched | Tier A returns null silently; banner suggests fetch.                                                          |
+| 26  | Entire CLI errors / segfaults                                    | Tier A unavailable; structured error logged; tier B/C continue.                                               |
+| 27  | Skill-installed-from-URL pulls malicious code                    | v1 prompts user with source + README; never auto-installs (Section 4).                                        |
+| 28  | Cwd contains sensitive path names                                | `--redact-paths` flag for diagnostics export.                                                                 |
+| 29  | User has both old TokenTracker and VibeDeck running              | Different ports, different data dirs, can coexist.                                                            |
+| 30  | Repository moved to different machine (sync data import)         | Out of scope for v1 (no sync).                                                                                |
+
 
 ---
 
@@ -581,7 +595,7 @@ Existing TokenTracker code can list installed skills across providers. The new m
 
 SQLite database at `~/.vibedeck/db.sqlite` (or platform-appropriate path; respects existing TokenTracker path conventions). WAL mode enabled.
 
-Existing TokenTracker tables remain **unchanged**. New tables prefixed `vibedeck_*`.
+Existing TokenTracker tables remain **unchanged**. New tables prefixed `vibedeck_`*.
 
 ```sql
 -- Schema versioning
@@ -718,23 +732,25 @@ Existing TokenTracker endpoints **kept**:
 
 New endpoints:
 
-| Endpoint | Method | Auth | Purpose |
-|---|---|---|---|
-| `/functions/vibedeck-sessions-live` | GET (SSE) | Read | Streaming live sessions across providers |
-| `/functions/vibedeck-sessions` | GET | Read | List sessions, filterable by `repo`, `branch`, `from`, `to`, `provider` |
-| `/functions/vibedeck-session/:provider/:id` | GET | Read | Detail for one session |
-| `/functions/vibedeck-branch-cost` | GET | Read | Cost grouped by branch in a date range |
-| `/functions/vibedeck-checkpoints` | GET | Read | Proxy `entire checkpoint list` (or direct git read) |
-| `/functions/vibedeck-checkpoint/:id` | GET | Read | Proxy `entire checkpoint explain` |
-| `/functions/vibedeck-status` | GET | Read | Aggregate health (Entire installed, hook integrity, daemon uptime, last sync, attribution distribution) |
-| `/functions/vibedeck-entire/:cmd` | POST | **Write + confirm** | Wrap safe Entire CLI commands: `enable`, `disable`, `agent-add`, `agent-remove`, `configure`, `doctor` |
-| `/functions/vibedeck-entire/rewind` | POST | **Write + destructive-confirm** | `entire checkpoint rewind` |
-| `/functions/vibedeck-entire/clean` | POST | **Write + destructive-confirm** | `entire clean` |
-| `/functions/vibedeck-skills` | GET | Read | List installed skills (audit) |
-| `/functions/vibedeck-skills/install` | POST | **Write + confirm** | Install skill from URL/path |
-| `/functions/vibedeck-skills/remove` | POST | **Write + confirm** | Remove skill |
-| `/functions/vibedeck-attribute` | POST | **Write** | Manual session→branch override |
-| `/functions/vibedeck-doctor` | GET | Read | Run all doctor checks; return structured report |
+
+| Endpoint                                    | Method    | Auth                            | Purpose                                                                                                 |
+| ------------------------------------------- | --------- | ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `/functions/vibedeck-sessions-live`         | GET (SSE) | Read                            | Streaming live sessions across providers                                                                |
+| `/functions/vibedeck-sessions`              | GET       | Read                            | List sessions, filterable by `repo`, `branch`, `from`, `to`, `provider`                                 |
+| `/functions/vibedeck-session/:provider/:id` | GET       | Read                            | Detail for one session                                                                                  |
+| `/functions/vibedeck-branch-cost`           | GET       | Read                            | Cost grouped by branch in a date range                                                                  |
+| `/functions/vibedeck-checkpoints`           | GET       | Read                            | Proxy `entire checkpoint list` (or direct git read)                                                     |
+| `/functions/vibedeck-checkpoint/:id`        | GET       | Read                            | Proxy `entire checkpoint explain`                                                                       |
+| `/functions/vibedeck-status`                | GET       | Read                            | Aggregate health (Entire installed, hook integrity, daemon uptime, last sync, attribution distribution) |
+| `/functions/vibedeck-entire/:cmd`           | POST      | **Write + confirm**             | Wrap safe Entire CLI commands: `enable`, `disable`, `agent-add`, `agent-remove`, `configure`, `doctor`  |
+| `/functions/vibedeck-entire/rewind`         | POST      | **Write + destructive-confirm** | `entire checkpoint rewind`                                                                              |
+| `/functions/vibedeck-entire/clean`          | POST      | **Write + destructive-confirm** | `entire clean`                                                                                          |
+| `/functions/vibedeck-skills`                | GET       | Read                            | List installed skills (audit)                                                                           |
+| `/functions/vibedeck-skills/install`        | POST      | **Write + confirm**             | Install skill from URL/path                                                                             |
+| `/functions/vibedeck-skills/remove`         | POST      | **Write + confirm**             | Remove skill                                                                                            |
+| `/functions/vibedeck-attribute`             | POST      | **Write**                       | Manual session→branch override                                                                          |
+| `/functions/vibedeck-doctor`                | GET       | Read                            | Run all doctor checks; return structured report                                                         |
+
 
 Read endpoints: open on `127.0.0.1`, no auth (matches TokenTracker today).
 Write endpoints: require local auth token (Section 8).
@@ -940,18 +956,29 @@ These need user decisions before implementation, but do not block the spec:
 
 The spec is implemented across **four backend plans + one UI session**. Plan 1 is complete (fork + strip). The remaining plans are summarized below; each gets its own detailed plan document with bite-sized tasks before execution.
 
+## Plan 1 — Fork & Strip (~17 tasks)
+
+**Status:** ✅ DONE — tagged `plan-1-fork-and-strip-complete` (2026-05-08). 17 tasks executed via subagent-driven-development. Implemented by Claude Sonnet subagents.
+**File:** `docs/superpowers/plans/2026-05-08-vibedeck-v1-plan-1-fork-and-strip.md`
+
+**Delivered:** Hard fork of TokenTracker bootstrapped at `~/Downloads/Projects/VibeDeck/`, renamed to `vibedeck-cli` with bin `vibedeck` (and `vd`), default port 7690, data dir `~/.vibedeck/`. Stripped: leaderboard, IP-check, marketing landing, share cards (Broadsheet + Annual Report), InsForge cloud auth + login pages, login modal context, cloud auth proxy `/api/auth/*`, cloud sync upload. CLI shows VibeDeck branding throughout. `copy.csv` pruned from 746 → 354 entries. README rebranded, LICENSE updated for fork attribution, CLAUDE.md preamble added. Final state: 476/476 tests passing, dashboard builds, CLI + server smoke tests pass.
+
+---
+
 ## Plan 2 — Storage & Schema + Entire Bridge (~20 tasks)
 
-**Status:** ✅ DONE — tagged `plan-2-storage-and-entire-bridge-complete` (2026-05-09). 18 tasks, 19 commits, 502/502 tests passing. Implemented by Codex (gpt-5.2) under moderator review.
+**Status:** ✅ DONE — tagged `plan-2-storage-and-entire-bridge-complete` (2026-05-09). 18 tasks, 19 commits, 502/502 tests passing. Implemented by Codex (gpt-5.2) under moderator review. See `docs/superpowers/codex-workflow.md` for the dispatch pattern.
 **File:** `docs/superpowers/plans/2026-05-09-vibedeck-v1-plan-2-storage-and-entire-bridge.md`
 
 **Implementation deviations from spec (accepted):**
+
 - DB filename is `vibedeck.sqlite3` (more specific than the spec's earlier `db.sqlite`); spec is the outlier — code is consistent across `serve.js` and `entire-bridge.js`. Treat `vibedeck.sqlite3` as canonical.
 - `schema_version` table uses `updated_at` instead of spec's `applied_at` — Plan 3 will rename to `applied_at` for semantic clarity (no users on disk yet, safe rename).
 - `node:sqlite` (built-in, requires Node ≥22.5) instead of `better-sqlite3` — preserves "no native deps" philosophy.
 - `execa@5.1.1` added to deps (was assumed-existing but absent in fork).
 
 **Plan 2 follow-up items rolled into Plan 3 (do early, before new feature work):**
+
 1. **Fix `rewindCheckpoint` validation order** — currently validates checkpoint id before confirm token; should be confirm-token first so an invalid id never masks an auth failure (`src/lib/entire-bridge.js:224-226`).
 2. **Add `_treeCache` LRU cap** (e.g., 100 entries) — currently unbounded `Map`; could grow over a long-lived `serve` watching many repos (`src/lib/entire-bridge.js:13`).
 3. **Make `getSchemaVersion` truly read-only** — currently uses the writable `openDb()` which sets WAL pragma; switch to `new DatabaseSync(dbPath, { readOnly: true })` so reads have no side effect (`src/lib/db/schema.js:30-31`).
@@ -960,12 +987,14 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 6. **Wire `getRepoState()` consumer** — exported from `src/lib/db/repos.js` but currently no caller; the new repo-state read API endpoint in Plan 3 (or Plan 4) becomes its first consumer.
 
 **Schema layer:**
+
 - Versioned migration runner (`schema_version` table, idempotent upgrades, backup before migrate)
-- All `vibedeck_*` tables created: `vibedeck_sessions`, `vibedeck_session_buckets`, `vibedeck_session_branch_windows`, `vibedeck_session_entire_links`, `vibedeck_skills`, `vibedeck_head_history`, **`vibedeck_repos`** (per-repo Entire state cache)
+- All `vibedeck_*` tables created: `vibedeck_sessions`, `vibedeck_session_buckets`, `vibedeck_session_branch_windows`, `vibedeck_session_entire_links`, `vibedeck_skills`, `vibedeck_head_history`, `**vibedeck_repos`** (per-repo Entire state cache)
 - WAL mode enabled, single-writer pattern (writes funnel through `serve` daemon)
 - Schema migrations wired into `serve` startup with backup before any change
 
 **Entire Bridge module (`src/lib/entire-bridge.js`):**
+
 - `detectEntire()` — PATH check via `entire version`, 60-second cache, wired into `doctor` and `serve` startup
 - Direct git read of `entire/checkpoints/v1`: `listCheckpoints(repoRoot)`, `readCheckpoint(repoRoot, path)` — pure git plumbing, never spawns CLI for reads, cached by branch tip SHA
 - Safe shell-outs: `enableEntire`, `disableEntire`, `agentAdd`, `agentRemove`, `getStatus`, `configure` — argv-form `execa`, 10s/30s timeouts, validated args (regex + `git check-ref-format`)
@@ -973,11 +1002,13 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 - `getEntireRepoStatus(repoRoot)` — four-state machine (`not_installed` / `not_enabled` / `enabled_no_commits` / `active`), result persisted to `vibedeck_repos`
 
 **Onboarding hooks:**
+
 - `vibedeck init` extended with optional `entire login` prompt (skippable, `stdio: inherit` for the device-auth flow)
 - "Entire enabled, waiting for first commit" detection and clear messaging
 - Inherit Entire's existing local auth state — VibeDeck never touches Entire's credentials
 
 **Read-only API surface (writes deferred to Plan 4 with auth):**
+
 - `GET /functions/vibedeck-checkpoints` (proxy / direct read)
 - `GET /functions/vibedeck-checkpoint/:id`
 - `GET /functions/vibedeck-entire-status` (per-repo 4-state)
@@ -992,6 +1023,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 **File:** to be written after Plan 2 ships
 
 **Hook Merger (`src/lib/hook-merger.js`) — moved up from original sequencing because session detection depends on hooks firing correctly:**
+
 - Per-format mergers for all 7 formats: Claude JSON, Codex TOML, Cursor JSON, Gemini JSON, Factory JSON, CodeBuddy JSON, Copilot JSON, OpenCode TS plugin
 - Signature-based identification: every VibeDeck-written entry carries `_vibedeck: "v1"` field or unique command path; AST-aware merge for the OpenCode TS plugin
 - Two-phase atomic installer: (1) stage all writes to `.vibedeck-staging-<uuid>` temps, validate parses, (2) atomic-rename batch with rollback on failure
@@ -999,6 +1031,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 - Hook collision soak test (1000 random states) as part of the test suite
 
 **Session attribution (`src/lib/sessions.js`):**
+
 - Extend each parser in `src/lib/rollout.js` to emit `SessionEvent` stream alongside existing buckets (no change to bucket math)
 - Per-provider extraction tables (13 providers) with idle/end-detection rules
 - Repo + worktree resolution: `realpath` → `git rev-parse --show-toplevel`, worktree handling, submodule attribution, bare/zero-commit detection, repo identity by realpath
@@ -1007,6 +1040,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 - Orphan reaper: `live` sessions with no activity ≥ 30 min marked `ended_inferred`
 
 **Live infrastructure:**
+
 - Chokidar watcher on `.git/HEAD` and worktree HEADs across active repos (lazy-watch repos with no activity in 7 days)
 - `vibedeck_head_history` persistence so live attribution survives daemon restart
 - SSE endpoint: `GET /functions/vibedeck-sessions-live` streams session deltas to dashboard
@@ -1021,28 +1055,33 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 **File:** to be written after Plan 3 ships
 
 **Local-auth tokens (`src/lib/local-auth.js`):**
+
 - 32-byte random token at `~/.vibedeck/auth.token` (chmod 600), `Authorization: Bearer` middleware on all write endpoints
 - Per-call destructive-confirm tokens (single-use, 30-second TTL) issued by `POST /functions/vibedeck-confirm-destructive` — required for `rewind`, `clean`, `repo migrate`
 - `vibedeck auth rotate` CLI
 
 **New write API endpoints (auth-gated):**
+
 - `POST /functions/vibedeck-entire/:cmd` (now wired to real auth)
 - `POST /functions/vibedeck-entire/rewind`, `/clean` (destructive-confirm required)
 - `POST /functions/vibedeck-skills/install`, `/remove`
 - `POST /functions/vibedeck-attribute` (manual session→branch override, sticky)
 
 **Skill management (`src/lib/skills.js`) — extends existing skill listing in TokenTracker:**
+
 - Install: from git URL or local path, target provider chosen by user; show source URL + README before clone; never auto-install; atomic-rename target dir; register skill hooks via hook-merger if applicable
 - Remove: confirm before destructive delete; idempotent; rollback hook entries via hook-merger
 - Audit: walk all known provider skill dirs, dedupe via realpath, last-used estimate via rollout grep (marked `(estimated)`)
 
 **TokenTracker → VibeDeck migration:**
+
 - First-run detection of `~/.tokentracker/`
 - Prompt: Migrate / Fresh / Coexist
 - Migrate path: read-only over old DB, copy to `~/.vibedeck/`, run schema migrations, best-effort tier C/D backfill of historical sessions
 - Recorded decision in `~/.vibedeck/install.json`
 
-**`vibedeck doctor` extension:**
+`**vibedeck doctor` extension:**
+
 - Hook integrity per provider (signature check)
 - Entire on PATH + version compatibility + hook divergence
 - Inotify limit check (Linux)
@@ -1053,6 +1092,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 - Attribution distribution (% high/medium/low/unattributed)
 
 **New CLIs:**
+
 - `vibedeck attribute --session <id> --branch <name>` (override)
 - `vibedeck repo migrate <old-path> <new-path>` (rare; for renamed repos)
 
@@ -1080,7 +1120,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 
 ```
 Plan 1 ✅ done — fork + strip
-Plan 2     — storage + Entire bridge (~20 tasks, ~2-3 days)
+Plan 2 ✅ done  — storage + Entire bridge (~20 tasks, ~2-3 days)
 Plan 3     — session attribution + hook merger (~22 tasks, ~3-4 days)
 Plan 4     — local auth + API + skills + migration + doctor (~16 tasks, ~2 days)
 Plan 5     — UI session (separate spec; estimated 1-2 weeks)

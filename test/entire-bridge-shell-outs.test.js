@@ -1,5 +1,9 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const {
   detectEntire,
@@ -9,6 +13,16 @@ const {
   rewindCheckpoint,
   cleanEntire,
 } = require("../src/lib/entire-bridge");
+
+function makeTempDir(prefix) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return {
+    dir,
+    cleanup() {
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
 
 test("validateAgentName accepts known agent names", () => {
   const ok = [
@@ -37,24 +51,34 @@ test("enableEntire returns { exitCode, stdout, stderr } (skips if entire missing
   const ent = await detectEntire({ timeoutMs: 500 });
   if (!ent.present) t.skip("entire not on PATH");
 
-  const res = await enableEntire(process.cwd(), []);
-  assert.equal(typeof res.exitCode, "number");
-  assert.equal(typeof res.stdout, "string");
-  assert.equal(typeof res.stderr, "string");
+  const tmp = makeTempDir("vibedeck-entire-enable-");
+  try {
+    execFileSync("git", ["init"], { cwd: tmp.dir, stdio: "ignore" });
+    const res = await enableEntire(tmp.dir, []);
+    assert.equal(typeof res.exitCode, "number");
+    assert.equal(typeof res.stdout, "string");
+    assert.equal(typeof res.stderr, "string");
+  } finally {
+    tmp.cleanup();
+  }
 });
 
 test("rewindCheckpoint rejects without confirm token and validates checkpoint id format", async () => {
+  const tmp = makeTempDir("vibedeck-entire-rewind-");
   await assert.rejects(
-    () => rewindCheckpoint(process.cwd(), "aaaaaaaaaaaa"),
+    () => rewindCheckpoint(tmp.dir, "aaaaaaaaaaaa"),
     /confirm token/i,
   );
   await assert.rejects(
-    () => rewindCheckpoint(process.cwd(), "AAAAAAAAAAAA", "ok"),
+    () => rewindCheckpoint(tmp.dir, "AAAAAAAAAAAA", "ok"),
     /12 lowercase hex chars/i,
   );
+  tmp.cleanup();
 });
 
 test("cleanEntire rejects without confirm token", async () => {
-  await assert.rejects(() => cleanEntire(process.cwd()), /confirm token/i);
-  await assert.rejects(() => cleanEntire(process.cwd(), ""), /confirm token/i);
+  const tmp = makeTempDir("vibedeck-entire-clean-");
+  await assert.rejects(() => cleanEntire(tmp.dir), /confirm token/i);
+  await assert.rejects(() => cleanEntire(tmp.dir, ""), /confirm token/i);
+  tmp.cleanup();
 });

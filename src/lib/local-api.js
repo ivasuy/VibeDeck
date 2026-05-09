@@ -813,6 +813,24 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- vibedeck-entire write stub (POST) ---
+    if (p.startsWith("/functions/vibedeck-entire/")) {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const cmd = p.slice("/functions/vibedeck-entire/".length);
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "auth_pending",
+          message: "This endpoint will be enabled in Plan 4 (local-auth tokens).",
+          cmd,
+        }),
+      );
+      return true;
+    }
+
     // --- vibedeck-entire-status (GET) ---
     if (p === "/functions/vibedeck-entire-status") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {

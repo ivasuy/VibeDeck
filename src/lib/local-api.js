@@ -842,9 +842,25 @@ function createLocalApiHandler({ queuePath }) {
         json(res, { error: "invalid_repo" }, 400);
         return true;
       }
+      const includeCached = url.searchParams.get("cached") === "1";
+      let cached = null;
+      if (includeCached) {
+        try {
+          const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+          const { getRepoState } = require("./db/repos");
+          const row = getRepoState(dbPath, repoRoot);
+          cached = {
+            cached_state: row?.entire_state ?? null,
+            cached_version: row?.entire_version ?? null,
+            cached_checked_at: row?.entire_checked_at ?? null,
+          };
+        } catch {
+          cached = { cached_state: null, cached_version: null, cached_checked_at: null };
+        }
+      }
       const { getEntireRepoStatus } = require("./entire-bridge");
       const status = await getEntireRepoStatus(repoRoot, { persist: false });
-      json(res, status);
+      json(res, cached ? { ...status, ...cached } : status);
       return true;
     }
 

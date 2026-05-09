@@ -5,7 +5,7 @@ const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
-const { requireWriteAuth } = require("./local-auth");
+const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
   filterRowsByUsageScope,
   getSourceScope,
@@ -1016,6 +1016,127 @@ function createLocalApiHandler({ queuePath }) {
         json(res, data);
       } catch (e) {
         json(res, { error: "checkpoint_unavailable", message: e?.message || String(e) }, 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-confirm-destructive") {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+      const op = body && typeof body.op === "string" ? body.op : null;
+      if (!op) {
+        json(res, { error: "missing_op" }, 400);
+        return true;
+      }
+      const confirmToken = issueConfirmToken({ op });
+      json(res, { token: confirmToken, op, expiresInMs: 30000 });
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-entire/rewind") {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+      const repo = body && typeof body.repo === "string" ? body.repo : null;
+      const checkpointId = body && typeof body.checkpointId === "string" ? body.checkpointId : null;
+      const confirmToken = body && typeof body.confirm_token === "string" ? body.confirm_token : null;
+      if (!repo || !checkpointId) {
+        json(res, { error: "missing_params" }, 400);
+        return true;
+      }
+      if (!confirmToken) {
+        json(res, { error: "missing_confirm_token" }, 400);
+        return true;
+      }
+      if (!consumeConfirmToken({ token: confirmToken, op: "rewindCheckpoint" })) {
+        json(res, { error: "invalid_confirm_token" }, 400);
+        return true;
+      }
+      let repoRoot = null;
+      try {
+        repoRoot = fs.realpathSync(repo);
+      } catch {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+      try {
+        const result = await require("./entire-bridge").rewindCheckpoint(
+          repoRoot,
+          checkpointId,
+          confirmToken,
+        );
+        json(res, { ok: result.exitCode === 0, ...result });
+      } catch (e) {
+        json(res, { error: "rewind_failed", message: e?.message || String(e) }, 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-entire/clean") {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+      const repo = body && typeof body.repo === "string" ? body.repo : null;
+      const confirmToken = body && typeof body.confirm_token === "string" ? body.confirm_token : null;
+      if (!repo) {
+        json(res, { error: "missing_params" }, 400);
+        return true;
+      }
+      if (!confirmToken) {
+        json(res, { error: "missing_confirm_token" }, 400);
+        return true;
+      }
+      if (!consumeConfirmToken({ token: confirmToken, op: "cleanEntire" })) {
+        json(res, { error: "invalid_confirm_token" }, 400);
+        return true;
+      }
+      let repoRoot = null;
+      try {
+        repoRoot = fs.realpathSync(repo);
+      } catch {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+      try {
+        const result = await require("./entire-bridge").cleanEntire(
+          repoRoot,
+          confirmToken,
+          { all: body.all === true },
+        );
+        json(res, { ok: result.exitCode === 0, ...result });
+      } catch (e) {
+        json(res, { error: "clean_failed", message: e?.message || String(e) }, 500);
       }
       return true;
     }

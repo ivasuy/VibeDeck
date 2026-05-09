@@ -76,6 +76,14 @@ test("rewindCheckpoint rejects without confirm token and validates checkpoint id
   tmp.cleanup();
 });
 
+test("rewindCheckpoint rejects missing confirm token before validating id", async () => {
+  const bridge = require("../src/lib/entire-bridge");
+  await assert.rejects(
+    () => bridge.rewindCheckpoint("/tmp", "NOT-HEX", ""),
+    (err) => /confirm token/i.test(err.message) && !/checkpoint id/i.test(err.message),
+  );
+});
+
 test("cleanEntire rejects without confirm token", async () => {
   const tmp = makeTempDir("vibedeck-entire-clean-");
   await assert.rejects(() => cleanEntire(tmp.dir), /confirm token/i);

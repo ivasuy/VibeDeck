@@ -9,6 +9,8 @@ const {
   listCheckpointsCached,
   _resetCheckpointCacheForTests,
   _getInternalStats,
+  _setTreeCacheForTests,
+  _hasTreeCacheKeyForTests,
 } = require("../src/lib/entire-bridge");
 
 function sh(cwd, argv) {
@@ -56,3 +58,12 @@ test("listCheckpointsCached memoizes ls-tree reads per branch tip", async () => 
   }
 });
 
+test("_treeCache evicts oldest entry when size exceeds 100", () => {
+  const bridge = require("../src/lib/entire-bridge");
+  bridge._resetCheckpointCacheForTests();
+  for (let i = 0; i < 105; i++)
+    bridge._setTreeCacheForTests(`/repo${i}|tip${i}`, []);
+  const stats = bridge._getInternalStats();
+  assert.strictEqual(stats.cacheSize, 100);
+  assert.strictEqual(bridge._hasTreeCacheKeyForTests("/repo0|tip0"), false);
+});

@@ -10,7 +10,16 @@ const { upsertEntireState } = require('./db/repos');
 const CACHE_TTL_MS = 60 * 1000;
 let cache = null;
 const CHECKPOINT_BRANCH = 'entire/checkpoints/v1';
+const TREE_CACHE_MAX = 100;
 const _treeCache = new Map();
+function _treeCacheSet(key, value) {
+  if (_treeCache.has(key)) _treeCache.delete(key);
+  else if (_treeCache.size >= TREE_CACHE_MAX) {
+    const oldestKey = _treeCache.keys().next().value;
+    _treeCache.delete(oldestKey);
+  }
+  _treeCache.set(key, value);
+}
 let _gitListCalls = 0;
 const KNOWN_AGENTS = new Set([
   'claude-code',
@@ -119,7 +128,7 @@ async function listCheckpointsCached(repoRoot) {
   _gitListCalls += 1;
   const result = await listCheckpoints(repoRoot);
   if (result.available) {
-    _treeCache.set(key, result.files);
+    _treeCacheSet(key, result.files);
     result.tip = tip;
   }
   return result;
@@ -128,6 +137,14 @@ async function listCheckpointsCached(repoRoot) {
 function _resetCheckpointCacheForTests() {
   _treeCache.clear();
   _gitListCalls = 0;
+}
+
+function _setTreeCacheForTests(key, value) {
+  _treeCacheSet(key, value);
+}
+
+function _hasTreeCacheKeyForTests(key) {
+  return _treeCache.has(key);
 }
 
 function _getInternalStats() {
@@ -200,6 +217,10 @@ async function entireStatus(repoRoot) {
   return _runEntire(['status'], { cwd: repoRoot });
 }
 
+async function entireDoctor(repoRoot) {
+  return _runEntire(['doctor'], { cwd: repoRoot });
+}
+
 async function entireConfigure(repoRoot, args = []) {
   _validateArgvStrings(args, { name: 'configure args' });
   return _runEntire(['configure', ...args], { cwd: repoRoot });
@@ -222,8 +243,8 @@ function _checkConfirmToken(token, opName) {
 }
 
 async function rewindCheckpoint(repoRoot, checkpointId, confirmToken) {
-  validateCheckpointId(checkpointId);
   _checkConfirmToken(confirmToken, 'rewindCheckpoint');
+  validateCheckpointId(checkpointId);
   return _runEntire(['checkpoint', 'rewind', '--id', checkpointId], { cwd: repoRoot });
 }
 
@@ -312,6 +333,8 @@ module.exports = {
   getCheckpointsBranchTip,
   listCheckpointsCached,
   _resetCheckpointCacheForTests,
+  _setTreeCacheForTests,
+  _hasTreeCacheKeyForTests,
   _getInternalStats,
   validateAgentName,
   validateBranchName,
@@ -320,6 +343,7 @@ module.exports = {
   entireAgentAdd,
   entireAgentRemove,
   entireStatus,
+  entireDoctor,
   entireConfigure,
   validateCheckpointId,
   rewindCheckpoint,

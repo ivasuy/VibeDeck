@@ -12,7 +12,9 @@ async function detectEntire({ timeoutMs = 5000 } = {}) {
   let result;
   try {
     const { stdout } = await execa('entire', ['version'], { timeout: timeoutMs });
-    result = { present: true, version: String(stdout).trim() };
+    const raw = String(stdout).trim();
+    const m = raw.match(/\b(\d+\.\d+\.\d+(?:[^\s]*)?(?:\s*\\([^)]+\\))?)/);
+    result = { present: true, version: m ? m[1].trim() : raw };
   } catch {
     result = { present: false, version: null };
   }
@@ -26,4 +28,3 @@ function _resetEntireCacheForTests() {
 }
 
 module.exports = { detectEntire, _resetEntireCacheForTests };
-

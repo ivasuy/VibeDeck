@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
 
 const { readJsonStrict } = require("./fs");
+const { detectEntire } = require("./entire-bridge");
 
 async function buildDoctorReport({
   runtime = {},
@@ -10,9 +11,31 @@ async function buildDoctorReport({
   now = () => new Date(),
   paths = {},
 } = {}) {
+  const checks = await runDoctorChecks({ runtime, diagnostics, fetch, paths });
+
+  const summary = summarizeChecks(checks);
+
+  return {
+    version: 1,
+    generated_at: now().toISOString(),
+    ok: summary.critical === 0,
+    summary,
+    checks,
+    diagnostics,
+  };
+}
+
+async function runDoctorChecks({
+  runtime = {},
+  diagnostics = null,
+  fetch = globalThis.fetch,
+  paths = {},
+} = {}) {
   const checks = [];
 
   checks.push(...buildRuntimeChecks(runtime));
+
+  checks.push(await checkEntireCli());
 
   if (paths.trackerDir) {
     checks.push(await checkTrackerDir(paths.trackerDir));
@@ -30,15 +53,28 @@ async function buildDoctorReport({
     checks.push(...buildDiagnosticsChecks(diagnostics));
   }
 
-  const summary = summarizeChecks(checks);
+  return checks;
+}
+
+async function checkEntireCli() {
+  const ent = await detectEntire({ timeoutMs: 2000 });
+  if (ent.present) {
+    return {
+      id: "entire.cli",
+      status: "ok",
+      detail: `Entire CLI ${ent.version || "unknown"} on PATH`,
+      critical: false,
+      meta: { present: true, version: ent.version || null },
+    };
+  }
 
   return {
-    version: 1,
-    generated_at: now().toISOString(),
-    ok: summary.critical === 0,
-    summary,
-    checks,
-    diagnostics,
+    id: "entire.cli",
+    status: "info",
+    detail:
+      "Entire CLI not found on PATH. Install: brew install --cask entireio/tap/entire (or curl -fsSL https://entire.io/install.sh | bash). Without Entire, session→branch attribution falls back to lower-confidence tiers.",
+    critical: false,
+    meta: { present: false, version: null },
   };
 }
 
@@ -335,4 +371,4 @@ function summarizeChecks(checks = []) {
   return summary;
 }
 
-module.exports = { buildDoctorReport };
+module.exports = { buildDoctorReport, runDoctorChecks };

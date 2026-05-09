@@ -3,6 +3,8 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
+const { DatabaseSync } = require("node:sqlite");
+const { getLiveBus } = require("./sessions/live-bus");
 const {
   filterRowsByUsageScope,
   getSourceScope,
@@ -12,6 +14,58 @@ const {
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
+
+// ---------------------------------------------------------------------------
+// Live sessions SSE: /functions/vibedeck-sessions-live
+// ---------------------------------------------------------------------------
+
+function readMsEnv(key, fallback) {
+  const raw = Number(process.env[key]);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.trunc(raw);
+}
+
+const SSE_MAX_CLIENTS = 10;
+const SSE_RING_CAP = 1000;
+const SSE_RETRY_AFTER_SECONDS = 30;
+const SSE_HEARTBEAT_MS = readMsEnv("VIBEDECK_SSE_HEARTBEAT_MS", 30_000);
+const SSE_IDLE_MS = readMsEnv("VIBEDECK_SSE_IDLE_MS", 60 * 60 * 1000);
+const SSE_IDLE_SCAN_MS = readMsEnv("VIBEDECK_SSE_IDLE_SCAN_MS", 60 * 60 * 1000);
+
+let liveSseClientCount = 0;
+let liveSseClients = new Set();
+let liveSseIdleInterval = null;
+
+function ensureSseIdleScanner() {
+  if (liveSseIdleInterval) return;
+  liveSseIdleInterval = setInterval(() => {
+    const now = Date.now();
+    for (const client of liveSseClients) {
+      if (now - client.lastWriteAt > SSE_IDLE_MS) {
+        client.close("idle");
+      }
+    }
+  }, SSE_IDLE_SCAN_MS);
+  if (typeof liveSseIdleInterval.unref === "function") liveSseIdleInterval.unref();
+}
+
+function maybeStopSseIdleScanner() {
+  if (liveSseClientCount > 0) return;
+  if (!liveSseIdleInterval) return;
+  clearInterval(liveSseIdleInterval);
+  liveSseIdleInterval = null;
+}
+
+function resetLiveSseStateForTests() {
+  for (const client of liveSseClients) {
+    try {
+      client.close("test_reset");
+    } catch {}
+  }
+  liveSseClients = new Set();
+  liveSseClientCount = 0;
+  maybeStopSseIdleScanner();
+}
 
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/
@@ -561,6 +615,158 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- vibedeck-sessions-live (GET, SSE) ---
+    if (p === "/functions/vibedeck-sessions-live") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+
+      if (liveSseClientCount >= SSE_MAX_CLIENTS) {
+        res.writeHead(503, {
+          "Content-Type": "application/json",
+          "Retry-After": String(SSE_RETRY_AFTER_SECONDS),
+          "Cache-Control": "no-store",
+        });
+        res.end(JSON.stringify({ error: "too_many_clients" }));
+        return true;
+      }
+
+      const trackerDir = path.dirname(qp);
+      const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+      let sessions = [];
+      try {
+        const db = new DatabaseSync(dbPath);
+        try {
+          sessions = db.prepare("SELECT * FROM vibedeck_sessions WHERE ended_at IS NULL").all();
+        } finally {
+          db.close();
+        }
+      } catch (e) {
+        json(res, { error: "db_unavailable", message: e?.message || String(e) }, 500);
+        return true;
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      });
+
+      // Node will not send headers until the first write; flush a byte early.
+      res.write(": ok\n\n");
+
+      liveSseClientCount += 1;
+      ensureSseIdleScanner();
+
+      const client = {
+        res,
+        queue: [],
+        dropped: 0,
+        lastWriteAt: Date.now(),
+        heartbeatInterval: null,
+        onStart: null,
+        onUpdate: null,
+        onEnd: null,
+        closed: false,
+        flushScheduled: false,
+        close(reason) {
+          if (this.closed) return;
+          this.closed = true;
+          try {
+            if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+          } catch {}
+          try {
+            const bus = getLiveBus();
+            if (this.onStart) bus.off("session:start", this.onStart);
+            if (this.onUpdate) bus.off("session:update", this.onUpdate);
+            if (this.onEnd) bus.off("session:end", this.onEnd);
+          } catch {}
+          try {
+            res.end();
+          } catch {}
+          try {
+            if (typeof req.destroy === "function") req.destroy();
+          } catch {}
+          liveSseClients.delete(this);
+          liveSseClientCount = Math.max(0, liveSseClientCount - 1);
+          maybeStopSseIdleScanner();
+        },
+      };
+
+      liveSseClients.add(client);
+
+      function enqueue(payload) {
+        client.queue.push(payload);
+        if (client.queue.length > SSE_RING_CAP) {
+          client.queue.shift();
+          client.dropped += 1;
+        }
+        scheduleFlush();
+      }
+
+      function writeChunk(str) {
+        client.lastWriteAt = Date.now();
+        return res.write(str);
+      }
+
+      function flushQueue() {
+        client.flushScheduled = false;
+        if (client.closed) return;
+        while (client.queue.length > 0) {
+          const payload = client.queue[0];
+          const ok = writeChunk(`data: ${JSON.stringify(payload)}\n\n`);
+          if (!ok) {
+            res.once("drain", flushQueue);
+            return;
+          }
+          client.queue.shift();
+        }
+      }
+
+      function scheduleFlush() {
+        if (client.flushScheduled) return;
+        client.flushScheduled = true;
+        setImmediate(flushQueue);
+      }
+
+      // Snapshot first.
+      enqueue({ type: "snapshot", sessions });
+
+      const bus = getLiveBus();
+      client.onStart = (event) => {
+        enqueue({ type: "session:start", dropped: client.dropped, ...event });
+      };
+      client.onUpdate = (event) => {
+        const extra =
+          event && event.cwd == null && typeof event.observed_at === "string"
+            ? { last_observed_at: event.observed_at }
+            : {};
+        enqueue({ type: "session:update", dropped: client.dropped, ...event, ...extra });
+      };
+      client.onEnd = (event) => {
+        enqueue({ type: "session:end", dropped: client.dropped, ...event });
+      };
+
+      bus.on("session:start", client.onStart);
+      bus.on("session:update", client.onUpdate);
+      bus.on("session:end", client.onEnd);
+
+      client.heartbeatInterval = setInterval(() => {
+        if (client.closed) return;
+        writeChunk(": heartbeat\n\n");
+      }, SSE_HEARTBEAT_MS);
+      if (typeof client.heartbeatInterval.unref === "function") client.heartbeatInterval.unref();
+
+      const onClose = () => client.close("disconnect");
+      req.on("close", onClose);
+      res.on("close", onClose);
+      res.on("error", onClose);
+
+      return true;
+    }
+
     // --- local-sync (POST) ---
     if (p === "/functions/tokentracker-local-sync") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -1100,4 +1306,13 @@ module.exports = {
   getModelPricing,
   computeRowCost,
   ensurePricingLoaded,
+  // Test-only: avoid open SSE intervals across node:test runs.
+  resetLiveSseStateForTests,
+  _debugSse: {
+    maxClients: SSE_MAX_CLIENTS,
+    ringCap: SSE_RING_CAP,
+    heartbeatMs: SSE_HEARTBEAT_MS,
+    idleMs: SSE_IDLE_MS,
+    idleScanMs: SSE_IDLE_SCAN_MS,
+  },
 };

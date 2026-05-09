@@ -3,17 +3,30 @@
 const { resolveBranchTierA } = require('./tier-a-entire');
 const { findBranchAt } = require('./head-history');
 const { resolveBranchTierC } = require('./tier-c-reflog');
+const { getOverride } = require('./overrides');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
 async function resolveBranchForSession(
-  { provider, repo_root, started_at, ended_at, dbPath, override } = {},
+  { provider, session_id, repo_root, started_at, ended_at, dbPath, override } = {},
   { resolveTierA = resolveBranchTierA, findBranchAt: findTierB = findBranchAt, resolveTierC = resolveBranchTierC } = {},
 ) {
   if (override) {
     return { ...override, tier: 'OVERRIDE', confidence: 'high' };
+  }
+
+  if (isNonEmptyString(dbPath) && isNonEmptyString(provider) && isNonEmptyString(session_id)) {
+    try {
+      const row = getOverride(dbPath, { provider, session_id });
+      if (row) {
+        if (row.branch !== null) return { branch: row.branch, tier: 'OVERRIDE', confidence: 'high' };
+        // branch === null means "cleared override" — proceed with normal tiers.
+      }
+    } catch {
+      // ignore override lookup failures; fall back to tier resolution
+    }
   }
 
   if (!isNonEmptyString(repo_root)) {
@@ -41,4 +54,3 @@ async function resolveBranchForSession(
 }
 
 module.exports = { resolveBranchForSession };
-

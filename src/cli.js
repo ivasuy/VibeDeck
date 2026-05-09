@@ -5,6 +5,7 @@ const { cmdDiagnostics } = require("./commands/diagnostics");
 const { cmdDoctor } = require("./commands/doctor");
 const { cmdUninstall } = require("./commands/uninstall");
 const { cmdServe } = require("./commands/serve");
+const { cmdAttribute } = require("./commands/attribute");
 
 async function run(argv) {
   const [command, ...rest] = argv;
@@ -41,6 +42,9 @@ async function run(argv) {
       return;
     case "uninstall":
       await cmdUninstall(rest);
+      return;
+    case "attribute":
+      await cmdAttribute(rest);
       return;
     default:
       throw new Error(`Unknown command: ${command}`);

@@ -9,6 +9,7 @@ const m001 = require('./migrations/001-vibedeck-sessions');
 const m002 = require('./migrations/002-session-buckets-and-windows');
 const m003 = require('./migrations/003-entire-links-and-repos');
 const m004 = require('./migrations/004-skills-and-head-history');
+const m005 = require('./migrations/005-attribution-overrides');
 
 let registered = false;
 function registerAll() {
@@ -17,6 +18,7 @@ function registerAll() {
   registerMigration(m002);
   registerMigration(m003);
   registerMigration(m004);
+  registerMigration(m005);
   registered = true;
 }
 
@@ -31,4 +33,3 @@ function ensureSchema(dbPath) {
 }
 
 module.exports = { ensureSchema };
-

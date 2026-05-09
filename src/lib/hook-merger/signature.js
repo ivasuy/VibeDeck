@@ -22,18 +22,34 @@ function canonicalCommandPath() {
 
 const COMMAND_SUFFIX = path.join('.vibedeck', 'app', 'hooks', 'notify.cjs');
 
+function _entryCommandStrings(entry) {
+  // Every command-string an entry carries: the flat legacy `entry.command`
+  // shape plus the canonical Claude-style `entry.hooks[].command` shape.
+  const out = [];
+  if (!entry || typeof entry !== 'object') return out;
+  if (typeof entry.command === 'string') out.push(entry.command);
+  if (Array.isArray(entry.hooks)) {
+    for (const h of entry.hooks) {
+      if (h && typeof h.command === 'string') out.push(h.command);
+    }
+  }
+  return out;
+}
+
 function isVibedeckEntryJSON(entry) {
   if (!entry || typeof entry !== 'object') return false;
   if (entry._vibedeck === 'v1') return true;
-  if (typeof entry.command !== 'string') return false;
-  return entry.command.includes(COMMAND_SUFFIX);
+  for (const cmd of _entryCommandStrings(entry)) {
+    if (cmd.includes(COMMAND_SUFFIX)) return true;
+  }
+  return false;
 }
 
 function isEntireEntryJSON(entry) {
-  if (!entry || typeof entry !== 'object') return false;
-  if (typeof entry.command !== 'string') return false;
-  const cmd = entry.command;
-  return /entire\s+hook\s+session-end/i.test(cmd) || /\bentire\b.*\bhook\b/i.test(cmd);
+  for (const cmd of _entryCommandStrings(entry)) {
+    if (/entire\s+hook\s+session-end/i.test(cmd) || /\bentire\b.*\bhook\b/i.test(cmd)) return true;
+  }
+  return false;
 }
 
 function isVibedeckCommandStringTOML(cmd) {

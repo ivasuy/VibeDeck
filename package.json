@@ -38,7 +38,9 @@
     "validate:retros": "node scripts/validate-retros.cjs",
     "validate:ui-hardcode": "node scripts/ops/validate-ui-hardcode.cjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "execa": "^5.1.1"
+  },
   "devDependencies": {
     "@sourcegraph/scip-typescript": "^0.3.6",
     "esbuild": "0.27.2"

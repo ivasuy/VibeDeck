@@ -81,7 +81,7 @@ function buildInitialConfig(rng, provider) {
   shuffleInPlace(rng, entries);
 
   if (provider === 'cursor') {
-    return { SessionEnd: entries, extra: { ok: true } };
+    return { version: 1, hooks: { sessionEnd: entries }, extra: { ok: true } };
   }
 
   if (provider === 'gemini') {
@@ -97,13 +97,13 @@ function buildInitialConfig(rng, provider) {
 }
 
 function extractEntries(provider, obj) {
-  if (provider === 'cursor') return (obj && obj.SessionEnd) || [];
+  if (provider === 'cursor') return (obj && obj.hooks && obj.hooks.sessionEnd) || [];
   if (provider === 'gemini') return (obj && obj.hooks && obj.hooks.SessionEnd) || [];
   return (obj && obj.hooks && obj.hooks.SessionEnd) || [];
 }
 
 function setEntries(provider, obj, entries) {
-  if (provider === 'cursor') return { ...(obj || {}), SessionEnd: entries };
+  if (provider === 'cursor') return { ...(obj || {}), hooks: { ...((obj && obj.hooks) || {}), sessionEnd: entries } };
   if (provider === 'gemini') return { ...(obj || {}), hooks: { ...((obj && obj.hooks) || {}), SessionEnd: entries } };
   return { ...(obj || {}), hooks: { ...((obj && obj.hooks) || {}), SessionEnd: entries } };
 }
@@ -171,4 +171,3 @@ test('hook-merger property soak: 1000 random JSON states preserve non-vibedeck e
     }
   }
 });
-

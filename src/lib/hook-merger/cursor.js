@@ -16,6 +16,7 @@ function canonicalEntry() {
   const notifyPath = signature.canonicalCommandPath();
   return {
     _vibedeck: 'v1',
+    type: 'command',
     command: buildHookCommand(notifyPath, 'cursor'),
   };
 }
@@ -28,47 +29,79 @@ function entriesEqual(a, b) {
   }
 }
 
-function buildInstallPayload(hooksPath) {
-  const exists = fs.existsSync(hooksPath);
-  let current = {};
-  if (exists) {
-    const raw = fs.readFileSync(hooksPath, 'utf8');
-    current = JSON.parse(raw);
+function toCursorSchemaV1(parsed) {
+  const raw = normalizeObject(parsed);
+
+  if (Object.prototype.hasOwnProperty.call(raw, 'version')) {
+    if (raw.version !== 1) {
+      const v = raw.version;
+      throw new Error(`Unsupported Cursor hooks schema version: ${v}`);
+    }
+    const hooks = normalizeObject(raw.hooks);
+    const sessionEnd = normalizeArray(hooks.sessionEnd);
+    return { ...raw, version: 1, hooks: { ...hooks, sessionEnd } };
   }
 
-  const hooks = normalizeObject(current);
-  const entries = normalizeArray(hooks.SessionEnd);
+  // Legacy (Phase B) schema: `{ SessionEnd: [...] }` (no `version`, no `hooks` wrapper).
+  const sessionEnd = normalizeArray(raw.SessionEnd);
+  const { SessionEnd: _legacySessionEnd, ...rest } = raw;
+  return { ...rest, version: 1, hooks: { sessionEnd } };
+}
 
+function buildInstallPayload(hooksPath) {
+  const exists = fs.existsSync(hooksPath);
+  const parsed = exists ? JSON.parse(fs.readFileSync(hooksPath, 'utf8')) : {};
+  const current = toCursorSchemaV1(parsed);
+
+  const entries = normalizeArray(current.hooks.sessionEnd);
   const kept = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
   const nextEntries = kept.concat([canonicalEntry()]);
 
-  if (entriesEqual(nextEntries, entries) && hooks.SessionEnd) {
-    return null;
-  }
+  if (entriesEqual(nextEntries, entries)) return null;
 
-  const nextHooks = { ...hooks, SessionEnd: nextEntries };
-  const content = `${JSON.stringify(nextHooks, null, 2)}\n`;
+  const next = { version: 1, hooks: { ...current.hooks, sessionEnd: nextEntries } };
+  const content = `${JSON.stringify(next, null, 2)}\n`;
 
-  return { path: hooksPath, content, validate: (s) => JSON.parse(s) };
+  return {
+    path: hooksPath,
+    content,
+    validate: (s) => {
+      const j = JSON.parse(s);
+      if (!j || typeof j !== 'object') throw new Error('cursor hooks must be an object');
+      if (j.version !== 1) throw new Error('cursor hooks version must be 1');
+      const hooks = normalizeObject(j.hooks);
+      if (!Array.isArray(hooks.sessionEnd)) throw new Error('cursor hooks.hooks.sessionEnd must be an array');
+      return j;
+    },
+  };
 }
 
 function buildRemovePayload(hooksPath) {
   const exists = fs.existsSync(hooksPath);
   if (!exists) return null;
 
-  const raw = fs.readFileSync(hooksPath, 'utf8');
-  const current = JSON.parse(raw);
+  const parsed = JSON.parse(fs.readFileSync(hooksPath, 'utf8'));
+  const current = toCursorSchemaV1(parsed);
 
-  const hooks = normalizeObject(current);
-  const entries = normalizeArray(hooks.SessionEnd);
-
+  const entries = normalizeArray(current.hooks.sessionEnd);
   const nextEntries = entries.filter((e) => !signature.isVibedeckEntryJSON(e));
   if (entriesEqual(nextEntries, entries)) return null;
 
-  const nextHooks = { ...hooks, SessionEnd: nextEntries };
-  const content = `${JSON.stringify(nextHooks, null, 2)}\n`;
+  const next = { version: 1, hooks: { ...current.hooks, sessionEnd: nextEntries } };
+  const content = `${JSON.stringify(next, null, 2)}\n`;
 
-  return { path: hooksPath, content, validate: (s) => JSON.parse(s) };
+  return {
+    path: hooksPath,
+    content,
+    validate: (s) => {
+      const j = JSON.parse(s);
+      if (!j || typeof j !== 'object') throw new Error('cursor hooks must be an object');
+      if (j.version !== 1) throw new Error('cursor hooks version must be 1');
+      const hooks = normalizeObject(j.hooks);
+      if (!Array.isArray(hooks.sessionEnd)) throw new Error('cursor hooks.hooks.sessionEnd must be an array');
+      return j;
+    },
+  };
 }
 
 async function install(hooksPath) {

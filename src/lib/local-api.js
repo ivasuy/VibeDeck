@@ -5,6 +5,7 @@ const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
+const { requireWriteAuth } = require("./local-auth");
 const {
   filterRowsByUsageScope,
   getSourceScope,
@@ -1026,14 +1027,86 @@ function createLocalApiHandler({ queuePath }) {
         return true;
       }
       const cmd = p.slice("/functions/vibedeck-entire/".length);
-      res.writeHead(403, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          error: "auth_pending",
-          message: "This endpoint will be enabled in Plan 4 (local-auth tokens).",
-          cmd,
-        }),
-      );
+
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+
+      const allowed = new Set([
+        "enable",
+        "disable",
+        "agent-add",
+        "agent-remove",
+        "configure",
+        "doctor",
+        "status",
+      ]);
+      if (!allowed.has(cmd)) {
+        json(res, { error: "unknown_command", cmd }, 400);
+        return true;
+      }
+
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+
+      const repoRaw = body?.repo;
+      if (typeof repoRaw !== "string" || !repoRaw.trim()) {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+
+      let repoRoot = null;
+      try {
+        repoRoot = fs.realpathSync(repoRaw);
+      } catch {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+
+      const {
+        enableEntire,
+        disableEntire,
+        entireAgentAdd,
+        entireAgentRemove,
+        entireConfigure,
+        entireDoctor,
+        entireStatus,
+      } = require("./entire-bridge");
+
+      if (cmd === "enable") {
+        const agents = Array.isArray(body?.agents) ? body.agents : [];
+        json(res, await enableEntire(repoRoot, agents));
+        return true;
+      }
+      if (cmd === "disable") {
+        json(res, await disableEntire(repoRoot));
+        return true;
+      }
+      if (cmd === "agent-add") {
+        json(res, await entireAgentAdd(repoRoot, body?.agent));
+        return true;
+      }
+      if (cmd === "agent-remove") {
+        json(res, await entireAgentRemove(repoRoot, body?.agent));
+        return true;
+      }
+      if (cmd === "configure") {
+        const args = Array.isArray(body?.args) ? body.args : [];
+        json(res, await entireConfigure(repoRoot, args));
+        return true;
+      }
+      if (cmd === "doctor") {
+        json(res, await entireDoctor(repoRoot));
+        return true;
+      }
+      if (cmd === "status") {
+        json(res, await entireStatus(repoRoot));
+        return true;
+      }
       return true;
     }
 

@@ -2,7 +2,9 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const os = require("node:os");
 const path = require("node:path");
+const fs = require("node:fs/promises");
 const { test } = require("node:test");
+const auth = require("../src/lib/local-auth");
 
 function createRequest({ method = "GET", headers = {}, body } = {}) {
   const req = new EventEmitter();
@@ -32,9 +34,15 @@ function createResponse() {
   };
 }
 
-test("POST /functions/vibedeck-entire/:cmd is reserved and returns 403 (auth pending)", async () => {
+test("POST /functions/vibedeck-entire/:cmd is auth-gated and returns 401 without Authorization header", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-entire-gate-"));
   const mod = require("../src/lib/local-api");
-  const handler = mod.createLocalApiHandler({ queuePath: path.join(os.tmpdir(), "queue.jsonl") });
+  const trackerDir = path.join(root, "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  auth.ensureToken(path.join(root, "auth.token"));
+  const handler = mod.createLocalApiHandler({ queuePath });
 
   const req = createRequest({ method: "POST", body: "{}" });
   const res = createResponse();
@@ -46,11 +54,7 @@ test("POST /functions/vibedeck-entire/:cmd is reserved and returns 403 (auth pen
   );
 
   assert.equal(handled, true);
-  assert.equal(res.statusCode, 403);
-  assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
-    error: "auth_pending",
-    message: "This endpoint will be enabled in Plan 4 (local-auth tokens).",
-    cmd: "enable",
-  });
+  assert.equal(res.statusCode, 401);
+  assert.equal(JSON.parse(res.body.toString("utf8")).error, "missing_auth");
+  await fs.rm(root, { recursive: true, force: true });
 });
-

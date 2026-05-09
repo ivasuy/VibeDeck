@@ -1,8 +1,12 @@
 const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
+const fsSync = require("node:fs");
+const os = require("node:os");
+const pathMod = require("node:path");
 
 const { readJsonStrict } = require("./fs");
 const { detectEntire } = require("./entire-bridge");
+const hookSignature = require("./hook-merger/signature");
 
 async function buildDoctorReport({
   runtime = {},
@@ -30,6 +34,7 @@ async function runDoctorChecks({
   diagnostics = null,
   fetch = globalThis.fetch,
   paths = {},
+  home = os.homedir(),
 } = {}) {
   const checks = [];
 
@@ -51,6 +56,121 @@ async function runDoctorChecks({
 
   if (diagnostics) {
     checks.push(...buildDiagnosticsChecks(diagnostics));
+  }
+
+  checks.push(...(await buildHookIntegrityChecks({ home })));
+
+  return checks;
+}
+
+const HOOK_FILES = [
+  {
+    id: "hook:claude",
+    relFile: pathMod.join(".claude", "settings.json"),
+    extractor: (j) => j?.hooks?.SessionEnd || [],
+  },
+  {
+    id: "hook:codebuddy",
+    relFile: pathMod.join(".codebuddy", "settings.json"),
+    extractor: (j) => j?.hooks?.SessionEnd || [],
+  },
+  {
+    id: "hook:cursor",
+    relFile: pathMod.join(".cursor", "hooks.json"),
+    extractor: (j) => j?.hooks?.sessionEnd || [],
+  },
+  {
+    id: "hook:gemini",
+    relFile: pathMod.join(".gemini", "settings.json"),
+    extractor: (j) => j?.hooks?.SessionEnd || [],
+  },
+  {
+    id: "hook:factory",
+    relFile: pathMod.join(".factory", "settings.json"),
+    extractor: (j) => j?.hooks?.SessionEnd || [],
+  },
+];
+
+function _entryCommandStrings(entry) {
+  const out = [];
+  if (!entry || typeof entry !== "object") return out;
+  if (typeof entry.command === "string") out.push(entry.command);
+  if (Array.isArray(entry.hooks)) {
+    for (const h of entry.hooks) {
+      if (h && typeof h.command === "string") out.push(h.command);
+    }
+  }
+  return out;
+}
+
+async function buildHookIntegrityChecks({ home }) {
+  const checks = [];
+  const expectedCanonical = hookSignature.canonicalCommandPath();
+
+  for (const def of HOOK_FILES) {
+    const filePath = pathMod.join(home, def.relFile);
+    if (!fsSync.existsSync(filePath)) {
+      checks.push({
+        id: def.id,
+        status: "info",
+        detail: `not installed (${filePath} missing)`,
+        critical: false,
+        meta: { path: filePath },
+      });
+      continue;
+    }
+
+    try {
+      const json = JSON.parse(fsSync.readFileSync(filePath, "utf8"));
+      const entries = def.extractor(json);
+      const cls = hookSignature.classifyEntries(entries, "json");
+
+      if (cls.ours.length === 0) {
+        checks.push({
+          id: def.id,
+          status: "info",
+          detail: "VibeDeck hook not installed",
+          critical: false,
+          meta: { path: filePath },
+        });
+      } else if (cls.ours.length > 1) {
+        checks.push({
+          id: def.id,
+          status: "warn",
+          detail: `Found ${cls.ours.length} VibeDeck entries (expected 1)`,
+          critical: false,
+          meta: { path: filePath, count: cls.ours.length },
+        });
+      } else {
+        const ourEntry = cls.ours[0];
+        const cmds = _entryCommandStrings(ourEntry);
+        if (!cmds.some((c) => c.includes(expectedCanonical))) {
+          checks.push({
+            id: def.id,
+            status: "warn",
+            detail: `Stale notify path; expected ${expectedCanonical}`,
+            critical: false,
+            meta: { path: filePath, expected: expectedCanonical },
+          });
+        } else {
+          checks.push({
+            id: def.id,
+            status: "ok",
+            detail: "signature OK",
+            critical: false,
+            meta: { path: filePath },
+          });
+        }
+      }
+    } catch (err) {
+      checks.push({
+        id: def.id,
+        status: "fail",
+        detail: `Could not parse ${filePath}: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: filePath },
+      });
+    }
   }
 
   return checks;

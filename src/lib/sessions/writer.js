@@ -81,6 +81,17 @@ function normalizeModel(v) {
   return trimmed === '' ? null : trimmed;
 }
 
+function sessionExists(dbPath, { provider, session_id } = {}) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return !!db
+      .prepare('SELECT 1 FROM vibedeck_sessions WHERE provider = ? AND session_id = ?')
+      .get(provider, session_id);
+  } finally {
+    db.close();
+  }
+}
+
 function rowsEqual(existing, desired) {
   if (!existing) return false;
   const keys = Object.keys(desired);
@@ -257,4 +268,4 @@ function upsertSessionFromEvents(dbPath, events) {
   }
 }
 
-module.exports = { upsertSessionFromEvents };
+module.exports = { upsertSessionFromEvents, sessionExists };

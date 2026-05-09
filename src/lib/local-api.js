@@ -1385,6 +1385,108 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- vibedeck skills (read + write auth-gated) ---
+    if (p === "/functions/vibedeck-skills") {
+      const method = String(req.method || "GET").toUpperCase();
+      const skills = require("./skills-manager");
+      try {
+        if (method === "GET") {
+          json(res, { targets: skills.targetList(), skills: skills.listInstalledSkills() });
+          return true;
+        }
+        json(res, { error: "Method Not Allowed" }, 405);
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unknown skills error" }, 500);
+      }
+      return true;
+    }
+
+    if (p.startsWith("/functions/vibedeck-skills/")) {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+      const cmd = p.slice("/functions/vibedeck-skills/".length);
+      const skills = require("./skills-manager");
+      try {
+        if (cmd === "install") {
+          const targets = Array.isArray(body.targets) ? body.targets : ["claude", "codex"];
+          json(res, { ok: true, skill: await skills.installSkill(body.skill, targets) });
+          return true;
+        }
+        if (cmd === "uninstall") {
+          json(res, { ok: true, ...(skills.uninstallSkill(body.id) || {}) });
+          return true;
+        }
+        if (cmd === "restore") {
+          json(res, { ok: true, skill: skills.restoreSkill(body.id) });
+          return true;
+        }
+        if (cmd === "importLocal") {
+          const targets = Array.isArray(body.targets) ? body.targets : [];
+          json(res, { ok: true, skill: skills.importLocalSkill(body.directory, targets) });
+          return true;
+        }
+        if (cmd === "deleteLocal") {
+          const targets = Array.isArray(body.targets) ? body.targets : [];
+          json(res, { ok: true, ...(skills.deleteLocalSkill(body.directory, targets) || {}) });
+          return true;
+        }
+        json(res, { ok: false, error: "Unknown skills action" }, 400);
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || "Unknown skills error" }, 500);
+      }
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-attribute") {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+      const provider = body && typeof body.provider === "string" ? body.provider : null;
+      const session_id = body && typeof body.session_id === "string" ? body.session_id : null;
+      const branch = body && (typeof body.branch === "string" || body.branch === null) ? body.branch : undefined;
+      if (!provider || !session_id || branch === undefined) {
+        json(res, { error: "missing_params" }, 400);
+        return true;
+      }
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const overrides = require("./sessions/overrides");
+      const writer = require("./sessions/writer");
+      const exists = writer.sessionExists ? writer.sessionExists(dbPath, { provider, session_id }) : true;
+      if (!exists) {
+        json(res, { error: "session_not_found" }, 404);
+        return true;
+      }
+      if (branch === null || branch === "") {
+        overrides.clearOverride(dbPath, { provider, session_id });
+        json(res, { ok: true, cleared: true });
+      } else {
+        overrides.upsertOverride(dbPath, { provider, session_id, branch, set_by: "api" });
+        json(res, { ok: true, branch });
+      }
+      return true;
+    }
+
     // --- skills manager ---
     if (p === "/functions/tokentracker-skills") {
       const method = String(req.method || "GET").toUpperCase();

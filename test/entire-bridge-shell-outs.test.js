@@ -6,6 +6,8 @@ const {
   validateAgentName,
   validateBranchName,
   enableEntire,
+  rewindCheckpoint,
+  cleanEntire,
 } = require("../src/lib/entire-bridge");
 
 test("validateAgentName accepts known agent names", () => {
@@ -41,3 +43,18 @@ test("enableEntire returns { exitCode, stdout, stderr } (skips if entire missing
   assert.equal(typeof res.stderr, "string");
 });
 
+test("rewindCheckpoint rejects without confirm token and validates checkpoint id format", async () => {
+  await assert.rejects(
+    () => rewindCheckpoint(process.cwd(), "aaaaaaaaaaaa"),
+    /confirm token/i,
+  );
+  await assert.rejects(
+    () => rewindCheckpoint(process.cwd(), "AAAAAAAAAAAA", "ok"),
+    /12 lowercase hex chars/i,
+  );
+});
+
+test("cleanEntire rejects without confirm token", async () => {
+  await assert.rejects(() => cleanEntire(process.cwd()), /confirm token/i);
+  await assert.rejects(() => cleanEntire(process.cwd(), ""), /confirm token/i);
+});

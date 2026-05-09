@@ -16,6 +16,7 @@ const KNOWN_AGENTS = new Set([
   'factoryai-droid',
   'copilot-cli',
 ]);
+const CHECKPOINT_ID_RE = /^[a-f0-9]{12}$/;
 
 async function detectEntire({ timeoutMs = 5000 } = {}) {
   const now = Date.now();
@@ -199,6 +200,35 @@ async function entireConfigure(repoRoot, args = []) {
   return _runEntire(['configure', ...args], { cwd: repoRoot });
 }
 
+function validateCheckpointId(id) {
+  if (!CHECKPOINT_ID_RE.test(id)) {
+    throw new Error(`Invalid checkpoint id (expected 12 lowercase hex chars): ${id}`);
+  }
+}
+
+function _checkConfirmToken(token, opName) {
+  if (typeof token !== 'string' || token.length === 0) {
+    throw new Error(`${opName} requires a confirm token; refusing to run without one`);
+  }
+  // Placeholder until Plan 4 wires local-auth tokens.
+  console.warn(
+    `[vibedeck] WARN: ${opName} accepted placeholder confirm token (Plan 4 wires real auth)`,
+  );
+}
+
+async function rewindCheckpoint(repoRoot, checkpointId, confirmToken) {
+  validateCheckpointId(checkpointId);
+  _checkConfirmToken(confirmToken, 'rewindCheckpoint');
+  return _runEntire(['checkpoint', 'rewind', '--id', checkpointId], { cwd: repoRoot });
+}
+
+async function cleanEntire(repoRoot, confirmToken, { all = false } = {}) {
+  _checkConfirmToken(confirmToken, 'cleanEntire');
+  const args = ['clean', '--force'];
+  if (all) args.push('--all');
+  return _runEntire(args, { cwd: repoRoot });
+}
+
 module.exports = {
   detectEntire,
   _resetEntireCacheForTests,
@@ -216,4 +246,7 @@ module.exports = {
   entireAgentRemove,
   entireStatus,
   entireConfigure,
+  validateCheckpointId,
+  rewindCheckpoint,
+  cleanEntire,
 };

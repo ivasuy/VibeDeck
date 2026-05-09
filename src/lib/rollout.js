@@ -6,6 +6,21 @@ const cp = require("node:child_process");
 
 const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
+const {
+  extractClaudeCodeSessionEvents,
+  extractCodexSessionEvents,
+  extractGeminiSessionEvents,
+  extractCursorSessionEvents,
+  extractOpenCodeSessionEvents,
+  extractOpenClawSessionEvents,
+  extractEveryCodeSessionEvents,
+  extractKiroSessionEvents,
+  extractHermesSessionEvents,
+  extractCopilotSessionEvents,
+  extractKimiSessionEvents,
+  extractOmpSessionEvents,
+  extractCodebuddySessionEvents,
+} = require("./sessions/extractors");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
@@ -13,6 +28,14 @@ const BUCKET_SEPARATOR = "|";
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.tokentracker/claude-mem/observer-sessions";
+
+function emitSessionEvents(extractFn, batch, onSessionEvent) {
+  if (typeof onSessionEvent !== "function") return;
+  if (typeof extractFn !== "function") return;
+  const events = extractFn(batch);
+  if (!Array.isArray(events) || events.length === 0) return;
+  for (const e of events) onSessionEvent(e);
+}
 
 async function listRolloutFiles(sessionsDir) {
   const out = [];
@@ -80,6 +103,7 @@ async function parseRolloutIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -147,6 +171,7 @@ async function parseRolloutIncremental({
       projectMetaCache,
       publicRepoCache,
       publicRepoResolver,
+      onSessionEvent,
     });
 
     cursors.files[key] = {
@@ -192,6 +217,7 @@ async function parseClaudeIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -258,6 +284,7 @@ async function parseClaudeIncremental({
       projectRef,
       projectKey,
       seenMessageHashes,
+      onSessionEvent,
     });
 
     cursors.files[key] = {
@@ -305,6 +332,7 @@ async function parseGeminiIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -370,6 +398,7 @@ async function parseGeminiIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      onSessionEvent,
     });
 
     cursors.files[key] = {
@@ -415,6 +444,7 @@ async function parseOpencodeIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -502,6 +532,7 @@ async function parseOpencodeIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      onSessionEvent,
     });
 
     cursors.files[key] = {
@@ -557,6 +588,7 @@ async function parseOpenclawIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
 }) {
   await ensureDir(path.dirname(queuePath));
@@ -601,6 +633,7 @@ async function parseOpenclawIncremental({
       source: fileSource,
       projectState,
       projectTouchedBuckets,
+      onSessionEvent,
     });
 
     cursors.files[key] = {
@@ -646,6 +679,7 @@ async function parseOpenclawSessionFile({
   source,
   projectState,
   projectTouchedBuckets,
+  onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
   const endOffset = st.size;
@@ -655,6 +689,11 @@ async function parseOpenclawSessionFile({
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
+  let sessionStartedAt = null;
+  let sessionEndedAt = null;
+  let sessionTotalTokens = 0;
+  const sessionUpdates = [];
+  let sessionModel = null;
   for await (const line of rl) {
     if (!line) continue;
     // Fast-path filter: OpenClaw assistant messages include message.usage.totalTokens.
@@ -678,6 +717,7 @@ async function parseOpenclawSessionFile({
     if (!tokenTimestamp) continue;
 
     const model = normalizeModelInput(msg.model) || DEFAULT_MODEL;
+    sessionModel = model;
 
     // Per CLAUDE.md: cached_input_tokens = cache reads,
     // cache_creation_input_tokens = cache writes. Also re-derive total_tokens
@@ -699,6 +739,11 @@ async function parseOpenclawSessionFile({
 
     if (isAllZeroUsage(delta)) continue;
 
+    if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
+    sessionEndedAt = tokenTimestamp;
+    sessionTotalTokens += Number(delta.total_tokens || 0);
+    sessionUpdates.push({ observed_at: tokenTimestamp, delta_tokens: Number(delta.total_tokens || 0) });
+
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
 
@@ -713,6 +758,22 @@ async function parseOpenclawSessionFile({
 
   rl.close();
   stream.close?.();
+  if (sessionStartedAt && sessionEndedAt) {
+    emitSessionEvents(
+      extractOpenClawSessionEvents,
+      {
+        session_id: filePath,
+        started_at: sessionStartedAt,
+        ended_at: sessionEndedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model: sessionModel,
+        updates: sessionUpdates,
+        total_tokens: sessionTotalTokens,
+      },
+      onSessionEvent,
+    );
+  }
   return { endOffset, eventsAggregated };
 }
 
@@ -731,6 +792,7 @@ async function parseRolloutFile({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
+  onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
   const endOffset = st.size;
@@ -747,6 +809,12 @@ async function parseRolloutFile({
   let currentProjectRef = projectRef || null;
   let currentProjectKey = projectKey || null;
   let eventsAggregated = 0;
+  let sessionStartedAt = null;
+  let sessionEndedAt = null;
+  let sessionTotalTokens = 0;
+  const sessionUpdates = [];
+  let sessionModel = null;
+  let sessionCwd = null;
 
   for await (const line of rl) {
     if (!line) continue;
@@ -813,6 +881,13 @@ async function parseRolloutFile({
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
 
+    sessionModel = model;
+    if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
+    sessionEndedAt = tokenTimestamp;
+    sessionCwd = currentCwd || sessionCwd;
+    sessionTotalTokens += Number(delta.total_tokens || 0);
+    sessionUpdates.push({ observed_at: tokenTimestamp, delta_tokens: Number(delta.total_tokens || 0) });
+
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey(source, model, bucketStart));
@@ -830,6 +905,29 @@ async function parseRolloutFile({
     eventsAggregated += 1;
   }
 
+  const extractFn =
+    source === "codex"
+      ? extractCodexSessionEvents
+      : source === "every-code"
+        ? extractEveryCodeSessionEvents
+        : null;
+  if (extractFn && sessionStartedAt && sessionEndedAt) {
+    emitSessionEvents(
+      extractFn,
+      {
+        session_id: filePath,
+        started_at: sessionStartedAt,
+        ended_at: sessionEndedAt,
+        end_reason: "log_complete",
+        cwd: sessionCwd,
+        model: sessionModel,
+        updates: sessionUpdates,
+        total_tokens: sessionTotalTokens,
+      },
+      onSessionEvent,
+    );
+  }
+
   return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
 }
 
@@ -844,6 +942,7 @@ async function parseClaudeFile({
   projectRef,
   projectKey,
   seenMessageHashes,
+  onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
   if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
@@ -855,6 +954,11 @@ async function parseClaudeFile({
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
+  let sessionStartedAt = null;
+  let sessionEndedAt = null;
+  let sessionTotalTokens = 0;
+  const sessionUpdates = [];
+  let sessionModel = null;
   const isMainSession = !filePath.includes("/subagents/");
   for await (const line of rl) {
     if (!line) continue;
@@ -916,6 +1020,12 @@ async function parseClaudeFile({
     if (!delta || isAllZeroUsage(delta)) continue;
     delta.conversation_count = 0;
 
+    sessionModel = model;
+    if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
+    sessionEndedAt = tokenTimestamp;
+    sessionTotalTokens += Number(delta.total_tokens || 0);
+    sessionUpdates.push({ observed_at: tokenTimestamp, delta_tokens: Number(delta.total_tokens || 0) });
+
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
 
@@ -938,6 +1048,22 @@ async function parseClaudeFile({
 
   rl.close();
   stream.close?.();
+  if (sessionStartedAt && sessionEndedAt) {
+    emitSessionEvents(
+      extractClaudeCodeSessionEvents,
+      {
+        session_id: filePath,
+        started_at: sessionStartedAt,
+        ended_at: sessionEndedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model: sessionModel,
+        updates: sessionUpdates,
+        total_tokens: sessionTotalTokens,
+      },
+      onSessionEvent,
+    );
+  }
   return { endOffset, eventsAggregated };
 }
 
@@ -953,6 +1079,7 @@ async function parseGeminiFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  onSessionEvent,
 }) {
   const raw = await fs.readFile(filePath, "utf8").catch(() => "");
   if (!raw.trim()) return { lastIndex: startIndex, lastTotals, lastModel, eventsAggregated: 0 };
@@ -964,6 +1091,10 @@ async function parseGeminiFile({
     return { lastIndex: startIndex, lastTotals, lastModel, eventsAggregated: 0 };
   }
 
+  const sessionId = typeof session?.sessionId === "string" ? session.sessionId : null;
+  const sessionStart = typeof session?.startTime === "string" ? session.startTime : null;
+  const sessionUpdated = typeof session?.lastUpdated === "string" ? session.lastUpdated : null;
+
   const messages = Array.isArray(session?.messages) ? session.messages : [];
   if (startIndex >= messages.length) {
     startIndex = -1;
@@ -974,6 +1105,10 @@ async function parseGeminiFile({
   let eventsAggregated = 0;
   let model = typeof lastModel === "string" ? lastModel : null;
   let totals = lastTotals && typeof lastTotals === "object" ? lastTotals : null;
+  let sessionStartedAt = null;
+  let sessionEndedAt = null;
+  let sessionTotalTokens = 0;
+  const sessionUpdates = [];
   const begin = Number.isFinite(startIndex) ? startIndex + 1 : 0;
 
   for (let idx = begin; idx < messages.length; idx++) {
@@ -996,6 +1131,11 @@ async function parseGeminiFile({
       continue;
     }
     delta.conversation_count = 1;
+
+    if (!sessionStartedAt) sessionStartedAt = timestamp;
+    sessionEndedAt = timestamp;
+    sessionTotalTokens += Number(delta.total_tokens || 0);
+    sessionUpdates.push({ observed_at: timestamp, delta_tokens: Number(delta.total_tokens || 0) });
 
     const bucketStart = toUtcHalfHourStart(timestamp);
     if (!bucketStart) {
@@ -1021,6 +1161,23 @@ async function parseGeminiFile({
     totals = currentTotals;
   }
 
+  if (sessionId && (sessionStartedAt || sessionStart) && (sessionEndedAt || sessionUpdated)) {
+    emitSessionEvents(
+      extractGeminiSessionEvents,
+      {
+        session_id: sessionId,
+        started_at: sessionStart || sessionStartedAt,
+        ended_at: sessionUpdated || sessionEndedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model,
+        updates: sessionUpdates,
+        total_tokens: sessionTotalTokens,
+      },
+      onSessionEvent,
+    );
+  }
+
   return {
     lastIndex: messages.length - 1,
     lastTotals: totals,
@@ -1041,6 +1198,7 @@ async function parseOpencodeMessageFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  onSessionEvent,
 }) {
   const fallbackKey =
     typeof fallbackMessageKey === "string" && fallbackMessageKey.trim()
@@ -1128,6 +1286,20 @@ async function parseOpencodeMessageFile({
     addTotals(projectBucket.totals, delta);
     projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
   }
+  emitSessionEvents(
+    extractOpenCodeSessionEvents,
+    {
+      session_id: typeof msg?.sessionID === "string" ? msg.sessionID : filePath,
+      started_at: tsIso,
+      ended_at: tsIso,
+      end_reason: "log_complete",
+      cwd: null,
+      model,
+      updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+      total_tokens: Number(delta.total_tokens || 0),
+    },
+    onSessionEvent,
+  );
   return { messageKey, lastTotals: currentTotals, eventsAggregated: 1, shouldUpdate: true };
 }
 
@@ -2588,6 +2760,7 @@ async function parseCursorApiIncremental({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   source,
 }) {
   await ensureDir(path.dirname(queuePath));
@@ -2635,6 +2808,23 @@ async function parseCursorApiIncremental({
     touchedBuckets.add(bucketKey(defaultSource, model, bucketStart));
 
     eventsAggregated += 1;
+    const shouldEmitSessionEvent = !lastTs || recordDate > lastTs;
+    if (shouldEmitSessionEvent) {
+      emitSessionEvents(
+        extractCursorSessionEvents,
+        {
+          session_id: `cursor|${recordDate}`,
+          started_at: recordDate,
+          ended_at: recordDate,
+          end_reason: "csv_record",
+          cwd: null,
+          model,
+          updates: [{ observed_at: recordDate, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
+    }
 
     // Track latest timestamp
     if (!latestTs || recordDate > latestTs) {
@@ -2853,7 +3043,7 @@ function normalizeKiroModelName(raw) {
   return name || null;
 }
 
-async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onProgress }) {
+async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onProgress, onSessionEvent }) {
   await ensureDir(path.dirname(queuePath));
   const kiroState = cursors.kiro && typeof cursors.kiro === "object" ? cursors.kiro : {};
   const lastDbId = typeof kiroState.lastDbId === "number"
@@ -2916,6 +3106,11 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
   const cb = typeof onProgress === "function" ? onProgress : null;
   let eventsAggregated = 0;
   let maxId = lastDbId;
+  let sessionStartedAt = null;
+  let sessionEndedAt = null;
+  let sessionTotalTokens = 0;
+  const sessionUpdates = [];
+  let sessionModel = null;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -2931,6 +3126,7 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
     // Resolve actual model from .chat timeline, fallback to "kiro-agent"
     const resolvedModel = resolveKiroModel(modelTimeline, ts);
     const model = normalizeKiroModelName(resolvedModel) || "kiro-agent";
+    sessionModel = model;
 
     const delta = {
       input_tokens: inputTokens,
@@ -2945,6 +3141,11 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey("kiro", model, bucketStart));
     eventsAggregated++;
+
+    if (!sessionStartedAt) sessionStartedAt = ts;
+    sessionEndedAt = ts;
+    sessionTotalTokens += Number(delta.total_tokens || 0);
+    sessionUpdates.push({ observed_at: ts, delta_tokens: Number(delta.total_tokens || 0) });
 
     if (usingDb && row.id && row.id > maxId) maxId = row.id;
 
@@ -2970,6 +3171,23 @@ async function parseKiroIncremental({ dbPath, jsonlPath, cursors, queuePath, onP
     jsonl: { lastLine: nextJsonlLine, updatedAt },
     updatedAt,
   };
+
+  if (sessionStartedAt && sessionEndedAt) {
+    emitSessionEvents(
+      extractKiroSessionEvents,
+      {
+        session_id: usingDb ? resolvedDbPath : resolvedJsonlPath,
+        started_at: sessionStartedAt,
+        ended_at: sessionEndedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model: sessionModel,
+        updates: sessionUpdates,
+        total_tokens: sessionTotalTokens,
+      },
+      onSessionEvent,
+    );
+  }
 
   return { recordsProcessed: rows.length, eventsAggregated, bucketsQueued };
 }
@@ -3010,7 +3228,7 @@ function readHermesSessions(dbPath, lastCompletedEpoch) {
   return Array.isArray(rows) ? rows : [];
 }
 
-async function parseHermesIncremental({ dbPath, cursors, queuePath, onProgress }) {
+async function parseHermesIncremental({ dbPath, cursors, queuePath, onProgress, onSessionEvent }) {
   await ensureDir(path.dirname(queuePath));
   const hermesState = cursors.hermes && typeof cursors.hermes === "object" ? cursors.hermes : {};
 
@@ -3095,6 +3313,20 @@ async function parseHermesIncremental({ dbPath, cursors, queuePath, onProgress }
     const bucket = getHourlyBucket(hourlyState, "hermes", model, bucketStart);
     addTotals(bucket.totals, delta);
     touchedBuckets.add(bucketKey("hermes", model, bucketStart));
+    emitSessionEvents(
+      extractHermesSessionEvents,
+      {
+        session_id: row.id,
+        started_at: row.started_at && Number.isFinite(row.started_at) ? new Date(row.started_at * 1000).toISOString() : tsIso,
+        ended_at: row.ended_at && Number.isFinite(row.ended_at) ? new Date(row.ended_at * 1000).toISOString() : tsIso,
+        end_reason: row.ended_at ? "log_complete" : null,
+        cwd: null,
+        model,
+        updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+        total_tokens: Number(delta.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
     eventsAggregated++;
 
     // Only advance cursor past sessions that have ended
@@ -4049,7 +4281,7 @@ function resolveKimiWireFiles(env = process.env) {
   return files;
 }
 
-async function parseKimiIncremental({ wireFiles, cursors, queuePath, onProgress, env, model } = {}) {
+async function parseKimiIncremental({ wireFiles, cursors, queuePath, onProgress, onSessionEvent, env, model } = {}) {
   await ensureDir(path.dirname(queuePath));
   const kimiState = cursors.kimi && typeof cursors.kimi === "object" ? cursors.kimi : {};
   const seenIds = new Set(Array.isArray(kimiState.seenIds) ? kimiState.seenIds : []);
@@ -4135,6 +4367,20 @@ async function parseKimiIncremental({ wireFiles, cursors, queuePath, onProgress,
       const bucket = getHourlyBucket(hourlyState, "kimi", kimiModel, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("kimi", kimiModel, bucketStart));
+      emitSessionEvents(
+        extractKimiSessionEvents,
+        {
+          session_id: path.basename(path.dirname(filePath)),
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: null,
+          model: kimiModel,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       seenIds.add(message_id);
       eventsAggregated++;
 
@@ -4248,6 +4494,7 @@ async function parseCodebuddyIncremental({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   defaultModel,
 } = {}) {
@@ -4400,6 +4647,20 @@ async function parseCodebuddyIncremental({
       const bucket = getHourlyBucket(hourlyState, "codebuddy", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("codebuddy", model, bucketStart));
+      emitSessionEvents(
+        extractCodebuddySessionEvents,
+        {
+          session_id: typeof entry.sessionId === "string" && entry.sessionId ? entry.sessionId : filePath,
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: null,
+          model,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       seenIds.add(messageId);
       eventsAggregated++;
 
@@ -4558,6 +4819,7 @@ async function parseOmpIncremental({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   defaultModel,
 } = {}) {
@@ -4686,6 +4948,20 @@ async function parseOmpIncremental({
       const bucket = getHourlyBucket(hourlyState, "omp", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("omp", model, bucketStart));
+      emitSessionEvents(
+        extractOmpSessionEvents,
+        {
+          session_id: filePath,
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: null,
+          model,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       seenIds.add(entryId);
       eventsAggregated++;
 
@@ -5353,7 +5629,7 @@ function pickCopilotModel(attrs) {
   return null;
 }
 
-async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgress, env } = {}) {
+async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgress, onSessionEvent, env } = {}) {
   await ensureDir(path.dirname(queuePath));
   const copilotState = cursors.copilot && typeof cursors.copilot === "object" ? cursors.copilot : {};
   const seenIds = new Set(Array.isArray(copilotState.seenIds) ? copilotState.seenIds : []);
@@ -5453,6 +5729,20 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
       const bucket = getHourlyBucket(hourlyState, "copilot", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("copilot", model, bucketStart));
+      emitSessionEvents(
+        extractCopilotSessionEvents,
+        {
+          session_id: filePath,
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: null,
+          model,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       eventsAggregated++;
       if (dedupKey) seenIds.add(dedupKey);
 

@@ -1264,6 +1264,29 @@ function createLocalApiHandler({ queuePath }) {
       return true;
     }
 
+    // --- vibedeck-branch-usage (GET) ---
+    if (p === "/functions/vibedeck-branch-usage") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const { queryBranchUsage } = require("./branch-usage");
+      json(
+        res,
+        queryBranchUsage(dbPath, {
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          repo: url.searchParams.get("repo"),
+          branch: url.searchParams.get("branch"),
+          limit: url.searchParams.get("limit"),
+          includeSessions: url.searchParams.get("include_sessions") === "1",
+        }),
+      );
+      return true;
+    }
+
     // --- vibedeck-attribution-stats (GET) ---
     if (p === "/functions/vibedeck-attribution-stats") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {

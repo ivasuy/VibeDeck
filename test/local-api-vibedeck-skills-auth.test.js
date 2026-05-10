@@ -57,10 +57,30 @@ async function postJson(baseUrl, pathname, body, headers = {}) {
   return { status: res.statusCode, body: jsonBody };
 }
 
+async function getJson(baseUrl, pathname, headers = {}) {
+  const req = http.request(`${baseUrl}${pathname}`, {
+    method: "GET",
+    headers,
+  });
+  req.end();
+  const [res] = await once(req, "response");
+  res.setEncoding("utf8");
+  let buf = "";
+  for await (const chunk of res) buf += chunk;
+  let jsonBody = null;
+  try {
+    jsonBody = buf ? JSON.parse(buf) : null;
+  } catch {
+    jsonBody = null;
+  }
+  return { status: res.statusCode, body: jsonBody };
+}
+
 let tmpRoot;
 let vibedeckRoot;
 let queuePath;
 let token;
+let localAuthToken;
 let srv;
 let calls;
 
@@ -109,6 +129,8 @@ beforeEach(async () => {
   delete require.cache[require.resolve("../src/lib/local-api")];
 
   srv = await startLocalApiServer({ queuePath });
+  const localAuthRes = await getJson(srv.baseUrl, "/api/local-auth");
+  localAuthToken = localAuthRes.body?.token;
 });
 
 afterEach(async () => {
@@ -116,6 +138,38 @@ afterEach(async () => {
   if (tmpRoot) await fs.rm(tmpRoot, { recursive: true, force: true });
   srv = null;
   tmpRoot = null;
+});
+
+test("POST /functions/vibedeck-skills/uninstall accepts local dashboard auth from loopback origin", async () => {
+  const res = await postJson(
+    srv.baseUrl,
+    "/functions/vibedeck-skills/uninstall",
+    { id: "skill-id" },
+    {
+      origin: "http://127.0.0.1:7690",
+      "x-tokentracker-local-auth": localAuthToken,
+    },
+  );
+
+  assert.notEqual(res.status, 401);
+  assert.equal(res.body?.ok, true);
+  assert.deepEqual(calls, [{ fn: "uninstallSkill", args: ["skill-id"] }]);
+});
+
+test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth without loopback origin", async () => {
+  const res = await postJson(
+    srv.baseUrl,
+    "/functions/vibedeck-skills/uninstall",
+    { id: "skill-id" },
+    {
+      origin: "http://example.com",
+      "x-tokentracker-local-auth": localAuthToken,
+    },
+  );
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body?.error, "missing_auth");
+  assert.equal(calls.length, 0);
 });
 
 for (const cmd of ["install", "uninstall", "restore", "setTargets", "importLocal", "deleteLocal"]) {

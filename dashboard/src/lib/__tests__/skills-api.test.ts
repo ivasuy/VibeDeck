@@ -83,6 +83,9 @@ describe("skills-api endpoint routing", () => {
     await uninstallSkill("skill-id");
     expect(fetchMock.mock.calls[0][0]).toBe("/functions/vibedeck-skills/uninstall");
     expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      "x-tokentracker-local-auth": "abc",
+    });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({ id: "skill-id" });
   });
 
@@ -117,6 +120,9 @@ describe("skills-api endpoint routing", () => {
     await deleteLocalSkill("/tmp/skill", ["claude"]);
     expect(fetchMock.mock.calls[0][0]).toBe("/functions/vibedeck-skills/deleteLocal");
     expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      "x-tokentracker-local-auth": "abc",
+    });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({
       directory: "/tmp/skill",
       targets: ["claude"],

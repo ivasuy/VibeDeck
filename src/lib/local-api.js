@@ -834,6 +834,11 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     return hasAllowedLoopbackOrigin(req?.headers || {});
   }
 
+  function requireVibeDeckMutationAuth(req, res, tokenPath) {
+    if (isAuthorizedLocalMutation(req)) return true;
+    return requireWriteAuth(req, res, { tokenPath });
+  }
+
   return async function handleLocalApi(req, res, url) {
     const p = url.pathname;
 
@@ -1273,7 +1278,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
       try {
         body = await readJsonBody(req);
@@ -1297,7 +1302,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
       try {
         body = await readJsonBody(req);
@@ -1346,7 +1351,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
       try {
         body = await readJsonBody(req);
@@ -1397,7 +1402,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const cmd = p.slice("/functions/vibedeck-entire/".length);
 
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
 
       const allowed = new Set([
         "enable",
@@ -1770,7 +1775,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
       try {
         body = await readJsonBody(req);
@@ -1830,7 +1835,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
-      if (!requireWriteAuth(req, res, { tokenPath })) return true;
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
       try {
         body = await readJsonBody(req);

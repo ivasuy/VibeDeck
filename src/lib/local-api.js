@@ -76,6 +76,28 @@ function stringifySsePayload(payload) {
   });
 }
 
+function toLiveCostNumber(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function enrichLiveSessionCost(row) {
+  const costResult = resolveUsageCost({
+    stored_cost_usd: row?.total_cost_usd,
+    source: row?.provider,
+    model: row?.model,
+    total_tokens: row?.total_tokens,
+  });
+
+  return {
+    ...row,
+    estimated_total_cost_usd: toLiveCostNumber(costResult.total_cost_usd),
+    cost_estimated: costResult.cost_estimated,
+    cost_quality: costResult.cost_quality,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/
 //   - CURATED overrides (kiro-*, hy3-*, composer-*, kimi-for-coding, etc.)
@@ -1175,7 +1197,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         reapOrphanedSessions(dbPath);
         const db = new DatabaseSync(dbPath);
         try {
-          sessions = db.prepare("SELECT * FROM vibedeck_sessions WHERE ended_at IS NULL").all();
+          sessions = db.prepare("SELECT * FROM vibedeck_sessions WHERE ended_at IS NULL").all()
+            .map(enrichLiveSessionCost);
         } finally {
           db.close();
         }
@@ -1260,17 +1283,22 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
 
       const bus = getLiveBus();
       client.onStart = (event) => {
-        enqueue({ type: "session:start", dropped: client.dropped, ...event });
+        enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
       };
       client.onUpdate = (event) => {
         const extra =
           event && event.cwd == null && typeof event.observed_at === "string"
             ? { last_observed_at: event.observed_at }
             : {};
-        enqueue({ type: "session:update", dropped: client.dropped, ...event, ...extra });
+        enqueue({
+          type: "session:update",
+          dropped: client.dropped,
+          ...enrichLiveSessionCost(event),
+          ...extra,
+        });
       };
       client.onEnd = (event) => {
-        enqueue({ type: "session:end", dropped: client.dropped, ...event });
+        enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
       };
 
       bus.on("session:start", client.onStart);

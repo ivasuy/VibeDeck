@@ -69,6 +69,14 @@ function emptyStateCopy(status) {
   };
 }
 
+function formatLiveSessionCost(row) {
+  const preferredCost = row?.estimated_total_cost_usd ?? row?.total_cost_usd;
+  if (preferredCost == null) return "—";
+  const formatted = formatUsdCurrency(String(preferredCost));
+  if (formatted === "-") return "—";
+  return row?.cost_estimated ? `${formatted} est.` : formatted;
+}
+
 function MetaItem({ label, value }) {
   return (
     <div className="min-w-0">
@@ -168,7 +176,7 @@ export function LiveSessionList({
                   <MetaItem label={copy("live.meta.tier")} value={tier} />
                   <MetaItem label={copy("live.meta.model")} value={String(row?.model || "—")} />
                   <MetaItem label={copy("live.meta.tokens")} value={toDisplayNumber(row?.total_tokens ?? 0)} />
-                  <MetaItem label={copy("live.meta.cost")} value={formatUsdCurrency(String(row?.total_cost_usd ?? 0))} />
+                  <MetaItem label={copy("live.meta.cost")} value={formatLiveSessionCost(row)} />
                   <MetaItem label={copy("live.meta.started")} value={formatTimestamp(startedAt)} />
                   <MetaItem label={copy("live.meta.updated")} value={formatTimestamp(updatedAt)} />
                   <MetaItem label={copy("live.meta.state")} value={sessionState(row)} />

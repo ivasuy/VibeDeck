@@ -151,12 +151,16 @@ test('vibedeck-sessions-live streams snapshot then deltas', async () => {
     assert.ok(Array.isArray(snapshotEvents[0].sessions));
     assert.equal(snapshotEvents[0].sessions.length, 1);
     assert.equal(snapshotEvents[0].sessions[0].session_id, 's-live-1');
+    assert.equal(snapshotEvents[0].sessions[0].estimated_total_cost_usd, null);
+    assert.equal(snapshotEvents[0].sessions[0].cost_estimated, true);
+    assert.equal(snapshotEvents[0].sessions[0].cost_quality, 'pricing_missing');
 
     const bus = getLiveBus();
     bus.emit('session:update', {
       provider: 'codex',
       session_id: 's-live-1',
       observed_at: '2026-05-09T00:01:00.000Z',
+      model: 'gpt-5.4',
       total_tokens: 5,
     });
 
@@ -165,6 +169,60 @@ test('vibedeck-sessions-live streams snapshot then deltas', async () => {
     assert.equal(events[1].type, 'session:update');
     assert.equal(events[1].provider, 'codex');
     assert.equal(events[1].session_id, 's-live-1');
+    assert.ok(events[1].estimated_total_cost_usd > 0);
+    assert.equal(events[1].cost_estimated, true);
+    assert.equal(events[1].cost_quality, 'estimated_total_tokens');
+    exchange.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live snapshot estimates positive-token known-model rows', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-estimated-cost-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+
+  ensureSchema(dbPath);
+  const liveNow = new Date().toISOString();
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    `INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd,
+      created_at, updated_at
+    ) VALUES (
+      'codex', 's-est-1', '${liveNow}', NULL, NULL,
+      '/tmp', NULL, NULL, NULL,
+      NULL, 'D', 'unattributed', NULL,
+      'gpt-5.4', 1000, NULL,
+      '${liveNow}', '${liveNow}'
+    );`,
+  );
+  db.close();
+
+  try {
+    const exchange = createMockSseExchange();
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+    assert.equal(exchange.res.statusCode, 200);
+
+    await flushAsyncEvents();
+    const snapshot = exchange.readEvents().find((event) => event.type === 'snapshot');
+    assert.ok(snapshot);
+
+    const row = snapshot.sessions.find((session) => session.session_id === 's-est-1');
+    assert.ok(row);
+    assert.equal(row.total_cost_usd, null);
+    assert.ok(row.estimated_total_cost_usd > 0);
+    assert.equal(row.cost_estimated, true);
+    assert.equal(row.cost_quality, 'estimated_total_tokens');
     exchange.close();
   } finally {
     await fs.rm(root, { recursive: true, force: true });

@@ -22,6 +22,32 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
         total_tokens: 1200,
         total_cost_usd: 0.12,
       },
+      {
+        provider: "codex",
+        session_id: "s2",
+        repo_root: "/repo/vibedeck",
+        branch: "feature/costs",
+        confidence: "medium",
+        branch_resolution_tier: "B",
+        model: "gpt-5.4",
+        total_tokens: 5000,
+        total_cost_usd: null,
+        estimated_total_cost_usd: 0.05,
+        cost_estimated: true,
+      },
+      {
+        provider: "unknown",
+        session_id: "s3",
+        repo_root: "/repo/unknown",
+        branch: "mystery",
+        confidence: "low",
+        branch_resolution_tier: "C",
+        model: "totally-unknown-model",
+        total_tokens: 5000,
+        total_cost_usd: null,
+        estimated_total_cost_usd: null,
+        cost_estimated: true,
+      },
     ],
   }),
 }));
@@ -45,9 +71,14 @@ describe("LivePage", () => {
     render(<LivePage />);
 
     expect(await screen.findByText("Live Workbench")).toBeTruthy();
-    expect(screen.getByText(/codex/i)).toBeTruthy();
+    expect(screen.getAllByText(/codex/i).length).toBeGreaterThan(0);
     expect(screen.getByText("main")).toBeTruthy();
+    expect(screen.getByText("feature/costs")).toBeTruthy();
+    expect(screen.getByText("mystery")).toBeTruthy();
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
+    expect(screen.getByText("$0.05 est.")).toBeTruthy();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+    expect(screen.queryByText("$0.00")).toBeNull();
     expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
   });
 });

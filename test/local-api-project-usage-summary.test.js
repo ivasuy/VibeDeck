@@ -2,8 +2,10 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 const { test } = require("node:test");
 
+const { ensureSchema } = require("../src/lib/db");
 const { createLocalApiHandler } = require("../src/lib/local-api");
 
 async function writeJsonLines(filePath, rows) {
@@ -37,6 +39,22 @@ async function callEndpoint(queuePath, endpoint) {
   const handled = await handler(req, res, url);
   assert.ok(handled, `endpoint must be handled: ${endpoint}`);
   return JSON.parse(chunks.join(""));
+}
+
+function insertSession(db, row) {
+  db.prepare(`
+    INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd, created_at, updated_at
+    ) VALUES (
+      @provider, @session_id, @started_at, @ended_at, NULL,
+      @cwd, @repo_root, NULL, NULL,
+      NULL, @branch_resolution_tier, @confidence, NULL,
+      @model, @total_tokens, NULL, @started_at, @started_at
+    )
+  `).run(row);
 }
 
 test("vibedeck project usage alias matches the legacy response shape", async () => {
@@ -129,6 +147,107 @@ test("project usage supports recent sorting, limit, and last_seen_at metadata", 
     for (const entry of body.entries) {
       assert.ok(entry.last_seen_at, "each entry must include last_seen_at");
     }
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage merges fresh local repo usage from SQLite ahead of stale project queue rows", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, [
+      {
+        project_key: "acme/public-alpha",
+        project_ref: "https://github.com/acme/public-alpha",
+        source: "codex",
+        hour_start: "2026-05-08T09:00:00.000Z",
+        total_tokens: 150,
+        billable_total_tokens: 150,
+      },
+      {
+        project_key: "acme/public-beta",
+        project_ref: "https://github.com/acme/public-beta",
+        source: "codex",
+        hour_start: "2026-05-07T10:00:00.000Z",
+        total_tokens: 120,
+        billable_total_tokens: 120,
+      },
+      {
+        project_key: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        project_ref: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        source: "codex",
+        hour_start: "2026-05-09T08:30:00.000Z",
+        total_tokens: 25,
+        billable_total_tokens: 25,
+      },
+    ]);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "vd-1",
+        started_at: "2026-05-10T12:30:00.000Z",
+        ended_at: "2026-05-10T12:55:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 450,
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "swe-1",
+        started_at: "2026-05-10T11:15:00.000Z",
+        ended_at: "2026-05-10T11:45:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 320,
+      });
+      insertSession(db, {
+        provider: "claude",
+        session_id: "vd-2",
+        started_at: "2026-05-09T18:00:00.000Z",
+        ended_at: "2026-05-09T18:20:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch_resolution_tier: "B",
+        confidence: "medium",
+        model: "claude-sonnet-4-6",
+        total_tokens: 50,
+      });
+    } finally {
+      db.close();
+    }
+
+    const body = await callEndpoint(
+      queuePath,
+      "/functions/vibedeck-project-usage-summary?sort=recent&limit=2",
+    );
+
+    assert.deepEqual(
+      body.entries.map((entry) => entry.project_key),
+      ["VibeDeck", "SWE-AF"],
+    );
+    assert.equal(body.entries[0].project_ref, "/Users/vasuyadav/Downloads/Projects/VibeDeck");
+    assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:30:00.000Z");
+    assert.equal(body.entries[0].total_tokens, "525");
+    assert.equal(body.entries[1].project_ref, "/Users/vasuyadav/Downloads/Projects/SWE-AF");
+    assert.equal(body.entries[1].last_seen_at, "2026-05-10T11:15:00.000Z");
+    assert.equal(body.entries[1].total_tokens, "320");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

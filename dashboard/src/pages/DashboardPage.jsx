@@ -442,6 +442,7 @@ export function DashboardPage({
     baseUrl,
     accessToken,
     limit: 10,
+    sort: "recent",
     from,
     to,
     timeZone,

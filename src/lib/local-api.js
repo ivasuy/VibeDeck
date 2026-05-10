@@ -123,6 +123,24 @@ function readProjectQueueData(projectQueuePath) {
   return Array.from(seen.values());
 }
 
+function readSessionProjectUsage(dbPath) {
+  if (!fs.existsSync(dbPath)) return [];
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return db.prepare(`
+      SELECT
+        repo_root,
+        SUM(COALESCE(total_tokens, 0)) AS total_tokens,
+        MAX(started_at) AS last_seen_at
+      FROM vibedeck_sessions
+      WHERE repo_root IS NOT NULL AND repo_root <> ''
+      GROUP BY repo_root
+    `).all();
+  } finally {
+    db.close();
+  }
+}
+
 function safeReadJsonFile(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -204,6 +222,110 @@ function projectRowLastSeenAt(row) {
     normalizeIsoTimestamp(row?.updated_at) ||
     normalizeIsoTimestamp(row?.hour_start)
   );
+}
+
+function splitRepoRootSegments(repoRoot) {
+  return String(repoRoot || "")
+    .trim()
+    .split(/[\\/]+/)
+    .filter(Boolean);
+}
+
+function localProjectKeyForDepth(repoRoot, depth) {
+  const parts = splitRepoRootSegments(repoRoot);
+  if (parts.length === 0) return String(repoRoot || "").trim() || "unknown";
+  return parts.slice(Math.max(0, parts.length - depth)).join("/");
+}
+
+function buildLocalProjectKeyMap(sessionProjectRows) {
+  const repoRoots = Array.from(
+    new Set(
+      sessionProjectRows
+        .map((row) => String(row?.repo_root || "").trim())
+        .filter(Boolean),
+    ),
+  );
+  const labels = new Map();
+  let pending = repoRoots;
+  let depth = 1;
+
+  while (pending.length > 0) {
+    const groups = new Map();
+    for (const repoRoot of pending) {
+      const label = localProjectKeyForDepth(repoRoot, depth);
+      if (!groups.has(label)) groups.set(label, []);
+      groups.get(label).push(repoRoot);
+    }
+
+    const nextPending = [];
+    for (const [label, repoRootsForLabel] of groups) {
+      if (repoRootsForLabel.length === 1) {
+        labels.set(repoRootsForLabel[0], label);
+        continue;
+      }
+
+      for (const repoRoot of repoRootsForLabel) {
+        if (depth >= splitRepoRootSegments(repoRoot).length) {
+          labels.set(repoRoot, label);
+        } else {
+          nextPending.push(repoRoot);
+        }
+      }
+    }
+
+    pending = nextPending;
+    depth += 1;
+  }
+
+  return labels;
+}
+
+function projectUsageIdentity(entry) {
+  const projectRef = typeof entry?.project_ref === "string" ? entry.project_ref.trim() : "";
+  if (projectRef) return `ref:${projectRef}`;
+  const projectKey = typeof entry?.project_key === "string" ? entry.project_key.trim() : "";
+  return `key:${projectKey || "unknown"}`;
+}
+
+function mergeProjectUsageEntry(map, entry) {
+  const projectKey =
+    typeof entry?.project_key === "string" && entry.project_key.trim()
+      ? entry.project_key.trim()
+      : "unknown";
+  const projectRef =
+    typeof entry?.project_ref === "string" && entry.project_ref.trim()
+      ? entry.project_ref.trim()
+      : projectKey;
+  const totalTokens = Number(entry?.total_tokens || 0);
+  const billableTotalTokens = Number((entry?.billable_total_tokens ?? entry?.total_tokens) || 0);
+  const lastSeenAt = normalizeIsoTimestamp(entry?.last_seen_at);
+  const identity = projectUsageIdentity({ project_key: projectKey, project_ref: projectRef });
+  const existing = map.get(identity);
+
+  if (!existing) {
+    map.set(identity, {
+      project_key: projectKey,
+      project_ref: projectRef,
+      total_tokens: totalTokens,
+      billable_total_tokens: billableTotalTokens,
+      last_seen_at: lastSeenAt,
+    });
+    return;
+  }
+
+  existing.total_tokens += totalTokens;
+  existing.billable_total_tokens += billableTotalTokens;
+  if (!existing.project_ref && projectRef) existing.project_ref = projectRef;
+  if (
+    projectRef &&
+    existing.project_ref === projectRef &&
+    (!existing.project_key || existing.project_key === existing.project_ref)
+  ) {
+    existing.project_key = projectKey;
+  }
+  if (lastSeenAt && (!existing.last_seen_at || lastSeenAt > existing.last_seen_at)) {
+    existing.last_seen_at = lastSeenAt;
+  }
 }
 
 function parsePositiveLimit(rawValue) {
@@ -1466,28 +1588,36 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         path.dirname(qp),
         "project.queue.jsonl",
       );
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       const projectRows = readProjectQueueData(projectQueuePath);
+      let sessionProjectRows = [];
+      try {
+        sessionProjectRows = readSessionProjectUsage(dbPath);
+      } catch {
+        sessionProjectRows = [];
+      }
+      const localProjectKeys = buildLocalProjectKeyMap(sessionProjectRows);
 
       const byProject = new Map();
+      for (const row of sessionProjectRows) {
+        const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
+        if (!repoRoot) continue;
+        mergeProjectUsageEntry(byProject, {
+          project_key: localProjectKeys.get(repoRoot) || repoRoot,
+          project_ref: repoRoot,
+          total_tokens: Number(row.total_tokens || 0),
+          billable_total_tokens: Number(row.total_tokens || 0),
+          last_seen_at: normalizeIsoTimestamp(row.last_seen_at),
+        });
+      }
       for (const row of projectRows) {
-        const key = row.project_key || "unknown";
-        if (!byProject.has(key)) {
-          byProject.set(key, {
-            project_key: key,
-            project_ref: row.project_ref || key,
-            total_tokens: 0,
-            billable_total_tokens: 0,
-            last_seen_at: null,
-          });
-        }
-        const agg = byProject.get(key);
-        agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number((row.billable_total_tokens ?? row.total_tokens) || 0);
-        if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
-        const lastSeenAt = projectRowLastSeenAt(row);
-        if (lastSeenAt && (!agg.last_seen_at || lastSeenAt > agg.last_seen_at)) {
-          agg.last_seen_at = lastSeenAt;
-        }
+        mergeProjectUsageEntry(byProject, {
+          project_key: row.project_key || "unknown",
+          project_ref: row.project_ref || row.project_key || "unknown",
+          total_tokens: Number(row.total_tokens || 0),
+          billable_total_tokens: Number((row.billable_total_tokens ?? row.total_tokens) || 0),
+          last_seen_at: projectRowLastSeenAt(row),
+        });
       }
 
       const sortMode =

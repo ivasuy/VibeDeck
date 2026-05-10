@@ -7,6 +7,7 @@ export function useProjectUsageSummary({
   baseUrl,
   accessToken,
   limit = 3,
+  sort = "recent",
   from,
   to,
   source,
@@ -38,6 +39,7 @@ export function useProjectUsageSummary({
         baseUrl,
         accessToken: resolvedToken,
         limit,
+        sort,
         from,
         to,
         source,
@@ -52,7 +54,7 @@ export function useProjectUsageSummary({
     } finally {
       setLoading(false);
     }
-  }, [accessToken, baseUrl, from, limit, mockEnabled, source, timeZone, to, tzOffsetMinutes, isLocalMode]);
+  }, [accessToken, baseUrl, from, limit, mockEnabled, sort, source, timeZone, to, tzOffsetMinutes, isLocalMode]);
 
   useEffect(() => {
     // 本地模式跳过 token 检查

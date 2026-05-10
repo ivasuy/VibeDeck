@@ -334,34 +334,6 @@ live.override.success.saved,dashboard,LivePage,BranchOverridePanel,success_saved
 live.override.success.cleared,dashboard,LivePage,BranchOverridePanel,success_cleared,Override cleared.,,active
 live.override.error.submit,dashboard,LivePage,BranchOverridePanel,error_submit,Unable to update attribution: {{error}},,active
 live.override.error.fallback,dashboard,LivePage,BranchOverridePanel,error_fallback,Request failed,,active
-live.workbench.metrics.projects,dashboard,LivePage,LiveProjectWorkbench,metric_projects,Projects,,active
-live.workbench.metrics.branches,dashboard,LivePage,LiveProjectWorkbench,metric_branches,Branches,,active
-live.workbench.metrics.sessions,dashboard,LivePage,LiveProjectWorkbench,metric_sessions,Sessions,,active
-live.workbench.metrics.providers,dashboard,LivePage,LiveProjectWorkbench,metric_providers,Providers,,active
-live.workbench.stream_error,dashboard,LivePage,LiveProjectWorkbench,stream_error,Live stream error: {{error}},,active
-live.workbench.project.unknown_repo,dashboard,LivePage,LiveProjectWorkbench,project_unknown_repo,Unknown repo,,active
-live.workbench.project.updated_label,dashboard,LivePage,LiveProjectWorkbench,project_updated_label,Last activity,,active
-live.workbench.project.summary,dashboard,LivePage,LiveProjectWorkbench,project_summary,Project summary,,active
-live.workbench.project.summary_counts,dashboard,LivePage,LiveProjectWorkbench,project_summary_counts,{{branches}} branches across {{sessions}} sessions,,active
-live.workbench.project.branch_costs,dashboard,LivePage,LiveProjectWorkbench,project_branch_costs,Branch totals,,active
-live.workbench.project.branch_costs_aria,dashboard,LivePage,LiveProjectWorkbench,project_branch_costs_aria,Branch totals for {{repo}},,active
-live.workbench.project.branch_costs_tokens_fallback,dashboard,LivePage,LiveProjectWorkbench,project_branch_costs_tokens_fallback,{{tokens}} tokens,,active
-live.workbench.branch.badge,dashboard,LivePage,LiveBranchGroup,branch_badge,Branch,,active
-live.workbench.branch.updated,dashboard,LivePage,LiveBranchGroup,branch_updated,Updated {{updatedAt}},,active
-live.workbench.branch.provider_mix,dashboard,LivePage,LiveBranchGroup,branch_provider_mix,Provider and model mix,,active
-live.workbench.branch.session_count,dashboard,LivePage,LiveBranchGroup,branch_session_count,{{count}} sessions,,active
-live.workbench.branch.confidence,dashboard,LivePage,LiveBranchGroup,branch_confidence,Confidence,,active
-live.workbench.branch.confidence_aria,dashboard,LivePage,LiveBranchGroup,branch_confidence_aria,Confidence distribution for {{branch}},,active
-live.workbench.branch.select_session,dashboard,LivePage,LiveBranchGroup,branch_select_session,Select session {{provider}} {{branch}} {{session}},,active
-live.workbench.branch.session_meta,dashboard,LivePage,LiveBranchGroup,branch_session_meta,{{model}} • {{session}},,active
-live.detail.title,dashboard,LivePage,LiveSessionDetailPanel,detail_title,Selected session,,active
-live.detail.subtitle,dashboard,LivePage,LiveSessionDetailPanel,detail_subtitle,Inspect the active session before applying a branch correction.,,active
-live.detail.empty_title,dashboard,LivePage,LiveSessionDetailPanel,detail_empty_title,No session selected,,active
-live.detail.empty_description,dashboard,LivePage,LiveSessionDetailPanel,detail_empty_description,Choose a live session to inspect its branch, provider, and cost details.,,active
-live.detail.provider,dashboard,LivePage,LiveSessionDetailPanel,detail_provider,Provider,,active
-live.detail.session,dashboard,LivePage,LiveSessionDetailPanel,detail_session,Session ID,,active
-live.detail.session_health,dashboard,LivePage,LiveSessionDetailPanel,detail_session_health,Session health,,active
-live.detail.confidence_aria,dashboard,LivePage,LiveSessionDetailPanel,detail_confidence_aria,Confidence for session {{session}},,active
 branches.title,dashboard,BranchesPage,BranchesPage,title,Branch cost intelligence,,active
 branches.subtitle,dashboard,BranchesPage,BranchesPage,subtitle,Review branch-level tokens and cost with attribution confidence and session detail.,,active
 branches.loading,dashboard,BranchesPage,BranchesPage,loading,Loading branch usage…,,active

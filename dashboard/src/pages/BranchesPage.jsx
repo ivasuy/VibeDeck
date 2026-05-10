@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ChevronDown, CircleDollarSign, Cpu, MessagesSquare } from "lucide-react";
 import { Card, Input } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
 import { getBranchUsage } from "../lib/vibedeck-api";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
+
+const BRANCHES_PAGE_SIZE = 10;
 
 function toCount(value) {
   const n = Number(value ?? 0);
@@ -79,8 +82,23 @@ function buildRepoOptionLabels(repos) {
 
 function formatSummaryCostLabel(totals) {
   if (totals.costUnknown) return copy("branches.value.unknown_cost");
-  const formatted = formatUsdCurrency(String(totals.cost));
-  return totals.costEstimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
+  return formatUsdCurrency(String(totals.cost));
+}
+
+function SummaryMetric({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-md border border-oai-gray-200/70 bg-oai-black/[0.025] px-3 py-2.5 dark:border-oai-gray-800/70 dark:bg-white/[0.06]">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+        <span className="inline-flex h-6 w-6 items-center justify-center text-oai-gray-500 dark:text-oai-gray-300">
+          <Icon className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <span>{label}</span>
+      </div>
+      <div className="mt-2 text-sm font-semibold tabular-nums text-oai-black dark:text-white">
+        {value}
+      </div>
+    </div>
+  );
 }
 
 export function BranchesPage() {
@@ -90,6 +108,7 @@ export function BranchesPage() {
   const [selectedRepo, setSelectedRepo] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [selectedRow, setSelectedRow] = useState(null);
+  const [branchPage, setBranchPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +162,10 @@ export function BranchesPage() {
   }, [rows, branchFilter]);
 
   useEffect(() => {
+    setBranchPage(0);
+  }, [effectiveSelectedRepo, branchFilter]);
+
+  useEffect(() => {
     if (!selectedRow) return;
     const rowStillVisible = filteredRows.some(
       (row) =>
@@ -173,6 +196,12 @@ export function BranchesPage() {
 
   const appliedCount = filteredRows.length;
   const totalCount = rows.length;
+  const pageCount = Math.ceil(appliedCount / BRANCHES_PAGE_SIZE);
+  const boundedPage = pageCount > 0 ? Math.min(branchPage, pageCount - 1) : 0;
+  const pagedRows = filteredRows.slice(
+    boundedPage * BRANCHES_PAGE_SIZE,
+    boundedPage * BRANCHES_PAGE_SIZE + BRANCHES_PAGE_SIZE,
+  );
   const emptyMessage = repos.length === 0
     ? copy("branches.empty.no_repo_rows")
     : totalCount === 0
@@ -196,23 +225,29 @@ export function BranchesPage() {
               >
                 {copy("branches.project.select_label")}
               </label>
-              <select
-                id="branches-project-select"
-                value={effectiveSelectedRepo}
-                onChange={(event) => setSelectedRepo(event.target.value)}
-                disabled={repos.length === 0}
-                className="h-10 w-full rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-1 focus:ring-oai-brand/30 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
-                aria-label={copy("branches.project.select_label")}
-              >
-                {repos.map((repoEntry) => {
-                  const repoRoot = String(repoEntry?.repo_root || "");
-                  return (
-                    <option key={repoRoot} value={repoRoot} title={repoRoot || undefined}>
-                      {repoOptionLabels.get(repoRoot) || "—"}
-                    </option>
-                  );
-                })}
-              </select>
+              <div className="relative">
+                <select
+                  id="branches-project-select"
+                  value={effectiveSelectedRepo}
+                  onChange={(event) => setSelectedRepo(event.target.value)}
+                  disabled={repos.length === 0}
+                  className="h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  aria-label={copy("branches.project.select_label")}
+                >
+                  {repos.map((repoEntry) => {
+                    const repoRoot = String(repoEntry?.repo_root || "");
+                    return (
+                      <option key={repoRoot} value={repoRoot} title={repoRoot || undefined}>
+                        {repoOptionLabels.get(repoRoot) || "—"}
+                      </option>
+                    );
+                  })}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-oai-gray-400 dark:text-oai-gray-500"
+                  aria-hidden
+                />
+              </div>
             </div>
             <Input
               value={branchFilter}
@@ -223,34 +258,22 @@ export function BranchesPage() {
             />
           </div>
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.tokens")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {toDisplayNumber(totals.tokens)}
-              </div>
-            </div>
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.cost")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {formatSummaryCostLabel(totals)}
-              </div>
-            </div>
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.sessions")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {toDisplayNumber(totals.sessions)}
-              </div>
-            </div>
+            <SummaryMetric
+              icon={Cpu}
+              label={copy("branches.total.tokens")}
+              value={toDisplayNumber(totals.tokens)}
+            />
+            <SummaryMetric
+              icon={CircleDollarSign}
+              label={copy("branches.total.cost")}
+              value={formatSummaryCostLabel(totals)}
+            />
+            <SummaryMetric
+              icon={MessagesSquare}
+              label={copy("branches.total.sessions")}
+              value={toDisplayNumber(totals.sessions)}
+            />
           </div>
-          <p className="mt-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("branches.filter.summary", { count: appliedCount, total: totalCount })}
-          </p>
         </Card>
 
         {error ? (
@@ -262,7 +285,16 @@ export function BranchesPage() {
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.loading")}</p>
           </Card>
         ) : (
-          <BranchUsageTable rows={filteredRows} onOpenSessions={setSelectedRow} emptyMessage={emptyMessage} />
+          <BranchUsageTable
+            rows={pagedRows}
+            onOpenSessions={setSelectedRow}
+            emptyMessage={emptyMessage}
+            page={boundedPage}
+            pageCount={pageCount}
+            pageSize={BRANCHES_PAGE_SIZE}
+            totalRows={appliedCount}
+            onPageChange={setBranchPage}
+          />
         )}
       </div>
 

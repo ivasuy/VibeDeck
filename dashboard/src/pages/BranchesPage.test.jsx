@@ -149,11 +149,12 @@ describe("BranchesPage", () => {
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
     expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
-    expect(await screen.findByText("/repo-a")).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
+    expect(screen.queryByText("/repo-a")).toBeNull();
     expect(screen.getByText("feature-a")).toBeTruthy();
     expect(screen.queryByText("/repo-b")).toBeNull();
     expect(screen.queryByText("release-b")).toBeNull();
-    expect(screen.getByText("Showing 1 of 1 branches")).toBeTruthy();
+    expect(screen.queryByText("Showing 1 of 1 branches")).toBeNull();
     expect(screen.getByText("high 2 · medium 1 · low 0 · unattributed 0")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Top model" })).toBeTruthy();
     expect(screen.getByText("gpt-5.2 +1")).toBeTruthy();
@@ -161,23 +162,25 @@ describe("BranchesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
     expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
-    expect(screen.getByText("s-001")).toBeTruthy();
-    expect(screen.getByText("s-002")).toBeTruthy();
+    expect(screen.queryByText("s-001")).toBeNull();
+    expect(screen.queryByText("s-002")).toBeNull();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
-    expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getByText("Tier A")).toBeTruthy();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
-  it("marks estimated branch and session costs while keeping unknown costs as Unknown", async () => {
+  it("shows branch and session costs without estimated suffixes while keeping unknown costs as Unknown", async () => {
     render(<BranchesPage />);
 
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
-    expect(screen.getAllByText("$12.34 est.").length).toBe(2);
+    expect(screen.getAllByText("$12.34").length).toBe(2);
+    expect(screen.queryByText("$12.34 est.")).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
     expect(await screen.findByText("Session details")).toBeTruthy();
-    expect(screen.getAllByText("$9.10 est.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$9.10").length).toBeGreaterThan(0);
+    expect(screen.queryByText("$9.10 est.")).toBeNull();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
@@ -188,21 +191,21 @@ describe("BranchesPage", () => {
       name: copy("branches.project.select_label"),
     });
 
-    expect(screen.getByText("/repo-a")).toBeTruthy();
+    expect(screen.queryByText("/repo-a")).toBeNull();
 
     fireEvent.change(projectSelect, { target: { value: "/repo-b" } });
 
     await waitFor(() => {
       expect(screen.queryByText("/repo-a")).toBeNull();
       expect(screen.queryByText("feature-a")).toBeNull();
-      expect(screen.getByText("/repo-b")).toBeTruthy();
+      expect(screen.queryByText("/repo-b")).toBeNull();
       expect(screen.getByText("release-b")).toBeTruthy();
     });
 
     fireEvent.change(screen.getByLabelText("Branch filter"), { target: { value: "release" } });
 
     await waitFor(() => {
-      expect(screen.getByText("/repo-b")).toBeTruthy();
+      expect(screen.queryByText("/repo-b")).toBeNull();
       expect(screen.getByText("release-b")).toBeTruthy();
     });
   });
@@ -296,9 +299,44 @@ describe("BranchesPage", () => {
     });
 
     expect(projectSelect.value).toBe("/repo-newer");
-    expect(screen.getByText("/repo-newer")).toBeTruthy();
+    expect(screen.queryByText("/repo-newer")).toBeNull();
     expect(screen.getByText("newer-branch")).toBeTruthy();
     expect(screen.queryByText("/repo-older")).toBeNull();
     expect(screen.queryByText("older-branch")).toBeNull();
+  });
+
+  it("paginates branch rows at ten rows per page", async () => {
+    const branches = Array.from({ length: 12 }, (_, index) => ({
+      branch: `branch-${String(index + 1).padStart(2, "0")}`,
+      total_tokens: 100 + index,
+      total_cost_usd: 0.25 + index,
+      session_count: 1,
+      last_seen_at: "2026-05-10T11:10:00.000Z",
+      confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+      models: [],
+      sessions: [],
+    }));
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-many",
+        branches,
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    expect(await screen.findByText("branch-01")).toBeTruthy();
+    expect(screen.getByText("branch-10")).toBeTruthy();
+    expect(screen.queryByText("branch-11")).toBeNull();
+    expect(screen.getByText("1-10 of 12")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("branch-01")).toBeNull();
+      expect(screen.getByText("branch-11")).toBeTruthy();
+      expect(screen.getByText("branch-12")).toBeTruthy();
+      expect(screen.getByText("11-12 of 12")).toBeTruthy();
+    });
   });
 });

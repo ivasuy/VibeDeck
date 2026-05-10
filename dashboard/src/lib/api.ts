@@ -23,7 +23,7 @@ const PATHS = {
   usageMonthly: "tokentracker-usage-monthly",
   usageHeatmap: "tokentracker-usage-heatmap",
   usageModelBreakdown: "tokentracker-usage-model-breakdown",
-  projectUsageSummary: "tokentracker-project-usage-summary",
+  projectUsageSummary: "vibedeck-project-usage-summary",
   userStatus: "tokentracker-user-status",
   localSync: "tokentracker-local-sync",
   usageLimits: "tokentracker-usage-limits",
@@ -97,7 +97,8 @@ export async function getProjectUsageSummary({
   from,
   to,
   source,
-  limit,
+  limit = 10,
+  sort = "recent",
   timeZone,
   tzOffsetMinutes,
   accessToken,
@@ -111,6 +112,7 @@ export async function getProjectUsageSummary({
   if (from) params.from = from;
   if (to) params.to = to;
   if (limit != null) params.limit = String(limit);
+  if (sort) params.sort = String(sort);
   return fetchLocalJson(PATHS.projectUsageSummary, params);
 }
 

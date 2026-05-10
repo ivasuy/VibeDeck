@@ -115,6 +115,49 @@ function readProjectQueueData(projectQueuePath) {
   return Array.from(seen.values());
 }
 
+function normalizeIsoTimestamp(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Date.parse(trimmed);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toISOString();
+}
+
+function projectRowLastSeenAt(row) {
+  return (
+    normalizeIsoTimestamp(row?.timestamp) ||
+    normalizeIsoTimestamp(row?.last_seen_at) ||
+    normalizeIsoTimestamp(row?.updated_at) ||
+    normalizeIsoTimestamp(row?.hour_start)
+  );
+}
+
+function parsePositiveLimit(rawValue) {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.max(1, Math.trunc(value));
+}
+
+function compareProjectUsageEntries(a, b, sortMode) {
+  if (sortMode === "recent") {
+    const byRecent = String(b?.last_seen_at || "").localeCompare(String(a?.last_seen_at || ""));
+    if (byRecent !== 0) return byRecent;
+  }
+  const byTokens =
+    Number(b?.billable_total_tokens || 0) - Number(a?.billable_total_tokens || 0);
+  if (byTokens !== 0) return byTokens;
+  if (sortMode !== "recent") {
+    const byRecent = String(b?.last_seen_at || "").localeCompare(String(a?.last_seen_at || ""));
+    if (byRecent !== 0) return byRecent;
+  }
+  return String(a?.project_key || "").localeCompare(String(b?.project_key || ""));
+}
+
 function isLegacyInclusiveCodexRow(row) {
   if (!row || (row.source !== "codex" && row.source !== "every-code")) return false;
   const inputTokens = Number(row.input_tokens || 0);
@@ -1328,7 +1371,10 @@ function createLocalApiHandler({ queuePath }) {
     }
 
     // --- project-usage-summary ---
-    if (p === "/functions/tokentracker-project-usage-summary") {
+    if (
+      p === "/functions/tokentracker-project-usage-summary" ||
+      p === "/functions/vibedeck-project-usage-summary"
+    ) {
       // Use the per-project bucket log that rollout.js emits — it already
       // carries the actual tokens attributed to each (project_key, source,
       // hour_start). Falling back to "session-file count × total tokens"
@@ -1349,13 +1395,24 @@ function createLocalApiHandler({ queuePath }) {
             project_ref: row.project_ref || key,
             total_tokens: 0,
             billable_total_tokens: 0,
+            last_seen_at: null,
           });
         }
         const agg = byProject.get(key);
         agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number(row.total_tokens || 0);
+        agg.billable_total_tokens += Number((row.billable_total_tokens ?? row.total_tokens) || 0);
         if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
+        const lastSeenAt = projectRowLastSeenAt(row);
+        if (lastSeenAt && (!agg.last_seen_at || lastSeenAt > agg.last_seen_at)) {
+          agg.last_seen_at = lastSeenAt;
+        }
       }
+
+      const sortMode =
+        String(url.searchParams.get("sort") || "tokens").trim().toLowerCase() === "recent"
+          ? "recent"
+          : "tokens";
+      const requestedLimit = parsePositiveLimit(url.searchParams.get("limit"));
 
       // If no project-attributed rows exist yet (user hasn't synced project
       // attribution, or never used a project-capable CLI), fall back to
@@ -1374,13 +1431,20 @@ function createLocalApiHandler({ queuePath }) {
               project_ref: `https://${src}.ai`,
               total_tokens: 0,
               billable_total_tokens: 0,
+              last_seen_at: null,
             });
           }
-          bySrc.get(src).total_tokens += row.total_tokens || 0;
-          bySrc.get(src).billable_total_tokens += row.total_tokens || 0;
+          const entry = bySrc.get(src);
+          entry.total_tokens += row.total_tokens || 0;
+          entry.billable_total_tokens += (row.billable_total_tokens ?? row.total_tokens) ?? 0;
+          const lastSeenAt = projectRowLastSeenAt(row);
+          if (lastSeenAt && (!entry.last_seen_at || lastSeenAt > entry.last_seen_at)) {
+            entry.last_seen_at = lastSeenAt;
+          }
         }
         entries = Array.from(bySrc.values())
-          .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
+          .sort((a, b) => compareProjectUsageEntries(a, b, sortMode))
+          .slice(0, requestedLimit ?? undefined)
           .map((e) => ({
             ...e,
             total_tokens: String(e.total_tokens),
@@ -1388,7 +1452,8 @@ function createLocalApiHandler({ queuePath }) {
           }));
       } else {
         entries = Array.from(byProject.values())
-          .sort((a, b) => b.billable_total_tokens - a.billable_total_tokens)
+          .sort((a, b) => compareProjectUsageEntries(a, b, sortMode))
+          .slice(0, requestedLimit ?? undefined)
           .map((e) => ({
             ...e,
             total_tokens: String(e.total_tokens),

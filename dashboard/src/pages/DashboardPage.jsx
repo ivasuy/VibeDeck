@@ -438,7 +438,7 @@ export function DashboardPage({
   } = useProjectUsageSummary({
     baseUrl,
     accessToken,
-    limit: projectUsageLimit,
+    limit: 10,
     from,
     to,
     timeZone,

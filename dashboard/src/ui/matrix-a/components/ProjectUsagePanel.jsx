@@ -19,6 +19,69 @@ function normalizeStars(value) {
   return Math.max(0, Math.round(value));
 }
 
+function normalizeRepoName(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\.git$/i, "");
+}
+
+function parseGithubRepoId(value) {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("git@github.com:")) {
+    return normalizeRepoName(trimmed.slice("git@github.com:".length));
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname !== "github.com") return "";
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length < 2) return "";
+    return normalizeRepoName(`${parts[0]}/${parts[1]}`);
+  } catch {
+    return "";
+  }
+}
+
+function parseRepoKey(value) {
+  if (typeof value !== "string") return "";
+  const parts = value.trim().split("/").filter(Boolean);
+  if (parts.length !== 2) return "";
+  return normalizeRepoName(`${parts[0]}/${parts[1]}`);
+}
+
+function formatLastUsed(value) {
+  if (!value) return "";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function resolveProjectIdentity(entry, placeholder) {
+  const projectKey = typeof entry?.project_key === "string" ? entry.project_key : "";
+  const projectRef = typeof entry?.project_ref === "string" ? entry.project_ref : "";
+  const githubRepoFromRef = parseGithubRepoId(projectRef);
+  const fallbackGithubRepo = projectRef ? "" : parseRepoKey(projectKey);
+  const githubRepoId = githubRepoFromRef || fallbackGithubRepo;
+  const keyRepoId = parseRepoKey(projectKey);
+  const displayRepoId = githubRepoId || keyRepoId;
+  const { owner, repo } = splitRepoKey(displayRepoId);
+
+  return {
+    displayName: repo || projectKey || placeholder,
+    githubRepoId,
+    owner,
+    repo,
+    href: projectRef || (githubRepoId ? `https://github.com/${githubRepoId}` : "#"),
+  };
+}
+
 function resolveTokens(entry) {
   if (!entry) return null;
   const total = entry.total_tokens ?? null;
@@ -111,17 +174,10 @@ export function ProjectUsagePanel({
     10: copy("dashboard.projects.limit_top_10"),
   };
   const resolvedLimit = LIMIT_OPTIONS.includes(limit) ? limit : LIMIT_OPTIONS[0];
-
-  const sortedEntries = useMemo(() => {
-    const list = Array.isArray(entries) ? entries.slice() : [];
-    return list.sort((a, b) => {
-      const aValue = toFiniteNumber(resolveTokens(a)) ?? 0;
-      const bValue = toFiniteNumber(resolveTokens(b)) ?? 0;
-      return bValue - aValue;
-    });
-  }, [entries]);
-
-  const displayEntries = sortedEntries.slice(0, Math.max(1, limit));
+  const displayEntries = useMemo(
+    () => (Array.isArray(entries) ? entries.slice(0, Math.max(1, limit)) : []),
+    [entries, limit],
+  );
 
   const tokenFormatOptions = {
     thousandSuffix: copy("shared.unit.thousand_abbrev"),
@@ -207,15 +263,15 @@ function ProjectUsageCard({
   starsLabel,
   tokenFormatOptions,
 }) {
-  const repoKey = typeof entry?.project_key === "string" ? entry.project_key : "";
-  const projectRef = typeof entry?.project_ref === "string" ? entry.project_ref : "";
-  const { owner, repo } = splitRepoKey(
-    repoKey || projectRef.replace("https://github.com/", "")
-  );
-  const repoId = owner && repo ? `${owner}/${repo}` : repoKey;
-  const meta = useGithubRepoMeta(repoId);
+  const {
+    displayName,
+    githubRepoId,
+    owner,
+    href,
+  } = resolveProjectIdentity(entry, placeholder);
+  const meta = useGithubRepoMeta(githubRepoId);
   const avatarUrl =
-    meta?.avatarUrl || (owner ? `https://github.com/${owner}.png?size=80` : "");
+    meta?.avatarUrl || (owner && githubRepoId ? `https://github.com/${owner}.png?size=80` : "");
   const starsRaw = meta?.stars;
   const starsFull =
     starsRaw == null ? placeholder : toDisplayNumber(starsRaw);
@@ -230,10 +286,11 @@ function ProjectUsageCard({
     tokensRaw == null
       ? placeholder
       : formatCompactNumber(tokensRaw, tokenFormatOptions);
+  const lastUsed = formatLastUsed(entry?.last_seen_at);
 
   return (
     <a
-      href={projectRef || (repoId ? `https://github.com/${repoId}` : "#")}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className="flex items-center gap-3 p-3 rounded-lg border border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 transition-colors"
@@ -245,11 +302,16 @@ function ProjectUsageCard({
       )}
       <div className="min-w-0 flex-1">
         <div className="text-sm font-medium text-oai-black dark:text-oai-white truncate">
-          {repo || repoKey || placeholder}
+          {displayName}
         </div>
+        {lastUsed ? (
+          <div className="mt-0.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400 truncate">
+            {copy("dashboard.projects.last_used", { time: lastUsed })}
+          </div>
+        ) : null}
         <div className="flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
-          <span>★ {starsCompact}</span>
-          <span>{tokensCompact}</span>
+          <span title={`${starsLabel}: ${starsFull}`}>★ {starsCompact}</span>
+          <span title={`${tokensLabel}: ${tokensFull}`}>{tokensCompact}</span>
         </div>
       </div>
     </a>

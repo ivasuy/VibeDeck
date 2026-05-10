@@ -384,19 +384,6 @@ branches.project.empty,dashboard,BranchesPage,BranchesPage,project_empty,No proj
 branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Branch filter,,active
 branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by branch name,,active
 branches.filter.summary,dashboard,BranchesPage,BranchesPage,filter_summary,Showing {{count}} of {{total}} branches,,active
-branches.summary.title,dashboard,BranchesPage,BranchProjectSummary,summary_title,Project summary,,active
-branches.summary.updated_label,dashboard,BranchesPage,BranchProjectSummary,summary_updated_label,Last branch activity,,active
-branches.summary.counts,dashboard,BranchesPage,BranchProjectSummary,summary_counts,{{branches}} branches • {{sessions}} sessions,,active
-branches.summary.metric.branches,dashboard,BranchesPage,BranchProjectSummary,summary_metric_branches,Branches,,active
-branches.summary.metric.tokens,dashboard,BranchesPage,BranchProjectSummary,summary_metric_tokens,Tokens,,active
-branches.summary.metric.cost,dashboard,BranchesPage,BranchProjectSummary,summary_metric_cost,Cost,,active
-branches.summary.metric.sessions,dashboard,BranchesPage,BranchProjectSummary,summary_metric_sessions,Sessions,,active
-branches.summary.provider_mix,dashboard,BranchesPage,BranchProjectSummary,summary_provider_mix,Provider and model mix,,active
-branches.summary.confidence,dashboard,BranchesPage,BranchProjectSummary,summary_confidence,Attribution confidence,,active
-branches.summary.confidence_aria,dashboard,BranchesPage,BranchProjectSummary,summary_confidence_aria,Confidence mix for {{project}},,active
-branches.chart.title,dashboard,BranchesPage,BranchCostBars,chart_title,Branch cost ranking,,active
-branches.chart.aria,dashboard,BranchesPage,BranchCostBars,chart_aria,Branch cost ranking for {{project}},,active
-branches.chart.tokens_fallback,dashboard,BranchesPage,BranchCostBars,chart_tokens_fallback,{{tokens}} tokens,,active
 branches.total.tokens,dashboard,BranchesPage,BranchesPage,total_tokens,Tokens,,active
 branches.total.cost,dashboard,BranchesPage,BranchesPage,total_cost,Cost,,active
 branches.total.sessions,dashboard,BranchesPage,BranchesPage,total_sessions,Sessions,,active
@@ -405,7 +392,6 @@ branches.empty.no_repo_rows,dashboard,BranchesPage,BranchUsageTable,empty_no_rep
 branches.confidence.mix,dashboard,BranchesPage,BranchUsageTable,confidence_mix,{{high_label}} {{high}} · {{medium_label}} {{medium}} · {{low_label}} {{low}} · {{unattributed_label}} {{unattributed}},,active
 branches.value.unknown_cost,dashboard,BranchesPage,BranchUsageTable,unknown_cost,Unknown,,active
 branches.value.unknown_time,dashboard,BranchesPage,BranchUsageTable,unknown_time,—,,active
-branches.ledger.title,dashboard,BranchesPage,BranchUsageTable,ledger_title,Branch ledger,,active
 branches.table.repo,dashboard,BranchesPage,BranchUsageTable,table_repo,Repo,,active
 branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Branch,,active
 branches.table.tokens,dashboard,BranchesPage,BranchUsageTable,table_tokens,Tokens,,active
@@ -414,12 +400,6 @@ branches.table.top_model,dashboard,BranchesPage,BranchUsageTable,table_top_model
 branches.table.sessions,dashboard,BranchesPage,BranchUsageTable,table_sessions,Sessions,,active
 branches.table.last_seen,dashboard,BranchesPage,BranchUsageTable,table_last_seen,Last seen,,active
 branches.table.confidence_mix,dashboard,BranchesPage,BranchUsageTable,table_confidence_mix,Confidence mix,,active
-branches.table.usage,dashboard,BranchesPage,BranchUsageTable,table_usage,Usage,,active
-branches.table.providers,dashboard,BranchesPage,BranchUsageTable,table_providers,Providers and models,,active
-branches.table.activity,dashboard,BranchesPage,BranchUsageTable,table_activity,Activity,,active
-branches.table.confidence_aria,dashboard,BranchesPage,BranchUsageTable,table_confidence_aria,Confidence mix for branch {{branch}},,active
-branches.table.sessions_detail,dashboard,BranchesPage,BranchUsageTable,table_sessions_detail,{{count}} sessions,,active
-branches.table.updated_at,dashboard,BranchesPage,BranchUsageTable,table_updated_at,Updated {{time}},,active
 branches.table.view_sessions,dashboard,BranchesPage,BranchUsageTable,table_view_sessions,View sessions,,active
 branches.confidence.note,dashboard,BranchesPage,BranchUsageTable,confidence_note,Medium/low/unattributed indicate uncertain branch attribution; review session details before acting.,,active
 branches.drawer.title,dashboard,BranchesPage,BranchSessionDrawer,drawer_title,Session details,,active

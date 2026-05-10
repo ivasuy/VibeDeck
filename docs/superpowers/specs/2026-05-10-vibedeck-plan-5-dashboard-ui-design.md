@@ -13,7 +13,7 @@ Make VibeDeck's dashboard a Live Workbench-first product while preserving the ex
 - Do not replace the existing `AppLayout` / `Sidebar.jsx` shell.
 - Do not remove Light / Dark / System theme support.
 - Do not add macOS native panels in this plan.
-- Do not build a new backend in Plan 5. If a UI requirement exposes a missing backend read/write surface, document it as a Plan 4 amendment or follow-up.
+- Keep backend changes narrow. Plan 5 may add the read-only dashboard data endpoints required for Branches and VibeDeck Skills naming, but must not alter parser math, attribution semantics, or write-side runtime contracts unless explicitly called out in this spec.
 
 ## Product Direction
 
@@ -98,6 +98,7 @@ Data sources:
 - `GET /functions/vibedeck-attribution-stats`
 - `POST /functions/vibedeck-attribute`
 - `GET /functions/vibedeck-entire-status?repo=<repo>&cached=1`
+- `GET /functions/vibedeck-branch-usage` for recent branch/repo options when active sessions are empty
 
 Main regions:
 
@@ -153,21 +154,32 @@ Implementation direction:
 
 Purpose: show cost by repo and branch with confidence context.
 
+Data source:
+
+- `GET /functions/vibedeck-branch-usage`
+
 Required experience:
 
-- Repo selector sourced from available session data.
+- Repo selector sourced from exposed branch/session attribution data.
 - Branch table grouped by repo.
 - Branch rows show tokens, cost, session count, confidence mix, and recent activity.
 - Drill into sessions for a branch.
 - Confidence is always visible. Fuzzy branch attribution must not be presented as ground truth.
 
-Backend coverage note:
+Required backend surface:
 
-- Current exposed endpoints do not provide a dedicated historical branch aggregate endpoint.
-- The implementation plan must first verify whether existing local API endpoints can produce branch aggregate data.
-- If not, this page should either:
-  - ship an MVP using available session/attribution data only where exposed, or
-  - record a small Plan 4 amendment for a read-only branch aggregate endpoint before implementation.
+- Plan 5 must expose a read-only branch aggregate endpoint before building the Branches page.
+- Endpoint name: `GET /functions/vibedeck-branch-usage`
+- Query params:
+  - `from`, `to` (optional date range)
+  - `repo` (optional absolute repo path filter)
+  - `branch` (optional branch filter)
+  - `limit` (optional row cap)
+- Response shape:
+  - `{ repos: [{ repo_root, branches: [...] }], totals: {...} }`
+  - Each branch row includes `branch`, `total_tokens`, `total_cost_usd`, `session_count`, `last_seen_at`, and confidence counts: `high`, `medium`, `low`, `unattributed`.
+- Source tables: `vibedeck_sessions`, `vibedeck_session_branch_windows` where available.
+- Read-only only. No mutation, no auth required.
 
 Do not fake branch totals from unrelated daily/project usage data.
 
@@ -222,6 +234,12 @@ Destructive flows:
 - Then call the destructive endpoint with `confirm_token`.
 - Single-use / expired token errors must be displayed and recoverable.
 
+Advanced raw action:
+
+- Entire `configure` remains an advanced raw action in Plan 5.
+- The dashboard may expose it behind an "Advanced" disclosure with argv-style inputs, validation, and command output.
+- Do not turn `configure` into a friendly telemetry-only toggle in Plan 5.
+
 ### Skills (`/skills`)
 
 Purpose: preserve and modernize existing skill management.
@@ -229,15 +247,21 @@ Purpose: preserve and modernize existing skill management.
 Current page already has browse/install/target-toggle behavior. Plan 5 should:
 
 - Keep the current component structure where possible.
-- Prefer new VibeDeck endpoints for installed skill list and mutations:
+- Use VibeDeck-named endpoints for installed skill list, discovery/search, repo management, and mutations:
   - `GET /functions/vibedeck-skills`
+  - `GET /functions/vibedeck-skills?mode=installed`
+  - `GET /functions/vibedeck-skills?mode=repos`
+  - `GET /functions/vibedeck-skills?mode=discover`
+  - `GET /functions/vibedeck-skills?mode=search&q=<query>`
   - `POST /functions/vibedeck-skills/install`
   - `POST /functions/vibedeck-skills/uninstall`
   - `POST /functions/vibedeck-skills/restore`
   - `POST /functions/vibedeck-skills/importLocal`
   - `POST /functions/vibedeck-skills/deleteLocal`
-- Keep legacy `tokentracker-skills` only where discovery/search/repo management is not yet mirrored by `vibedeck-skills`.
-- Label this split clearly in code comments and tests so the endpoint migration is intentional.
+  - `POST /functions/vibedeck-skills/addRepo`
+  - `POST /functions/vibedeck-skills/removeRepo`
+- Plan 5 must mirror any currently legacy-only Skills discovery/search/repo-management behavior under `vibedeck-skills`.
+- The dashboard should not call `tokentracker-skills` after this plan.
 
 ### Limits / Widgets / Settings
 
@@ -254,6 +278,7 @@ Keep these pages functionally stable. Apply only:
 |---|---|---|
 | `GET /api/local-auth` | shared auth helper for local mutations | required |
 | `POST /functions/tokentracker-local-sync` | Usage and Live sync actions | existing helper |
+| `GET /functions/vibedeck-branch-usage` | Branches page + Live repo suggestions | new read-only endpoint + helper |
 | `GET /functions/vibedeck-sessions-live` | Live Workbench session stream | new hook/component |
 | `POST /functions/vibedeck-attribute` | Live correction controls | new helper + modal/form |
 | `GET /functions/vibedeck-attribution-stats` | Live attribution health card | new helper + card |
@@ -264,15 +289,15 @@ Keep these pages functionally stable. Apply only:
 | `POST /functions/vibedeck-entire/disable` | Entire repo control | new helper + confirm |
 | `POST /functions/vibedeck-entire/agent-add` | Entire agent management | new helper |
 | `POST /functions/vibedeck-entire/agent-remove` | Entire agent management | new helper |
-| `POST /functions/vibedeck-entire/configure` | Entire advanced settings | optional in Plan 5 MVP unless needed for telemetry toggle |
+| `POST /functions/vibedeck-entire/configure` | Entire advanced raw action | advanced disclosure + output panel |
 | `POST /functions/vibedeck-entire/doctor` | Entire diagnostics action | new helper + output panel |
 | `POST /functions/vibedeck-entire/status` | Entire raw status action | new helper + output panel |
 | `POST /functions/vibedeck-confirm-destructive` | Rewind/clean confirmation | new helper |
 | `POST /functions/vibedeck-entire/rewind` | Checkpoint rewind | destructive modal |
 | `POST /functions/vibedeck-entire/clean` | Entire clean | destructive modal |
-| `GET /functions/vibedeck-skills` | Skills installed list | update existing page |
-| `POST /functions/vibedeck-skills/*` | Skills mutations | update existing page |
-| `GET/POST /functions/tokentracker-skills` | Skills discovery/search/repo management fallback | keep intentionally until mirrored |
+| `GET /functions/vibedeck-skills` | Skills installed/discover/search/repos | mirror legacy modes under VibeDeck name |
+| `POST /functions/vibedeck-skills/*` | Skills mutations and repo management | update existing page |
+| `GET/POST /functions/tokentracker-skills` | Legacy Skills endpoint | dashboard stops calling this endpoint |
 
 ## Copy And Labels
 
@@ -293,6 +318,7 @@ Every new endpoint state needs user-facing labels:
 - `invalid_confirm_token`
 - `unknown_command`
 - `session_not_found`
+- Branch aggregate empty range / no repo rows
 
 Use `dashboard/src/content/copy.csv` for visible strings. Avoid hardcoded visible text in JSX except test-only labels.
 
@@ -323,10 +349,12 @@ Required test categories:
 
 - Route tests for `/`, `/dashboard`, `/usage`, `/branches`, `/entire`, `/skills`.
 - API helper tests for every new helper.
+- Backend tests for `GET /functions/vibedeck-branch-usage`.
+- Backend tests for VibeDeck Skills discovery/search/repo-management modes.
 - SSE parser/hook tests for snapshot, update, end, reconnect, dropped events, and 503 cap handling.
 - Live Workbench tests for confidence labels and override actions.
 - Entire page tests for all four repo states and destructive-token flow.
-- Skills page tests verifying VibeDeck endpoint use for installed/mutation paths and intentional legacy fallback for discovery/search.
+- Skills page tests verifying VibeDeck endpoint use for installed, discovery/search, repo management, and mutation paths.
 - Theme tests for Light / Dark / System control preservation.
 - Copy validation.
 - UI hardcode validation.
@@ -338,18 +366,18 @@ The implementation plan should split work into independently reviewable phases:
 
 1. Route/nav/identity scaffolding.
 2. Shared VibeDeck dashboard API helpers.
-3. Live Workbench read-only session stream.
-4. Live correction actions and attribution health.
-5. Usage page re-home with existing analytics preserved.
-6. Entire page repo/status/checkpoint views.
-7. Entire write/destructive flows.
-8. Skills endpoint modernization.
-9. Branches page MVP or API-gap resolution.
-10. Final polish, theme QA, copy pruning, build/test validation.
+3. Read-only `vibedeck-branch-usage` endpoint.
+4. Live Workbench read-only session stream.
+5. Live correction actions and attribution health.
+6. Usage page re-home with existing analytics preserved.
+7. Entire page repo/status/checkpoint views.
+8. Entire write/destructive flows, including advanced raw configure.
+9. VibeDeck Skills endpoint modernization.
+10. Branches page backed by `vibedeck-branch-usage`.
+11. Final polish, theme QA, copy pruning, build/test validation.
 
-## Open Questions For Implementation Plan
+## Locked Decisions For Implementation Plan
 
-- Whether `/branches` can ship from exposed data or needs a small read-only backend amendment.
-- Whether Skills discovery/search should remain on `tokentracker-skills` for Plan 5 or be mirrored to `vibedeck-skills` before dashboard implementation.
-- Whether Entire `configure` should expose only telemetry toggle in Plan 5 or stay as an advanced/raw action.
-
+- `/branches` must be backed by exposed branch attribution data through `GET /functions/vibedeck-branch-usage`.
+- Skills discovery/search/repo management must be mirrored under `vibedeck-skills`; dashboard code should stop calling `tokentracker-skills`.
+- Entire `configure` is an advanced raw action in Plan 5, not a simplified telemetry-only toggle.

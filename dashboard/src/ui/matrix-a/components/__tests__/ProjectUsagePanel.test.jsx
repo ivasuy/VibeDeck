@@ -26,13 +26,15 @@ describe("ProjectUsagePanel", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a repo card link with repository identity and usage", () => {
+  it("renders a repo card with repository identity, usage, and explicit GitHub link", () => {
     render(<ProjectUsagePanel entries={[entry]} />);
 
-    const card = screen.getByRole("link", { name: /hello/i });
-    expect(card.getAttribute("href")).toBe("https://github.com/octo/hello");
+    const card = screen.getByRole("button", { name: /hello/i });
+    const githubLink = screen.getByRole("link", { name: copy("dashboard.projects.github_link_aria", { project: "hello" }) });
+    expect(githubLink.getAttribute("href")).toBe("https://github.com/octo/hello");
     expect(screen.getByText("hello")).toBeInTheDocument();
     expect(screen.getByText(/★/)).toBeInTheDocument();
+    expect(card).toBeInTheDocument();
   });
 
   it("prefers total tokens when billable tokens are zero", () => {
@@ -52,7 +54,7 @@ describe("ProjectUsagePanel", () => {
       decimals: 1,
     });
 
-    expect(within(screen.getByRole("link", { name: /alpha/i })).getByText(expected)).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: /alpha/i })).getByText(expected)).toBeInTheDocument();
   });
 
   it("closes the limit popup on Escape", async () => {
@@ -94,9 +96,9 @@ describe("ProjectUsagePanel", () => {
       />,
     );
 
-    const cards = screen.getAllByRole("link");
-    expect(cards[0].getAttribute("href")).toBe("https://github.com/octo/recent");
-    expect(cards[1].getAttribute("href")).toBe("https://github.com/octo/older");
+    const cards = screen.getAllByRole("button");
+    expect(cards[0]).toHaveAccessibleName(/recent/i);
+    expect(cards[1]).toHaveAccessibleName(/older/i);
     expect(screen.getAllByText(/last used/i)).toHaveLength(2);
   });
 
@@ -127,5 +129,84 @@ describe("ProjectUsagePanel", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("expands in place to show provider and model breakdown with estimated cost and top model hint", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectUsagePanel
+        entries={[
+          {
+            project_key: "octo/usage-heavy",
+            project_ref: "https://github.com/octo/usage-heavy",
+            total_tokens: 5000,
+            estimated_total_cost_usd: 12.5,
+            cost_estimated: true,
+            top_models: [
+              {
+                provider: "codex",
+                model: "gpt-5.4",
+                total_tokens: 4000,
+              },
+            ],
+            providers: [
+              {
+                provider: "codex",
+                total_tokens: 5000,
+                estimated_total_cost_usd: 12.5,
+                cost_estimated: true,
+                models: [
+                  {
+                    model: "gpt-5.4",
+                    total_tokens: 4000,
+                    estimated_total_cost_usd: 10,
+                    cost_estimated: true,
+                    session_count: 3,
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("$12.50 est.")).toBeInTheDocument();
+    expect(screen.getAllByText(/gpt-5\.4/).length).toBeGreaterThan(0);
+    expect(screen.queryByText("3 sessions")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /usage-heavy/i }));
+    });
+
+    expect(screen.getByText(copy("dashboard.projects.breakdown_heading"))).toBeInTheDocument();
+    expect(screen.getByText("3 sessions")).toBeInTheDocument();
+    expect(screen.getAllByText("$12.50 est.").length).toBeGreaterThan(0);
+  });
+
+  it("renders unknown and exact-zero project costs correctly", () => {
+    render(
+      <ProjectUsagePanel
+        entries={[
+          {
+            project_key: "octo/unknown-cost",
+            project_ref: "https://github.com/octo/unknown-cost",
+            total_tokens: 100,
+            estimated_total_cost_usd: null,
+            cost_estimated: true,
+          },
+          {
+            project_key: "octo/zero-cost",
+            project_ref: "https://github.com/octo/zero-cost",
+            total_tokens: 0,
+            estimated_total_cost_usd: 0,
+            cost_estimated: false,
+          },
+        ]}
+      />,
+    );
+
+    expect(within(screen.getByRole("button", { name: /unknown-cost/i })).getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("button", { name: /zero-cost/i })).getByText("$0.00")).toBeInTheDocument();
   });
 });

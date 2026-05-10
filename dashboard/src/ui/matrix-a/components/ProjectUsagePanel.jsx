@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Select } from "@base-ui/react/select";
+import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber, toDisplayNumber, toFiniteNumber } from "../../../lib/format";
 import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
+import { ProjectUsageBreakdown, formatProjectUsageCostLabel } from "./ProjectUsageBreakdown.jsx";
 
 const LIMIT_OPTIONS = [3, 6, 10];
 const REPO_META_CACHE = new Map();
@@ -94,6 +96,20 @@ function resolveTokens(entry) {
   return billable ?? total ?? null;
 }
 
+function resolveProjectCost(entry) {
+  if (!entry) return null;
+  return entry.estimated_total_cost_usd ?? entry.total_cost_usd ?? null;
+}
+
+function resolveTopModel(entry) {
+  const topModel = Array.isArray(entry?.top_models) ? entry.top_models[0] : null;
+  if (!topModel) return null;
+  const model = String(topModel?.model || "").trim();
+  if (!model) return null;
+  const provider = String(topModel?.provider || "").trim();
+  return provider ? `${model} · ${provider}` : model;
+}
+
 function resolveRepoMeta(repoId) {
   if (!repoId) return null;
   return REPO_META_CACHE.get(repoId) || null;
@@ -178,6 +194,7 @@ export function ProjectUsagePanel({
     () => (Array.isArray(entries) ? entries.slice(0, Math.max(1, limit)) : []),
     [entries, limit],
   );
+  const [expandedKey, setExpandedKey] = useState(null);
 
   const tokenFormatOptions = {
     thousandSuffix: copy("shared.unit.thousand_abbrev"),
@@ -185,6 +202,14 @@ export function ProjectUsagePanel({
     billionSuffix: copy("shared.unit.billion_abbrev"),
     decimals: 1,
   };
+
+  useEffect(() => {
+    const keys = new Set(
+      displayEntries.map((entry) => `${entry?.project_key || "repo"}-${entry?.project_ref || ""}`),
+    );
+    if (!expandedKey || keys.has(expandedKey)) return;
+    setExpandedKey(null);
+  }, [displayEntries, expandedKey]);
 
   return (
     <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
@@ -243,11 +268,16 @@ export function ProjectUsagePanel({
           {displayEntries.map((entry) => (
             <ProjectUsageCard
               key={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
+              entryKey={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
               entry={entry}
               placeholder={placeholder}
               tokensLabel={tokensLabel}
               starsLabel={starsLabel}
               tokenFormatOptions={tokenFormatOptions}
+              expanded={expandedKey === `${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
+              onToggleExpand={(entryKey) =>
+                setExpandedKey((current) => (current === entryKey ? null : entryKey))
+              }
             />
           ))}
         </div>
@@ -257,11 +287,14 @@ export function ProjectUsagePanel({
 }
 
 function ProjectUsageCard({
+  entryKey,
   entry,
   placeholder,
   tokensLabel,
   starsLabel,
   tokenFormatOptions,
+  expanded = false,
+  onToggleExpand,
 }) {
   const {
     displayName,
@@ -287,33 +320,82 @@ function ProjectUsageCard({
       ? placeholder
       : formatCompactNumber(tokensRaw, tokenFormatOptions);
   const lastUsed = formatLastUsed(entry?.last_seen_at);
+  const totalCost = formatProjectUsageCostLabel(resolveProjectCost(entry), entry?.cost_estimated === true);
+  const topModelHint = resolveTopModel(entry);
+  const githubAria = copy("dashboard.projects.github_link_aria", { project: displayName });
+  const providers = Array.isArray(entry?.providers) ? entry.providers : [];
+  const showExternalLink = Boolean(href && href !== "#");
+  const iconButtonLabel = expanded
+    ? copy("dashboard.projects.collapse_aria", { project: displayName })
+    : copy("dashboard.projects.expand_aria", { project: displayName });
 
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-3 p-3 rounded-lg border border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 transition-colors"
-    >
-      {avatarUrl ? (
-        <img src={avatarUrl} alt="" className="w-10 h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800 object-cover" />
-      ) : (
-        <div className="w-10 h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-oai-black dark:text-oai-white truncate">
-          {displayName}
-        </div>
-        {lastUsed ? (
-          <div className="mt-0.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400 truncate">
-            {copy("dashboard.projects.last_used", { time: lastUsed })}
+    <div className="overflow-hidden rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900">
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={displayName}
+          onClick={() => onToggleExpand?.(entryKey)}
+          className="flex flex-1 items-center gap-3 p-4 text-left transition-colors hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/70"
+        >
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-10 w-10 rounded bg-oai-gray-100 object-cover dark:bg-oai-gray-800" />
+          ) : (
+            <div className="h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-oai-black dark:text-oai-white">
+                  {displayName}
+                </div>
+                {lastUsed ? (
+                  <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                    {copy("dashboard.projects.last_used", { time: lastUsed })}
+                  </div>
+                ) : null}
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
+                  {totalCost}
+                </div>
+                {topModelHint ? (
+                  <div className="mt-0.5 max-w-[160px] truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                    {topModelHint}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-2 flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-400">
+              <span title={`${starsLabel}: ${starsFull}`}>★ {starsCompact}</span>
+              <span title={`${tokensLabel}: ${tokensFull}`}>{tokensCompact}</span>
+              {topModelHint ? (
+                <span className="truncate text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("dashboard.projects.top_model_label")}: {topModelHint}
+                </span>
+              ) : null}
+            </div>
           </div>
+          <div className="shrink-0 text-oai-gray-400 dark:text-oai-gray-500" aria-label={iconButtonLabel}>
+            {expanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
+          </div>
+        </button>
+
+        {showExternalLink ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={githubAria}
+            className="flex w-11 items-center justify-center border-l border-oai-gray-200 text-oai-gray-400 transition-colors hover:bg-oai-gray-50 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-500 dark:hover:bg-oai-gray-800/70 dark:hover:text-oai-white"
+          >
+            <ExternalLink className="h-4 w-4" aria-hidden />
+          </a>
         ) : null}
-        <div className="flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-400 mt-0.5">
-          <span title={`${starsLabel}: ${starsFull}`}>★ {starsCompact}</span>
-          <span title={`${tokensLabel}: ${tokensFull}`}>{tokensCompact}</span>
-        </div>
       </div>
-    </a>
+
+      {expanded ? <ProjectUsageBreakdown providers={providers} /> : null}
+    </div>
   );
 }

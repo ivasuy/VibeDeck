@@ -133,6 +133,15 @@ dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,TOP 10,,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,No public repositories,,active
 dashboard.projects.last_used,ui,ProjectUsagePanel,ProjectUsagePanel,last_used,Last used {{time}},,active
+dashboard.projects.github_link_aria,ui,ProjectUsagePanel,ProjectUsagePanel,github_link_aria,Open {{project}} on GitHub,,active
+dashboard.projects.expand_aria,ui,ProjectUsagePanel,ProjectUsagePanel,expand_aria,Expand {{project}} usage breakdown,,active
+dashboard.projects.collapse_aria,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_aria,Collapse {{project}} usage breakdown,,active
+dashboard.projects.top_model_label,ui,ProjectUsagePanel,ProjectUsagePanel,top_model_label,Top model,,active
+dashboard.projects.breakdown_heading,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_heading,Model breakdown,,active
+dashboard.projects.breakdown_columns,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_columns,Estimated cost · tokens,,active
+dashboard.projects.provider_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,provider_label,Provider,,active
+dashboard.projects.model_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,model_label,Model,,active
+dashboard.projects.breakdown_sessions,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_sessions,{{count}} sessions,,active
 dashboard.upgrade_alert.title,ui,UpgradeAlertModal,UpgradeAlertModal,title,Update available,,active
 dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,TokenTracker v{{required}} is now available.,,active
 dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,A new version of TokenTracker is available.,,active

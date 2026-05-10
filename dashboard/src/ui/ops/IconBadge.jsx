@@ -6,19 +6,15 @@ export function IconBadge({
   accent = "default",
   icon: IconOverride,
   label,
-  decorative = false,
   className = "",
   iconClassName = "",
 }) {
   const token = getAccentToken(accent);
   const Icon = IconOverride || token.icon;
-  const accessibilityProps = decorative
-    ? { "aria-hidden": true }
-    : { role: "img", "aria-label": label };
 
   return (
     <span
-      {...accessibilityProps}
+      aria-label={label}
       className={cn(
         "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-[11px]",
         token.badgeClassName,

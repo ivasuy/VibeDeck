@@ -3,6 +3,7 @@ import { copy } from "../lib/copy";
 import { getBranchUsage, getCheckpoints, getEntireStatus } from "../lib/vibedeck-api";
 import { Button } from "../ui/openai/components";
 import { RepoPathSelector } from "../components/entire/RepoPathSelector";
+import { isAbsolutePath } from "../components/entire/RepoPathSelector";
 import { EntireStatusCard } from "../components/entire/EntireStatusCard";
 import { CheckpointList } from "../components/entire/CheckpointList";
 import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
@@ -85,7 +86,7 @@ export function EntirePage() {
 
   const loadRepo = useCallback(async (repoPath) => {
     const repo = String(repoPath || "").trim();
-    if (!repo) {
+    if (!repo || !isAbsolutePath(repo)) {
       setRepoError(copy("entire.repo.validation.absolute_path"));
       return;
     }

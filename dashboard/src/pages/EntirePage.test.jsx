@@ -96,6 +96,20 @@ describe("EntirePage", () => {
     expect(getCheckpoints).toHaveBeenCalledWith("/Users/dev/saved-repo");
   });
 
+  it.each(["foo", "../repo"])("does not auto-load invalid persisted repo path %s", async (storedRepo) => {
+    window.localStorage.setItem("vibedeck.entire.selectedRepo", storedRepo);
+    getBranchUsage.mockResolvedValue({ repos: [] });
+
+    render(<EntirePage />);
+
+    expect(await screen.findByDisplayValue(storedRepo)).toBeTruthy();
+    expect(screen.getByText("Enter an absolute repository path.")).toBeTruthy();
+    expect(getEntireStatus).not.toHaveBeenCalled();
+    expect(getCheckpoints).not.toHaveBeenCalled();
+    expect(screen.queryByText("Actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+  });
+
   it("shows last refreshed metadata after repo data loads", async () => {
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });

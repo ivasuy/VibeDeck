@@ -6,10 +6,12 @@ const CONFIGURE_FLAGS = [
   {
     token: "--telemetry=false",
     labelKey: "entire.configure.flags.telemetry_off",
+    group: "telemetry",
   },
   {
     token: "--telemetry=true",
     labelKey: "entire.configure.flags.telemetry_on",
+    group: "telemetry",
   },
 ];
 
@@ -33,7 +35,7 @@ export function EntireFlagChips({ selectedFlags = [], onToggle }) {
                   ? "border-oai-black bg-oai-black text-white dark:border-white dark:bg-white dark:text-oai-black"
                   : "border-oai-gray-200 text-oai-gray-700 hover:border-oai-gray-300 hover:bg-oai-black/[0.03] dark:border-oai-gray-800 dark:text-oai-gray-200 dark:hover:bg-white/[0.08]",
               )}
-              onClick={() => onToggle?.(flag.token)}
+              onClick={() => onToggle?.(flag)}
             >
               {copy(flag.labelKey)}
             </button>

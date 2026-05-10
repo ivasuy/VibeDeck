@@ -118,9 +118,16 @@ describe("EntirePage write actions", () => {
     render(<EntirePage />);
     await loadRepo();
 
+    const disclosure = screen.getByRole("button", { name: "Advanced raw configure" });
+    expect(disclosure).toHaveAttribute("aria-expanded", "false");
+    expect(disclosure).toHaveAttribute("aria-controls");
     expect(screen.queryByRole("button", { name: "Run configure" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
+
+    fireEvent.click(disclosure);
+
+    expect(disclosure).toHaveAttribute("aria-expanded", "true");
     expect(await screen.findByRole("button", { name: "Run configure" })).toBeTruthy();
+    expect(document.getElementById(disclosure.getAttribute("aria-controls"))).toBeTruthy();
   });
 
   it("inserts guided configure flags into raw args and refreshes on success", async () => {
@@ -140,6 +147,23 @@ describe("EntirePage write actions", () => {
     await waitFor(() => {
       expect(getEntireStatus).toHaveBeenCalledTimes(2);
       expect(getCheckpoints).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("replaces telemetry configure flags instead of sending contradictory args", async () => {
+    render(<EntirePage />);
+    await loadRepo();
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
+    fireEvent.click(screen.getByRole("button", { name: "Telemetry off" }));
+    fireEvent.click(screen.getByRole("button", { name: "Telemetry on" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run configure" }));
+
+    await waitFor(() => {
+      expect(postEntireCommand).toHaveBeenCalledWith("configure", {
+        repo: "/Users/dev/repo",
+        args: ["--telemetry=true"],
+      });
     });
   });
 

@@ -1,6 +1,6 @@
-import React from "react";
-import { AlertTriangle } from "lucide-react";
-import { Card } from "../../ui/openai/components";
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CircleDollarSign, Cpu, Layers3, Radio, ShieldAlert } from "lucide-react";
+import { Button, Card } from "../../ui/openai/components";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
@@ -22,12 +22,16 @@ function formatTimestamp(value) {
   if (!value) return copy("live.value.unknown_time");
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString(undefined, {
+  const day = date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+  });
+  const time = date.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
+  return `${day} ${time}`;
 }
 
 function sessionState(row) {
@@ -77,7 +81,15 @@ function formatLiveSessionCost(row) {
   if (preferredCost == null) return "—";
   const formatted = formatUsdCurrency(String(preferredCost));
   if (formatted === "-") return "—";
-  return row?.cost_estimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
+  return formatted;
+}
+
+function knownSessionCost(row) {
+  if (["pricing_missing", "missing_tokens", "partial_unknown"].includes(String(row?.cost_quality || ""))) {
+    return null;
+  }
+  const n = Number(row?.estimated_total_cost_usd ?? row?.total_cost_usd);
+  return Number.isFinite(n) ? n : null;
 }
 
 function MetaItem({ label, value }) {
@@ -91,6 +103,59 @@ function MetaItem({ label, value }) {
   );
 }
 
+function SummaryTile({ icon: Icon, label, value, tone = "neutral" }) {
+  const toneClass = tone === "risk"
+    ? "text-amber-700 dark:text-amber-300"
+    : "text-oai-black dark:text-white";
+  return (
+    <div className="min-w-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.018] px-3 py-2.5 dark:border-oai-gray-800 dark:bg-white/[0.035]">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+        <span>{label}</span>
+      </div>
+      <div className={`mt-1 truncate text-sm font-semibold tabular-nums ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function PaginationControls({ page, pageCount, pageSize, total, onPageChange }) {
+  if (!Number.isFinite(pageCount) || pageCount <= 1) return null;
+  const currentPage = Math.min(Math.max(0, page), pageCount - 1);
+  const start = currentPage * pageSize + 1;
+  const end = Math.min(total, (currentPage + 1) * pageSize);
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-oai-gray-200/70 px-5 py-3 text-xs text-oai-gray-500 dark:border-oai-gray-800/70 dark:text-oai-gray-400 sm:flex-row sm:items-center sm:justify-between">
+      <div className="tabular-nums">{start}-{end} of {total}</div>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={currentPage === 0}
+          onClick={() => onPageChange?.(currentPage - 1)}
+        >
+          {copy("details.pagination.prev")}
+        </Button>
+        <span className="min-w-16 text-center tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
+          {currentPage + 1} / {pageCount}
+        </span>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={currentPage + 1 >= pageCount}
+          onClick={() => onPageChange?.(currentPage + 1)}
+        >
+          {copy("details.pagination.next")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+const LIVE_PAGE_SIZE = 5;
+
 export function LiveSessionList({
   sessions = [],
   selectedKey = null,
@@ -101,6 +166,33 @@ export function LiveSessionList({
   const hint = streamNote(streamStatus);
   const emptyState = emptyStateCopy(streamStatus);
   const activeSessions = Array.isArray(sessions) ? sessions.filter(isActiveRow) : [];
+  const [page, setPage] = useState(0);
+  const pageCount = Math.ceil(activeSessions.length / LIVE_PAGE_SIZE);
+  const boundedPage = pageCount > 0 ? Math.min(page, pageCount - 1) : 0;
+  const visibleSessions = activeSessions.slice(
+    boundedPage * LIVE_PAGE_SIZE,
+    boundedPage * LIVE_PAGE_SIZE + LIVE_PAGE_SIZE,
+  );
+  const summary = useMemo(() => {
+    const providers = new Set();
+    let tokens = 0;
+    let cost = 0;
+    let risk = 0;
+    for (const row of activeSessions) {
+      providers.add(String(row?.provider || copy("live.value.unknown_provider")));
+      tokens += Number(row?.total_tokens ?? 0) || 0;
+      const knownCost = knownSessionCost(row);
+      if (knownCost != null) cost += knownCost;
+      const confidence = String(row?.confidence || "").toLowerCase();
+      if (confidence === "low" || confidence === "unattributed" || !confidence) risk += 1;
+    }
+    return { providerCount: providers.size, tokens, cost, risk };
+  }, [activeSessions]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [activeSessions.length]);
+
   return (
     <Card className="overflow-hidden" bodyClassName="p-0">
       <div className="flex min-h-14 items-center justify-between border-b border-oai-gray-200 px-5 py-3 dark:border-oai-gray-800">
@@ -121,6 +213,18 @@ export function LiveSessionList({
         </div>
       ) : null}
 
+      <div className="grid w-full grid-cols-1 gap-2 border-b border-oai-gray-200/70 px-5 py-3 dark:border-oai-gray-800/70 sm:grid-cols-2 lg:grid-cols-4">
+        <SummaryTile icon={Radio} label="Live sessions" value={toDisplayNumber(activeSessions.length)} />
+        <SummaryTile icon={Layers3} label="Providers active" value={toDisplayNumber(summary.providerCount)} />
+        <SummaryTile icon={Cpu} label="Active tokens" value={toDisplayNumber(summary.tokens)} />
+        <SummaryTile
+          icon={summary.risk > 0 ? ShieldAlert : CircleDollarSign}
+          label={summary.risk > 0 ? "Needs attribution" : "Known cost"}
+          value={summary.risk > 0 ? toDisplayNumber(summary.risk) : formatUsdCurrency(String(summary.cost))}
+          tone={summary.risk > 0 ? "risk" : "neutral"}
+        />
+      </div>
+
       {activeSessions.length === 0 ? (
         <div className="px-5 py-12 text-center">
           <h3 className="text-sm font-semibold text-oai-black dark:text-white">{emptyState.title}</h3>
@@ -128,7 +232,7 @@ export function LiveSessionList({
         </div>
       ) : (
         <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
-          {activeSessions.map((row, index) => {
+          {visibleSessions.map((row, index) => {
             const key = getSessionKey(row) || `${String(row?.provider || "unknown")}:${String(row?.session_id || index)}`;
             const selected = key === selectedKey;
             const repoRoot = String(row?.repo_root || row?.cwd || "");
@@ -142,7 +246,7 @@ export function LiveSessionList({
                 aria-pressed={selected}
                 onClick={() => onSelectSession?.(key)}
                 className={cn(
-                  "grid min-h-[124px] w-full gap-3 px-5 py-4 text-left transition-colors",
+                  "grid min-h-[132px] w-full gap-3 px-5 py-4 text-left transition-colors",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60",
                   selected
                     ? "bg-oai-black/[0.03] dark:bg-white/[0.06]"
@@ -175,7 +279,7 @@ export function LiveSessionList({
                   <ConfidenceBadge confidence={row?.confidence} className="shrink-0" />
                 </div>
 
-                <div className="grid gap-3 text-xs sm:grid-cols-3 lg:grid-cols-4">
+                <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
                   <MetaItem label={copy("live.meta.tier")} value={tier} />
                   <MetaItem label={copy("live.meta.model")} value={String(row?.model || "—")} />
                   <MetaItem label={copy("live.meta.tokens")} value={toDisplayNumber(row?.total_tokens ?? 0)} />
@@ -189,6 +293,13 @@ export function LiveSessionList({
           })}
         </div>
       )}
+      <PaginationControls
+        page={boundedPage}
+        pageCount={pageCount}
+        pageSize={LIVE_PAGE_SIZE}
+        total={activeSessions.length}
+        onPageChange={setPage}
+      />
     </Card>
   );
 }

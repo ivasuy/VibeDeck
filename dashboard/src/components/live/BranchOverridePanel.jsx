@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, Card, Input } from "../../ui/openai/components";
+import { Button, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postAttribute } from "../../lib/vibedeck-api";
 
@@ -13,7 +13,7 @@ function normalizeConfidence(value) {
   return confidence || "unattributed";
 }
 
-export function BranchOverridePanel({ session, onSuccess }) {
+export function BranchOverridePanel({ session, onSuccess, className = "" }) {
   const [branch, setBranch] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [error, setError] = useState("");
@@ -94,7 +94,9 @@ export function BranchOverridePanel({ session, onSuccess }) {
   const isBusy = Boolean(busyAction);
 
   return (
-    <Card>
+    <section
+      className={`rounded-xl border border-oai-gray-200 bg-white p-5 pb-3 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
+    >
       <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>
       <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.override.subtitle")}</p>
 
@@ -111,7 +113,7 @@ export function BranchOverridePanel({ session, onSuccess }) {
         </div>
       </div>
 
-      <form className="mt-3 space-y-3" onSubmit={handleSubmit}>
+      <form className="mt-3 space-y-2" onSubmit={handleSubmit}>
         <Input
           label={copy("live.override.input.branch.label")}
           value={branch}
@@ -121,7 +123,7 @@ export function BranchOverridePanel({ session, onSuccess }) {
         />
         {error ? <p className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         {success ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{success}</p> : null}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 pb-0">
           <Button type="submit" size="sm" disabled={isBusy || !canMutate}>
             {busyAction === "save" ? copy("live.override.action.saving") : copy("live.override.action.save")}
           </Button>
@@ -130,6 +132,6 @@ export function BranchOverridePanel({ session, onSuccess }) {
           </Button>
         </div>
       </form>
-    </Card>
+    </section>
   );
 }

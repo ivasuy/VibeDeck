@@ -6,6 +6,7 @@ import { EntireStatusCard } from "../components/entire/EntireStatusCard";
 import { CheckpointList } from "../components/entire/CheckpointList";
 import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
 import { AdvancedConfigurePanel } from "../components/entire/AdvancedConfigurePanel";
+import { PageFrame } from "../components/PageFrame.jsx";
 
 export function EntirePage() {
   const [repoInput, setRepoInput] = useState("");
@@ -92,12 +93,7 @@ export function EntirePage() {
   }, [loadRepo, selectedRepo]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-      <header className="mb-4 min-w-0">
-        <h1 className="text-xl font-semibold text-oai-black dark:text-white">{copy("entire.title")}</h1>
-        <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.subtitle")}</p>
-      </header>
-
+    <PageFrame title={copy("entire.title")} subtitle={copy("entire.subtitle")}>
       <div className="grid gap-4">
         <RepoPathSelector
           value={repoInput}
@@ -125,6 +121,6 @@ export function EntirePage() {
           </div>
         ) : null}
       </div>
-    </main>
+    </PageFrame>
   );
 }

@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
 import { LivePage } from "./LivePage.jsx";
@@ -63,6 +63,28 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
         cost_estimated: false,
         cost_quality: "zero_tokens",
       },
+      {
+        provider: "codex",
+        session_id: "s5",
+        repo_root: "/repo/paged",
+        branch: "visible-fifth",
+        confidence: "high",
+        branch_resolution_tier: "A",
+        model: "gpt-5.5",
+        total_tokens: 100,
+        total_cost_usd: 0.01,
+      },
+      {
+        provider: "codex",
+        session_id: "s6",
+        repo_root: "/repo/paged",
+        branch: "second-page-session",
+        confidence: "low",
+        branch_resolution_tier: "C",
+        model: "gpt-5.5",
+        total_tokens: 100,
+        total_cost_usd: 0.01,
+      },
     ],
   }),
 }));
@@ -79,6 +101,7 @@ vi.mock("../lib/vibedeck-api", () => ({
       open_session_count: 1,
       sync_enabled: false,
     }),
+  getEntireStatus: () => Promise.resolve({ state: "active", version: "1.0.0" }),
 }));
 
 describe("LivePage", () => {
@@ -91,11 +114,23 @@ describe("LivePage", () => {
     expect(screen.getByText("feature/costs")).toBeTruthy();
     expect(screen.getByText("mystery")).toBeTruthy();
     expect(screen.getByText("idle")).toBeTruthy();
+    expect(screen.getByText("visible-fifth")).toBeTruthy();
+    expect(screen.queryByText("second-page-session")).toBeNull();
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
-    expect(screen.getByText("$0.05 est.")).toBeTruthy();
+    expect(screen.getByText("$0.05")).toBeTruthy();
+    expect(screen.queryByText("$0.05 est.")).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText("$0.00 est.")).toBeNull();
     expect(screen.getByText("$0.00")).toBeTruthy();
+    expect(screen.getAllByText("Live sessions").length).toBeGreaterThan(0);
+    expect(screen.getByText("Providers active")).toBeTruthy();
+    expect(screen.getByText("1-5 of 6")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => {
+      expect(screen.queryByText("main")).toBeNull();
+      expect(screen.getByText("second-page-session")).toBeTruthy();
+      expect(screen.getByText("6-6 of 6")).toBeTruthy();
+    });
     expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
   });
 });

@@ -5,7 +5,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
 import { LivePage } from "./LivePage.jsx";
-import { getAttributionStats, postAttribute } from "../lib/vibedeck-api";
+import { getAttributionStats, getEntireStatus, postAttribute } from "../lib/vibedeck-api";
 
 vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
   useVibeDeckLiveSessions: () => ({
@@ -32,6 +32,7 @@ vi.mock("../lib/vibedeck-api", async () => {
   return {
     ...actual,
     getAttributionStats: vi.fn(),
+    getEntireStatus: vi.fn(),
     postAttribute: vi.fn(),
   };
 });
@@ -45,6 +46,7 @@ beforeEach(() => {
     unattributed: 0,
     total: 1,
   });
+  vi.mocked(getEntireStatus).mockResolvedValue({ state: "active" });
   vi.mocked(postAttribute).mockResolvedValue({ ok: true });
 });
 

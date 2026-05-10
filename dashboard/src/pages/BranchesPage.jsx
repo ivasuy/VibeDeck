@@ -6,6 +6,7 @@ import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
 import { getBranchUsage } from "../lib/vibedeck-api";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
+import { PageFrame } from "../components/PageFrame.jsx";
 
 const BRANCHES_PAGE_SIZE = 10;
 
@@ -209,12 +210,7 @@ export function BranchesPage() {
       : copy("branches.empty");
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-      <header className="mb-4 min-w-0">
-        <h1 className="text-xl font-semibold text-oai-black dark:text-white">{copy("branches.title")}</h1>
-        <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.subtitle")}</p>
-      </header>
-
+    <PageFrame title={copy("branches.title")} subtitle={copy("branches.subtitle")}>
       <div className="grid gap-4">
         <Card>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -302,6 +298,6 @@ export function BranchesPage() {
         row={selectedRow}
         onClose={() => setSelectedRow(null)}
       />
-    </main>
+    </PageFrame>
   );
 }

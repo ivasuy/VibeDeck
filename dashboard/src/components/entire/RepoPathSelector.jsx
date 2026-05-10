@@ -2,11 +2,11 @@ import React, { useMemo, useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 
-export function normalizePath(value) {
+function normalizePath(value) {
   return String(value || "").trim();
 }
 
-export function isAbsolutePath(value) {
+function isAbsolutePath(value) {
   return /^([A-Za-z]:[\\/]|\/)/.test(value);
 }
 

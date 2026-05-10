@@ -1,4 +1,4 @@
-import React, { useId, useState } from "react";
+import React, { useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
@@ -30,23 +30,13 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
-  const disclosurePanelId = useId();
 
-  const toggleFlag = (flagConfig) => {
+  const toggleFlag = (flag) => {
     setArgsText((prev) => {
       const tokens = parseArgv(prev);
-      const next = tokens.includes(flagConfig.token)
-        ? tokens.filter((token) => token !== flagConfig.token)
-        : [
-            ...tokens.filter((token) => {
-              if (token === flagConfig.token) return false;
-              if (flagConfig.group === "telemetry") {
-                return token !== "--telemetry=false" && token !== "--telemetry=true";
-              }
-              return true;
-            }),
-            flagConfig.token,
-          ];
+      const next = tokens.includes(flag)
+        ? tokens.filter((token) => token !== flag)
+        : [...tokens.filter((token) => token !== flag), flag];
       return serializeArgv(next);
     });
   };
@@ -72,14 +62,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
     <Card>
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.configure.title")}</h2>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          aria-expanded={open}
-          aria-controls={disclosurePanelId}
-          onClick={() => setOpen((prev) => !prev)}
-        >
+        <Button type="button" size="sm" variant="secondary" onClick={() => setOpen((prev) => !prev)}>
           {copy("entire.configure.disclosure")}
         </Button>
       </div>
@@ -87,7 +70,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
       <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.subtitle")}</p>
 
       {open ? (
-        <div id={disclosurePanelId} className="mt-3 space-y-3">
+        <div className="mt-3 space-y-3">
           <EntireFlagChips selectedFlags={parseArgv(argsText)} onToggle={toggleFlag} />
           <Input
             label={copy("entire.configure.input.label")}

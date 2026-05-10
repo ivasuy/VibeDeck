@@ -51,12 +51,11 @@ function insertSession(db, row) {
     ) VALUES (
       @provider, @session_id, @started_at, @ended_at, NULL,
       @cwd, @repo_root, NULL, NULL,
-      @branch, @branch_resolution_tier, @confidence, NULL,
+      NULL, @branch_resolution_tier, @confidence, NULL,
       @model, @total_tokens, @total_cost_usd, @created_at, @updated_at
     )
   `).run({
     total_cost_usd: null,
-    branch: null,
     created_at: row.started_at,
     updated_at: row.started_at,
     ...row,
@@ -342,7 +341,6 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T09:30:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -358,7 +356,6 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T10:20:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        branch: "feature/usage-cards",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -374,7 +371,6 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T11:45:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "claude-sonnet-4-6",
@@ -396,7 +392,6 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     assert.equal(entry.repo_root, "/Users/vasuyadav/Downloads/Projects/VibeDeck");
     assert.equal(entry.total_tokens, "380");
     assert.equal(entry.billable_total_tokens, "380");
-    assert.equal(entry.branch_count, 2);
     assert.equal(entry.last_seen_at, "2026-05-10T11:45:00.000Z");
     assert.equal(entry.cost_estimated, true);
     assert.equal(entry.cost_quality, "mixed_known");

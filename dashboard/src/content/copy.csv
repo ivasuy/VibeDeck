@@ -132,25 +132,13 @@ dashboard.projects.limit_top_3,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_
 dashboard.projects.limit_top_6,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_6,TOP 6,,active
 dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top_10,TOP 10,,active
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,No public repositories,,active
-dashboard.projects.loading,ui,ProjectUsagePanel,ProjectUsagePanel,loading,Loading project usage...,,active
-dashboard.projects.error,ui,ProjectUsagePanel,ProjectUsagePanel,error,Project usage is unavailable.,,active
 dashboard.projects.last_used,ui,ProjectUsagePanel,ProjectUsagePanel,last_used,Last used {{time}},,active
 dashboard.projects.github_link_aria,ui,ProjectUsagePanel,ProjectUsagePanel,github_link_aria,Open {{project}} on GitHub,,active
 dashboard.projects.expand_project,ui,ProjectUsagePanel,ProjectUsagePanel,expand_project,Expand {{project}} usage breakdown,,active
 dashboard.projects.collapse_project,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_project,Collapse {{project}} usage breakdown,,active
 dashboard.projects.top_model_label,ui,ProjectUsagePanel,ProjectUsagePanel,top_model_label,Top model,,active
-dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,Total cost,,active
-dashboard.projects.branches_label,ui,ProjectUsagePanel,ProjectUsagePanel,branches_label,Branches,,active
-dashboard.projects.providers_label,ui,ProjectUsagePanel,ProjectUsagePanel,providers_label,Providers,,active
-dashboard.projects.models_label,ui,ProjectUsagePanel,ProjectUsagePanel,models_label,Models,,active
 dashboard.projects.breakdown_heading,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_heading,Model breakdown,,active
 dashboard.projects.breakdown_columns,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_columns,Estimated cost · tokens,,active
-dashboard.projects.breakdown_provider_mix,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_provider_mix,Provider mix,,active
-dashboard.projects.breakdown_provider_mix_aria,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_provider_mix_aria,Provider mix for {{project}},,active
-dashboard.projects.breakdown_model_mix,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_model_mix,Model mix,,active
-dashboard.projects.breakdown_model_mix_aria,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_model_mix_aria,Model mix for {{project}},,active
-dashboard.projects.breakdown_models_used,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_models_used,Models in use,,active
-dashboard.projects.breakdown_tokens_fallback,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_tokens_fallback,{{tokens}} tokens,,active
 dashboard.projects.provider_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,provider_label,Provider,,active
 dashboard.projects.model_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,model_label,Model,,active
 dashboard.projects.breakdown_sessions,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_sessions,{{count}} sessions,,active

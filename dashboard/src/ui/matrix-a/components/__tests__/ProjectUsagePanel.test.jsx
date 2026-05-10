@@ -36,7 +36,6 @@ describe("ProjectUsagePanel", () => {
     expect(githubLink.getAttribute("href")).toBe("https://github.com/octo/hello");
     expect(screen.getByText("hello")).toBeInTheDocument();
     expect(screen.getByText(/★/)).toBeInTheDocument();
-    expect(screen.getByText(copy("dashboard.projects.cost_label"))).toBeInTheDocument();
     expect(card).toBeInTheDocument();
   });
 
@@ -155,7 +154,6 @@ describe("ProjectUsagePanel", () => {
             project_key: "octo/usage-heavy",
             project_ref: "https://github.com/octo/usage-heavy",
             total_tokens: 5000,
-            branch_count: 2,
             estimated_total_cost_usd: 12.5,
             cost_estimated: true,
             top_models: [
@@ -189,10 +187,6 @@ describe("ProjectUsagePanel", () => {
 
     expect(screen.getByText("$12.50 est.")).toBeInTheDocument();
     expect(screen.getAllByText(/gpt-5\.4/).length).toBeGreaterThan(0);
-    expect(screen.getByText(copy("dashboard.projects.branches_label"))).toBeInTheDocument();
-    expect(screen.getByText(copy("dashboard.projects.providers_label"))).toBeInTheDocument();
-    expect(screen.getByText(copy("dashboard.projects.models_label"))).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.queryByText("3 sessions")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: expandLabel })).toHaveAttribute("aria-expanded", "false");
 
@@ -202,7 +196,6 @@ describe("ProjectUsagePanel", () => {
 
     expect(screen.getByRole("button", { name: collapseLabel })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(copy("dashboard.projects.breakdown_heading"))).toBeInTheDocument();
-    expect(screen.getByLabelText(copy("dashboard.projects.breakdown_provider_mix_aria", { project: "usage-heavy" }))).toBeInTheDocument();
     expect(screen.getByText("3 sessions")).toBeInTheDocument();
     expect(screen.getAllByText("$12.50 est.").length).toBeGreaterThan(0);
   });

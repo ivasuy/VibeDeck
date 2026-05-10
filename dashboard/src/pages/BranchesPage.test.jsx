@@ -108,6 +108,17 @@ const SAMPLE_PAYLOAD = {
   ],
 };
 
+function makePayload(repos) {
+  return {
+    totals: {
+      total_tokens: 0,
+      total_cost_usd: 0,
+      session_count: 0,
+    },
+    repos,
+  };
+}
+
 beforeEach(() => {
   getBranchUsage.mockReset();
   getBranchUsage.mockResolvedValue(SAMPLE_PAYLOAD);
@@ -167,5 +178,100 @@ describe("BranchesPage", () => {
       expect(screen.getByText("/repo-b")).toBeTruthy();
       expect(screen.getByText("release-b")).toBeTruthy();
     });
+  });
+
+  it("disambiguates duplicate repo basenames in the project selector", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/work/acme/app",
+        branches: [
+          {
+            branch: "feature-acme",
+            total_tokens: 50,
+            total_cost_usd: 1.25,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: "/tmp/sandbox/app",
+        branches: [
+          {
+            branch: "feature-sandbox",
+            total_tokens: 25,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-09T09:00:00.000Z",
+            confidence: { high: 0, medium: 1, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const projectSelect = await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+
+    expect(options).toContain("/work/acme/app");
+    expect(options).toContain("/tmp/sandbox/app");
+    expect(projectSelect.value).toBe("/work/acme/app");
+    expect(screen.getByText("feature-acme")).toBeTruthy();
+    expect(screen.queryByText("feature-sandbox")).toBeNull();
+  });
+
+  it("defaults to the latest repo even when payload repos arrive out of order", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-older",
+        branches: [
+          {
+            branch: "older-branch",
+            total_tokens: 10,
+            total_cost_usd: 0.1,
+            session_count: 1,
+            last_seen_at: "2026-05-07T08:00:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: "/repo-newer",
+        branches: [
+          {
+            branch: "newer-branch",
+            total_tokens: 20,
+            total_cost_usd: 0.2,
+            session_count: 1,
+            last_seen_at: "2026-05-11T08:00:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const projectSelect = await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+
+    expect(projectSelect.value).toBe("/repo-newer");
+    expect(screen.getByText("/repo-newer")).toBeTruthy();
+    expect(screen.getByText("newer-branch")).toBeTruthy();
+    expect(screen.queryByText("/repo-older")).toBeNull();
+    expect(screen.queryByText("older-branch")).toBeNull();
   });
 });

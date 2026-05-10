@@ -48,11 +48,33 @@ function sortReposByLastSeen(repos) {
   });
 }
 
-function repoOptionLabel(repoRoot) {
+function repoPathSegments(repoRoot) {
   const normalized = String(repoRoot || "").trim();
-  if (!normalized) return "—";
-  const parts = normalized.split(/[\\/]/).filter(Boolean);
-  return parts[parts.length - 1] || normalized;
+  return normalized ? normalized.split(/[\\/]/).filter(Boolean) : [];
+}
+
+function repoBasename(repoRoot) {
+  const parts = repoPathSegments(repoRoot);
+  return parts[parts.length - 1] || String(repoRoot || "").trim() || "—";
+}
+
+function buildRepoOptionLabels(repos) {
+  const basenameCounts = new Map();
+  const labels = new Map();
+
+  for (const repoEntry of repos || []) {
+    const repoRoot = String(repoEntry?.repo_root || "");
+    const basename = repoBasename(repoRoot);
+    basenameCounts.set(basename, (basenameCounts.get(basename) || 0) + 1);
+  }
+
+  for (const repoEntry of repos || []) {
+    const repoRoot = String(repoEntry?.repo_root || "");
+    const basename = repoBasename(repoRoot);
+    labels.set(repoRoot, basenameCounts.get(basename) > 1 ? repoRoot || "—" : basename);
+  }
+
+  return labels;
 }
 
 export function BranchesPage() {
@@ -87,21 +109,16 @@ export function BranchesPage() {
   }, []);
 
   const repos = useMemo(() => sortReposByLastSeen(payload?.repos || []), [payload]);
-
-  useEffect(() => {
-    if (repos.length === 0) {
-      setSelectedRepo("");
-      return;
-    }
-    setSelectedRepo((current) => {
-      if (repos.some((repoEntry) => String(repoEntry?.repo_root || "") === current)) return current;
-      return String(repos[0]?.repo_root || "");
-    });
-  }, [repos]);
+  const repoOptionLabels = useMemo(() => buildRepoOptionLabels(repos), [repos]);
+  const effectiveSelectedRepo = useMemo(() => {
+    if (repos.length === 0) return "";
+    const hasCurrentSelection = repos.some((repoEntry) => String(repoEntry?.repo_root || "") === selectedRepo);
+    return hasCurrentSelection ? selectedRepo : String(repos[0]?.repo_root || "");
+  }, [repos, selectedRepo]);
 
   const selectedRepoEntry = useMemo(
-    () => repos.find((repoEntry) => String(repoEntry?.repo_root || "") === selectedRepo) || null,
-    [repos, selectedRepo],
+    () => repos.find((repoEntry) => String(repoEntry?.repo_root || "") === effectiveSelectedRepo) || null,
+    [repos, effectiveSelectedRepo],
   );
 
   const rows = useMemo(
@@ -174,7 +191,7 @@ export function BranchesPage() {
               </label>
               <select
                 id="branches-project-select"
-                value={selectedRepo}
+                value={effectiveSelectedRepo}
                 onChange={(event) => setSelectedRepo(event.target.value)}
                 disabled={repos.length === 0}
                 className="h-10 w-full rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-1 focus:ring-oai-brand/30 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
@@ -184,7 +201,7 @@ export function BranchesPage() {
                   const repoRoot = String(repoEntry?.repo_root || "");
                   return (
                     <option key={repoRoot} value={repoRoot} title={repoRoot || undefined}>
-                      {repoOptionLabel(repoRoot)}
+                      {repoOptionLabels.get(repoRoot) || "—"}
                     </option>
                   );
                 })}

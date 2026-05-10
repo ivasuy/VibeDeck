@@ -53,14 +53,13 @@ export function formatProjectUsageCostLabel(costValue, costEstimated) {
 }
 
 function buildUsageRows(entries) {
-  const placeholder = copy("shared.placeholder.short");
   return (Array.isArray(entries) ? entries : []).map((entry, index) => {
     const costValue = resolveProjectUsageCostValue(entry);
     const value = costValue ?? Number(entry?.total_tokens || 0);
 
     return {
       key: `${String(entry?.provider || entry?.model || "row")}-${index}`,
-      label: String(entry?.provider || entry?.model || placeholder),
+      label: String(entry?.provider || entry?.model || "—"),
       value,
       valueLabel:
         costValue != null
@@ -126,7 +125,7 @@ function ProviderRow({ providerEntry }) {
           />
           <ul className="space-y-2">
             {models.map((modelEntry, index) => {
-              const modelName = String(modelEntry?.model || copy("shared.placeholder.short"));
+              const modelName = String(modelEntry?.model || "—");
               const modelCost = resolveProjectUsageCostValue(modelEntry);
               const modelSessionLabel = formatSessions(modelEntry?.session_count);
 
@@ -164,7 +163,6 @@ export function ProjectUsageBreakdown({ providers = [], topModels = [], projectN
   const providerRows = Array.isArray(providers) ? providers : [];
   const modelRows = Array.isArray(topModels) ? topModels : [];
   if (!providerRows.length) return null;
-  const projectLabel = projectName || copy("shared.placeholder.short");
 
   return (
     <div className="border-t border-oai-gray-200 px-4 py-4 dark:border-oai-gray-800">
@@ -183,7 +181,7 @@ export function ProjectUsageBreakdown({ providers = [], topModels = [], projectN
             {copy("dashboard.projects.breakdown_provider_mix")}
           </div>
           <MiniBarChart
-            ariaLabel={copy("dashboard.projects.breakdown_provider_mix_aria", { project: projectLabel })}
+            ariaLabel={copy("dashboard.projects.breakdown_provider_mix_aria", { project: projectName || "project" })}
             accent="cost"
             rows={buildUsageRows(providerRows)}
           />
@@ -194,7 +192,7 @@ export function ProjectUsageBreakdown({ providers = [], topModels = [], projectN
             {copy("dashboard.projects.breakdown_model_mix")}
           </div>
           <MiniBarChart
-            ariaLabel={copy("dashboard.projects.breakdown_model_mix_aria", { project: projectLabel })}
+            ariaLabel={copy("dashboard.projects.breakdown_model_mix_aria", { project: projectName || "project" })}
             accent="project"
             rows={buildUsageRows(modelRows)}
           />

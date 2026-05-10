@@ -444,66 +444,6 @@ test("project usage enriches DB-backed entries with provider and model cost brea
   }
 });
 
-test("project usage branch_count only includes branches inside the requested date window", async () => {
-  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
-  try {
-    const trackerDir = path.join(tmp, "tracker");
-    await fs.promises.mkdir(trackerDir, { recursive: true });
-
-    const queuePath = path.join(trackerDir, "queue.jsonl");
-    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
-    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
-
-    await writeJsonLines(queuePath, []);
-    await writeJsonLines(projectQueuePath, []);
-
-    ensureSchema(dbPath);
-    const db = new DatabaseSync(dbPath);
-    try {
-      insertSession(db, {
-        provider: "codex",
-        session_id: "vd-main",
-        started_at: "2026-05-10T09:00:00.000Z",
-        ended_at: "2026-05-10T09:30:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        branch: "main",
-        branch_resolution_tier: "A",
-        confidence: "high",
-        model: "gpt-5",
-        total_tokens: 100,
-      });
-      insertSession(db, {
-        provider: "codex",
-        session_id: "vd-release-old",
-        started_at: "2026-05-08T09:00:00.000Z",
-        ended_at: "2026-05-08T09:30:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        branch: "release/old",
-        branch_resolution_tier: "A",
-        confidence: "high",
-        model: "gpt-5",
-        total_tokens: 80,
-      });
-    } finally {
-      db.close();
-    }
-
-    const filtered = await callEndpoint(
-      queuePath,
-      "/functions/vibedeck-project-usage-summary?from=2026-05-10&to=2026-05-10&source=codex",
-    );
-
-    assert.equal(filtered.entries.length, 1);
-    assert.equal(filtered.entries[0].project_key, "VibeDeck");
-    assert.equal(filtered.entries[0].branch_count, 1);
-    assert.equal(filtered.entries[0].total_tokens, "100");
-  } finally {
-    await fs.promises.rm(tmp, { recursive: true, force: true });
-  }
-});
-
 test("project usage applies DB-backed from, to, and source filters without breaking queue fallback", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
   try {

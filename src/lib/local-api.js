@@ -193,10 +193,7 @@ function readSessionProjectUsage(dbPath, filters = {}) {
   }
 }
 
-function readSessionProjectBranchCounts(
-  dbPath,
-  { sourceFilter = null, from = "", to = "", timeZoneContext = null } = {},
-) {
+function readSessionProjectBranchCounts(dbPath, filters = {}) {
   if (!fs.existsSync(dbPath)) return new Map();
   const clauses = [
     "repo_root IS NOT NULL",
@@ -206,10 +203,10 @@ function readSessionProjectBranchCounts(
   ];
   const params = [];
 
-  if (sourceFilter && sourceFilter.size > 0) {
-    const placeholders = Array.from(sourceFilter, () => "?").join(", ");
+  if (filters.sourceFilter && filters.sourceFilter.size > 0) {
+    const placeholders = Array.from(filters.sourceFilter, () => "?").join(", ");
     clauses.push(`LOWER(COALESCE(provider, '')) IN (${placeholders})`);
-    params.push(...sourceFilter);
+    params.push(...filters.sourceFilter);
   }
 
   const db = new DatabaseSync(dbPath, { readOnly: true });
@@ -217,28 +214,18 @@ function readSessionProjectBranchCounts(
     const rows = db.prepare(`
       SELECT
         repo_root,
-        branch,
-        COALESCE(ended_at, updated_at, started_at) AS activity_at
+        COUNT(DISTINCT branch) AS branch_count
       FROM vibedeck_sessions
       WHERE ${clauses.join(" AND ")}
+      GROUP BY repo_root
     `).all(...params);
 
-    const counts = new Map();
-    for (const row of rows) {
-      const day = projectUsageDayKey(row?.activity_at, timeZoneContext);
-      if (!day) continue;
-      if (from && day < from) continue;
-      if (to && day > to) continue;
-
-      const repoRoot = String(row?.repo_root || "").trim();
-      const branch = String(row?.branch || "").trim();
-      if (!repoRoot || !branch) continue;
-
-      if (!counts.has(repoRoot)) counts.set(repoRoot, new Set());
-      counts.get(repoRoot).add(branch);
-    }
-
-    return new Map(Array.from(counts.entries()).map(([repoRoot, branches]) => [repoRoot, branches.size]));
+    return new Map(
+      rows.map((row) => [
+        String(row?.repo_root || "").trim(),
+        Number(row?.branch_count || 0),
+      ]),
+    );
   } finally {
     db.close();
   }
@@ -1989,12 +1976,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           readSessionProjectUsage(dbPath, { sourceFilter }),
           { from, to, timeZoneContext },
         );
-        sessionProjectBranchCounts = readSessionProjectBranchCounts(dbPath, {
-          sourceFilter,
-          from,
-          to,
-          timeZoneContext,
-        });
+        sessionProjectBranchCounts = readSessionProjectBranchCounts(dbPath, { sourceFilter });
       } catch {
         sessionProjectRows = [];
         sessionProjectBranchCounts = new Map();

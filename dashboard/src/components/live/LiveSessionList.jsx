@@ -103,6 +103,7 @@ export function LiveSessionList({
               <button
                 key={key}
                 type="button"
+                aria-pressed={selected}
                 onClick={() => onSelectSession?.(key)}
                 className={cn(
                   "grid min-h-[124px] w-full gap-3 px-5 py-4 text-left transition-colors",

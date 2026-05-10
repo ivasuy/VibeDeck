@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { getAttributionStats } from "../lib/vibedeck-api";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
 import { LiveSessionList } from "../components/live/LiveSessionList";
 import { AttributionHealthCard } from "../components/live/AttributionHealthCard";
+import { BranchOverridePanel } from "../components/live/BranchOverridePanel";
 
 function sessionKey(row) {
   if (!row?.provider || !row?.session_id) return null;
@@ -18,28 +19,23 @@ export function LivePage() {
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState(null);
 
-  useEffect(() => {
-    let active = true;
+  const refreshAttributionStats = useCallback(async () => {
     setStatsLoading(true);
     setStatsError(null);
-    getAttributionStats()
-      .then((payload) => {
-        if (!active) return;
-        setAttributionStats(payload || null);
-      })
-      .catch((cause) => {
-        if (!active) return;
-        const message = cause instanceof Error ? cause.message : copy("live.attribution.error");
-        setStatsError(message);
-      })
-      .finally(() => {
-        if (!active) return;
-        setStatsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
+    try {
+      const payload = await getAttributionStats();
+      setAttributionStats(payload || null);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : copy("live.override.error.fallback");
+      setStatsError(message);
+    } finally {
+      setStatsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    refreshAttributionStats();
+  }, [refreshAttributionStats]);
 
   useEffect(() => {
     if (!Array.isArray(sessions) || sessions.length === 0) {
@@ -94,6 +90,12 @@ export function LivePage() {
             loading={statsLoading}
             error={statsError}
           />
+          {selectedSession ? (
+            <BranchOverridePanel
+              session={selectedSession}
+              onSuccess={refreshAttributionStats}
+            />
+          ) : null}
           <Card>
             <h2 className="text-sm font-semibold text-oai-black dark:text-white">
               {copy("live.repo_state.title")}

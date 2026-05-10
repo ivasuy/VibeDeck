@@ -289,6 +289,22 @@ live.attribution.title,dashboard,LivePage,AttributionHealthCard,title,Attributio
 live.attribution.loading,dashboard,LivePage,AttributionHealthCard,loading,Loading attribution stats…,,active
 live.attribution.error,dashboard,LivePage,AttributionHealthCard,error,Unable to load attribution stats: {{error}},,active
 live.attribution.total,dashboard,LivePage,AttributionHealthCard,total,Total sessions,,active
+live.override.title,dashboard,LivePage,BranchOverridePanel,title,Branch override,,active
+live.override.subtitle,dashboard,LivePage,BranchOverridePanel,subtitle,Correct branch attribution for the selected session.,,active
+live.override.meta.current_branch,dashboard,LivePage,BranchOverridePanel,meta_current_branch,Current branch,,active
+live.override.meta.current_branch_value,dashboard,LivePage,BranchOverridePanel,meta_current_branch_value,Branch: {{branch}},,active
+live.override.meta.confidence,dashboard,LivePage,BranchOverridePanel,meta_confidence,Confidence,,active
+live.override.input.branch.label,dashboard,LivePage,BranchOverridePanel,input_branch_label,Branch,,active
+live.override.input.branch.placeholder,dashboard,LivePage,BranchOverridePanel,input_branch_placeholder,feature/live-fix,,active
+live.override.validation.branch_required,dashboard,LivePage,BranchOverridePanel,validation_branch_required,Enter a branch name before saving.,,active
+live.override.action.save,dashboard,LivePage,BranchOverridePanel,action_save,Save branch override,,active
+live.override.action.saving,dashboard,LivePage,BranchOverridePanel,action_saving,Saving…,,active
+live.override.action.clear,dashboard,LivePage,BranchOverridePanel,action_clear,Clear override,,active
+live.override.action.clearing,dashboard,LivePage,BranchOverridePanel,action_clearing,Clearing…,,active
+live.override.success.saved,dashboard,LivePage,BranchOverridePanel,success_saved,Override saved for {{branch}}.,,active
+live.override.success.cleared,dashboard,LivePage,BranchOverridePanel,success_cleared,Override cleared.,,active
+live.override.error.submit,dashboard,LivePage,BranchOverridePanel,error_submit,Unable to update attribution: {{error}},,active
+live.override.error.fallback,dashboard,LivePage,BranchOverridePanel,error_fallback,Request failed,,active
 nav.live,shared,*,Sidebar,nav_live,Live,,active
 nav.usage,shared,*,Sidebar,nav_usage,Usage,,active
 nav.branches,shared,*,Sidebar,nav_branches,Branches,,active

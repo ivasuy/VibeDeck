@@ -32,6 +32,7 @@ import {
 } from "../lib/skills-api";
 
 const DEFAULT_TARGETS = ["claude", "codex"];
+const SKILLS_PAGE_SIZE = 10;
 const TARGET_ACTIVE_CLASSES = {
   claude: "bg-orange-500/10 ring-1 ring-orange-500/20 hover:bg-orange-500/20",
   codex: "bg-emerald-500/10 ring-1 ring-emerald-500/20 hover:bg-emerald-500/20",
@@ -155,6 +156,44 @@ function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
             onRemove={onRemove}
           />
         ))}
+      </div>
+    </div>
+  );
+}
+
+function PaginationControls({ page, pageCount, total, onPageChange }) {
+  if (!Number.isFinite(pageCount) || pageCount <= 1) return null;
+  const currentPage = Math.min(Math.max(0, page), pageCount - 1);
+  const start = currentPage * SKILLS_PAGE_SIZE + 1;
+  const end = Math.min(total, (currentPage + 1) * SKILLS_PAGE_SIZE);
+
+  return (
+    <div className="mt-5 flex flex-col gap-3 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        {start}-{end} of {total}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={currentPage === 0}
+          onClick={() => onPageChange(currentPage - 1)}
+        >
+          {copy("details.pagination.prev")}
+        </Button>
+        <span className="min-w-16 text-center tabular-nums">
+          {currentPage + 1} / {pageCount}
+        </span>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={currentPage + 1 >= pageCount}
+          onClick={() => onPageChange(currentPage + 1)}
+        >
+          {copy("details.pagination.next")}
+        </Button>
       </div>
     </div>
   );
@@ -382,6 +421,8 @@ export function SkillsPage() {
   const [source, setSource] = useState(SOURCE_ALL);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [myQuery, setMyQuery] = useState("");
+  const [debouncedMyQuery, setDebouncedMyQuery] = useState("");
   const [repoInput, setRepoInput] = useState("");
   const [manageOpen, setManageOpen] = useState(false);
   const [busyKey, setBusyKey] = useState("");
@@ -390,6 +431,8 @@ export function SkillsPage() {
   const [error, setError] = useState("");
   const [pendingRemove, setPendingRemove] = useState(null);
   const [toast, setToast] = useState(null); // { message, undo, key }
+  const [myPage, setMyPage] = useState(0);
+  const [browsePage, setBrowsePage] = useState(0);
 
   const installedKeys = useMemo(() => {
     const keys = new Set();
@@ -470,6 +513,19 @@ export function SkillsPage() {
     const timer = setTimeout(() => setDebouncedQuery(query), 200);
     return () => clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedMyQuery(myQuery), 200);
+    return () => clearTimeout(timer);
+  }, [myQuery]);
+
+  useEffect(() => {
+    setMyPage(0);
+  }, [debouncedMyQuery, installedData.skills.length, tab]);
+
+  useEffect(() => {
+    setBrowsePage(0);
+  }, [debouncedQuery, source, tab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -609,6 +665,22 @@ export function SkillsPage() {
 
   const targets = installedData.targets || [];
   const mySkills = installedData.skills || [];
+  const filteredMySkills = useMemo(() => {
+    const q = debouncedMyQuery.trim().toLowerCase();
+    if (!q) return mySkills;
+    return mySkills.filter((skill) =>
+      (skill.name || "").toLowerCase().includes(q) ||
+      (skill.directory || "").toLowerCase().includes(q) ||
+      (skill.description || "").toLowerCase().includes(q) ||
+      (skill.repoOwner || "").toLowerCase().includes(q) ||
+      (skill.repoName || "").toLowerCase().includes(q));
+  }, [debouncedMyQuery, mySkills]);
+  const myPageCount = Math.max(1, Math.ceil(filteredMySkills.length / SKILLS_PAGE_SIZE));
+  const boundedMyPage = Math.min(myPage, myPageCount - 1);
+  const pagedMySkills = useMemo(
+    () => filteredMySkills.slice(boundedMyPage * SKILLS_PAGE_SIZE, (boundedMyPage + 1) * SKILLS_PAGE_SIZE),
+    [boundedMyPage, filteredMySkills],
+  );
 
   const browseItems = useMemo(() => {
     const pool = source === SOURCE_SKILLSSH ? searchData : discoverData;
@@ -633,6 +705,13 @@ export function SkillsPage() {
     });
   }, [debouncedQuery, discoverData, installedKeys, searchData, source]);
 
+  const browsePageCount = Math.max(1, Math.ceil(browseItems.length / SKILLS_PAGE_SIZE));
+  const boundedBrowsePage = Math.min(browsePage, browsePageCount - 1);
+  const pagedBrowseItems = useMemo(
+    () => browseItems.slice(boundedBrowsePage * SKILLS_PAGE_SIZE, (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE),
+    [boundedBrowsePage, browseItems],
+  );
+
   const loadingNode = (
     <div className="flex h-64 items-center justify-center">
       <Loader2 className="h-8 w-8 animate-spin text-oai-gray-400" aria-hidden />
@@ -646,9 +725,9 @@ export function SkillsPage() {
       </p>
     </div>
   );
-  const emptyNode = (key, action = null) => (
+  const emptyNode = (message, action = null) => (
     <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
-      <p>{copy(key)}</p>
+      <p>{message}</p>
       {action}
     </div>
   );
@@ -658,13 +737,27 @@ export function SkillsPage() {
     contentNode = loadingNode;
   } else if (tab === "my") {
     contentNode = mySkills.length ? (
-      <MySkillsView
-        items={mySkills}
-        targets={targets}
-        busyKey={busyKey}
-        onToggleTarget={handleToggleTarget}
-        onRemove={handleRemove}
-      />
+      <>
+        {filteredMySkills.length ? (
+          <>
+            <MySkillsView
+              items={pagedMySkills}
+              targets={targets}
+              busyKey={busyKey}
+              onToggleTarget={handleToggleTarget}
+              onRemove={handleRemove}
+            />
+            <PaginationControls
+              page={boundedMyPage}
+              pageCount={myPageCount}
+              total={filteredMySkills.length}
+              onPageChange={setMyPage}
+            />
+          </>
+        ) : (
+          emptyNode(copy("skills.empty.search"))
+        )}
+      </>
     ) : (
       <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center dark:border-oai-gray-800">
         {targets.length > 0 ? (
@@ -751,7 +844,7 @@ export function SkillsPage() {
     } else if (browseItems.length) {
       resultNode = (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {browseItems.map((skill) => (
+          {pagedBrowseItems.map((skill) => (
             <div key={skill.id || skill.key} style={BROWSE_CARD_STYLE}>
               <BrowseCard
                 skill={skill}
@@ -766,9 +859,9 @@ export function SkillsPage() {
         </div>
       );
     } else if (isSkillsSh) {
-      resultNode = emptyNode("skills.empty.search");
+      resultNode = emptyNode(copy("skills.empty.search"));
     } else {
-      resultNode = emptyNode("skills.empty.browse");
+      resultNode = emptyNode(copy("skills.empty.browse"));
     }
 
     const manageNode = noSources || manageOpen ? (
@@ -788,6 +881,14 @@ export function SkillsPage() {
       <>
         {manageNode}
         {resultNode}
+        {browseItems.length ? (
+          <PaginationControls
+            page={boundedBrowsePage}
+            pageCount={browsePageCount}
+            total={browseItems.length}
+            onPageChange={setBrowsePage}
+          />
+        ) : null}
       </>
     );
   }
@@ -837,6 +938,20 @@ export function SkillsPage() {
           {error ? (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
               {error}
+            </div>
+          ) : null}
+
+          {tab === "my" && !loading ? (
+            <div className="mb-5">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-oai-gray-400" aria-hidden />
+                <Input
+                  value={myQuery}
+                  onChange={(event) => setMyQuery(event.target.value)}
+                  placeholder={copy("skills.my.search_placeholder")}
+                  className="pl-9 !border-oai-gray-200 dark:!border-oai-gray-800 focus:!border-oai-gray-400 focus:!ring-oai-gray-400/20 dark:focus:!border-oai-gray-500 dark:focus:!ring-oai-gray-500/20"
+                />
+              </div>
             </div>
           ) : null}
 

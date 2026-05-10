@@ -3,7 +3,6 @@ import { getLocalApiAuthHeaders } from "./local-api-auth";
 type AnyRecord = Record<string, any>;
 
 const SLUG = "vibedeck-skills";
-const LEGACY_SLUG = "tokentracker-skills";
 
 async function fetchSkillsJson(params?: AnyRecord) {
   const url = new URL(`/functions/${SLUG}`, window.location.origin);
@@ -26,25 +25,6 @@ async function fetchSkillsJson(params?: AnyRecord) {
 async function mutateSkillsJson(body: AnyRecord, cmd: string) {
   const authHeaders = await getLocalApiAuthHeaders();
   const response = await fetch(`/functions/${SLUG}/${cmd}`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...authHeaders,
-    },
-    cache: "no-store",
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || `Request failed with HTTP ${response.status}`);
-  }
-  return payload;
-}
-
-async function mutateLegacySkillsJson(body: AnyRecord) {
-  const authHeaders = await getLocalApiAuthHeaders();
-  const response = await fetch(`/functions/${LEGACY_SLUG}`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -90,7 +70,7 @@ export function restoreSkill(id: string) {
 }
 
 export function setSkillTargets(id: string, targets: string[]) {
-  return mutateLegacySkillsJson({ action: "set_targets", id, targets });
+  return mutateSkillsJson({ id, targets }, "setTargets");
 }
 
 export function importLocalSkill(directory: string, targets: string[]) {

@@ -92,6 +92,10 @@ beforeEach(async () => {
         calls.push({ fn: "restoreSkill", args });
         return { id: "s2" };
       },
+      setSkillTargets: (...args) => {
+        calls.push({ fn: "setSkillTargets", args });
+        return { id: "s2", targets: args[1] || [] };
+      },
       importLocalSkill: (...args) => {
         calls.push({ fn: "importLocalSkill", args });
         return { id: "s3" };
@@ -114,7 +118,7 @@ afterEach(async () => {
   tmpRoot = null;
 });
 
-for (const cmd of ["install", "uninstall", "restore", "importLocal", "deleteLocal"]) {
+for (const cmd of ["install", "uninstall", "restore", "setTargets", "importLocal", "deleteLocal"]) {
   test(`POST /functions/vibedeck-skills/${cmd} without Bearer returns 401`, async () => {
     const res = await postJson(srv.baseUrl, `/functions/vibedeck-skills/${cmd}`, {});
     assert.equal(res.status, 401);
@@ -133,4 +137,3 @@ for (const cmd of ["install", "uninstall", "restore", "importLocal", "deleteLoca
     assert.equal(calls.length, 1);
   });
 }
-

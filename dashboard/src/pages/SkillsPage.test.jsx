@@ -1,3 +1,6 @@
+/* @vitest-environment jsdom */
+
+import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
@@ -63,11 +66,11 @@ describe("SkillsPage", () => {
   it("renders installed skills instead of the empty state", async () => {
     render(<SkillsPage />);
 
-    expect(await screen.findByText("Sample Skill")).toBeInTheDocument();
-    expect(screen.getByText("Keeps the installed list visible.")).toBeInTheDocument();
+    expect(await screen.findByText("Sample Skill")).toBeTruthy();
+    expect(screen.getByText("Keeps the installed list visible.")).toBeTruthy();
 
     await waitFor(() => {
-      expect(screen.queryByText(copy("skills.empty.my"))).not.toBeInTheDocument();
+      expect(screen.queryByText(copy("skills.empty.my"))).toBeNull();
     });
   });
 });

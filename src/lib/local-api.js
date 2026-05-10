@@ -1517,6 +1517,11 @@ function createLocalApiHandler({ queuePath }) {
           json(res, { ok: true, skill: skills.restoreSkill(body.id) });
           return true;
         }
+        if (cmd === "setTargets") {
+          const targets = Array.isArray(body.targets) ? body.targets : [];
+          json(res, { ok: true, skill: skills.setSkillTargets(body.id, targets) });
+          return true;
+        }
         if (cmd === "importLocal") {
           const targets = Array.isArray(body.targets) ? body.targets : [];
           json(res, { ok: true, skill: skills.importLocalSkill(body.directory, targets) });

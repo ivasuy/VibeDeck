@@ -10,6 +10,7 @@ import {
   removeSkillRepo,
   restoreSkill,
   searchSkills,
+  setSkillTargets,
   uninstallSkill,
 } from "../skills-api";
 
@@ -90,6 +91,16 @@ describe("skills-api endpoint routing", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("/functions/vibedeck-skills/restore");
     expect(fetchMock.mock.calls[0][1].method).toBe("POST");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({ id: "skill-id" });
+  });
+
+  it("uses vibedeck-skills setTargets command route", async () => {
+    await setSkillTargets("skill-id", ["claude", "codex"]);
+    expect(fetchMock.mock.calls[0][0]).toBe("/functions/vibedeck-skills/setTargets");
+    expect(fetchMock.mock.calls[0][1].method).toBe("POST");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1].body))).toEqual({
+      id: "skill-id",
+      targets: ["claude", "codex"],
+    });
   });
 
   it("uses vibedeck-skills importLocal command route", async () => {

@@ -614,6 +614,8 @@ entire.repo.input.label,dashboard,EntirePage,RepoPathSelector,input_label,Reposi
 entire.repo.input.placeholder,dashboard,EntirePage,RepoPathSelector,input_placeholder,/Users/you/project,,active
 entire.repo.action.load,dashboard,EntirePage,RepoPathSelector,action_load,Load repo,,active
 entire.repo.action.loading,dashboard,EntirePage,RepoPathSelector,action_loading,Loading…,,active
+entire.refresh.action,dashboard,EntirePage,EntirePage,refresh_action,Refresh,,active
+entire.refresh.last,dashboard,EntirePage,EntirePage,refresh_last,"Last refreshed {{time}}",,active
 entire.repo.validation.absolute_path,dashboard,EntirePage,RepoPathSelector,validation_absolute_path,Enter an absolute repository path.,,active
 entire.repo.suggestions.label,dashboard,EntirePage,RepoPathSelector,suggestions_label,Recent repos,,active
 entire.status.title,dashboard,EntirePage,EntireStatusCard,title,Entire status,,active
@@ -672,6 +674,10 @@ entire.actions.output,dashboard,EntirePage,EntireActionsPanel,output,Command out
 entire.configure.title,dashboard,EntirePage,AdvancedConfigurePanel,title,Configure,,active
 entire.configure.disclosure,dashboard,EntirePage,AdvancedConfigurePanel,disclosure,Advanced raw configure,,active
 entire.configure.subtitle,dashboard,EntirePage,AdvancedConfigurePanel,subtitle,Use raw argv-style arguments for Entire configure.,,active
+entire.configure.flags.label,dashboard,EntirePage,EntireFlagChips,flags_label,Guided flags,,active
+entire.configure.flags.hint,dashboard,EntirePage,EntireFlagChips,flags_hint,Select a flag to insert or remove it from the raw configure arguments.,,active
+entire.configure.flags.telemetry_off,dashboard,EntirePage,EntireFlagChips,flags_telemetry_off,Telemetry off,,active
+entire.configure.flags.telemetry_on,dashboard,EntirePage,EntireFlagChips,flags_telemetry_on,Telemetry on,,active
 entire.configure.input.label,dashboard,EntirePage,AdvancedConfigurePanel,input_label,Configure args,,active
 entire.configure.input.placeholder,dashboard,EntirePage,AdvancedConfigurePanel,input_placeholder,--arg value --flag,,active
 entire.configure.action,dashboard,EntirePage,AdvancedConfigurePanel,action,Run configure,,active

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
+import { EntireFlagChips } from "./EntireFlagChips";
 
 function parseArgv(raw) {
   const text = String(raw || "").trim();
@@ -19,12 +20,26 @@ function commandOutputText(payload) {
   return JSON.stringify(payload, null, 2);
 }
 
+function serializeArgv(tokens) {
+  return tokens.join(" ").trim();
+}
+
 export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
   const [open, setOpen] = useState(false);
   const [argsText, setArgsText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
+
+  const toggleFlag = (flag) => {
+    setArgsText((prev) => {
+      const tokens = parseArgv(prev);
+      const next = tokens.includes(flag)
+        ? tokens.filter((token) => token !== flag)
+        : [...tokens.filter((token) => token !== flag), flag];
+      return serializeArgv(next);
+    });
+  };
 
   const runConfigure = async () => {
     if (!repo || busy) return;
@@ -56,6 +71,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
 
       {open ? (
         <div className="mt-3 space-y-3">
+          <EntireFlagChips selectedFlags={parseArgv(argsText)} onToggle={toggleFlag} />
           <Input
             label={copy("entire.configure.input.label")}
             placeholder={copy("entire.configure.input.placeholder")}

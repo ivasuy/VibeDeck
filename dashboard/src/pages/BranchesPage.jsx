@@ -3,6 +3,8 @@ import { Card, Input } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
 import { getBranchUsage } from "../lib/vibedeck-api";
+import { BranchCostBars } from "../components/branches/BranchCostBars";
+import { BranchProjectSummary } from "../components/branches/BranchProjectSummary";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
 
@@ -83,6 +85,71 @@ function formatSummaryCostLabel(totals) {
   return totals.costEstimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
 }
 
+function formatTimestamp(value) {
+  if (!value) return copy("branches.value.unknown_time");
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function aggregateConfidence(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce(
+    (acc, row) => ({
+      high: acc.high + toCount(row?.confidence?.high),
+      medium: acc.medium + toCount(row?.confidence?.medium),
+      low: acc.low + toCount(row?.confidence?.low),
+      unattributed: acc.unattributed + toCount(row?.confidence?.unattributed),
+    }),
+    { high: 0, medium: 0, low: 0, unattributed: 0 },
+  );
+}
+
+function aggregateProviderModels(rows) {
+  const summary = new Map();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
+    const providerByModel = new Map();
+    for (const session of sessions) {
+      const model = String(session?.model || "").trim();
+      const provider = String(session?.provider || "").trim();
+      if (model && provider && !providerByModel.has(model)) {
+        providerByModel.set(model, provider);
+      }
+    }
+
+    for (const modelEntry of Array.isArray(row?.models) ? row.models : []) {
+      const model = String(modelEntry?.model || "").trim();
+      if (!model) continue;
+      const provider = providerByModel.get(model) || copy("live.value.unknown_provider");
+      const key = `${provider}:${model}`;
+      const existing = summary.get(key) || { provider, model, total_tokens: 0 };
+      existing.total_tokens += toCount(modelEntry?.total_tokens);
+      summary.set(key, existing);
+    }
+  }
+
+  return [...summary.values()]
+    .sort((left, right) => right.total_tokens - left.total_tokens)
+    .slice(0, 6);
+}
+
+function sortRowsForLedger(rows) {
+  return [...(Array.isArray(rows) ? rows : [])].sort((left, right) => {
+    const rightCost = toKnownCost(right?.total_cost_usd);
+    const leftCost = toKnownCost(left?.total_cost_usd);
+    const rightValue = rightCost ?? toCount(right?.total_tokens);
+    const leftValue = leftCost ?? toCount(left?.total_tokens);
+    if (rightValue !== leftValue) return rightValue - leftValue;
+    return String(left?.branch || "").localeCompare(String(right?.branch || ""));
+  });
+}
+
 export function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -134,12 +201,13 @@ export function BranchesPage() {
 
   const filteredRows = useMemo(() => {
     const branchNeedle = branchFilter.trim().toLowerCase();
-    return rows.filter((row) => {
+    const matchingRows = rows.filter((row) => {
       const branchMatches = branchNeedle
         ? String(row?.branch || "").toLowerCase().includes(branchNeedle)
         : true;
       return branchMatches;
     });
+    return sortRowsForLedger(matchingRows);
   }, [rows, branchFilter]);
 
   useEffect(() => {
@@ -173,6 +241,15 @@ export function BranchesPage() {
 
   const appliedCount = filteredRows.length;
   const totalCount = rows.length;
+  const summaryConfidence = useMemo(() => aggregateConfidence(filteredRows), [filteredRows]);
+  const providerModels = useMemo(() => aggregateProviderModels(filteredRows), [filteredRows]);
+  const lastSeenLabel = useMemo(() => {
+    const latestSeenAt = filteredRows.reduce((latest, row) => {
+      const timestamp = Date.parse(String(row?.last_seen_at || ""));
+      return Number.isNaN(timestamp) ? latest : Math.max(latest, timestamp);
+    }, 0);
+    return latestSeenAt ? formatTimestamp(new Date(latestSeenAt).toISOString()) : copy("branches.value.unknown_time");
+  }, [filteredRows]);
   const emptyMessage = repos.length === 0
     ? copy("branches.empty.no_repo_rows")
     : totalCount === 0
@@ -188,7 +265,7 @@ export function BranchesPage() {
 
       <div className="grid gap-4">
         <Card>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
             <div className="w-full">
               <label
                 htmlFor="branches-project-select"
@@ -222,32 +299,6 @@ export function BranchesPage() {
               aria-label={copy("branches.filter.branch.label")}
             />
           </div>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.tokens")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {toDisplayNumber(totals.tokens)}
-              </div>
-            </div>
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.cost")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {formatSummaryCostLabel(totals)}
-              </div>
-            </div>
-            <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-              <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                {copy("branches.total.sessions")}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {toDisplayNumber(totals.sessions)}
-              </div>
-            </div>
-          </div>
           <p className="mt-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
             {copy("branches.filter.summary", { count: appliedCount, total: totalCount })}
           </p>
@@ -262,7 +313,24 @@ export function BranchesPage() {
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.loading")}</p>
           </Card>
         ) : (
-          <BranchUsageTable rows={filteredRows} onOpenSessions={setSelectedRow} emptyMessage={emptyMessage} />
+          <>
+            <BranchProjectSummary
+              repoRoot={effectiveSelectedRepo}
+              branchCount={appliedCount}
+              totals={totals}
+              providerModels={providerModels}
+              confidence={summaryConfidence}
+              lastSeenLabel={lastSeenLabel}
+            />
+            <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+              <BranchCostBars repoRoot={effectiveSelectedRepo} rows={filteredRows} />
+              <BranchUsageTable
+                rows={filteredRows}
+                onOpenSessions={setSelectedRow}
+                emptyMessage={emptyMessage}
+              />
+            </div>
+          </>
         )}
       </div>
 

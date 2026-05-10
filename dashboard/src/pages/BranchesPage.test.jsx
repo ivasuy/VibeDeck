@@ -143,20 +143,24 @@ afterEach(() => {
 });
 
 describe("BranchesPage", () => {
-  it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
+  it("renders the selected project summary, ledger rows, cost bars, and session drill-down", async () => {
     render(<BranchesPage />);
 
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
     expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
-    expect(await screen.findByText("/repo-a")).toBeTruthy();
-    expect(screen.getByText("feature-a")).toBeTruthy();
-    expect(screen.queryByText("/repo-b")).toBeNull();
+    expect((await screen.findAllByText("repo-a")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("feature-a").length).toBeGreaterThan(0);
+    expect(screen.getByText("Project summary")).toBeTruthy();
+    expect(screen.getByText("Branch cost ranking")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Branch ledger" })).toBeTruthy();
+    expect(screen.getByText("/repo-a")).toBeTruthy();
+    expect(screen.queryAllByText("/repo-b")).toHaveLength(0);
     expect(screen.queryByText("release-b")).toBeNull();
-    expect(screen.getByText("Showing 1 of 1 branches")).toBeTruthy();
+    expect(screen.getAllByText("Showing 1 of 1 branches").length).toBeGreaterThan(0);
     expect(screen.getByText("high 2 · medium 1 · low 0 · unattributed 0")).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Top model" })).toBeTruthy();
-    expect(screen.getByText("gpt-5.2 +1")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Usage" })).toBeTruthy();
+    expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
@@ -172,7 +176,7 @@ describe("BranchesPage", () => {
     render(<BranchesPage />);
 
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
-    expect(screen.getAllByText("$12.34 est.").length).toBe(2);
+    expect(screen.getAllByText("$12.34 est.").length).toBeGreaterThanOrEqual(2);
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
@@ -193,17 +197,17 @@ describe("BranchesPage", () => {
     fireEvent.change(projectSelect, { target: { value: "/repo-b" } });
 
     await waitFor(() => {
-      expect(screen.queryByText("/repo-a")).toBeNull();
+      expect(screen.queryAllByText("/repo-a")).toHaveLength(0);
       expect(screen.queryByText("feature-a")).toBeNull();
       expect(screen.getByText("/repo-b")).toBeTruthy();
-      expect(screen.getByText("release-b")).toBeTruthy();
+      expect(screen.getAllByText("release-b").length).toBeGreaterThan(0);
     });
 
     fireEvent.change(screen.getByLabelText("Branch filter"), { target: { value: "release" } });
 
     await waitFor(() => {
       expect(screen.getByText("/repo-b")).toBeTruthy();
-      expect(screen.getByText("release-b")).toBeTruthy();
+      expect(screen.getAllByText("release-b").length).toBeGreaterThan(0);
     });
   });
 
@@ -251,7 +255,7 @@ describe("BranchesPage", () => {
     expect(options).toContain("/work/acme/app");
     expect(options).toContain("/tmp/sandbox/app");
     expect(projectSelect.value).toBe("/work/acme/app");
-    expect(screen.getByText("feature-acme")).toBeTruthy();
+    expect(screen.getAllByText("feature-acme").length).toBeGreaterThan(0);
     expect(screen.queryByText("feature-sandbox")).toBeNull();
   });
 
@@ -297,8 +301,8 @@ describe("BranchesPage", () => {
 
     expect(projectSelect.value).toBe("/repo-newer");
     expect(screen.getByText("/repo-newer")).toBeTruthy();
-    expect(screen.getByText("newer-branch")).toBeTruthy();
-    expect(screen.queryByText("/repo-older")).toBeNull();
+    expect(screen.getAllByText("newer-branch").length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("/repo-older")).toHaveLength(0);
     expect(screen.queryByText("older-branch")).toBeNull();
   });
 });

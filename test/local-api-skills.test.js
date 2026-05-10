@@ -61,7 +61,11 @@ describe("/functions/tokentracker-skills auth + input", () => {
   let token;
 
   before(async () => {
-    const result = await call({ method: "GET", pathname: "/api/local-auth" });
+    const result = await call({
+      method: "GET",
+      pathname: "/api/local-auth",
+      headers: { referer: "http://localhost:7690/dashboard" },
+    });
     assert.ok(result.handled);
     token = result.body.token;
     assert.ok(token && typeof token === "string");

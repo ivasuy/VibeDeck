@@ -21,6 +21,13 @@ describe("ops UI primitives", () => {
   it("renders a labeled icon badge without decorative text overflow", () => {
     render(<IconBadge accent="live" label="Live" />);
     expect(screen.getByLabelText("Live")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Live" })).toBeInTheDocument();
+  });
+
+  it("renders decorative icon badges as aria-hidden elements", () => {
+    const { container } = render(<IconBadge accent="skills" label="Skills" decorative />);
+    expect(screen.queryByLabelText("Skills")).not.toBeInTheDocument();
+    expect(container.querySelector('[aria-hidden="true"]')).toBeInTheDocument();
   });
 
   it("renders metric strip items with stable labels and values", () => {

@@ -20,6 +20,33 @@
   --vd-branch: #6366f1;
   --vd-warning: #d97706;
   --vd-danger: #dc2626;
+  --vd-ops-live-soft: rgba(16, 185, 129, 0.12);
+  --vd-ops-live-border: rgba(5, 150, 105, 0.24);
+  --vd-ops-live-text: #047857;
+  --vd-ops-project-soft: rgba(15, 118, 110, 0.1);
+  --vd-ops-project-border: rgba(15, 118, 110, 0.2);
+  --vd-ops-project-text: #115e59;
+  --vd-ops-cost-soft: rgba(217, 119, 6, 0.12);
+  --vd-ops-cost-border: rgba(180, 83, 9, 0.22);
+  --vd-ops-cost-text: #9a3412;
+  --vd-ops-branch-soft: rgba(99, 102, 241, 0.12);
+  --vd-ops-branch-border: rgba(79, 70, 229, 0.22);
+  --vd-ops-branch-text: #4338ca;
+  --vd-ops-skills-soft: rgba(8, 145, 178, 0.12);
+  --vd-ops-skills-border: rgba(14, 116, 144, 0.22);
+  --vd-ops-skills-text: #155e75;
+  --vd-ops-entire-soft: rgba(71, 85, 105, 0.12);
+  --vd-ops-entire-border: rgba(51, 65, 85, 0.22);
+  --vd-ops-entire-text: #334155;
+  --vd-ops-confidence-soft: rgba(8, 145, 178, 0.12);
+  --vd-ops-confidence-border: rgba(14, 116, 144, 0.22);
+  --vd-ops-confidence-text: #155e75;
+  --vd-ops-danger-soft: rgba(220, 38, 38, 0.1);
+  --vd-ops-danger-border: rgba(185, 28, 28, 0.2);
+  --vd-ops-danger-text: #b91c1c;
+  --vd-ops-muted-soft: rgba(64, 64, 64, 0.05);
+  --vd-ops-muted-border: rgba(115, 115, 115, 0.14);
+  --vd-ops-muted-text: #525252;
 
   /* Colors - Warm-tinted Neutrals (subtle green tint for cohesion) */
   --oai-gray-50: oklch(98% 0.005 145);
@@ -128,6 +155,33 @@
   --vd-branch: #818cf8;
   --vd-warning: #fbbf24;
   --vd-danger: #f87171;
+  --vd-ops-live-soft: rgba(52, 211, 153, 0.16);
+  --vd-ops-live-border: rgba(52, 211, 153, 0.3);
+  --vd-ops-live-text: #a7f3d0;
+  --vd-ops-project-soft: rgba(45, 212, 191, 0.16);
+  --vd-ops-project-border: rgba(45, 212, 191, 0.28);
+  --vd-ops-project-text: #99f6e4;
+  --vd-ops-cost-soft: rgba(251, 191, 36, 0.14);
+  --vd-ops-cost-border: rgba(245, 158, 11, 0.28);
+  --vd-ops-cost-text: #fde68a;
+  --vd-ops-branch-soft: rgba(129, 140, 248, 0.15);
+  --vd-ops-branch-border: rgba(129, 140, 248, 0.3);
+  --vd-ops-branch-text: #c7d2fe;
+  --vd-ops-skills-soft: rgba(34, 211, 238, 0.15);
+  --vd-ops-skills-border: rgba(34, 211, 238, 0.28);
+  --vd-ops-skills-text: #a5f3fc;
+  --vd-ops-entire-soft: rgba(148, 163, 184, 0.14);
+  --vd-ops-entire-border: rgba(148, 163, 184, 0.26);
+  --vd-ops-entire-text: #e2e8f0;
+  --vd-ops-confidence-soft: rgba(14, 165, 233, 0.16);
+  --vd-ops-confidence-border: rgba(56, 189, 248, 0.28);
+  --vd-ops-confidence-text: #bae6fd;
+  --vd-ops-danger-soft: rgba(248, 113, 113, 0.14);
+  --vd-ops-danger-border: rgba(248, 113, 113, 0.26);
+  --vd-ops-danger-text: #fecaca;
+  --vd-ops-muted-soft: rgba(250, 250, 250, 0.06);
+  --vd-ops-muted-border: rgba(212, 212, 212, 0.14);
+  --vd-ops-muted-text: #d4d4d4;
 
   /* Colors - Warm-tinted Neutrals (hue 145 matches brand green for cohesion) */
   --oai-gray-50: oklch(20% 0.002 145);

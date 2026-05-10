@@ -66,8 +66,12 @@ describe("SkillsPage", () => {
   it("renders installed skills instead of the empty state", async () => {
     render(<SkillsPage />);
 
-    expect(await screen.findByText("Sample Skill")).toBeTruthy();
-    expect(screen.getByText("Keeps the installed list visible.")).toBeTruthy();
+    expect((await screen.findAllByText("Sample Skill")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Keeps the installed list visible.").length).toBeGreaterThan(0);
+    expect(screen.getByText(copy("skills.inventory.title"))).toBeTruthy();
+    expect(screen.getAllByText(copy("skills.matrix.title")).length).toBeGreaterThan(0);
+    expect(screen.getByText(copy("skills.summary.installed"))).toBeTruthy();
+    expect(screen.getByRole("button", { name: copy("skills.action.remove") })).toBeTruthy();
 
     await waitFor(() => {
       expect(screen.queryByText(copy("skills.empty.my"))).toBeNull();

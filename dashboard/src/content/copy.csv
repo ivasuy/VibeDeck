@@ -556,10 +556,26 @@ skills.action.remove,ui,SkillsPage,SkillsPage,action_remove,Remove,,active
 skills.action.search,ui,SkillsPage,SkillsPage,action_search,Search,,active
 skills.card.installed,ui,SkillsPage,SkillCard,card_installed,Installed,,active
 skills.my.count,ui,SkillsPage,SkillsPage,my_count,{{count}} skills,,active
+skills.summary.installed,ui,SkillsPage,SkillSourceSummary,summary_installed,Installed,,active
+skills.summary.managed,ui,SkillsPage,SkillSourceSummary,summary_managed,Managed,,active
+skills.summary.local,ui,SkillsPage,SkillSourceSummary,summary_local,Local,,active
+skills.summary.sources,ui,SkillsPage,SkillSourceSummary,summary_sources,Sources,,active
+skills.summary.links_detail,ui,SkillsPage,SkillSourceSummary,summary_links_detail,{{count}} agent links,,active
 skills.target.toggle_aria,ui,SkillsPage,InstalledSkillRow,target_toggle_aria,Toggle {{target}},,active
 skills.target.sync_title,ui,SkillsPage,InstalledSkillRow,target_sync_title,Enable on {{target}},,active
 skills.target.remove_title,ui,SkillsPage,InstalledSkillRow,target_remove_title,Disable on {{target}},,active
 skills.card.installs,ui,SkillsPage,SkillCard,installs,{{count}} installs,,active
+skills.inventory.title,ui,SkillsPage,InstalledSkillList,inventory_title,Installed inventory,,active
+skills.inventory.subtitle,ui,SkillsPage,InstalledSkillList,inventory_subtitle,Review installed skills, source ownership, and linked agents.,,active
+skills.inventory.directory,ui,SkillsPage,InstalledSkillList,inventory_directory,Directory,,active
+skills.inventory.source_local,ui,SkillsPage,InstalledSkillList,inventory_source_local,Local install,,active
+skills.inventory.targets_none,ui,SkillsPage,InstalledSkillList,inventory_targets_none,No linked agents,,active
+skills.inventory.managed,ui,SkillsPage,InstalledSkillList,inventory_managed,Managed,,active
+skills.inventory.local,ui,SkillsPage,InstalledSkillList,inventory_local,Local,,active
+skills.matrix.title,ui,SkillsPage,SkillTargetMatrix,matrix_title,Agent targets,,active
+skills.matrix.subtitle,ui,SkillsPage,SkillTargetMatrix,matrix_subtitle,Enable or disable each installed skill for every connected agent.,,active
+skills.matrix.skill_column,ui,SkillsPage,SkillTargetMatrix,matrix_skill_column,Skill,,active
+skills.matrix.source_column,ui,SkillsPage,SkillTargetMatrix,matrix_source_column,Source,,active
 skills.source.label,ui,SkillsPage,SkillsPage,source_label,Source,,active
 skills.source.all,ui,SkillsPage,SkillsPage,source_all,All repositories,,active
 skills.mode.repo,ui,SkillsPage,SkillsPage,mode_repo,Repositories,,active
@@ -578,6 +594,7 @@ skills.confirm.remove_local,ui,SkillsPage,SkillsPage,confirm_remove_local,This w
 skills.toast.removed,ui,SkillsPage,SkillsPage,toast_removed,Removed {{name}}.,,active
 shared.action.undo,shared,*,Shared,action_undo,Undo,,active
 shared.action.cancel,shared,*,Shared,action_cancel,Cancel,,active
+skills.empty.my_title,ui,SkillsPage,SkillsPage,empty_my_title,No installed skills,,active
 skills.empty.my,ui,SkillsPage,SkillsPage,empty_my,No skills yet. Open Discover to search and install.,,active
 skills.empty.my_cta,ui,SkillsPage,SkillsPage,empty_my_cta,Browse,,active
 skills.repo.placeholder,ui,SkillsPage,SkillsPage,repo_placeholder,owner/repository,,active

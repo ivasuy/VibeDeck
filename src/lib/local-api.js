@@ -1454,7 +1454,30 @@ function createLocalApiHandler({ queuePath }) {
       const skills = require("./skills-manager");
       try {
         if (method === "GET") {
-          json(res, { targets: skills.targetList(), skills: skills.listInstalledSkills() });
+          const mode = url.searchParams.get("mode") || "installed";
+          if (mode === "installed") {
+            json(res, { targets: skills.targetList(), skills: skills.listInstalledSkills() });
+            return true;
+          }
+          if (mode === "repos") {
+            json(res, { repos: skills.listRepos() });
+            return true;
+          }
+          if (mode === "discover") {
+            const force = url.searchParams.get("force") === "1";
+            json(res, await skills.discoverSkills({ force }));
+            return true;
+          }
+          if (mode === "search") {
+            const data = await skills.searchSkillsSh(
+              url.searchParams.get("q") || "",
+              Number(url.searchParams.get("limit") || 20),
+              Number(url.searchParams.get("offset") || 0),
+            );
+            json(res, data);
+            return true;
+          }
+          json(res, { error: "Unknown skills mode" }, 400);
           return true;
         }
         json(res, { error: "Method Not Allowed" }, 405);
@@ -1502,6 +1525,14 @@ function createLocalApiHandler({ queuePath }) {
         if (cmd === "deleteLocal") {
           const targets = Array.isArray(body.targets) ? body.targets : [];
           json(res, { ok: true, ...(skills.deleteLocalSkill(body.directory, targets) || {}) });
+          return true;
+        }
+        if (cmd === "addRepo") {
+          json(res, { ok: true, repo: skills.addRepo(body.repo) });
+          return true;
+        }
+        if (cmd === "removeRepo") {
+          json(res, { ok: true, ...(skills.removeRepo(body.owner, body.name) || {}) });
           return true;
         }
         json(res, { ok: false, error: "Unknown skills action" }, 400);

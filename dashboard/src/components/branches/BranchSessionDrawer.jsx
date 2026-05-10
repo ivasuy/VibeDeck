@@ -28,6 +28,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
   if (!row) return null;
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
   const models = Array.isArray(row?.models) ? row.models : [];
+  const hasModels = models.length !== 0;
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
@@ -51,7 +52,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
         </div>
 
         <div className="h-[calc(100%-57px)] overflow-auto p-4">
-          {models.length > 0 ? (
+          {hasModels ? (
             <div className="mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] p-3 dark:border-oai-gray-800 dark:bg-white/[0.03]">
               <div className="mb-2 text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
                 {copy("branches.drawer.model_summary")}

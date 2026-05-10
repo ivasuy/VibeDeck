@@ -19,31 +19,43 @@ test("doctor treats any HTTP response as reachable", async () => {
 });
 
 test("doctor warns when base_url is missing", async () => {
-  const report = await buildDoctorReport({
-    runtime: {},
-    fetch: async () => ({ status: 200 }),
-  });
-  const check = report.checks.find((c) => c.id === "network.base_url");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-doctor-"));
+  try {
+    const report = await buildDoctorReport({
+      runtime: {},
+      fetch: async () => ({ status: 200 }),
+      home: tmp,
+    });
+    const check = report.checks.find((c) => c.id === "network.base_url");
 
-  assert.equal(check.status, "warn");
-  assert.equal(report.summary.warn, 2);
-  assert.equal(report.summary.fail, 1);
-  assert.equal(report.ok, true);
+    assert.equal(check.status, "warn");
+    assert.equal(report.summary.warn, 2);
+    assert.equal(report.summary.fail, 1);
+    assert.equal(report.ok, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 test("doctor marks network errors as fail", async () => {
-  const report = await buildDoctorReport({
-    runtime: { baseUrl: "https://example" },
-    fetch: async () => {
-      throw new Error("nope");
-    },
-  });
-  const check = report.checks.find((c) => c.id === "network.base_url");
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-doctor-"));
+  try {
+    const report = await buildDoctorReport({
+      runtime: { baseUrl: "https://example" },
+      fetch: async () => {
+        throw new Error("nope");
+      },
+      home: tmp,
+    });
+    const check = report.checks.find((c) => c.id === "network.base_url");
 
-  assert.equal(check.status, "fail");
-  assert.equal(report.summary.fail, 1);
-  assert.equal(report.summary.warn, 1);
-  assert.equal(report.ok, true);
+    assert.equal(check.status, "fail");
+    assert.equal(report.summary.fail, 1);
+    assert.equal(report.summary.warn, 1);
+    assert.equal(report.ok, true);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
 });
 
 test("doctor reports runtime config status", async () => {

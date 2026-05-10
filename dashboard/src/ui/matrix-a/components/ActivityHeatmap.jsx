@@ -102,7 +102,7 @@ function buildMonthMarkers(weeksCount, to, weekStartsOn) {
   const used = new Set();
   for (const month of months) {
     const idx = Math.floor(diffUtcDays(startAligned, month) / 7);
-    if (idx < 0 || idx >= weeksCount || used.has(idx)) continue;
+    if (idx < 0 || weeksCount <= idx || used.has(idx)) continue;
     const previous = markers[markers.length - 1];
     if (previous && idx - previous.index < DENSE_MONTH_MARKER_GAP) continue;
     used.add(idx);

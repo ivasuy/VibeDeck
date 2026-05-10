@@ -15,8 +15,10 @@ async function buildDoctorReport({
   fetch = globalThis.fetch,
   now = () => new Date(),
   paths = {},
+  home = os.homedir(),
+  dbPath = null,
 } = {}) {
-  const checks = await runDoctorChecks({ runtime, diagnostics, fetch, paths });
+  const checks = await runDoctorChecks({ runtime, diagnostics, fetch, paths, home, dbPath });
 
   const summary = summarizeChecks(checks);
 

@@ -147,14 +147,6 @@ function readSessionProjectUsage(dbPath, filters = {}) {
   const clauses = ["repo_root IS NOT NULL", "repo_root <> ''"];
   const params = [];
 
-  if (filters.from) {
-    clauses.push("substr(COALESCE(ended_at, updated_at, started_at), 1, 10) >= ?");
-    params.push(filters.from);
-  }
-  if (filters.to) {
-    clauses.push("substr(COALESCE(ended_at, updated_at, started_at), 1, 10) <= ?");
-    params.push(filters.to);
-  }
   if (filters.sourceFilter && filters.sourceFilter.size > 0) {
     const placeholders = Array.from(filters.sourceFilter, () => "?").join(", ");
     clauses.push(`LOWER(COALESCE(provider, '')) IN (${placeholders})`);
@@ -168,14 +160,11 @@ function readSessionProjectUsage(dbPath, filters = {}) {
         repo_root,
         provider,
         model,
-        SUM(COALESCE(total_tokens, 0)) AS total_tokens,
-        SUM(CASE WHEN total_cost_usd IS NOT NULL THEN COALESCE(total_cost_usd, 0) ELSE 0 END) AS stored_total_cost_usd,
-        SUM(CASE WHEN total_cost_usd IS NOT NULL THEN 1 ELSE 0 END) AS non_null_cost_count,
-        COUNT(*) AS session_count,
-        MAX(COALESCE(ended_at, updated_at, started_at)) AS last_seen_at
+        COALESCE(total_tokens, 0) AS total_tokens,
+        total_cost_usd,
+        COALESCE(ended_at, updated_at, started_at) AS activity_at
       FROM vibedeck_sessions
       WHERE ${clauses.join(" AND ")}
-      GROUP BY repo_root, provider, model
     `).all(...params);
   } finally {
     db.close();
@@ -390,6 +379,12 @@ function compareProjectUsageEntries(a, b, sortMode) {
   return String(a?.project_key || "").localeCompare(String(b?.project_key || ""));
 }
 
+function projectUsageDayKey(value, timeZoneContext) {
+  const iso = normalizeIsoTimestamp(value);
+  if (!iso) return "";
+  return formatPartsDayKey(getZonedParts(new Date(iso), timeZoneContext)) || iso.slice(0, 10);
+}
+
 function formatProjectUsageCost(value) {
   return Number.isFinite(value) ? Number(value).toFixed(6) : null;
 }
@@ -495,6 +490,58 @@ function addProjectUsageGroup(entry, group) {
   modelEntry.billable_total_tokens += billableTotalTokens;
   modelEntry.session_count += sessionCount;
   addCostToAccumulator(modelEntry._cost, costResult);
+}
+
+function aggregateSessionProjectUsageRows(rows, { from = "", to = "", timeZoneContext = null } = {}) {
+  const filteredRows = (Array.isArray(rows) ? rows : []).filter((row) => {
+    const day = projectUsageDayKey(row?.activity_at, timeZoneContext);
+    if (!day) return false;
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+  });
+
+  const grouped = new Map();
+  for (const row of filteredRows) {
+    const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
+    if (!repoRoot) continue;
+    const provider = typeof row?.provider === "string" && row.provider.trim() ? row.provider.trim() : "unknown";
+    const model = typeof row?.model === "string" && row.model.trim() ? row.model.trim() : "unknown";
+    const key = `${repoRoot}\u0000${provider}\u0000${model}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        repo_root: repoRoot,
+        provider,
+        model,
+        total_tokens: 0,
+        stored_total_cost_usd: 0,
+        stored_total_tokens: 0,
+        unknown_total_tokens: 0,
+        non_null_cost_count: 0,
+        session_count: 0,
+        last_seen_at: null,
+      });
+    }
+    const group = grouped.get(key);
+    const totalTokens = Number(row?.total_tokens || 0);
+    const storedCost = row?.total_cost_usd == null ? null : Number(row.total_cost_usd);
+    const activityAt = normalizeIsoTimestamp(row?.activity_at);
+
+    group.total_tokens += totalTokens;
+    group.session_count += 1;
+    if (storedCost != null && Number.isFinite(storedCost)) {
+      group.stored_total_cost_usd += storedCost;
+      group.stored_total_tokens += totalTokens;
+      group.non_null_cost_count += 1;
+    } else {
+      group.unknown_total_tokens += totalTokens;
+    }
+    if (activityAt && (!group.last_seen_at || activityAt > group.last_seen_at)) {
+      group.last_seen_at = activityAt;
+    }
+  }
+
+  return Array.from(grouped.values());
 }
 
 function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
@@ -1835,18 +1882,21 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
+      const timeZoneContext = getTimeZoneContext(url);
       const sourceFilter = normalizeProjectUsageSourceFilter(url.searchParams.get("source"));
       const projectRows = readProjectQueueData(projectQueuePath).filter((row) => {
         if (!matchesProjectUsageSourceFilter(sourceFilter, row?.source)) return false;
-        const lastSeenAt = projectRowLastSeenAt(row);
-        const day = typeof lastSeenAt === "string" ? lastSeenAt.slice(0, 10) : "";
+        const day = projectUsageDayKey(projectRowLastSeenAt(row), timeZoneContext);
         if (from && (!day || day < from)) return false;
         if (to && (!day || day > to)) return false;
         return true;
       });
       let sessionProjectRows = [];
       try {
-        sessionProjectRows = readSessionProjectUsage(dbPath, { from, to, sourceFilter });
+        sessionProjectRows = aggregateSessionProjectUsageRows(
+          readSessionProjectUsage(dbPath, { sourceFilter }),
+          { from, to, timeZoneContext },
+        );
       } catch {
         sessionProjectRows = [];
       }
@@ -1861,15 +1911,23 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           project_ref: repoRoot,
           repo_root: repoRoot,
         });
-        const allRowsHaveStoredCost =
-          Number(row?.non_null_cost_count || 0) === Number(row?.session_count || 0);
-        const costResult = resolveUsageCost({
-          source: row?.provider,
-          model: row?.model,
-          total_tokens: Number(row?.total_tokens || 0),
-          stored_cost_usd: allRowsHaveStoredCost ? row?.stored_total_cost_usd : null,
-          stored_cost_is_authoritative: allRowsHaveStoredCost,
-        });
+        const groupCost = createCostAccumulator();
+        if (Number(row?.non_null_cost_count || 0) > 0) {
+          addCostToAccumulator(groupCost, {
+            total_cost_usd: Number(row?.stored_total_cost_usd || 0),
+            cost_estimated: false,
+            cost_quality: "stored",
+          });
+        }
+        if (Number(row?.unknown_total_tokens || 0) > 0) {
+          addCostToAccumulator(groupCost, resolveUsageCost({
+            source: row?.provider,
+            model: row?.model,
+            total_tokens: Number(row?.unknown_total_tokens || 0),
+            stored_cost_usd: 0,
+            stored_cost_is_authoritative: false,
+          }));
+        }
         addProjectUsageGroup(entry, {
           provider: row?.provider,
           model: row?.model,
@@ -1877,7 +1935,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           billable_total_tokens: Number(row?.total_tokens || 0),
           session_count: Number(row?.session_count || 0),
           last_seen_at: normalizeIsoTimestamp(row?.last_seen_at),
-          costResult,
+          costResult: finalizeCostAccumulator(groupCost),
         });
       }
       for (const row of projectRows) {

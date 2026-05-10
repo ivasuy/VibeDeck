@@ -406,15 +406,15 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     assert.equal(codex.total_tokens, "300");
     assert.equal(codex.session_count, 2);
     assert.equal(codex.cost_estimated, true);
-    assert.equal(codex.cost_quality, "estimated_total_tokens");
-    assert.match(codex.estimated_total_cost_usd, /^\d+\.\d+$/);
+    assert.equal(codex.cost_quality, "mixed_known");
+    assert.ok(Number(codex.estimated_total_cost_usd) > 1.25);
     assert.equal(codex.models.length, 1);
     assert.equal(codex.models[0].model, "gpt-5");
     assert.equal(codex.models[0].total_tokens, "300");
     assert.equal(codex.models[0].session_count, 2);
     assert.equal(codex.models[0].cost_estimated, true);
-    assert.equal(codex.models[0].cost_quality, "estimated_total_tokens");
-    assert.match(codex.models[0].estimated_total_cost_usd, /^\d+\.\d+$/);
+    assert.equal(codex.models[0].cost_quality, "mixed_known");
+    assert.ok(Number(codex.models[0].estimated_total_cost_usd) > 1.25);
 
     const claude = entry.providers[1];
     assert.equal(claude.total_tokens, "80");
@@ -433,6 +433,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ["claude", "claude-sonnet-4-6", "80"],
       ],
     );
+    assert.ok(Number(entry.estimated_total_cost_usd) > 1.65);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -532,6 +533,72 @@ test("project usage applies DB-backed from, to, and source filters without break
     assert.equal(fallback.entries.length, 1);
     assert.equal(fallback.entries[0].project_key, "codex");
     assert.equal(fallback.entries[0].total_tokens, "50");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage applies timezone-consistent local day filters to DB-backed rows", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "tz-boundary-hit",
+        started_at: "2026-05-09T19:20:00.000Z",
+        ended_at: "2026-05-09T20:10:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 120,
+        total_cost_usd: null,
+        created_at: "2026-05-09T19:20:00.000Z",
+        updated_at: "2026-05-09T20:10:00.000Z",
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "tz-boundary-miss",
+        started_at: "2026-05-09T17:00:00.000Z",
+        ended_at: "2026-05-09T18:00:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 75,
+        total_cost_usd: null,
+        created_at: "2026-05-09T17:00:00.000Z",
+        updated_at: "2026-05-09T18:00:00.000Z",
+      });
+    } finally {
+      db.close();
+    }
+
+    const body = await callEndpoint(
+      queuePath,
+      "/functions/vibedeck-project-usage-summary?from=2026-05-10&to=2026-05-10&tz_offset_minutes=330&source=codex",
+    );
+
+    assert.equal(body.entries.length, 1);
+    assert.equal(body.entries[0].project_key, "VibeDeck");
+    assert.equal(body.entries[0].total_tokens, "120");
+    assert.equal(body.entries[0].providers.length, 1);
+    assert.equal(body.entries[0].providers[0].provider, "codex");
+    assert.equal(body.entries[0].providers[0].total_tokens, "120");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

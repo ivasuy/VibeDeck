@@ -104,3 +104,5 @@ build/
 .roo
 .trae
 .windsurf
+.dual-graph/
+.dual-graph-context/

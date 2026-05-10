@@ -13,29 +13,6 @@ const AGENTS = [
   "copilot-cli",
 ];
 
-const ENTIRE_AGENTS_STORAGE_KEY = "vibedeck.entire.selectedAgentsByRepo";
-
-function loadStoredAgentsByRepo() {
-  if (typeof window === "undefined" || !window.localStorage) return {};
-  try {
-    const raw = window.localStorage.getItem(ENTIRE_AGENTS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveStoredAgentsByRepo(value) {
-  if (typeof window === "undefined" || !window.localStorage) return;
-  try {
-    window.localStorage.setItem(ENTIRE_AGENTS_STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // Ignore storage failures in restricted browser modes.
-  }
-}
-
 function commandOutputText(payload) {
   if (!payload) return "";
   const stdout = typeof payload.stdout === "string" ? payload.stdout.trim() : "";
@@ -57,12 +34,6 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
   const canEnable = useMemo(() => selectedAgents.length > 0, [selectedAgents]);
   const canRewind = useMemo(() => checkpointId.trim().length > 0, [checkpointId]);
 
-  React.useEffect(() => {
-    const stored = loadStoredAgentsByRepo();
-    const next = Array.isArray(stored[repo]) ? stored[repo].filter((item) => AGENTS.includes(item)) : [];
-    setSelectedAgents(next);
-  }, [repo]);
-
   const runAction = async (key, task, { reload = false } = {}) => {
     if (!repo) return;
     setBusyKey(key);
@@ -81,13 +52,8 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
 
   const toggleAgent = (agent, checked) => {
     setSelectedAgents((prev) => {
-      const next = checked ? (prev.includes(agent) ? prev : [...prev, agent]) : prev.filter((item) => item !== agent);
-      const stored = loadStoredAgentsByRepo();
-      if (repo) {
-        stored[repo] = next;
-        saveStoredAgentsByRepo(stored);
-      }
-      return next;
+      if (checked) return prev.includes(agent) ? prev : [...prev, agent];
+      return prev.filter((item) => item !== agent);
     });
   };
 
@@ -156,7 +122,6 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
                 <input
                   type="checkbox"
                   checked={selectedAgents.includes(agent)}
-                  aria-label={agent}
                   onChange={(event) => toggleAgent(agent, event.target.checked)}
                 />
                 <span>{agent}</span>

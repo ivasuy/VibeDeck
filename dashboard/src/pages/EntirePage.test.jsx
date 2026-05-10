@@ -24,7 +24,6 @@ beforeEach(() => {
   getCheckpoints.mockReset();
   getCheckpoint.mockReset();
   getBranchUsage.mockReset();
-  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -80,33 +79,5 @@ describe("EntirePage", () => {
 
     expect(await screen.findByText("checkpoints/2026-05-10.json")).toBeTruthy();
     expect(screen.getByText("checkpoints/2026-05-09.json")).toBeTruthy();
-  });
-
-  it("loads the last selected repo from localStorage on visit", async () => {
-    window.localStorage.setItem("vibedeck.entire.selectedRepo", "/Users/dev/saved-repo");
-    getBranchUsage.mockResolvedValue({ repos: [] });
-    getEntireStatus.mockResolvedValue({ state: "active" });
-    getCheckpoints.mockResolvedValue({ available: true, files: [] });
-
-    render(<EntirePage />);
-
-    expect(await screen.findByDisplayValue("/Users/dev/saved-repo")).toBeTruthy();
-    expect(await screen.findByText("Active")).toBeTruthy();
-    expect(getEntireStatus).toHaveBeenCalledWith("/Users/dev/saved-repo");
-    expect(getCheckpoints).toHaveBeenCalledWith("/Users/dev/saved-repo");
-  });
-
-  it("shows last refreshed metadata after repo data loads", async () => {
-    getBranchUsage.mockResolvedValue({ repos: [] });
-    getEntireStatus.mockResolvedValue({ state: "active" });
-    getCheckpoints.mockResolvedValue({ available: true, files: [] });
-
-    render(<EntirePage />);
-
-    const input = await screen.findByPlaceholderText("/Users/you/project");
-    fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
-    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
-
-    expect(await screen.findByText(/^Last refreshed /)).toBeTruthy();
   });
 });

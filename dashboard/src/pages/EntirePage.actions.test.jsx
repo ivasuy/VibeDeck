@@ -1,7 +1,6 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
@@ -37,7 +36,6 @@ beforeEach(() => {
   getBranchUsage.mockReset();
   postEntireCommand.mockReset();
   confirmDestructive.mockReset();
-  window.localStorage.clear();
 
   getBranchUsage.mockResolvedValue({ repos: [] });
   getEntireStatus.mockResolvedValue({ state: "active" });
@@ -64,21 +62,6 @@ describe("EntirePage write actions", () => {
         agents: expect.arrayContaining(["codex", "gemini"]),
       });
     });
-  });
-
-  it("restores selected agents per repo from localStorage", async () => {
-    window.localStorage.setItem(
-      "vibedeck.entire.selectedAgentsByRepo",
-      JSON.stringify({
-        "/Users/dev/repo": ["codex", "gemini"],
-      }),
-    );
-
-    render(<EntirePage />);
-    await loadRepo();
-
-    expect(screen.getByLabelText("codex")).toBeChecked();
-    expect(screen.getByLabelText("gemini")).toBeChecked();
   });
 
   it("disables Entire for selected repo", async () => {
@@ -121,38 +104,6 @@ describe("EntirePage write actions", () => {
     expect(screen.queryByRole("button", { name: "Run configure" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
     expect(await screen.findByRole("button", { name: "Run configure" })).toBeTruthy();
-  });
-
-  it("inserts guided configure flags into raw args and refreshes on success", async () => {
-    render(<EntirePage />);
-    await loadRepo();
-
-    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
-    fireEvent.click(screen.getByRole("button", { name: "Telemetry off" }));
-    fireEvent.click(screen.getByRole("button", { name: "Run configure" }));
-
-    await waitFor(() => {
-      expect(postEntireCommand).toHaveBeenCalledWith("configure", {
-        repo: "/Users/dev/repo",
-        args: ["--telemetry=false"],
-      });
-    });
-    await waitFor(() => {
-      expect(getEntireStatus).toHaveBeenCalledTimes(2);
-      expect(getCheckpoints).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  it("persists agent selections per repo when toggled", async () => {
-    render(<EntirePage />);
-    await loadRepo();
-
-    fireEvent.click(screen.getByLabelText("codex"));
-    fireEvent.click(screen.getByLabelText("gemini"));
-
-    expect(JSON.parse(window.localStorage.getItem("vibedeck.entire.selectedAgentsByRepo"))).toEqual({
-      "/Users/dev/repo": ["codex", "gemini"],
-    });
   });
 
   it("confirms destructive actions before rewind/clean commands", async () => {

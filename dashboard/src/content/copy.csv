@@ -169,6 +169,13 @@ heatmap.legend.more,ui,ActivityHeatmap,ActivityHeatmap,legend_more,More,,active
 heatmap.legend.utc,ui,ActivityHeatmap,ActivityHeatmap,legend_utc,UTC,,active
 heatmap.tooltip,ui,ActivityHeatmap,ActivityHeatmap,tooltip,{{day}} • {{value}} {{unit}} • {{tz}},,active
 heatmap.unit.tokens,ui,ActivityHeatmap,ActivityHeatmap,unit_tokens,tokens,,active
+heatmap.day.sun,ui,ActivityHeatmap,ActivityHeatmap,day_sun,Sun,,active
+heatmap.day.mon,ui,ActivityHeatmap,ActivityHeatmap,day_mon,Mon,,active
+heatmap.day.tue,ui,ActivityHeatmap,ActivityHeatmap,day_tue,Tue,,active
+heatmap.day.wed,ui,ActivityHeatmap,ActivityHeatmap,day_wed,Wed,,active
+heatmap.day.thu,ui,ActivityHeatmap,ActivityHeatmap,day_thu,Thu,,active
+heatmap.day.fri,ui,ActivityHeatmap,ActivityHeatmap,day_fri,Fri,,active
+heatmap.day.sat,ui,ActivityHeatmap,ActivityHeatmap,day_sat,Sat,,active
 heatmap.month.jan,ui,ActivityHeatmap,ActivityHeatmap,month_label,Jan,,active
 heatmap.month.feb,ui,ActivityHeatmap,ActivityHeatmap,month_label,Feb,,active
 heatmap.month.mar,ui,ActivityHeatmap,ActivityHeatmap,month_label,Mar,,active

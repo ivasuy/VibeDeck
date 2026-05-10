@@ -5,7 +5,18 @@ import { useTheme } from "../../../hooks/useTheme.js";
 
 const CELL_SIZE = 12;
 const CELL_GAP = 3;
-const LABEL_WIDTH = 26;
+const LABEL_WIDTH = 22;
+const DENSE_MONTH_MARKER_GAP = 3;
+
+const DAY_LABELS_BY_WEEK_START = {
+  mon: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+  sun: ["sun", "mon", "tue", "wed", "thu", "fri", "sat"],
+};
+
+const VISIBLE_DAY_LABEL_INDEXES = {
+  mon: new Set([0, 2, 4]),
+  sun: new Set([0, 2, 4, 6]),
+};
 
 const HEATMAP_COLORS_LIGHT = [
   "#ebedf0", // level 0 - inactive, GitHub-style neutral
@@ -92,10 +103,33 @@ function buildMonthMarkers(weeksCount, to, weekStartsOn) {
   for (const month of months) {
     const idx = Math.floor(diffUtcDays(startAligned, month) / 7);
     if (idx < 0 || idx >= weeksCount || used.has(idx)) continue;
+    const previous = markers[markers.length - 1];
+    if (previous && idx - previous.index < DENSE_MONTH_MARKER_GAP) continue;
     used.add(idx);
     markers.push({ label: MONTH_LABELS[month.getUTCMonth()], index: idx });
   }
   return markers;
+}
+
+function copyDayLabel(day) {
+  switch (day) {
+    case "sun":
+      return copy("heatmap.day.sun");
+    case "mon":
+      return copy("heatmap.day.mon");
+    case "tue":
+      return copy("heatmap.day.tue");
+    case "wed":
+      return copy("heatmap.day.wed");
+    case "thu":
+      return copy("heatmap.day.thu");
+    case "fri":
+      return copy("heatmap.day.fri");
+    case "sat":
+      return copy("heatmap.day.sat");
+    default:
+      return "";
+  }
 }
 
 export function ActivityHeatmap({
@@ -142,10 +176,11 @@ export function ActivityHeatmap({
 
   const weeks = normalized?.weeks || [];
 
-  const dayLabels =
-    weekStartsOn === "mon"
-      ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => copy(`heatmap.day.${d.toLowerCase()}`))
-      : ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => copy(`heatmap.day.${d.toLowerCase()}`));
+  const dayLabels = DAY_LABELS_BY_WEEK_START[weekStartsOn].map((day, index) => ({
+    day,
+    label: copyDayLabel(day),
+    visible: VISIBLE_DAY_LABEL_INDEXES[weekStartsOn].has(index),
+  }));
 
   const monthMarkers = useMemo(
     () => buildMonthMarkers(weeks.length, normalized?.to, weekStartsOn),
@@ -204,12 +239,12 @@ export function ActivityHeatmap({
           >
             {/* Day labels */}
             <div
-              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-400 sticky left-0 bg-white dark:bg-oai-gray-900 pr-2"
+              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-400 sticky left-0 bg-white dark:bg-oai-gray-900 pr-1"
               style={{ gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`, rowGap: CELL_GAP }}
             >
-              {dayLabels.map((l) => (
-                <span key={l} className="leading-none">
-                  {l}
+              {dayLabels.map(({ day, label, visible }) => (
+                <span key={day} className="leading-none">
+                  {visible ? label : ""}
                 </span>
               ))}
             </div>

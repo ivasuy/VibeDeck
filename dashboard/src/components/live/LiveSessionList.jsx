@@ -44,10 +44,29 @@ function getBranch(row) {
   return branch || copy("live.value.unattributed_branch");
 }
 
+function isActiveRow(row) {
+  if (!row) return false;
+  if (row.ended_at) return false;
+  return String(row.state || "").trim().toLowerCase() !== "ended";
+}
+
 function streamNote(status) {
   if (status === "degraded") return copy("live.stream.degraded");
   if (status === "connecting") return copy("live.stream.connecting");
   return null;
+}
+
+function emptyStateCopy(status) {
+  if (status === "connected") {
+    return {
+      title: copy("live.empty.connected_title"),
+      subtitle: copy("live.empty.connected_subtitle"),
+    };
+  }
+  return {
+    title: copy("live.empty.title"),
+    subtitle: copy("live.empty.subtitle"),
+  };
 }
 
 function MetaItem({ label, value }) {
@@ -69,12 +88,14 @@ export function LiveSessionList({
   streamError = null,
 }) {
   const hint = streamNote(streamStatus);
+  const emptyState = emptyStateCopy(streamStatus);
+  const activeSessions = Array.isArray(sessions) ? sessions.filter(isActiveRow) : [];
   return (
     <Card className="overflow-hidden" bodyClassName="p-0">
       <div className="flex min-h-14 items-center justify-between border-b border-oai-gray-200 px-5 py-3 dark:border-oai-gray-800">
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.sessions.title")}</h2>
         <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("live.sessions.count", { count: sessions.length })}
+          {copy("live.sessions.count", { count: activeSessions.length })}
         </span>
       </div>
 
@@ -89,14 +110,14 @@ export function LiveSessionList({
         </div>
       ) : null}
 
-      {sessions.length === 0 ? (
+      {activeSessions.length === 0 ? (
         <div className="px-5 py-12 text-center">
-          <h3 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.empty.title")}</h3>
-          <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.empty.subtitle")}</p>
+          <h3 className="text-sm font-semibold text-oai-black dark:text-white">{emptyState.title}</h3>
+          <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{emptyState.subtitle}</p>
         </div>
       ) : (
         <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
-          {sessions.map((row, index) => {
+          {activeSessions.map((row, index) => {
             const key = getSessionKey(row) || `${String(row?.provider || "unknown")}:${String(row?.session_id || index)}`;
             const selected = key === selectedKey;
             const repoRoot = String(row?.repo_root || row?.cwd || "");

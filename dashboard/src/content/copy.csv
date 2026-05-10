@@ -278,8 +278,10 @@ live.status.degraded,dashboard,LivePage,LivePage,status,Live stream degraded,,ac
 live.status.idle,dashboard,LivePage,LivePage,status,Live stream idle,,active
 live.sessions.title,dashboard,LivePage,LiveSessionList,title,Active sessions,,active
 live.sessions.count,dashboard,LivePage,LiveSessionList,count,{{count}} sessions,,active
-live.empty.title,dashboard,LivePage,LiveSessionList,empty_title,No live sessions,,active
-live.empty.subtitle,dashboard,LivePage,LiveSessionList,empty_subtitle,Start a supported coding session to populate live activity.,,active
+live.empty.title,dashboard,LivePage,LiveSessionList,empty_title,No active sessions,,active
+live.empty.subtitle,dashboard,LivePage,LiveSessionList,empty_subtitle,Run a sync or start an active agent session to populate live activity.,,active
+live.empty.connected_title,dashboard,LivePage,LiveSessionList,empty_connected_title,Stream connected. No active sessions right now.,,active
+live.empty.connected_subtitle,dashboard,LivePage,LiveSessionList,empty_connected_subtitle,Run a sync or start an active agent session to repopulate the workbench.,,active
 live.stream.degraded,dashboard,LivePage,LiveSessionList,stream_state,Stream connection degraded. Data may lag.,,active
 live.stream.connecting,dashboard,LivePage,LiveSessionList,stream_state,Connecting to live stream…,,active
 live.stream.error,dashboard,LivePage,LiveSessionList,stream_error,Live stream error: {{error}},,active

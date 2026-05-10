@@ -1,15 +1,25 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { once } = require('node:events');
+const { EventEmitter, once } = require('node:events');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs/promises');
-const { test } = require('node:test');
+const { afterEach, test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
 const { DatabaseSync } = require('node:sqlite');
 const { getLiveBus } = require('../src/lib/sessions/live-bus');
 const { createLocalApiHandler } = require('../src/lib/local-api');
+
+function resetLiveSseState() {
+  try {
+    require('../src/lib/local-api').resetLiveSseStateForTests();
+  } catch {}
+}
+
+afterEach(() => {
+  resetLiveSseState();
+});
 
 async function startLocalApiServer({ queuePath }) {
   const handler = createLocalApiHandler({ queuePath });
@@ -35,13 +45,53 @@ async function startLocalApiServer({ queuePath }) {
   };
 }
 
-function createSseClient(url) {
-  const req = http.get(url, {
-    headers: {
-      Accept: 'text/event-stream',
-    },
+function connectSseClient(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, {
+      headers: {
+        Accept: 'text/event-stream',
+      },
+    }, (res) => {
+      resolve({ req, res });
+    });
+    req.on('error', reject);
   });
-  return req;
+}
+
+function createMockSseExchange() {
+  const writes = [];
+  const req = new EventEmitter();
+  req.method = 'GET';
+  req.headers = { host: 'localhost' };
+  req.destroy = () => {};
+
+  const res = new EventEmitter();
+  res.statusCode = null;
+  res.headers = null;
+  res.writeHead = (statusCode, headers) => {
+    res.statusCode = statusCode;
+    res.headers = headers;
+  };
+  res.write = (chunk) => {
+    writes.push(String(chunk));
+    return true;
+  };
+  res.end = () => {};
+
+  return {
+    req,
+    res,
+    readEvents() {
+      return parseSseEvents(writes.join('')).events;
+    },
+    close() {
+      res.emit('close');
+    },
+  };
+}
+
+async function flushAsyncEvents() {
+  await new Promise((resolve) => setImmediate(resolve));
 }
 
 function parseSseEvents(buffer) {
@@ -59,7 +109,7 @@ function parseSseEvents(buffer) {
   return { events: out, rest: keep };
 }
 
-test('vibedeck-sessions-live streams snapshot then deltas', { timeout: 30_000 }, async () => {
+test('vibedeck-sessions-live streams snapshot then deltas', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-'));
   const trackerDir = path.join(root, '.vibedeck', 'tracker');
   const queuePath = path.join(trackerDir, 'queue.jsonl');
@@ -68,6 +118,7 @@ test('vibedeck-sessions-live streams snapshot then deltas', { timeout: 30_000 },
   await fs.writeFile(queuePath, '', 'utf8');
 
   ensureSchema(dbPath);
+  const liveNow = new Date().toISOString();
   const db = new DatabaseSync(dbPath);
   db.exec(
     `INSERT INTO vibedeck_sessions (
@@ -77,41 +128,28 @@ test('vibedeck-sessions-live streams snapshot then deltas', { timeout: 30_000 },
       model, total_tokens, total_cost_usd,
       created_at, updated_at
     ) VALUES (
-      'codex', 's-live-1', '2026-05-09T00:00:00.000Z', NULL, NULL,
+      'codex', 's-live-1', '${liveNow}', NULL, NULL,
       '/tmp', NULL, NULL, NULL,
       NULL, 'D', 'unattributed', NULL,
       NULL, 3, 0.0,
-      '2026-05-09T00:00:00.000Z', '2026-05-09T00:00:00.000Z'
+      '${liveNow}', '${liveNow}'
     );`,
   );
   db.close();
 
-  const srv = await startLocalApiServer({ queuePath });
   try {
-    const req = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-    const res = await once(req, 'response').then(([r]) => r);
-    assert.equal(res.statusCode, 200);
+    const exchange = createMockSseExchange();
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+    assert.equal(exchange.res.statusCode, 200);
 
-    let buf = '';
-    const got = [];
-    res.setEncoding('utf8');
-
-    const done = new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('timeout waiting for SSE events')), 3000);
-      res.on('data', (chunk) => {
-        buf += chunk;
-        const parsed = parseSseEvents(buf);
-        buf = parsed.rest;
-        for (const e of parsed.events) {
-          got.push(e);
-          if (got.length >= 2) {
-            clearTimeout(timeout);
-            resolve();
-          }
-        }
-      });
-      res.on('error', reject);
-    });
+    await flushAsyncEvents();
+    const snapshotEvents = exchange.readEvents();
+    assert.equal(snapshotEvents[0].type, 'snapshot');
+    assert.ok(Array.isArray(snapshotEvents[0].sessions));
+    assert.equal(snapshotEvents[0].sessions.length, 1);
+    assert.equal(snapshotEvents[0].sessions[0].session_id, 's-live-1');
 
     const bus = getLiveBus();
     bus.emit('session:update', {
@@ -121,19 +159,13 @@ test('vibedeck-sessions-live streams snapshot then deltas', { timeout: 30_000 },
       total_tokens: 5,
     });
 
-    await done;
-    assert.equal(got[0].type, 'snapshot');
-    assert.ok(Array.isArray(got[0].sessions));
-    assert.equal(got[0].sessions.length, 1);
-    assert.equal(got[0].sessions[0].session_id, 's-live-1');
-
-    assert.equal(got[1].type, 'session:update');
-    assert.equal(got[1].provider, 'codex');
-    assert.equal(got[1].session_id, 's-live-1');
-    req.destroy();
-    res.destroy();
+    await flushAsyncEvents();
+    const events = exchange.readEvents();
+    assert.equal(events[1].type, 'session:update');
+    assert.equal(events[1].provider, 'codex');
+    assert.equal(events[1].session_id, 's-live-1');
+    exchange.close();
   } finally {
-    await srv.close();
     await fs.rm(root, { recursive: true, force: true });
   }
 });
@@ -151,14 +183,12 @@ test('vibedeck-sessions-live rejects 11th client with 503 + Retry-After', { time
   const clients = [];
   try {
     for (let i = 0; i < 10; i++) {
-      const req = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-      const res = await once(req, 'response').then(([r]) => r);
+      const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
       assert.equal(res.statusCode, 200);
       clients.push({ req, res });
     }
 
-    const req11 = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-    const res11 = await once(req11, 'response').then(([r]) => r);
+    const { req: req11, res: res11 } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
     assert.equal(res11.statusCode, 503);
     assert.equal(res11.headers['retry-after'], '30');
     res11.resume();
@@ -184,8 +214,7 @@ test('vibedeck-sessions-live drops oldest events when client falls behind', { ti
 
   const srv = await startLocalApiServer({ queuePath });
   try {
-    const req = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-    const res = await once(req, 'response').then(([r]) => r);
+    const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
     assert.equal(res.statusCode, 200);
 
     // Intentionally do NOT drain the response; allow server-side backpressure to build.
@@ -272,8 +301,7 @@ test('vibedeck-sessions-live disconnects idle clients (test override)', { timeou
   assert.ok(port);
 
   try {
-    const req = createSseClient(`http://127.0.0.1:${port}/functions/vibedeck-sessions-live`);
-    const res = await once(req, 'response').then(([r]) => r);
+    const { req, res } = await connectSseClient(`http://127.0.0.1:${port}/functions/vibedeck-sessions-live`);
     assert.equal(res.statusCode, 200);
     res.resume();
 
@@ -307,8 +335,7 @@ test('cursor-style update event without cwd includes last_observed_at', { timeou
 
   const srv = await startLocalApiServer({ queuePath });
   try {
-    const req = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-    const res = await once(req, 'response').then(([r]) => r);
+    const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
     assert.equal(res.statusCode, 200);
     res.setEncoding('utf8');
     res.resume();
@@ -367,8 +394,57 @@ test('cursor-style update event without cwd includes last_observed_at', { timeou
   }
 });
 
-test('claude-code style sessions appear in snapshot with totals', { timeout: 30_000 }, async () => {
+test('claude-code style sessions appear in snapshot with totals', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-claude-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  const liveNow = new Date().toISOString();
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    `INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd,
+      created_at, updated_at
+    ) VALUES (
+      'claude', 'claude-live-1', '${liveNow}', NULL, NULL,
+      NULL, NULL, NULL, NULL,
+      NULL, 'D', 'unattributed', NULL,
+      'claude-3-7-sonnet', 123, 0.0,
+      '${liveNow}', '${liveNow}'
+    );`,
+  );
+  db.close();
+
+  try {
+    const exchange = createMockSseExchange();
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+    assert.equal(exchange.res.statusCode, 200);
+
+    await flushAsyncEvents();
+    const snapshot = exchange.readEvents().find((event) => event.type === 'snapshot');
+    assert.ok(snapshot);
+
+    const row = snapshot.sessions.find((s) => s.session_id === 'claude-live-1');
+    assert.ok(row);
+    assert.equal(row.provider, 'claude');
+    assert.equal(row.total_tokens, 123);
+    exchange.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live snapshot reaps stale open rows before streaming', { timeout: 30_000 }, async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-reap-'));
   const trackerDir = path.join(root, '.vibedeck', 'tracker');
   const queuePath = path.join(trackerDir, 'queue.jsonl');
   const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
@@ -385,10 +461,10 @@ test('claude-code style sessions appear in snapshot with totals', { timeout: 30_
       model, total_tokens, total_cost_usd,
       created_at, updated_at
     ) VALUES (
-      'claude', 'claude-live-1', '2026-05-09T00:00:00.000Z', NULL, NULL,
-      NULL, NULL, NULL, NULL,
+      'codex', 'stale-open', '2026-05-09T00:00:00.000Z', NULL, NULL,
+      '/tmp', NULL, NULL, NULL,
       NULL, 'D', 'unattributed', NULL,
-      'claude-3-7-sonnet', 123, 0.0,
+      NULL, 3, 0.0,
       '2026-05-09T00:00:00.000Z', '2026-05-09T00:00:00.000Z'
     );`,
   );
@@ -396,8 +472,7 @@ test('claude-code style sessions appear in snapshot with totals', { timeout: 30_
 
   const srv = await startLocalApiServer({ queuePath });
   try {
-    const req = createSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
-    const res = await once(req, 'response').then(([r]) => r);
+    const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
     assert.equal(res.statusCode, 200);
     res.setEncoding('utf8');
 
@@ -408,7 +483,7 @@ test('claude-code style sessions appear in snapshot with totals', { timeout: 30_
         buf += chunk;
         const parsed = parseSseEvents(buf);
         buf = parsed.rest;
-        const snap = parsed.events.find((e) => e.type === 'snapshot');
+        const snap = parsed.events.find((event) => event.type === 'snapshot');
         if (snap) {
           clearTimeout(timeout);
           resolve(snap);
@@ -417,10 +492,16 @@ test('claude-code style sessions appear in snapshot with totals', { timeout: 30_
       res.on('error', reject);
     });
 
-    const row = snapshot.sessions.find((s) => s.session_id === 'claude-live-1');
-    assert.ok(row);
-    assert.equal(row.provider, 'claude');
-    assert.equal(row.total_tokens, 123);
+    assert.equal(snapshot.sessions.some((row) => row.session_id === 'stale-open'), false);
+
+    const verifyDb = new DatabaseSync(dbPath, { readOnly: true });
+    const row = verifyDb
+      .prepare('SELECT ended_at, end_reason FROM vibedeck_sessions WHERE provider = ? AND session_id = ?')
+      .get('codex', 'stale-open');
+    verifyDb.close();
+
+    assert.ok(row?.ended_at);
+    assert.equal(row?.end_reason, 'orphan_reaped');
     req.destroy();
     res.destroy();
   } finally {

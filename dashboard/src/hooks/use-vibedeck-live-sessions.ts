@@ -20,6 +20,12 @@ function normalizeSessionState(row: LiveSession): LiveSession {
   return { ...row, state: row.ended_at ? "ended" : "live" };
 }
 
+function isEndedSession(row: LiveSession): boolean {
+  if (!isRecord(row)) return false;
+  if (row.ended_at) return true;
+  return typeof row.state === "string" && row.state.trim().toLowerCase() === "ended";
+}
+
 function eventPayload(event: LiveSessionEvent): LiveSession {
   if (isRecord(event.session)) return event.session;
   if (isRecord(event.payload)) return event.payload;
@@ -40,7 +46,12 @@ export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEv
     const snapshotRows = Array.isArray(event.sessions)
       ? event.sessions
       : (isRecord(event.data) && Array.isArray(event.data.sessions) ? event.data.sessions : []);
-    return snapshotRows.filter(isRecord).map((row) => normalizeSessionState({ ...row }));
+    return sortByRecent(
+      snapshotRows
+        .filter(isRecord)
+        .map((row) => normalizeSessionState({ ...row }))
+        .filter((row) => !isEndedSession(row)),
+    );
   }
 
   if (
@@ -65,13 +76,14 @@ export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEv
   }
 
   const current = keyed.get(key) || {};
-  const merged = normalizeSessionState({
-    ...current,
-    ...incoming,
-    state: event.type === "session:end" ? "ended" : "live",
-  });
+  if (event.type === "session:end") {
+    keyed.delete(key);
+    return sortByRecent([...passthrough, ...keyed.values()]);
+  }
 
-  keyed.set(key, merged);
+  const merged = normalizeSessionState({ ...current, ...incoming, state: "live" });
+  if (isEndedSession(merged)) keyed.delete(key);
+  else keyed.set(key, merged);
   return sortByRecent([...passthrough, ...keyed.values()]);
 }
 

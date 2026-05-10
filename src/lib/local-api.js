@@ -5,6 +5,7 @@ const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
+const { reapOrphanedSessions } = require("./sessions/reaper");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
   filterRowsByUsageScope,
@@ -66,6 +67,13 @@ function resetLiveSseStateForTests() {
   liveSseClients = new Set();
   liveSseClientCount = 0;
   maybeStopSseIdleScanner();
+}
+
+function stringifySsePayload(payload) {
+  return JSON.stringify(payload, (_key, value) => {
+    if (typeof value === "bigint") return Number(value);
+    return value;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -678,9 +686,15 @@ function createLocalApiHandler({ queuePath }) {
 
       const trackerDir = path.dirname(qp);
       const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+      const generatedAt = new Date().toISOString();
+      let lastSyncAt = null;
+      try {
+        lastSyncAt = fs.statSync(qp).mtime.toISOString();
+      } catch {}
 
       let sessions = [];
       try {
+        reapOrphanedSessions(dbPath);
         const db = new DatabaseSync(dbPath);
         try {
           sessions = db.prepare("SELECT * FROM vibedeck_sessions WHERE ended_at IS NULL").all();
@@ -691,15 +705,6 @@ function createLocalApiHandler({ queuePath }) {
         json(res, { error: "db_unavailable", message: e?.message || String(e) }, 500);
         return true;
       }
-
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-      });
-
-      // Node will not send headers until the first write; flush a byte early.
-      res.write(": ok\n\n");
 
       liveSseClientCount += 1;
       ensureSseIdleScanner();
@@ -760,7 +765,7 @@ function createLocalApiHandler({ queuePath }) {
         if (client.closed) return;
         while (client.queue.length > 0) {
           const payload = client.queue[0];
-          const ok = writeChunk(`data: ${JSON.stringify(payload)}\n\n`);
+          const ok = writeChunk(`data: ${stringifySsePayload(payload)}\n\n`);
           if (!ok) {
             res.once("drain", flushQueue);
             return;
@@ -774,9 +779,6 @@ function createLocalApiHandler({ queuePath }) {
         client.flushScheduled = true;
         setImmediate(flushQueue);
       }
-
-      // Snapshot first.
-      enqueue({ type: "snapshot", sessions });
 
       const bus = getLiveBus();
       client.onStart = (event) => {
@@ -797,6 +799,17 @@ function createLocalApiHandler({ queuePath }) {
       bus.on("session:update", client.onUpdate);
       bus.on("session:end", client.onEnd);
 
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      });
+
+      res.write(": ok\n\n");
+
+      // Snapshot first, after listeners exist but before heartbeats.
+      enqueue({ type: "snapshot", sessions, generated_at: generatedAt, last_sync_at: lastSyncAt });
+
       client.heartbeatInterval = setInterval(() => {
         if (client.closed) return;
         writeChunk(": heartbeat\n\n");
@@ -804,7 +817,6 @@ function createLocalApiHandler({ queuePath }) {
       if (typeof client.heartbeatInterval.unref === "function") client.heartbeatInterval.unref();
 
       const onClose = () => client.close("disconnect");
-      req.on("close", onClose);
       res.on("close", onClose);
       res.on("error", onClose);
 

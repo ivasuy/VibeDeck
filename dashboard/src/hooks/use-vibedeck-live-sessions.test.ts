@@ -45,6 +45,22 @@ describe("reduceLiveSessionEvent", () => {
     expect(state).toEqual([{ provider: "codex", session_id: "s1", total_tokens: 10, state: "live" }]);
   });
 
+  it("filters ended rows out of snapshot events", () => {
+    const state = reduceLiveSessionEvent([], {
+      type: "snapshot",
+      sessions: [
+        { provider: "codex", session_id: "s-live", total_tokens: 10 },
+        {
+          provider: "codex",
+          session_id: "s-ended",
+          total_tokens: 20,
+          ended_at: "2026-05-10T10:00:00.000Z",
+        },
+      ],
+    });
+    expect(state).toEqual([{ provider: "codex", session_id: "s-live", total_tokens: 10, state: "live" }]);
+  });
+
   it("creates or upserts a session for session:start", () => {
     const state = reduceLiveSessionEvent([], {
       type: "session:start",
@@ -69,7 +85,7 @@ describe("reduceLiveSessionEvent", () => {
     expect(state[0]).toMatchObject({ provider: "codex", session_id: "s1", total_tokens: 2, model: "gpt-5" });
   });
 
-  it("keeps ended rows and marks ended state or preserves ended_at", () => {
+  it("removes active rows on session:end", () => {
     const state = reduceLiveSessionEvent(
       [{ provider: "codex", session_id: "s1", total_tokens: 2 }],
       {
@@ -79,8 +95,7 @@ describe("reduceLiveSessionEvent", () => {
         ended_at: "2026-05-10T10:00:00.000Z",
       },
     );
-    expect(state).toHaveLength(1);
-    expect(state[0].ended_at || state[0].state === "ended").toBeTruthy();
+    expect(state).toEqual([]);
   });
 });
 
@@ -141,6 +156,29 @@ describe("useVibeDeckLiveSessions", () => {
       }));
     });
     expect(result.current.sessions[0].total_tokens).toBe(2);
+  });
+
+  it("keeps the active session count free of ended rows", () => {
+    const { result } = renderHook(() => useVibeDeckLiveSessions());
+    const source = MockEventSource.instances[0];
+
+    act(() => {
+      source.emitMessage(JSON.stringify({
+        type: "snapshot",
+        sessions: [
+          { provider: "codex", session_id: "s-live", total_tokens: 1 },
+          {
+            provider: "codex",
+            session_id: "s-ended",
+            total_tokens: 2,
+            ended_at: "2026-05-10T10:00:00.000Z",
+          },
+        ],
+      }));
+    });
+
+    expect(result.current.sessions).toHaveLength(1);
+    expect(result.current.sessions[0]).toMatchObject({ session_id: "s-live" });
   });
 
   it("marks degraded state for invalid JSON", () => {

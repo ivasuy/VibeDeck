@@ -89,6 +89,12 @@ const {
   computeRowCost,
   ensurePricingLoaded,
 } = require("./pricing");
+const {
+  resolveUsageCost,
+  createCostAccumulator,
+  addCostToAccumulator,
+  finalizeCostAccumulator,
+} = require("./cost-estimation");
 
 // ---------------------------------------------------------------------------
 // Queue data helpers
@@ -123,19 +129,54 @@ function readProjectQueueData(projectQueuePath) {
   return Array.from(seen.values());
 }
 
-function readSessionProjectUsage(dbPath) {
+function normalizeProjectUsageSourceFilter(rawValue) {
+  const values = String(rawValue || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return values.length > 0 ? new Set(values) : null;
+}
+
+function matchesProjectUsageSourceFilter(sourceFilter, source) {
+  if (!sourceFilter || sourceFilter.size === 0) return true;
+  return sourceFilter.has(String(source || "").trim().toLowerCase());
+}
+
+function readSessionProjectUsage(dbPath, filters = {}) {
   if (!fs.existsSync(dbPath)) return [];
+  const clauses = ["repo_root IS NOT NULL", "repo_root <> ''"];
+  const params = [];
+
+  if (filters.from) {
+    clauses.push("substr(COALESCE(ended_at, updated_at, started_at), 1, 10) >= ?");
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    clauses.push("substr(COALESCE(ended_at, updated_at, started_at), 1, 10) <= ?");
+    params.push(filters.to);
+  }
+  if (filters.sourceFilter && filters.sourceFilter.size > 0) {
+    const placeholders = Array.from(filters.sourceFilter, () => "?").join(", ");
+    clauses.push(`LOWER(COALESCE(provider, '')) IN (${placeholders})`);
+    params.push(...filters.sourceFilter);
+  }
+
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     return db.prepare(`
       SELECT
         repo_root,
+        provider,
+        model,
         SUM(COALESCE(total_tokens, 0)) AS total_tokens,
+        SUM(CASE WHEN total_cost_usd IS NOT NULL THEN COALESCE(total_cost_usd, 0) ELSE 0 END) AS stored_total_cost_usd,
+        SUM(CASE WHEN total_cost_usd IS NOT NULL THEN 1 ELSE 0 END) AS non_null_cost_count,
+        COUNT(*) AS session_count,
         MAX(COALESCE(ended_at, updated_at, started_at)) AS last_seen_at
       FROM vibedeck_sessions
-      WHERE repo_root IS NOT NULL AND repo_root <> ''
-      GROUP BY repo_root
-    `).all();
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY repo_root, provider, model
+    `).all(...params);
   } finally {
     db.close();
   }
@@ -347,6 +388,192 @@ function compareProjectUsageEntries(a, b, sortMode) {
     if (byRecent !== 0) return byRecent;
   }
   return String(a?.project_key || "").localeCompare(String(b?.project_key || ""));
+}
+
+function formatProjectUsageCost(value) {
+  return Number.isFinite(value) ? Number(value).toFixed(6) : null;
+}
+
+function createProjectUsageEntry({ project_key, project_ref, repo_root }) {
+  const cleanProjectKey =
+    typeof project_key === "string" && project_key.trim() ? project_key.trim() : "unknown";
+  const cleanProjectRef =
+    typeof project_ref === "string" && project_ref.trim() ? project_ref.trim() : cleanProjectKey;
+  const cleanRepoRoot =
+    typeof repo_root === "string" && repo_root.trim() ? repo_root.trim() : null;
+
+  return {
+    project_key: cleanProjectKey,
+    project_ref: cleanProjectRef,
+    repo_root: cleanRepoRoot,
+    total_tokens: 0,
+    billable_total_tokens: 0,
+    last_seen_at: null,
+    _cost: createCostAccumulator(),
+    _providers: new Map(),
+  };
+}
+
+function ensureProjectUsageEntry(map, descriptor) {
+  const identity = projectUsageIdentity(descriptor);
+  if (!map.has(identity)) {
+    map.set(identity, createProjectUsageEntry(descriptor));
+  }
+  const entry = map.get(identity);
+  if (!entry.repo_root && descriptor.repo_root) entry.repo_root = descriptor.repo_root;
+  if (!entry.project_ref && descriptor.project_ref) entry.project_ref = descriptor.project_ref;
+  if (
+    descriptor.project_key &&
+    (!entry.project_key || entry.project_key === entry.project_ref)
+  ) {
+    entry.project_key = descriptor.project_key;
+  }
+  return entry;
+}
+
+function ensureProviderUsageEntry(projectEntry, providerName) {
+  const providerKey = typeof providerName === "string" && providerName.trim()
+    ? providerName.trim()
+    : "unknown";
+  if (!projectEntry._providers.has(providerKey)) {
+    projectEntry._providers.set(providerKey, {
+      provider: providerKey,
+      total_tokens: 0,
+      billable_total_tokens: 0,
+      session_count: 0,
+      _cost: createCostAccumulator(),
+      _models: new Map(),
+    });
+  }
+  return projectEntry._providers.get(providerKey);
+}
+
+function ensureModelUsageEntry(providerEntry, modelName) {
+  const modelKey = typeof modelName === "string" && modelName.trim() ? modelName.trim() : "unknown";
+  if (!providerEntry._models.has(modelKey)) {
+    providerEntry._models.set(modelKey, {
+      model: modelKey,
+      total_tokens: 0,
+      billable_total_tokens: 0,
+      session_count: 0,
+      _cost: createCostAccumulator(),
+    });
+  }
+  return providerEntry._models.get(modelKey);
+}
+
+function updateProjectUsageLastSeen(entry, lastSeenAt) {
+  if (lastSeenAt && (!entry.last_seen_at || lastSeenAt > entry.last_seen_at)) {
+    entry.last_seen_at = lastSeenAt;
+  }
+}
+
+function addProjectUsageGroup(entry, group) {
+  const totalTokens = Number(group?.total_tokens || 0);
+  const billableTotalTokens = Number((group?.billable_total_tokens ?? group?.total_tokens) || 0);
+  const sessionCount = Number(group?.session_count || 0);
+  const lastSeenAt = normalizeIsoTimestamp(group?.last_seen_at);
+  const providerEntry = ensureProviderUsageEntry(entry, group?.provider);
+  const modelEntry = ensureModelUsageEntry(providerEntry, group?.model);
+  const costResult = group?.costResult || {
+    total_cost_usd: null,
+    cost_estimated: true,
+    cost_quality: "pricing_missing",
+  };
+
+  entry.total_tokens += totalTokens;
+  entry.billable_total_tokens += billableTotalTokens;
+  updateProjectUsageLastSeen(entry, lastSeenAt);
+  addCostToAccumulator(entry._cost, costResult);
+
+  providerEntry.total_tokens += totalTokens;
+  providerEntry.billable_total_tokens += billableTotalTokens;
+  providerEntry.session_count += sessionCount;
+  addCostToAccumulator(providerEntry._cost, costResult);
+
+  modelEntry.total_tokens += totalTokens;
+  modelEntry.billable_total_tokens += billableTotalTokens;
+  modelEntry.session_count += sessionCount;
+  addCostToAccumulator(modelEntry._cost, costResult);
+}
+
+function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
+  return Array.from(byProject.values())
+    .sort((a, b) => compareProjectUsageEntries(a, b, sortMode))
+    .slice(0, requestedLimit ?? undefined)
+    .map((entry) => {
+      const providers = Array.from(entry._providers.values())
+        .sort((a, b) => {
+          const byTokens = b.total_tokens - a.total_tokens;
+          return byTokens !== 0 ? byTokens : a.provider.localeCompare(b.provider);
+        })
+        .map((providerEntry) => {
+          const providerCost = finalizeCostAccumulator(providerEntry._cost);
+          const models = Array.from(providerEntry._models.values())
+            .sort((a, b) => {
+              const byTokens = b.total_tokens - a.total_tokens;
+              return byTokens !== 0 ? byTokens : a.model.localeCompare(b.model);
+            })
+            .map((modelEntry) => {
+              const modelCost = finalizeCostAccumulator(modelEntry._cost);
+              return {
+                model: modelEntry.model,
+                total_tokens: String(modelEntry.total_tokens),
+                billable_total_tokens: String(modelEntry.billable_total_tokens),
+                estimated_total_cost_usd: formatProjectUsageCost(modelCost.total_cost_usd),
+                cost_estimated: modelCost.cost_estimated,
+                cost_quality: modelCost.cost_quality,
+                session_count: modelEntry.session_count,
+              };
+            });
+
+          return {
+            provider: providerEntry.provider,
+            total_tokens: String(providerEntry.total_tokens),
+            billable_total_tokens: String(providerEntry.billable_total_tokens),
+            estimated_total_cost_usd: formatProjectUsageCost(providerCost.total_cost_usd),
+            cost_estimated: providerCost.cost_estimated,
+            cost_quality: providerCost.cost_quality,
+            session_count: providerEntry.session_count,
+            models,
+          };
+        });
+
+      const topModels = providers
+        .flatMap((providerEntry) =>
+          providerEntry.models.map((modelEntry) => ({
+            provider: providerEntry.provider,
+            model: modelEntry.model,
+            total_tokens: modelEntry.total_tokens,
+            billable_total_tokens: modelEntry.billable_total_tokens,
+            estimated_total_cost_usd: modelEntry.estimated_total_cost_usd,
+            cost_estimated: modelEntry.cost_estimated,
+            cost_quality: modelEntry.cost_quality,
+            session_count: modelEntry.session_count,
+          })),
+        )
+        .sort((a, b) => {
+          const byTokens = Number(b.total_tokens) - Number(a.total_tokens);
+          if (byTokens !== 0) return byTokens;
+          const byProvider = a.provider.localeCompare(b.provider);
+          return byProvider !== 0 ? byProvider : a.model.localeCompare(b.model);
+        });
+
+      const totalCost = finalizeCostAccumulator(entry._cost);
+      return {
+        project_key: entry.project_key,
+        project_ref: entry.project_ref,
+        repo_root: entry.repo_root,
+        total_tokens: String(entry.total_tokens),
+        billable_total_tokens: String(entry.billable_total_tokens),
+        estimated_total_cost_usd: formatProjectUsageCost(totalCost.total_cost_usd),
+        cost_estimated: totalCost.cost_estimated,
+        cost_quality: totalCost.cost_quality,
+        last_seen_at: entry.last_seen_at,
+        providers,
+        top_models: topModels,
+      };
+    });
 }
 
 function isLegacyInclusiveCodexRow(row) {
@@ -1606,10 +1833,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         "project.queue.jsonl",
       );
       const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
-      const projectRows = readProjectQueueData(projectQueuePath);
+      const from = url.searchParams.get("from") || "";
+      const to = url.searchParams.get("to") || "";
+      const sourceFilter = normalizeProjectUsageSourceFilter(url.searchParams.get("source"));
+      const projectRows = readProjectQueueData(projectQueuePath).filter((row) => {
+        if (!matchesProjectUsageSourceFilter(sourceFilter, row?.source)) return false;
+        const lastSeenAt = projectRowLastSeenAt(row);
+        const day = typeof lastSeenAt === "string" ? lastSeenAt.slice(0, 10) : "";
+        if (from && (!day || day < from)) return false;
+        if (to && (!day || day > to)) return false;
+        return true;
+      });
       let sessionProjectRows = [];
       try {
-        sessionProjectRows = readSessionProjectUsage(dbPath);
+        sessionProjectRows = readSessionProjectUsage(dbPath, { from, to, sourceFilter });
       } catch {
         sessionProjectRows = [];
       }
@@ -1619,21 +1856,54 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       for (const row of sessionProjectRows) {
         const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
         if (!repoRoot) continue;
-        mergeProjectUsageEntry(byProject, {
+        const entry = ensureProjectUsageEntry(byProject, {
           project_key: localProjectKeys.get(repoRoot) || repoRoot,
           project_ref: repoRoot,
-          total_tokens: Number(row.total_tokens || 0),
-          billable_total_tokens: Number(row.total_tokens || 0),
-          last_seen_at: normalizeIsoTimestamp(row.last_seen_at),
+          repo_root: repoRoot,
+        });
+        const allRowsHaveStoredCost =
+          Number(row?.non_null_cost_count || 0) === Number(row?.session_count || 0);
+        const costResult = resolveUsageCost({
+          source: row?.provider,
+          model: row?.model,
+          total_tokens: Number(row?.total_tokens || 0),
+          stored_cost_usd: allRowsHaveStoredCost ? row?.stored_total_cost_usd : null,
+          stored_cost_is_authoritative: allRowsHaveStoredCost,
+        });
+        addProjectUsageGroup(entry, {
+          provider: row?.provider,
+          model: row?.model,
+          total_tokens: Number(row?.total_tokens || 0),
+          billable_total_tokens: Number(row?.total_tokens || 0),
+          session_count: Number(row?.session_count || 0),
+          last_seen_at: normalizeIsoTimestamp(row?.last_seen_at),
+          costResult,
         });
       }
       for (const row of projectRows) {
-        mergeProjectUsageEntry(byProject, {
+        const projectRef = row.project_ref || row.project_key || "unknown";
+        const projectKey = row.project_key || "unknown";
+        const entry = ensureProjectUsageEntry(byProject, {
+          project_key: projectKey,
+          project_ref: projectRef,
+          repo_root: path.isAbsolute(String(projectRef || "")) ? String(projectRef).trim() : null,
+        });
+        const costResult = resolveUsageCost({
+          source: row?.source,
+          model: row?.model || "unknown",
           project_key: row.project_key || "unknown",
-          project_ref: row.project_ref || row.project_key || "unknown",
+          total_tokens: Number(row.total_tokens || 0),
+          stored_cost_usd: row?.total_cost_usd,
+          stored_cost_is_authoritative: row?.total_cost_usd != null,
+        });
+        addProjectUsageGroup(entry, {
+          provider: row?.source || "unknown",
+          model: row?.model || "unknown",
           total_tokens: Number(row.total_tokens || 0),
           billable_total_tokens: Number((row.billable_total_tokens ?? row.total_tokens) || 0),
+          session_count: 0,
           last_seen_at: projectRowLastSeenAt(row),
+          costResult,
         });
       }
 
@@ -1650,7 +1920,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       // and produce wrong numbers; keep it only as the empty fallback.
       let entries;
       if (byProject.size === 0) {
-        const rows = readQueueData(qp);
+        const { rows: scopedRows } = scopedQueueRows(qp, url);
+        const timeZoneContext = getTimeZoneContext(url);
+        const rows = scopedRows.filter((row) => {
+          if (!matchesProjectUsageSourceFilter(sourceFilter, row?.source)) return false;
+          if (!row.hour_start) return !from && !to;
+          const day = rowDayKey(row, timeZoneContext);
+          if (from && day < from) return false;
+          if (to && day > to) return false;
+          return true;
+        });
         const bySrc = new Map();
         for (const row of rows) {
           const src = row.source || "unknown";
@@ -1676,18 +1955,17 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           .slice(0, requestedLimit ?? undefined)
           .map((e) => ({
             ...e,
+            repo_root: null,
             total_tokens: String(e.total_tokens),
             billable_total_tokens: String(e.billable_total_tokens),
+            estimated_total_cost_usd: null,
+            cost_estimated: true,
+            cost_quality: "pricing_missing",
+            providers: [],
+            top_models: [],
           }));
       } else {
-        entries = Array.from(byProject.values())
-          .sort((a, b) => compareProjectUsageEntries(a, b, sortMode))
-          .slice(0, requestedLimit ?? undefined)
-          .map((e) => ({
-            ...e,
-            total_tokens: String(e.total_tokens),
-            billable_total_tokens: String(e.billable_total_tokens),
-          }));
+        entries = finalizeProjectUsageEntries(byProject, sortMode, requestedLimit);
       }
 
       json(res, { generated_at: new Date().toISOString(), entries });

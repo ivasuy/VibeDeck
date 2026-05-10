@@ -1,6 +1,7 @@
 'use strict';
 
 const { DatabaseSync } = require('node:sqlite');
+const { getIdleTimeoutMin } = require('./idle-timeout');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -26,9 +27,7 @@ function maxIso(a, b) {
 function reapOrphanedSessions(dbPath, { now, idleTimeoutMin } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('reapOrphanedSessions: dbPath must be a non-empty string');
 
-  const effectiveIdleTimeoutMin =
-    idleTimeoutMin != null ? idleTimeoutMin : parseInt(process.env.VIBEDECK_IDLE_TIMEOUT_MIN || '30', 10);
-  const timeoutMin = Number.isFinite(effectiveIdleTimeoutMin) ? effectiveIdleTimeoutMin : 30;
+  const timeoutMin = getIdleTimeoutMin(idleTimeoutMin);
 
   const nowDate = toDateOrThrow(now);
   const nowMs = nowDate.getTime();
@@ -77,4 +76,3 @@ function reapOrphanedSessions(dbPath, { now, idleTimeoutMin } = {}) {
 }
 
 module.exports = { reapOrphanedSessions };
-

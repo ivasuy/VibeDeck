@@ -7,14 +7,10 @@ const { upsertSessionFromEvents } = require('./writer');
 const { resolveBranchForSession } = require('./resolve-branch');
 const { splitSessionByBranchTransitions } = require('./branch-windows');
 const { getLiveBus } = require('./live-bus');
+const { getIdleTimeoutMin } = require('./idle-timeout');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
-}
-
-function getIdleTimeoutMin() {
-  const parsed = parseInt(process.env.VIBEDECK_IDLE_TIMEOUT_MIN || '30', 10);
-  return Number.isFinite(parsed) ? parsed : 30;
 }
 
 function toValidDate(value) {
@@ -36,6 +32,10 @@ function shouldKeepSessionOpenForCheckpoint(existing, event) {
   if (!existing) return true;
   if (existing.ended_at == null) return true;
   return existing.end_reason === 'log_complete';
+}
+
+function shouldPreserveExistingTerminalEnd(existing, event) {
+  return isRecentLogCompleteCheckpoint(event) && !!existing && existing.ended_at != null && existing.end_reason !== 'log_complete';
 }
 
 function loadSession(db, { provider, session_id } = {}) {
@@ -136,6 +136,7 @@ async function processSessionEvent(dbPath, event) {
   }
 
   const keepOpenForCheckpoint = shouldKeepSessionOpenForCheckpoint(existingBeforeUpsert, event);
+  const preserveExistingTerminalEnd = shouldPreserveExistingTerminalEnd(existingBeforeUpsert, event);
 
   let repo = null;
   if (isNonEmptyString(event.cwd)) {
@@ -161,12 +162,7 @@ async function processSessionEvent(dbPath, event) {
             ended_at: null,
             end_reason: null,
           });
-        } else if (
-          isRecentLogCompleteCheckpoint(event) &&
-          existingBeforeUpsert &&
-          existingBeforeUpsert.ended_at != null &&
-          existingBeforeUpsert.end_reason !== 'log_complete'
-        ) {
+        } else if (preserveExistingTerminalEnd) {
           updateSessionEndedState(db, {
             provider: event.provider,
             session_id: event.session_id,
@@ -253,6 +249,7 @@ async function processSessionEvent(dbPath, event) {
 
       const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
       const bus = getLiveBus();
+      if (preserveExistingTerminalEnd) return;
       const busEventKind = keepOpenForCheckpoint ? 'update' : event.kind;
       const payload = {
         ...event,

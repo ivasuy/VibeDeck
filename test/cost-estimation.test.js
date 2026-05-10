@@ -37,6 +37,34 @@ test("estimateUsageCost falls back to total-token estimate when buckets are abse
   assert.ok(result.total_cost_usd > 0);
 });
 
+test("estimateUsageCost falls back to output or cache pricing when input pricing is absent or zero", () => {
+  const result = estimateUsageCost({
+    model: "test-output-fallback",
+    total_tokens: 2_000_000,
+    __test_pricing: {
+      input: 0,
+      output: 7.5,
+      cache_read: 0.25,
+      cache_write: 1,
+    },
+  });
+
+  assert.equal(result.cost_estimated, true);
+  assert.equal(result.cost_quality, "estimated_total_tokens");
+  assert.equal(result.total_cost_usd, 15);
+});
+
+test("estimateUsageCost returns pricing_missing for known free pricing on positive tokens", () => {
+  const result = estimateUsageCost({
+    model: "kimi-k2.5-free",
+    total_tokens: 1_000_000,
+  });
+
+  assert.equal(result.total_cost_usd, null);
+  assert.equal(result.cost_estimated, true);
+  assert.equal(result.cost_quality, "pricing_missing");
+});
+
 test("resolveUsageCost preserves positive stored costs", () => {
   const result = resolveUsageCost({
     stored_cost_usd: 1.23,
@@ -46,6 +74,19 @@ test("resolveUsageCost preserves positive stored costs", () => {
   });
 
   assert.equal(result.total_cost_usd, 1.23);
+  assert.equal(result.cost_estimated, false);
+  assert.equal(result.cost_quality, "stored");
+});
+
+test("resolveUsageCost preserves authoritative stored zero for positive-token rows", () => {
+  const result = resolveUsageCost({
+    stored_cost_usd: 0,
+    source: "codex",
+    model: "gpt-5.4",
+    total_tokens: 1_000_000,
+  });
+
+  assert.equal(result.total_cost_usd, 0);
   assert.equal(result.cost_estimated, false);
   assert.equal(result.cost_quality, "stored");
 });

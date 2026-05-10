@@ -29,10 +29,7 @@ function pickFallbackRate(pricing) {
     if (value != null && value > 0) return value;
   }
 
-  const hasExplicitZero = ["input", "output", "cache_read", "cache_write"].some(
-    (key) => toFiniteNumber(pricing[key]) === 0,
-  );
-  return hasExplicitZero ? 0 : null;
+  return null;
 }
 
 function estimateUsageCost(row = {}) {
@@ -62,7 +59,9 @@ function estimateUsageCost(row = {}) {
     };
   }
 
-  const pricing = lookupModelPricing(row.model);
+  const pricing = row.__test_pricing
+    ? { hit: true, value: row.__test_pricing }
+    : lookupModelPricing(row.model);
   if (!pricing.hit) {
     return {
       total_cost_usd: null,
@@ -108,7 +107,7 @@ function resolveUsageCost(row = {}) {
     };
   }
 
-  if (stored === 0 && storedAuthoritative && totalTokens == null) {
+  if (stored === 0 && storedAuthoritative) {
     return {
       total_cost_usd: 0,
       cost_estimated: false,

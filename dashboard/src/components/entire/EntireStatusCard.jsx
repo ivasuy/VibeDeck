@@ -2,13 +2,6 @@ import React, { useMemo } from "react";
 import { Card } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 
-const STATE_LABELS = {
-  not_installed: "entire.state.not_installed",
-  not_enabled: "entire.state.not_enabled",
-  enabled_no_commits: "entire.state.enabled_no_commits",
-  active: "entire.state.active",
-};
-
 function stateClass(state) {
   if (state === "active") return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
   if (state === "not_installed") return "bg-red-500/10 text-red-700 dark:text-red-300";
@@ -17,8 +10,19 @@ function stateClass(state) {
 }
 
 function statusLabel(state) {
-  const key = STATE_LABELS[String(state || "")];
-  return key ? copy(key) : copy("entire.state.unknown");
+  if (state === "not_installed") return copy("entire.state.not_installed");
+  if (state === "not_enabled") return copy("entire.state.not_enabled");
+  if (state === "enabled_no_commits") return copy("entire.state.enabled_no_commits");
+  if (state === "active") return copy("entire.state.active");
+  return copy("entire.state.unknown");
+}
+
+function cachedStateLabel(state) {
+  if (state === "not_installed") return copy("entire.state.not_installed");
+  if (state === "not_enabled") return copy("entire.state.not_enabled");
+  if (state === "enabled_no_commits") return copy("entire.state.enabled_no_commits");
+  if (state === "active") return copy("entire.state.active");
+  return state;
 }
 
 function MetaRow({ label, value }) {
@@ -68,7 +72,10 @@ export function EntireStatusCard({ status = null, loading = false, error = "" })
             />
           ) : null}
           {status?.cached_state ? (
-            <MetaRow label={copy("entire.status.cached_state")} value={String(status.cached_state)} />
+            <MetaRow
+              label={copy("entire.status.cached_state")}
+              value={cachedStateLabel(String(status.cached_state))}
+            />
           ) : null}
         </div>
       )}

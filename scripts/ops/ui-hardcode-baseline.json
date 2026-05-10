@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-08T20:07:40.332Z",
+  "generatedAt": "2026-05-10T11:28:44.451Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
@@ -7,7 +7,7 @@
   },
   "totals": {
     "colors": 159,
-    "rawText": 58
+    "rawText": 72
   },
   "files": {
     "dashboard/src/App.jsx": {
@@ -25,6 +25,56 @@
         "typeof n === \"number\"); if (values.length"
       ]
     },
+    "dashboard/src/components/branches/BranchUsageTable.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "0 ? ("
+      ]
+    },
+    "dashboard/src/components/entire/CheckpointList.jsx": {
+      "colors": 0,
+      "rawText": 7,
+      "rawTextTokens": [
+        ") : !checkpoints?.available || files.length === 0 ? (",
+        ") : !repo ? (",
+        ") : !selectedPath ? (",
+        ") : detailError ? (",
+        ") : error ? (",
+        ") : viewMode === \"raw\" ? (",
+        "0 ? ("
+      ]
+    },
+    "dashboard/src/components/entire/EntireStatusCard.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : !status ? (",
+        ") : error ? (",
+        "statusLabel(state), [state]); return ("
+      ]
+    },
+    "dashboard/src/components/entire/RepoPathSelector.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "0 ? ("
+      ]
+    },
+    "dashboard/src/components/live/AttributionHealthCard.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : error ? ("
+      ]
+    },
+    "dashboard/src/components/live/LiveSessionList.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : hint ? ("
+      ]
+    },
     "dashboard/src/components/settings/AccountSection.jsx": {
       "colors": 0,
       "rawText": 1,
@@ -37,6 +87,13 @@
       "rawText": 1,
       "rawTextTokens": [
         "GitHub"
+      ]
+    },
+    "dashboard/src/pages/BranchesPage.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        ") : loading ? ("
       ]
     },
     "dashboard/src/pages/DashboardPage.jsx": {
@@ -309,10 +366,8 @@
     },
     "dashboard/src/ui/openai/components/Sidebar.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 1,
       "rawTextTokens": [
-        "Star",
-        "Token Tracker",
         "getNavGroups(), [resolvedLocale]); return ("
       ]
     }

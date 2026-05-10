@@ -1,5 +1,6 @@
 import React from "react";
 import { cn } from "../../lib/cn";
+import { copy } from "../../lib/copy";
 
 export const CONFIDENCE_CLASS = {
   high: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
@@ -15,6 +16,10 @@ function normalizeConfidence(value) {
 
 export function ConfidenceBadge({ confidence, className = "" }) {
   const normalized = normalizeConfidence(confidence);
+  let label = copy("shared.confidence.unattributed");
+  if (normalized === "high") label = copy("shared.confidence.high");
+  else if (normalized === "medium") label = copy("shared.confidence.medium");
+  else if (normalized === "low") label = copy("shared.confidence.low");
   return (
     <span
       className={cn(
@@ -23,7 +28,7 @@ export function ConfidenceBadge({ confidence, className = "" }) {
         className,
       )}
     >
-      {normalized}
+      {label}
     </span>
   );
 }

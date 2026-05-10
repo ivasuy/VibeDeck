@@ -26,6 +26,18 @@ function MetaItem({ label, value }) {
   );
 }
 
+function unavailableReasonText(checkpoints) {
+  const reason = String(checkpoints?.reason || "").trim();
+  if (reason === "branch_not_fetched") return copy("entire.checkpoints.reason.branch_not_fetched");
+  if (reason === "git_error") {
+    const detail = String(checkpoints?.detail || "").trim();
+    return detail
+      ? copy("entire.checkpoints.reason.git_error_detail", { detail })
+      : copy("entire.checkpoints.reason.git_error");
+  }
+  return copy("entire.checkpoints.none");
+}
+
 export function CheckpointList({ repo = "", checkpoints = null, loading = false, error = "" }) {
   const files = Array.isArray(checkpoints?.files) ? checkpoints.files : [];
   const [selectedPath, setSelectedPath] = useState("");
@@ -105,7 +117,9 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
       ) : !repo ? (
         <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.checkpoints.empty")}</p>
       ) : !checkpoints?.available || files.length === 0 ? (
-        <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.checkpoints.none")}</p>
+        <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          {unavailableReasonText(checkpoints)}
+        </p>
       ) : (
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
           <div className="max-h-72 overflow-auto rounded-md border border-oai-gray-200 dark:border-oai-gray-800">

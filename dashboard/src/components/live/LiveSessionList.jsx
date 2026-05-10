@@ -31,8 +31,12 @@ function formatTimestamp(value) {
 }
 
 function sessionState(row) {
-  if (typeof row?.state === "string" && row.state.trim()) return row.state.trim();
-  return row?.ended_at ? "ended" : "live";
+  const raw = typeof row?.state === "string" ? row.state.trim().toLowerCase() : "";
+  if (raw === "active") return copy("live.state.active");
+  if (raw === "ended") return copy("live.state.ended");
+  if (raw === "live") return copy("live.state.live");
+  if (raw) return copy("live.state.unknown");
+  return row?.ended_at ? copy("live.state.ended") : copy("live.state.live");
 }
 
 function getBranch(row) {

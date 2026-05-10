@@ -9,6 +9,11 @@ shared.range.simple,shared,*,*,label,Range: {{range}},,active
 shared.data_source,shared,*,*,label,Data source: {{source}},,active
 shared.error.prefix,shared,*,*,label,Error: {{error}},,active
 shared.status.unsynced,shared,*,*,status,—,,active
+shared.confidence.high,shared,*,Shared,confidence_high,high,,active
+shared.confidence.medium,shared,*,Shared,confidence_medium,medium,,active
+shared.confidence.low,shared,*,Shared,confidence_low,low,,active
+shared.confidence.unattributed,shared,*,Shared,confidence_unattributed,unattributed,,active
+brand.name,shared,*,Shared,brand_name,VibeDeck,,active
 error.boundary.title,shared,*,ErrorBoundary,title,Something went wrong,,active
 error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to render,,active
 error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload the page",,active
@@ -282,6 +287,10 @@ live.meta.cost,dashboard,LivePage,LiveSessionList,meta_cost,Cost,,active
 live.meta.started,dashboard,LivePage,LiveSessionList,meta_started,Started,,active
 live.meta.updated,dashboard,LivePage,LiveSessionList,meta_updated,Updated,,active
 live.meta.state,dashboard,LivePage,LiveSessionList,meta_state,State,,active
+live.state.live,dashboard,LivePage,LiveSessionList,state_live,live,,active
+live.state.ended,dashboard,LivePage,LiveSessionList,state_ended,ended,,active
+live.state.active,dashboard,LivePage,LiveSessionList,state_active,active,,active
+live.state.unknown,dashboard,LivePage,LiveSessionList,state_unknown,unknown,,active
 live.repo_state.title,dashboard,LivePage,LivePage,repo_title,Repo / Entire state,,active
 live.repo_state.selected,dashboard,LivePage,LivePage,repo_selected,Selected repo: {{repo}},,active
 live.repo_state.empty,dashboard,LivePage,LivePage,repo_empty,Select a session with a repo to inspect Entire status.,,active
@@ -319,6 +328,8 @@ branches.total.tokens,dashboard,BranchesPage,BranchesPage,total_tokens,Tokens,,a
 branches.total.cost,dashboard,BranchesPage,BranchesPage,total_cost,Cost,,active
 branches.total.sessions,dashboard,BranchesPage,BranchesPage,total_sessions,Sessions,,active
 branches.empty,dashboard,BranchesPage,BranchUsageTable,empty,No branch rows match current filters.,,active
+branches.empty.no_repo_rows,dashboard,BranchesPage,BranchUsageTable,empty_no_repo_rows,No branch usage rows found for this range.,,active
+branches.confidence.mix,dashboard,BranchesPage,BranchUsageTable,confidence_mix,{{high_label}} {{high}} · {{medium_label}} {{medium}} · {{low_label}} {{low}} · {{unattributed_label}} {{unattributed}},,active
 branches.value.unknown_time,dashboard,BranchesPage,BranchUsageTable,unknown_time,—,,active
 branches.table.repo,dashboard,BranchesPage,BranchUsageTable,table_repo,Repo,,active
 branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Branch,,active
@@ -353,6 +364,8 @@ nav.menu,shared,*,Sidebar,nav_menu,Open navigation menu,,active
 nav.close_menu,shared,*,Sidebar,nav_close_menu,Close navigation menu,,active
 nav.aside_label,shared,*,Sidebar,aside_label,Main navigation,,active
 nav.nav_label,shared,*,Sidebar,nav_label,Primary,,active
+nav.star,shared,*,Sidebar,nav_star,Star,,active
+nav.theme,shared,*,Sidebar,nav_theme,Theme,,active
 limits.page.subtitle,ui,LimitsPage,LimitsPage,subtitle,Rate limits and quota usage across your AI tools.,,active
 limits.settings.toggle_visible,ui,LimitsPage,LimitsSettingsPanel,toggle_visible,Toggle visibility,,active
 limits.page.openSettings,ui,LimitsPage,LimitsPage,open_settings,Display settings,,active
@@ -518,6 +531,9 @@ entire.checkpoints.error,dashboard,EntirePage,CheckpointList,error,Unable to loa
 entire.checkpoints.error_fallback,dashboard,EntirePage,CheckpointList,error_fallback,Request failed,,active
 entire.checkpoints.empty,dashboard,EntirePage,CheckpointList,empty,Select a repository to view checkpoints.,,active
 entire.checkpoints.none,dashboard,EntirePage,CheckpointList,none,No checkpoint files found.,,active
+entire.checkpoints.reason.branch_not_fetched,dashboard,EntirePage,CheckpointList,reason_branch_not_fetched,Checkpoint branch is not fetched for this repository.,,active
+entire.checkpoints.reason.git_error,dashboard,EntirePage,CheckpointList,reason_git_error,Unable to read checkpoint branch from git.,,active
+entire.checkpoints.reason.git_error_detail,dashboard,EntirePage,CheckpointList,reason_git_error_detail,Git error: {{detail}},,active
 entire.checkpoints.detail.title,dashboard,EntirePage,CheckpointList,detail_title,Checkpoint detail,,active
 entire.checkpoints.detail.loading,dashboard,EntirePage,CheckpointList,detail_loading,Loading checkpoint detail…,,active
 entire.checkpoints.detail.error,dashboard,EntirePage,CheckpointList,detail_error,Unable to load checkpoint: {{error}},,active
@@ -556,3 +572,18 @@ entire.configure.action,dashboard,EntirePage,AdvancedConfigurePanel,action,Run c
 entire.configure.error,dashboard,EntirePage,AdvancedConfigurePanel,error,Configure failed: {{error}},,active
 entire.configure.error_fallback,dashboard,EntirePage,AdvancedConfigurePanel,error_fallback,Request failed,,active
 entire.configure.output,dashboard,EntirePage,AdvancedConfigurePanel,output,Command output,,active
+vibedeck.api.error.db_unavailable,shared,*,VibeDeckAPI,error_db_unavailable,Local VibeDeck database is unavailable.,,active
+vibedeck.api.error.too_many_clients,shared,*,VibeDeckAPI,error_too_many_clients,Too many live stream clients are connected. Close another dashboard and retry.,,active
+vibedeck.api.error.not_installed,shared,*,VibeDeckAPI,error_not_installed,Entire is not installed for this environment.,,active
+vibedeck.api.error.not_enabled,shared,*,VibeDeckAPI,error_not_enabled,Entire is installed but not enabled for this repository.,,active
+vibedeck.api.error.enabled_no_commits,shared,*,VibeDeckAPI,error_enabled_no_commits,Entire is enabled and waiting for checkpoints.,,active
+vibedeck.api.error.active,shared,*,VibeDeckAPI,error_active,Entire is active.,,active
+vibedeck.api.error.branch_not_fetched,shared,*,VibeDeckAPI,error_branch_not_fetched,Checkpoint branch is not fetched.,,active
+vibedeck.api.error.git_error,shared,*,VibeDeckAPI,error_git_error,Git command failed while reading Entire checkpoint data.,,active
+vibedeck.api.error.invalid_repo,shared,*,VibeDeckAPI,error_invalid_repo,Repository path is invalid or unavailable.,,active
+vibedeck.api.error.invalid_path,shared,*,VibeDeckAPI,error_invalid_path,Checkpoint path is invalid.,,active
+vibedeck.api.error.missing_repo,shared,*,VibeDeckAPI,error_missing_repo,Repository path is required.,,active
+vibedeck.api.error.missing_confirm_token,shared,*,VibeDeckAPI,error_missing_confirm_token,Confirmation token is required before destructive commands.,,active
+vibedeck.api.error.invalid_confirm_token,shared,*,VibeDeckAPI,error_invalid_confirm_token,Confirmation token is invalid or expired.,,active
+vibedeck.api.error.unknown_command,shared,*,VibeDeckAPI,error_unknown_command,Unknown Entire command.,,active
+vibedeck.api.error.session_not_found,shared,*,VibeDeckAPI,error_session_not_found,Session was not found. Refresh Live and retry.,,active

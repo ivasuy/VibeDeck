@@ -1,7 +1,42 @@
 import { getLocalApiAuthHeaders } from "./local-api-auth";
+import { copy } from "./copy";
 
 type AnyRecord = Record<string, any>;
 type FetchImpl = typeof fetch;
+
+function normalizeApiErrorCode(payload: AnyRecord | null) {
+  const raw = payload?.error ?? payload?.code ?? payload?.reason;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+function knownApiErrorMessage(code: string) {
+  if (code === "db_unavailable") return copy("vibedeck.api.error.db_unavailable");
+  if (code === "too_many_clients") return copy("vibedeck.api.error.too_many_clients");
+  if (code === "not_installed") return copy("vibedeck.api.error.not_installed");
+  if (code === "not_enabled") return copy("vibedeck.api.error.not_enabled");
+  if (code === "enabled_no_commits") return copy("vibedeck.api.error.enabled_no_commits");
+  if (code === "active") return copy("vibedeck.api.error.active");
+  if (code === "branch_not_fetched") return copy("vibedeck.api.error.branch_not_fetched");
+  if (code === "git_error") return copy("vibedeck.api.error.git_error");
+  if (code === "invalid_repo") return copy("vibedeck.api.error.invalid_repo");
+  if (code === "invalid_path") return copy("vibedeck.api.error.invalid_path");
+  if (code === "missing_repo") return copy("vibedeck.api.error.missing_repo");
+  if (code === "missing_confirm_token") return copy("vibedeck.api.error.missing_confirm_token");
+  if (code === "invalid_confirm_token") return copy("vibedeck.api.error.invalid_confirm_token");
+  if (code === "unknown_command") return copy("vibedeck.api.error.unknown_command");
+  if (code === "session_not_found") return copy("vibedeck.api.error.session_not_found");
+  return "";
+}
+
+function resolveApiErrorMessage(payload: AnyRecord | null, status: number) {
+  const code = normalizeApiErrorCode(payload);
+  const knownMessage = code ? knownApiErrorMessage(code) : "";
+  if (knownMessage) return knownMessage;
+  const message = typeof payload?.message === "string" ? payload.message.trim() : "";
+  if (message) return message;
+  if (code) return code;
+  return `Request failed with HTTP ${status}`;
+}
 
 export type BranchUsageParams = {
   from?: string;
@@ -20,9 +55,8 @@ function origin() {
 async function jsonOrThrow<T = any>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok || payload?.ok === false) {
-    const error: any = new Error(
-      payload?.error || payload?.message || `Request failed with HTTP ${response.status}`,
-    );
+    const error: any = new Error(resolveApiErrorMessage(payload, response.status));
+    error.code = normalizeApiErrorCode(payload);
     error.status = response.status;
     throw error;
   }

@@ -32,7 +32,16 @@ function confidenceMix(confidence) {
 
 function confidenceMixText(confidence) {
   const mix = confidenceMix(confidence);
-  return `high ${mix.high} · medium ${mix.medium} · low ${mix.low} · unattributed ${mix.unattributed}`;
+  return copy("branches.confidence.mix", {
+    high_label: copy("shared.confidence.high"),
+    high: mix.high,
+    medium_label: copy("shared.confidence.medium"),
+    medium: mix.medium,
+    low_label: copy("shared.confidence.low"),
+    low: mix.low,
+    unattributed_label: copy("shared.confidence.unattributed"),
+    unattributed: mix.unattributed,
+  });
 }
 
 function ConfidenceMix({ confidence }) {
@@ -62,7 +71,7 @@ function ConfidenceMix({ confidence }) {
   );
 }
 
-export function BranchUsageTable({ rows = [], onOpenSessions }) {
+export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" }) {
   return (
     <Card className="overflow-hidden" bodyClassName="p-0">
       <div className="overflow-x-auto">
@@ -82,7 +91,7 @@ export function BranchUsageTable({ rows = [], onOpenSessions }) {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
-                  {copy("branches.empty")}
+                  {emptyMessage || copy("branches.empty")}
                 </td>
               </tr>
             ) : (

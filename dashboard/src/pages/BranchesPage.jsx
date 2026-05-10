@@ -86,6 +86,9 @@ export function BranchesPage() {
 
   const appliedCount = filteredRows.length;
   const totalCount = rows.length;
+  const emptyMessage = totalCount === 0
+    ? copy("branches.empty.no_repo_rows")
+    : copy("branches.empty");
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
@@ -152,7 +155,7 @@ export function BranchesPage() {
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.loading")}</p>
           </Card>
         ) : (
-          <BranchUsageTable rows={filteredRows} onOpenSessions={setSelectedRow} />
+          <BranchUsageTable rows={filteredRows} onOpenSessions={setSelectedRow} emptyMessage={emptyMessage} />
         )}
       </div>
 

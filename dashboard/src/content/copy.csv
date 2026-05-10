@@ -134,8 +134,8 @@ dashboard.projects.limit_top_10,ui,ProjectUsagePanel,ProjectUsagePanel,limit_top
 dashboard.projects.empty,ui,ProjectUsagePanel,ProjectUsagePanel,empty,No public repositories,,active
 dashboard.projects.last_used,ui,ProjectUsagePanel,ProjectUsagePanel,last_used,Last used {{time}},,active
 dashboard.projects.github_link_aria,ui,ProjectUsagePanel,ProjectUsagePanel,github_link_aria,Open {{project}} on GitHub,,active
-dashboard.projects.expand_aria,ui,ProjectUsagePanel,ProjectUsagePanel,expand_aria,Expand {{project}} usage breakdown,,active
-dashboard.projects.collapse_aria,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_aria,Collapse {{project}} usage breakdown,,active
+dashboard.projects.expand_project,ui,ProjectUsagePanel,ProjectUsagePanel,expand_project,Expand {{project}} usage breakdown,,active
+dashboard.projects.collapse_project,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_project,Collapse {{project}} usage breakdown,,active
 dashboard.projects.top_model_label,ui,ProjectUsagePanel,ProjectUsagePanel,top_model_label,Top model,,active
 dashboard.projects.breakdown_heading,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_heading,Model breakdown,,active
 dashboard.projects.breakdown_columns,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_columns,Estimated cost · tokens,,active

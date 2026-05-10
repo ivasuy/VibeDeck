@@ -75,4 +75,37 @@ describe("ProjectUsageBreakdown", () => {
     const providerRow = screen.getByRole("listitem", { name: /^claude$/i });
     expect(within(providerRow).getAllByText("—").length).toBeGreaterThan(0);
   });
+
+  it("prefers exact cost when exact and estimated values are both present", () => {
+    render(
+      <ProjectUsageBreakdown
+        providers={[
+          {
+            provider: "gemini",
+            total_tokens: 2200,
+            total_cost_usd: 2.2,
+            estimated_total_cost_usd: 8.8,
+            cost_estimated: false,
+            models: [
+              {
+                model: "gemini-2.5-pro",
+                total_tokens: 2200,
+                total_cost_usd: 1.1,
+                estimated_total_cost_usd: 4.4,
+                cost_estimated: false,
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    const providerRow = screen.getByRole("listitem", { name: /^gemini$/i });
+    expect(within(providerRow).getByText("$2.20")).toBeInTheDocument();
+    expect(within(providerRow).queryByText("$8.80 est.")).toBeNull();
+
+    const modelRow = screen.getByRole("listitem", { name: /^gemini-2\.5-pro$/i });
+    expect(within(modelRow).getByText("$1.10")).toBeInTheDocument();
+    expect(within(modelRow).queryByText("$4.40 est.")).toBeNull();
+  });
 });

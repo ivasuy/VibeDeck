@@ -29,7 +29,9 @@ describe("ProjectUsagePanel", () => {
   it("renders a repo card with repository identity, usage, and explicit GitHub link", () => {
     render(<ProjectUsagePanel entries={[entry]} />);
 
-    const card = screen.getByRole("button", { name: /hello/i });
+    const card = screen.getByRole("button", {
+      name: copy("dashboard.projects.expand_project", { project: "hello" }),
+    });
     const githubLink = screen.getByRole("link", { name: copy("dashboard.projects.github_link_aria", { project: "hello" }) });
     expect(githubLink.getAttribute("href")).toBe("https://github.com/octo/hello");
     expect(screen.getByText("hello")).toBeInTheDocument();
@@ -54,7 +56,13 @@ describe("ProjectUsagePanel", () => {
       decimals: 1,
     });
 
-    expect(within(screen.getByRole("button", { name: /alpha/i })).getByText(expected)).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("button", {
+          name: copy("dashboard.projects.expand_project", { project: "alpha" }),
+        }),
+      ).getByText(expected),
+    ).toBeInTheDocument();
   });
 
   it("closes the limit popup on Escape", async () => {
@@ -97,8 +105,12 @@ describe("ProjectUsagePanel", () => {
     );
 
     const cards = screen.getAllByRole("button");
-    expect(cards[0]).toHaveAccessibleName(/recent/i);
-    expect(cards[1]).toHaveAccessibleName(/older/i);
+    expect(cards[0]).toHaveAccessibleName(
+      copy("dashboard.projects.expand_project", { project: "recent" }),
+    );
+    expect(cards[1]).toHaveAccessibleName(
+      copy("dashboard.projects.expand_project", { project: "older" }),
+    );
     expect(screen.getAllByText(/last used/i)).toHaveLength(2);
   });
 
@@ -133,6 +145,8 @@ describe("ProjectUsagePanel", () => {
 
   it("expands in place to show provider and model breakdown with estimated cost and top model hint", async () => {
     const user = userEvent.setup();
+    const expandLabel = copy("dashboard.projects.expand_project", { project: "usage-heavy" });
+    const collapseLabel = copy("dashboard.projects.collapse_project", { project: "usage-heavy" });
     render(
       <ProjectUsagePanel
         entries={[
@@ -174,11 +188,13 @@ describe("ProjectUsagePanel", () => {
     expect(screen.getByText("$12.50 est.")).toBeInTheDocument();
     expect(screen.getAllByText(/gpt-5\.4/).length).toBeGreaterThan(0);
     expect(screen.queryByText("3 sessions")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: expandLabel })).toHaveAttribute("aria-expanded", "false");
 
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: /usage-heavy/i }));
+      await user.click(screen.getByRole("button", { name: expandLabel }));
     });
 
+    expect(screen.getByRole("button", { name: collapseLabel })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(copy("dashboard.projects.breakdown_heading"))).toBeInTheDocument();
     expect(screen.getByText("3 sessions")).toBeInTheDocument();
     expect(screen.getAllByText("$12.50 est.").length).toBeGreaterThan(0);
@@ -206,7 +222,42 @@ describe("ProjectUsagePanel", () => {
       />,
     );
 
-    expect(within(screen.getByRole("button", { name: /unknown-cost/i })).getAllByText("—").length).toBeGreaterThan(0);
-    expect(within(screen.getByRole("button", { name: /zero-cost/i })).getByText("$0.00")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("button", {
+          name: copy("dashboard.projects.expand_project", { project: "unknown-cost" }),
+        }),
+      ).getAllByText("—").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(
+        screen.getByRole("button", {
+          name: copy("dashboard.projects.expand_project", { project: "zero-cost" }),
+        }),
+      ).getByText("$0.00"),
+    ).toBeInTheDocument();
+  });
+
+  it("prefers exact project cost when exact and estimated costs are both present", () => {
+    render(
+      <ProjectUsagePanel
+        entries={[
+          {
+            project_key: "octo/exact-cost",
+            project_ref: "https://github.com/octo/exact-cost",
+            total_tokens: 1000,
+            total_cost_usd: 4.5,
+            estimated_total_cost_usd: 9.75,
+            cost_estimated: false,
+          },
+        ]}
+      />,
+    );
+
+    const card = screen.getByRole("button", {
+      name: copy("dashboard.projects.expand_project", { project: "exact-cost" }),
+    });
+    expect(within(card).getByText("$4.50")).toBeInTheDocument();
+    expect(within(card).queryByText("$9.75 est.")).toBeNull();
   });
 });

@@ -9,6 +9,40 @@ function toKnownNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+export function resolveProjectUsageCostValue(entry) {
+  const exactCost = toKnownNumber(entry?.total_cost_usd);
+  const estimatedCost = toKnownNumber(entry?.estimated_total_cost_usd);
+  const costEstimated = entry?.cost_estimated === true;
+  const totalTokens = toKnownNumber(entry?.total_tokens);
+  const costQuality = String(entry?.cost_quality || "").trim();
+
+  if (!costEstimated) {
+    return exactCost ?? estimatedCost ?? null;
+  }
+
+  if (estimatedCost != null) {
+    return estimatedCost;
+  }
+
+  if (exactCost == null) {
+    return null;
+  }
+
+  if (exactCost !== 0) {
+    return exactCost;
+  }
+
+  if (totalTokens === 0) {
+    return 0;
+  }
+
+  if (["zero_tokens", "stored", "token_buckets"].includes(costQuality)) {
+    return 0;
+  }
+
+  return null;
+}
+
 export function formatProjectUsageCostLabel(costValue, costEstimated) {
   const numeric = toKnownNumber(costValue);
   if (numeric == null) return "—";
@@ -26,8 +60,7 @@ function formatSessions(value) {
 function ProviderRow({ providerEntry }) {
   const providerName = String(providerEntry?.provider || copy("shared.placeholder.short"));
   const models = Array.isArray(providerEntry?.models) ? providerEntry.models : [];
-  const providerCost =
-    providerEntry?.estimated_total_cost_usd ?? providerEntry?.total_cost_usd ?? null;
+  const providerCost = resolveProjectUsageCostValue(providerEntry);
 
   return (
     <li
@@ -61,8 +94,7 @@ function ProviderRow({ providerEntry }) {
           {models.map((modelEntry, index) => {
             const modelName = String(modelEntry?.model || "—");
             const sessionLabel = formatSessions(modelEntry?.session_count);
-            const modelCost =
-              modelEntry?.estimated_total_cost_usd ?? modelEntry?.total_cost_usd ?? null;
+            const modelCost = resolveProjectUsageCostValue(modelEntry);
 
             return (
               <li

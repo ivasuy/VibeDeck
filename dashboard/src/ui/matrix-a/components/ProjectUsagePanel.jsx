@@ -5,7 +5,11 @@ import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber, toDisplayNumber, toFiniteNumber } from "../../../lib/format";
 import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
-import { ProjectUsageBreakdown, formatProjectUsageCostLabel } from "./ProjectUsageBreakdown.jsx";
+import {
+  ProjectUsageBreakdown,
+  formatProjectUsageCostLabel,
+  resolveProjectUsageCostValue,
+} from "./ProjectUsageBreakdown.jsx";
 
 const LIMIT_OPTIONS = [3, 6, 10];
 const REPO_META_CACHE = new Map();
@@ -97,8 +101,7 @@ function resolveTokens(entry) {
 }
 
 function resolveProjectCost(entry) {
-  if (!entry) return null;
-  return entry.estimated_total_cost_usd ?? entry.total_cost_usd ?? null;
+  return resolveProjectUsageCostValue(entry);
 }
 
 function resolveTopModel(entry) {
@@ -325,9 +328,9 @@ function ProjectUsageCard({
   const githubAria = copy("dashboard.projects.github_link_aria", { project: displayName });
   const providers = Array.isArray(entry?.providers) ? entry.providers : [];
   const showExternalLink = Boolean(href && href !== "#");
-  const iconButtonLabel = expanded
-    ? copy("dashboard.projects.collapse_aria", { project: displayName })
-    : copy("dashboard.projects.expand_aria", { project: displayName });
+  const buttonAriaLabel = expanded
+    ? copy("dashboard.projects.collapse_project", { project: displayName })
+    : copy("dashboard.projects.expand_project", { project: displayName });
 
   return (
     <div className="overflow-hidden rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900">
@@ -335,7 +338,7 @@ function ProjectUsageCard({
         <button
           type="button"
           aria-expanded={expanded}
-          aria-label={displayName}
+          aria-label={buttonAriaLabel}
           onClick={() => onToggleExpand?.(entryKey)}
           className="flex flex-1 items-center gap-3 p-4 text-left transition-colors hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/70"
         >
@@ -377,7 +380,7 @@ function ProjectUsageCard({
               ) : null}
             </div>
           </div>
-          <div className="shrink-0 text-oai-gray-400 dark:text-oai-gray-500" aria-label={iconButtonLabel}>
+          <div className="shrink-0 text-oai-gray-400 dark:text-oai-gray-500" aria-hidden="true">
             {expanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
           </div>
         </button>

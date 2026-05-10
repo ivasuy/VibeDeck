@@ -4,6 +4,8 @@ import { getBranchUsage, getCheckpoints, getEntireStatus } from "../lib/vibedeck
 import { RepoPathSelector } from "../components/entire/RepoPathSelector";
 import { EntireStatusCard } from "../components/entire/EntireStatusCard";
 import { CheckpointList } from "../components/entire/CheckpointList";
+import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
+import { AdvancedConfigurePanel } from "../components/entire/AdvancedConfigurePanel";
 
 export function EntirePage() {
   const [repoInput, setRepoInput] = useState("");
@@ -84,6 +86,11 @@ export function EntirePage() {
     setCheckpointsLoading(false);
   }, []);
 
+  const refreshSelectedRepo = useCallback(async () => {
+    if (!selectedRepo) return;
+    await loadRepo(selectedRepo);
+  }, [loadRepo, selectedRepo]);
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
       <header className="mb-4 min-w-0">
@@ -110,6 +117,13 @@ export function EntirePage() {
             error={checkpointsError}
           />
         </div>
+
+        {selectedRepo ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+            <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+          </div>
+        ) : null}
       </div>
     </main>
   );

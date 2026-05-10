@@ -450,7 +450,7 @@ settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system
 settings.appearance.language.english,ui,SettingsPage,SettingsPage,language_english,English,,active
 settings.appearance.language.chinese,ui,SettingsPage,SettingsPage,language_chinese,Simplified Chinese,,active
 entire.title,dashboard,EntirePage,EntirePage,title,Entire,,active
-entire.subtitle,dashboard,EntirePage,EntirePage,subtitle,Read-only repository status and checkpoint history.,,active
+entire.subtitle,dashboard,EntirePage,EntirePage,subtitle,"Repository status, checkpoints, and controls.",,active
 entire.repo.title,dashboard,EntirePage,RepoPathSelector,title,Repository,,active
 entire.repo.subtitle,dashboard,EntirePage,RepoPathSelector,subtitle,Use an absolute repository path to load Entire status and checkpoints.,,active
 entire.repo.input.label,dashboard,EntirePage,RepoPathSelector,input_label,Repository path,,active
@@ -492,3 +492,29 @@ entire.checkpoints.detail.meta.type,dashboard,EntirePage,CheckpointList,meta_typ
 entire.checkpoints.detail.meta.keys,dashboard,EntirePage,CheckpointList,meta_keys,Keys,,active
 entire.checkpoints.detail.meta.fields,dashboard,EntirePage,CheckpointList,meta_fields,Fields,,active
 entire.checkpoints.detail.meta.none,dashboard,EntirePage,CheckpointList,meta_none,No metadata fields available.,,active
+entire.actions.title,dashboard,EntirePage,EntireActionsPanel,title,Actions,,active
+entire.actions.subtitle,dashboard,EntirePage,EntireActionsPanel,subtitle,Run Entire commands for the selected repository.,,active
+entire.actions.enable.agents_label,dashboard,EntirePage,EntireActionsPanel,enable_agents_label,Agents for enable,,active
+entire.actions.enable.agents_hint,dashboard,EntirePage,EntireActionsPanel,enable_agents_hint,Choose one or more agents before enabling Entire.,,active
+entire.actions.enable,dashboard,EntirePage,EntireActionsPanel,enable_action,Enable,,active
+entire.actions.disable,dashboard,EntirePage,EntireActionsPanel,disable_action,Disable,,active
+entire.actions.doctor,dashboard,EntirePage,EntireActionsPanel,doctor_action,Doctor,,active
+entire.actions.status,dashboard,EntirePage,EntireActionsPanel,status_action,Status,,active
+entire.actions.rewind.input_label,dashboard,EntirePage,EntireActionsPanel,rewind_input_label,Checkpoint id,,active
+entire.actions.rewind.input_placeholder,dashboard,EntirePage,EntireActionsPanel,rewind_input_placeholder,checkpoint-id,,active
+entire.actions.rewind,dashboard,EntirePage,EntireActionsPanel,rewind_action,Rewind,,active
+entire.actions.rewind.validation.required,dashboard,EntirePage,EntireActionsPanel,rewind_validation_required,Type a checkpoint id before rewinding.,,active
+entire.actions.clean.all,dashboard,EntirePage,EntireActionsPanel,clean_all,Clean all checkpoints,,active
+entire.actions.clean,dashboard,EntirePage,EntireActionsPanel,clean_action,Clean,,active
+entire.actions.error,dashboard,EntirePage,EntireActionsPanel,error,Command failed: {{error}},,active
+entire.actions.error_fallback,dashboard,EntirePage,EntireActionsPanel,error_fallback,Request failed,,active
+entire.actions.output,dashboard,EntirePage,EntireActionsPanel,output,Command output,,active
+entire.configure.title,dashboard,EntirePage,AdvancedConfigurePanel,title,Configure,,active
+entire.configure.disclosure,dashboard,EntirePage,AdvancedConfigurePanel,disclosure,Advanced raw configure,,active
+entire.configure.subtitle,dashboard,EntirePage,AdvancedConfigurePanel,subtitle,Use raw argv-style arguments for Entire configure.,,active
+entire.configure.input.label,dashboard,EntirePage,AdvancedConfigurePanel,input_label,Configure args,,active
+entire.configure.input.placeholder,dashboard,EntirePage,AdvancedConfigurePanel,input_placeholder,--arg value --flag,,active
+entire.configure.action,dashboard,EntirePage,AdvancedConfigurePanel,action,Run configure,,active
+entire.configure.error,dashboard,EntirePage,AdvancedConfigurePanel,error,Configure failed: {{error}},,active
+entire.configure.error_fallback,dashboard,EntirePage,AdvancedConfigurePanel,error_fallback,Request failed,,active
+entire.configure.output,dashboard,EntirePage,AdvancedConfigurePanel,output,Command output,,active

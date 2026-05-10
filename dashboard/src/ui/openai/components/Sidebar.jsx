@@ -22,7 +22,6 @@ import { cn } from "../../../lib/cn";
 import { useTheme } from "../../../hooks/useTheme.js";
 import { useLocale } from "../../../hooks/useLocale.js";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
-import { InsforgeUserHeaderControls } from "../../../components/InsforgeUserHeaderControls.jsx";
 import { isNativeApp, isNativeEmbed } from "../../../lib/native-bridge.js";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
@@ -105,6 +104,24 @@ function isActive(pathname, to) {
     return normalized === "/dashboard" || normalized === "/";
   }
   return normalized === to;
+}
+
+function SidebarBrand({ collapsed = false }) {
+  return (
+    <Link
+      to="/dashboard"
+      className={cn(
+        "flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 no-underline text-oai-black dark:text-oai-white transition-opacity hover:opacity-85",
+        collapsed && "justify-center px-0",
+      )}
+      aria-label="VibeDeck"
+    >
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--vd-accent)] text-xs font-semibold text-white shadow-sm">
+        V
+      </span>
+      {!collapsed && <span className="truncate text-sm font-semibold">VibeDeck</span>}
+    </Link>
+  );
 }
 
 function NavGroupLabel({ label, collapsed, first }) {
@@ -319,11 +336,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         {showCloseButton ? (
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
-              <InsforgeUserHeaderControls
-                variant="sidebar"
-                collapsed={collapsed}
-                onAfterAction={onItemClick}
-              />
+              <SidebarBrand />
             </div>
             <button
               type="button"
@@ -336,11 +349,7 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
             </button>
           </div>
         ) : (
-          <InsforgeUserHeaderControls
-            variant="sidebar"
-            collapsed={collapsed}
-            onAfterAction={onItemClick}
-          />
+          <SidebarBrand collapsed={collapsed} />
         )}
       </div>
 
@@ -480,13 +489,15 @@ function MobileTopBar({ onOpenDrawer }) {
         <Menu className="h-5 w-5" aria-hidden />
       </IconButton>
       <Link
-        to="/landing"
+        to="/dashboard"
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
-        aria-label="Token Tracker"
+        aria-label="VibeDeck"
       >
-        <img src="/app-icon.png" alt="" width={24} height={24} className="rounded-md" />
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--vd-accent)] text-[11px] font-semibold text-white">
+          V
+        </span>
         <span className="text-sm font-semibold text-oai-black dark:text-oai-white">
-          Token Tracker
+          VibeDeck
         </span>
       </Link>
       <div className="w-10 shrink-0" aria-hidden />

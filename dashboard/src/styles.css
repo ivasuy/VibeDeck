@@ -13,6 +13,14 @@
   --oai-black: #0a0a0a;
   --oai-white: #fafafa;
 
+  /* VibeDeck identity tokens */
+  --vd-accent: #0f766e;
+  --vd-accent-strong: #115e59;
+  --vd-live: #10b981;
+  --vd-branch: #6366f1;
+  --vd-warning: #d97706;
+  --vd-danger: #dc2626;
+
   /* Colors - Warm-tinted Neutrals (subtle green tint for cohesion) */
   --oai-gray-50: oklch(98% 0.005 145);
   --oai-gray-100: oklch(96% 0.01 145);
@@ -112,6 +120,14 @@
   /* Colors - Primary (swapped for dark mode) */
   --oai-black: #fafafa;
   --oai-white: #0a0a0a;
+
+  /* VibeDeck identity tokens */
+  --vd-accent: #2dd4bf;
+  --vd-accent-strong: #5eead4;
+  --vd-live: #34d399;
+  --vd-branch: #818cf8;
+  --vd-warning: #fbbf24;
+  --vd-danger: #f87171;
 
   /* Colors - Warm-tinted Neutrals (hue 145 matches brand green for cohesion) */
   --oai-gray-50: oklch(20% 0.002 145);
@@ -746,4 +762,3 @@ html.native-app .tt-native-main-card {
 :root.dark .rdp-oai svg.rdp-chevron {
   fill: var(--oai-gray-400);
 }
-

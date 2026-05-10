@@ -44,9 +44,24 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
         branch_resolution_tier: "C",
         model: "totally-unknown-model",
         total_tokens: 5000,
-        total_cost_usd: null,
+        total_cost_usd: 0,
         estimated_total_cost_usd: null,
         cost_estimated: true,
+        cost_quality: "pricing_missing",
+      },
+      {
+        provider: "gemini",
+        session_id: "s4",
+        repo_root: "/repo/zero",
+        branch: "idle",
+        confidence: "medium",
+        branch_resolution_tier: "D",
+        model: "gemini-2.5-flash-lite",
+        total_tokens: 0,
+        total_cost_usd: 0,
+        estimated_total_cost_usd: 0,
+        cost_estimated: false,
+        cost_quality: "zero_tokens",
       },
     ],
   }),
@@ -75,10 +90,12 @@ describe("LivePage", () => {
     expect(screen.getByText("main")).toBeTruthy();
     expect(screen.getByText("feature/costs")).toBeTruthy();
     expect(screen.getByText("mystery")).toBeTruthy();
+    expect(screen.getByText("idle")).toBeTruthy();
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
     expect(screen.getByText("$0.05 est.")).toBeTruthy();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
-    expect(screen.queryByText("$0.00")).toBeNull();
+    expect(screen.queryByText("$0.00 est.")).toBeNull();
+    expect(screen.getByText("$0.00")).toBeTruthy();
     expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
   });
 });

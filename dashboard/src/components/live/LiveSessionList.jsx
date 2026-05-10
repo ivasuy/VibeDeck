@@ -70,11 +70,14 @@ function emptyStateCopy(status) {
 }
 
 function formatLiveSessionCost(row) {
+  if (["pricing_missing", "missing_tokens", "partial_unknown"].includes(String(row?.cost_quality || ""))) {
+    return "—";
+  }
   const preferredCost = row?.estimated_total_cost_usd ?? row?.total_cost_usd;
   if (preferredCost == null) return "—";
   const formatted = formatUsdCurrency(String(preferredCost));
   if (formatted === "-") return "—";
-  return row?.cost_estimated ? `${formatted} est.` : formatted;
+  return row?.cost_estimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
 }
 
 function MetaItem({ label, value }) {

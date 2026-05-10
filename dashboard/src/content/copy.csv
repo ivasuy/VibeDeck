@@ -294,6 +294,7 @@ live.meta.tier,dashboard,LivePage,LiveSessionList,meta_tier,Tier,,active
 live.meta.model,dashboard,LivePage,LiveSessionList,meta_model,Model,,active
 live.meta.tokens,dashboard,LivePage,LiveSessionList,meta_tokens,Tokens,,active
 live.meta.cost,dashboard,LivePage,LiveSessionList,meta_cost,Cost,,active
+live.cost.estimated_suffix,dashboard,LivePage,LiveSessionList,estimated_suffix,est.,,active
 live.meta.started,dashboard,LivePage,LiveSessionList,meta_started,Started,,active
 live.meta.updated,dashboard,LivePage,LiveSessionList,meta_updated,Updated,,active
 live.meta.state,dashboard,LivePage,LiveSessionList,meta_state,State,,active

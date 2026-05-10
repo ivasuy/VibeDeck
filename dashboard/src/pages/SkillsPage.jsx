@@ -14,12 +14,8 @@ import {
 } from "lucide-react";
 import { Button, Card, ConfirmModal, Input } from "../ui/openai/components";
 import { ProviderIcon } from "../ui/matrix-a/components/ProviderIcon.jsx";
-import { EmptyStatePanel } from "../ui/ops";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
-import { InstalledSkillList } from "../components/skills/InstalledSkillList.jsx";
-import { SkillSourceSummary } from "../components/skills/SkillSourceSummary.jsx";
-import { SkillTargetMatrix } from "../components/skills/SkillTargetMatrix.jsx";
 import {
   addSkillRepo,
   deleteLocalSkill,
@@ -36,6 +32,13 @@ import {
 } from "../lib/skills-api";
 
 const DEFAULT_TARGETS = ["claude", "codex"];
+const TARGET_ACTIVE_CLASSES = {
+  claude: "bg-orange-500/10 ring-1 ring-orange-500/20 hover:bg-orange-500/20",
+  codex: "bg-emerald-500/10 ring-1 ring-emerald-500/20 hover:bg-emerald-500/20",
+  gemini: "bg-sky-500/10 ring-1 ring-sky-500/20 hover:bg-sky-500/20",
+  opencode: "bg-amber-500/10 ring-1 ring-amber-500/20 hover:bg-amber-500/20",
+  hermes: "bg-indigo-500/10 ring-1 ring-indigo-500/20 hover:bg-indigo-500/20",
+};
 const SOURCE_ALL = "all";
 const SOURCE_SKILLSSH = "skillssh";
 
@@ -53,6 +56,108 @@ function removeBusyKey(skill) {
 
 function targetBusyKey(skillId, targetId) {
   return `target:${skillId}:${targetId}`;
+}
+
+function TargetToggleGroup({ skill, targets, busyKey, onToggleTarget }) {
+  const activeTargets = new Set(skill.targets || []);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {targets.map((target) => {
+        const checked = activeTargets.has(target.id);
+        const busy = busyKey === targetBusyKey(skill.id, target.id);
+        const tooltipKey = checked ? "skills.target.remove_title" : "skills.target.sync_title";
+        return (
+          <button
+            key={target.id}
+            type="button"
+            aria-pressed={checked}
+            aria-label={copy("skills.target.toggle_aria", { target: target.label })}
+            title={copy(tooltipKey, { target: target.label })}
+            disabled={busy}
+            onClick={() => onToggleTarget(skill, target.id, !checked)}
+            className={cn(
+              "inline-flex h-8 w-8 items-center justify-center rounded-md transition disabled:cursor-wait disabled:opacity-70",
+              checked
+                ? TARGET_ACTIVE_CLASSES[target.id] || "bg-oai-gray-100 dark:bg-oai-gray-800"
+                : "opacity-40 grayscale hover:bg-oai-gray-100 hover:opacity-100 hover:grayscale-0 dark:hover:bg-oai-gray-800",
+            )}
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <ProviderIcon provider={target.id} size={16} />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
+  const removing = busyKey === removeBusyKey(skill);
+  const sourceLabel =
+    skill.repoOwner && skill.repoName ? `${skill.repoOwner}/${skill.repoName}` : null;
+  const titleAttr = sourceLabel ? `${skill.directory} · ${sourceLabel}` : skill.directory;
+
+  return (
+    <div className="group grid gap-4 px-1 py-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+      <div className="min-w-0" title={titleAttr}>
+        <h2 className="truncate text-sm font-semibold text-oai-black dark:text-white">
+          {skill.name || skill.directory}
+        </h2>
+        {skill.description ? (
+          <p className="mt-0.5 line-clamp-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {skill.description}
+          </p>
+        ) : null}
+      </div>
+
+      <TargetToggleGroup
+        skill={skill}
+        targets={targets}
+        busyKey={busyKey}
+        onToggleTarget={onToggleTarget}
+      />
+
+      <button
+        type="button"
+        aria-label={copy("skills.action.remove")}
+        title={copy("skills.action.remove")}
+        disabled={removing}
+        onClick={() => onRemove(skill)}
+        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-oai-gray-400 opacity-0 transition duration-200 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 disabled:cursor-wait disabled:opacity-100 dark:hover:bg-red-950/30 dark:hover:text-red-300 lg:justify-self-end"
+      >
+        {removing ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <Trash2 className="h-4 w-4" aria-hidden />
+        )}
+      </button>
+    </div>
+  );
+}
+
+function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
+  return (
+    <div>
+      <div className="px-1 pb-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+        {copy("skills.my.count", { count: items.length })}
+      </div>
+      <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
+        {items.map((skill) => (
+          <SkillRow
+            key={skill.id || skill.key}
+            skill={skill}
+            targets={targets}
+            busyKey={busyKey}
+            onToggleTarget={onToggleTarget}
+            onRemove={onRemove}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const BROWSE_CARD_STYLE = {
@@ -553,34 +658,73 @@ export function SkillsPage() {
     contentNode = loadingNode;
   } else if (tab === "my") {
     contentNode = mySkills.length ? (
-      <div className="space-y-4">
-        <SkillSourceSummary items={mySkills} />
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <InstalledSkillList
-            items={mySkills}
-            targets={targets}
-            busyKey={busyKey}
-            onRemove={handleRemove}
-          />
-          <SkillTargetMatrix
-            items={mySkills}
-            targets={targets}
-            busyKey={busyKey}
-            onToggleTarget={handleToggleTarget}
-          />
-        </div>
-      </div>
-    ) : (
-      <EmptyStatePanel
-        accent="skills"
-        title={copy("skills.empty.my_title")}
-        description={copy("skills.empty.my")}
-        action={(
-          <Button type="button" size="sm" onClick={() => setTab("browse")}>
-            {copy("skills.empty.my_cta")}
-          </Button>
-        )}
+      <MySkillsView
+        items={mySkills}
+        targets={targets}
+        busyKey={busyKey}
+        onToggleTarget={handleToggleTarget}
+        onRemove={handleRemove}
       />
+    ) : (
+      <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center dark:border-oai-gray-800">
+        {targets.length > 0 ? (
+          <div className="relative h-11 w-80 overflow-hidden" aria-hidden>
+            {/* Blurred icons — masked to mid-edge transition zones (skips center) */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                maskImage:
+                  "linear-gradient(to right, transparent 8%, black 20%, black 32%, transparent 44%, transparent 56%, black 68%, black 80%, transparent 92%)",
+                WebkitMaskImage:
+                  "linear-gradient(to right, transparent 8%, black 20%, black 32%, transparent 44%, transparent 56%, black 68%, black 80%, transparent 92%)",
+              }}
+            >
+              <div
+                className="absolute inset-y-0 left-0 flex w-max items-center animate-marquee-x"
+                style={{ filter: "blur(2.5px)" }}
+              >
+                {[...targets, ...targets].map((target, i) => (
+                  <span key={`b-${i}`} className="shrink-0 px-3">
+                    <ProviderIcon provider={target.id} size={30} />
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* Clear icons — masked to center */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                maskImage:
+                  "linear-gradient(to right, transparent 28%, black 42%, black 58%, transparent 72%)",
+                WebkitMaskImage:
+                  "linear-gradient(to right, transparent 28%, black 42%, black 58%, transparent 72%)",
+              }}
+            >
+              <div className="absolute inset-y-0 left-0 flex w-max items-center animate-marquee-x">
+                {[...targets, ...targets].map((target, i) => (
+                  <span key={`c-${i}`} className="shrink-0 px-3">
+                    <ProviderIcon provider={target.id} size={30} />
+                  </span>
+                ))}
+              </div>
+            </div>
+            {/* Background color fade — left edge */}
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-oai-white to-transparent dark:from-oai-gray-900"
+            />
+            {/* Background color fade — right edge */}
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 w-20 bg-gradient-to-l from-oai-white to-transparent dark:from-oai-gray-900"
+            />
+          </div>
+        ) : null}
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("skills.empty.my")}
+        </p>
+        <Button type="button" size="sm" onClick={() => setTab("browse")}>
+          {copy("skills.empty.my_cta")}
+        </Button>
+      </div>
     );
   } else {
     // Browse

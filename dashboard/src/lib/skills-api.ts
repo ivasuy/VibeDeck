@@ -2,7 +2,8 @@ import { getLocalApiAuthHeaders } from "./local-api-auth";
 
 type AnyRecord = Record<string, any>;
 
-const SLUG = "tokentracker-skills";
+const SLUG = "vibedeck-skills";
+const LEGACY_SLUG = "tokentracker-skills";
 
 async function fetchSkillsJson(params?: AnyRecord) {
   const url = new URL(`/functions/${SLUG}`, window.location.origin);
@@ -22,9 +23,28 @@ async function fetchSkillsJson(params?: AnyRecord) {
   return payload;
 }
 
-async function mutateSkillsJson(body: AnyRecord) {
+async function mutateSkillsJson(body: AnyRecord, cmd: string) {
   const authHeaders = await getLocalApiAuthHeaders();
-  const response = await fetch(`/functions/${SLUG}`, {
+  const response = await fetch(`/functions/${SLUG}/${cmd}`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...authHeaders,
+    },
+    cache: "no-store",
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Request failed with HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function mutateLegacySkillsJson(body: AnyRecord) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  const response = await fetch(`/functions/${LEGACY_SLUG}`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -58,33 +78,33 @@ export function getSkillRepos() {
 }
 
 export function installSkill(skill: AnyRecord, targets: string[]) {
-  return mutateSkillsJson({ action: "install", skill, targets });
+  return mutateSkillsJson({ skill, targets }, "install");
 }
 
 export function uninstallSkill(id: string) {
-  return mutateSkillsJson({ action: "uninstall", id });
+  return mutateSkillsJson({ id }, "uninstall");
 }
 
 export function restoreSkill(id: string) {
-  return mutateSkillsJson({ action: "restore", id });
+  return mutateSkillsJson({ id }, "restore");
 }
 
 export function setSkillTargets(id: string, targets: string[]) {
-  return mutateSkillsJson({ action: "set_targets", id, targets });
+  return mutateLegacySkillsJson({ action: "set_targets", id, targets });
 }
 
 export function importLocalSkill(directory: string, targets: string[]) {
-  return mutateSkillsJson({ action: "import_local", directory, targets });
+  return mutateSkillsJson({ directory, targets }, "importLocal");
 }
 
 export function deleteLocalSkill(directory: string, targets?: string[]) {
-  return mutateSkillsJson({ action: "delete_local", directory, targets: targets || [] });
+  return mutateSkillsJson({ directory, targets: targets || [] }, "deleteLocal");
 }
 
 export function addSkillRepo(repo: AnyRecord) {
-  return mutateSkillsJson({ action: "add_repo", repo });
+  return mutateSkillsJson({ repo }, "addRepo");
 }
 
 export function removeSkillRepo(owner: string, name: string) {
-  return mutateSkillsJson({ action: "remove_repo", owner, name });
+  return mutateSkillsJson({ owner, name }, "removeRepo");
 }

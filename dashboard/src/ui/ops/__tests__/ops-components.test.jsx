@@ -19,8 +19,6 @@ import {
 afterEach(() => cleanup());
 
 describe("ops UI primitives", () => {
-  const browseLabel = copy("skills.empty.my_cta");
-
   it("renders a labeled icon badge without decorative text overflow", () => {
     render(<IconBadge accent="live" label="Live" />);
     expect(screen.getByLabelText("Live")).toBeInTheDocument();
@@ -104,10 +102,10 @@ describe("ops UI primitives", () => {
         accent="skills"
         title="No skills"
         description="Install a skill to continue."
-        action={<button type="button">{browseLabel}</button>}
+        action={<button type="button">Browse</button>}
       />,
     );
     expect(screen.getByText("No skills")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: browseLabel })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Browse" })).toBeInTheDocument();
   });
 });

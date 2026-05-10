@@ -20,9 +20,7 @@ export function ConfidenceBar({ confidence = {}, ariaLabel, className = "" }) {
     label: copy(`shared.confidence.${segment.key}`),
     value: toCount(confidence?.[segment.key]),
   }));
-  const total = summary.reduce((sum, segment) => {
-    return sum + segment.value;
-  }, 0);
+  const total = summary.reduce((sum, segment) => sum + segment.value, 0);
 
   return (
     <div

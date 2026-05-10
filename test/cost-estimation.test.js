@@ -54,15 +54,15 @@ test("estimateUsageCost falls back to output or cache pricing when input pricing
   assert.equal(result.total_cost_usd, 15);
 });
 
-test("estimateUsageCost returns pricing_missing for known free pricing on positive tokens", () => {
+test("estimateUsageCost returns exact zero for known free pricing on positive tokens", () => {
   const result = estimateUsageCost({
     model: "kimi-k2.5-free",
     total_tokens: 1_000_000,
   });
 
-  assert.equal(result.total_cost_usd, null);
-  assert.equal(result.cost_estimated, true);
-  assert.equal(result.cost_quality, "pricing_missing");
+  assert.equal(result.total_cost_usd, 0);
+  assert.equal(result.cost_estimated, false);
+  assert.equal(result.cost_quality, "free_pricing");
 });
 
 test("resolveUsageCost preserves positive stored costs", () => {
@@ -78,9 +78,10 @@ test("resolveUsageCost preserves positive stored costs", () => {
   assert.equal(result.cost_quality, "stored");
 });
 
-test("resolveUsageCost preserves authoritative stored zero for positive-token rows", () => {
+test("resolveUsageCost preserves authoritative stored zero for positive-token rows only when explicitly true", () => {
   const result = resolveUsageCost({
     stored_cost_usd: 0,
+    stored_cost_is_authoritative: true,
     source: "codex",
     model: "gpt-5.4",
     total_tokens: 1_000_000,
@@ -91,7 +92,20 @@ test("resolveUsageCost preserves authoritative stored zero for positive-token ro
   assert.equal(result.cost_quality, "stored");
 });
 
-test("resolveUsageCost treats stale zero cost as estimate when tokens are positive", () => {
+test("resolveUsageCost estimates when stored zero is default and pricing exists", () => {
+  const result = resolveUsageCost({
+    stored_cost_usd: 0,
+    source: "codex",
+    model: "gpt-5.4",
+    total_tokens: 1_000_000,
+  });
+
+  assert.equal(result.cost_estimated, true);
+  assert.equal(result.cost_quality, "estimated_total_tokens");
+  assert.ok(result.total_cost_usd > 0);
+});
+
+test("resolveUsageCost treats stale zero cost as estimate when explicitly false", () => {
   const result = resolveUsageCost({
     stored_cost_usd: 0,
     stored_cost_is_authoritative: false,

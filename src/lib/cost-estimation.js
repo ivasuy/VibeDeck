@@ -32,6 +32,13 @@ function pickFallbackRate(pricing) {
   return null;
 }
 
+function hasExplicitZeroRate(pricing) {
+  if (!pricing || typeof pricing !== "object") return false;
+  return ["input", "output", "cache_read", "cache_write"].some(
+    (key) => toFiniteNumber(pricing[key]) === 0,
+  );
+}
+
 function estimateUsageCost(row = {}) {
   const totalTokens = toFiniteNumber(row.total_tokens);
   if (totalTokens === 0) {
@@ -72,6 +79,13 @@ function estimateUsageCost(row = {}) {
 
   const rate = pickFallbackRate(pricing.value);
   if (rate == null) {
+    if (hasExplicitZeroRate(pricing.value)) {
+      return {
+        total_cost_usd: 0,
+        cost_estimated: false,
+        cost_quality: "free_pricing",
+      };
+    }
     return {
       total_cost_usd: null,
       cost_estimated: true,
@@ -89,7 +103,7 @@ function estimateUsageCost(row = {}) {
 function resolveUsageCost(row = {}) {
   const stored = toFiniteNumber(row.stored_cost_usd ?? row.total_cost_usd);
   const totalTokens = toFiniteNumber(row.total_tokens);
-  const storedAuthoritative = row.stored_cost_is_authoritative !== false;
+  const storedAuthoritative = row.stored_cost_is_authoritative === true;
 
   if (stored != null && stored > 0) {
     return {

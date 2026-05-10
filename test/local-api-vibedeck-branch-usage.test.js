@@ -176,6 +176,8 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
         model: 'unknown-model',
         total_tokens: 40,
         total_cost_usd: null,
+        cost_estimated: true,
+        cost_quality: 'partial_unknown',
         session_count: 1,
       },
     ]);
@@ -206,7 +208,13 @@ test('GET /functions/vibedeck-branch-usage returns empty shape when db is absent
 
     assert.deepEqual(JSON.parse(res.body.toString('utf8')), {
       repos: [],
-      totals: { total_tokens: 0, total_cost_usd: 0, session_count: 0 },
+      totals: {
+        total_tokens: 0,
+        total_cost_usd: 0,
+        cost_estimated: false,
+        cost_quality: 'zero_tokens',
+        session_count: 0,
+      },
     });
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -332,6 +340,77 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
     assertClose(branch.total_cost_usd, expectedCostUsd);
     assertClose(branch.models[0].total_cost_usd, expectedCostUsd);
     assertClose(branch.sessions[0].total_cost_usd, expectedCostUsd);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage estimates stale zero branch window cost when source session cost is null', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-stale-zero-cost-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'split-stale-zero-cost',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T01:00:00.000Z',
+        cwd: '/repo',
+        repo_root: '/repo',
+        branch: 'main',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 100000,
+        total_cost_usd: null,
+      });
+      db.prepare(`
+        INSERT INTO vibedeck_session_branch_windows
+          (provider, session_id, branch, window_start, window_end, prorated_tokens, prorated_cost_usd)
+        VALUES
+          ('codex', 'split-stale-zero-cost', 'main', '2026-05-10T00:00:00.000Z', '2026-05-10T00:30:00.000Z', 60000, 0),
+          ('codex', 'split-stale-zero-cost', 'feature', '2026-05-10T00:30:00.000Z', '2026-05-10T01:00:00.000Z', 40000, 0)
+      `).run();
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    const pricingMatch = lookupModelPricing('gpt-5.4');
+    assert.equal(pricingMatch.hit, true);
+    const approximateRate = pickApproximateTokenRate(pricingMatch.value);
+    const expectedCostUsd = (60000 * approximateRate) / 1_000_000;
+
+    assertClose(branch.total_cost_usd, expectedCostUsd);
+    assert.equal(branch.cost_estimated, true);
+    assert.equal(branch.cost_quality, 'estimated_total_tokens');
+    assertClose(branch.models[0].total_cost_usd, expectedCostUsd);
+    assert.equal(branch.models[0].cost_estimated, true);
+    assert.equal(branch.models[0].cost_quality, 'estimated_total_tokens');
+    assertClose(branch.sessions[0].total_cost_usd, expectedCostUsd);
+    assert.equal(branch.sessions[0].cost_estimated, true);
+    assert.equal(branch.sessions[0].cost_quality, 'estimated_total_tokens');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

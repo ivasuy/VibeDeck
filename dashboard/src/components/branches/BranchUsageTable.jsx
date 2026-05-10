@@ -51,6 +51,12 @@ function formatCostLabel(value) {
   return formatUsdCurrency(String(n));
 }
 
+function formatBranchCostLabel(row) {
+  const formatted = formatCostLabel(row?.total_cost_usd);
+  if (formatted === copy("branches.value.unknown_cost")) return formatted;
+  return row?.cost_estimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
+}
+
 function modelSummary(models) {
   const list = Array.isArray(models) ? models : [];
   if (list.length === 0) return null;
@@ -131,7 +137,7 @@ export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" 
                       {toDisplayNumber(row?.total_tokens ?? 0)}
                     </td>
                     <td className="px-4 py-3 align-top text-oai-gray-700 dark:text-oai-gray-200">
-                      {formatCostLabel(row?.total_cost_usd)}
+                      {formatBranchCostLabel(row)}
                     </td>
                     <td className="px-4 py-3 align-top text-oai-gray-700 dark:text-oai-gray-200">
                       {topModel ? (

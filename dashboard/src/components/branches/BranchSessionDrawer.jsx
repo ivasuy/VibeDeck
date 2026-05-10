@@ -24,6 +24,12 @@ function formatCostLabel(value) {
   return formatUsdCurrency(String(n));
 }
 
+function formatEstimatedCostLabel(entry) {
+  const formatted = formatCostLabel(entry?.total_cost_usd);
+  if (formatted === copy("branches.value.unknown_cost")) return formatted;
+  return entry?.cost_estimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
+}
+
 export function BranchSessionDrawer({ row = null, onClose }) {
   if (!row) return null;
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
@@ -67,7 +73,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                       {String(modelEntry?.model || "—")}
                     </div>
                     <div className="mt-1 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                      {toDisplayNumber(modelEntry?.total_tokens ?? 0)} · {formatCostLabel(modelEntry?.total_cost_usd)}
+                      {toDisplayNumber(modelEntry?.total_tokens ?? 0)} · {formatEstimatedCostLabel(modelEntry)}
                     </div>
                   </div>
                 ))}
@@ -106,7 +112,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">{String(session?.model || "—")}</td>
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">{toDisplayNumber(session?.total_tokens ?? 0)}</td>
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">
-                        {formatCostLabel(session?.total_cost_usd)}
+                        {formatEstimatedCostLabel(session)}
                       </td>
                       <td className="px-3 py-2">
                         <ConfidenceBadge confidence={session?.confidence} className="h-5 px-1.5 text-[10px]" />

@@ -17,6 +17,8 @@ const SAMPLE_PAYLOAD = {
   totals: {
     total_tokens: 14500,
     total_cost_usd: 12.34,
+    cost_estimated: true,
+    cost_quality: "mixed_known",
     session_count: 5,
   },
   repos: [
@@ -27,6 +29,8 @@ const SAMPLE_PAYLOAD = {
           branch: "feature-a",
           total_tokens: 12000,
           total_cost_usd: 12.34,
+          cost_estimated: true,
+          cost_quality: "estimated_total_tokens",
           session_count: 3,
           last_seen_at: "2026-05-10T10:10:00.000Z",
           confidence: { high: 2, medium: 1, low: 0, unattributed: 0 },
@@ -35,12 +39,16 @@ const SAMPLE_PAYLOAD = {
               model: "gpt-5.2",
               total_tokens: 9000,
               total_cost_usd: 9.1,
+              cost_estimated: true,
+              cost_quality: "estimated_total_tokens",
               session_count: 1,
             },
             {
               model: "claude-opus-4.1",
               total_tokens: 3000,
               total_cost_usd: 3.24,
+              cost_estimated: false,
+              cost_quality: "stored",
               session_count: 1,
             },
           ],
@@ -53,6 +61,8 @@ const SAMPLE_PAYLOAD = {
               model: "gpt-5.2",
               total_tokens: 9000,
               total_cost_usd: 9.1,
+              cost_estimated: true,
+              cost_quality: "estimated_total_tokens",
               confidence: "high",
               branch_resolution_tier: "A",
             },
@@ -78,6 +88,8 @@ const SAMPLE_PAYLOAD = {
           branch: "release-b",
           total_tokens: 2500,
           total_cost_usd: null,
+          cost_estimated: true,
+          cost_quality: "partial_unknown",
           session_count: 2,
           last_seen_at: "2026-05-09T08:00:00.000Z",
           confidence: { high: 0, medium: 0, low: 1, unattributed: 1 },
@@ -86,6 +98,8 @@ const SAMPLE_PAYLOAD = {
               model: "gpt-5.1",
               total_tokens: 1200,
               total_cost_usd: null,
+              cost_estimated: true,
+              cost_quality: "pricing_missing",
               session_count: 1,
             },
           ],
@@ -151,6 +165,19 @@ describe("BranchesPage", () => {
     expect(screen.getByText("s-002")).toBeTruthy();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
     expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+
+  it("marks estimated branch and session costs while keeping unknown costs as Unknown", async () => {
+    render(<BranchesPage />);
+
+    expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
+    expect(screen.getAllByText("$12.34 est.").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
+
+    expect(await screen.findByText("Session details")).toBeTruthy();
+    expect(screen.getAllByText("$9.10 est.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 

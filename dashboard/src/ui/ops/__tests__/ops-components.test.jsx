@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { copy } from "../../../lib/copy";
 import { render } from "../../../test/test-utils";
 import {
   ConfidenceBar,
@@ -64,7 +65,8 @@ describe("ops UI primitives", () => {
       />,
     );
     expect(screen.getByLabelText("Branch confidence distribution")).toBeInTheDocument();
-    expect(screen.getByText("high 2")).toBeInTheDocument();
+    expect(screen.getByText(`${copy("shared.confidence.high")} 2`)).toBeInTheDocument();
+    expect(screen.getByText(`${copy("shared.confidence.unattributed")} 4`)).toBeInTheDocument();
   });
 
   it("renders mini bar chart rows sorted by value", () => {

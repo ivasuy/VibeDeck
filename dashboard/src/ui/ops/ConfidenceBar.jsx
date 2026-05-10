@@ -1,4 +1,5 @@
 import React from "react";
+import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 
 const CONFIDENCE_SEGMENTS = [
@@ -16,6 +17,7 @@ function toCount(value) {
 export function ConfidenceBar({ confidence = {}, ariaLabel, className = "" }) {
   const summary = CONFIDENCE_SEGMENTS.map((segment) => ({
     ...segment,
+    label: copy(`shared.confidence.${segment.key}`),
     value: toCount(confidence?.[segment.key]),
   }));
   const total = summary.reduce((sum, segment) => sum + segment.value, 0);
@@ -41,7 +43,7 @@ export function ConfidenceBar({ confidence = {}, ariaLabel, className = "" }) {
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
         {summary.map((segment) => (
           <span key={segment.key} className={cn("font-medium", segment.textClassName)}>
-            {segment.key} {segment.value}
+            {segment.label} {segment.value}
           </span>
         ))}
       </div>

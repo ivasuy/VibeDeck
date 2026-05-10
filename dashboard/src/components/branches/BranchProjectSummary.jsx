@@ -22,9 +22,9 @@ export function BranchProjectSummary({
     <Card bodyClassName="space-y-4 p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="mb-3 text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+          <h2 className="mb-3 text-sm font-semibold text-oai-black dark:text-white">
             {copy("branches.summary.title")}
-          </div>
+          </h2>
           <ProjectIdentity repoRoot={repoRoot || "—"} />
         </div>
 
@@ -73,9 +73,9 @@ export function BranchProjectSummary({
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="rounded-lg border border-oai-gray-200/70 bg-oai-black/[0.02] px-4 py-3 dark:border-oai-gray-800/70 dark:bg-white/[0.03]">
-          <div className="mb-3 text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
             {copy("branches.summary.provider_mix")}
-          </div>
+          </h3>
           {providerModels.length ? (
             <ProviderModelChips items={providerModels} />
           ) : (
@@ -86,9 +86,9 @@ export function BranchProjectSummary({
         </div>
 
         <div className="rounded-lg border border-oai-gray-200/70 bg-oai-black/[0.02] px-4 py-3 dark:border-oai-gray-800/70 dark:bg-white/[0.03]">
-          <div className="mb-3 text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
             {copy("branches.summary.confidence")}
-          </div>
+          </h3>
           <ConfidenceBar
             ariaLabel={copy("branches.summary.confidence_aria", {
               project: repoRoot || "—",

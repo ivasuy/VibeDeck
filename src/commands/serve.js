@@ -171,14 +171,15 @@ async function cmdServe(argv) {
     process.stdout.write(
       [
         "",
-        `  tokentracker dashboard running at:`,
+        `  VibeDeck dashboard running at:`,
         "",
         `    ${url}`,
         "",
         `  Data: ${queuePath}`,
+        opts.sync ? null : `  Sync: disabled (--no-sync); run without --no-sync for live data refresh.`,
         `  Press Ctrl+C to stop.`,
         "",
-      ].join("\n"),
+      ].filter(Boolean).join("\n"),
     );
 
     if (opts.open) {

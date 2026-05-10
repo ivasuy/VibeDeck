@@ -16,6 +16,17 @@ function formatReset(isoOrUnix) {
   return `${Math.floor(h / 24)}d`;
 }
 
+function formatDurationSeconds(value) {
+  const totalSeconds = Math.max(0, Math.ceil(Number(value) || 0));
+  if (totalSeconds <= 0) return copy("shared.time.now");
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.ceil(totalSeconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.ceil(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.ceil(hours / 24)}d`;
+}
+
 function barColor(pct) {
   if (pct >= 90) return "bg-red-500";
   if (pct >= 70) return "bg-amber-500";
@@ -86,6 +97,8 @@ function StatusLine({ children, tone = "neutral" }) {
   const color =
     tone === "error"
       ? "text-red-600 dark:text-red-400"
+      : tone === "warning"
+        ? "text-amber-700 dark:text-amber-300"
       : "text-oai-gray-500 dark:text-oai-gray-400";
   return <div className={`text-[11px] leading-snug ${color}`}>{children}</div>;
 }
@@ -97,6 +110,27 @@ function renderProviderGroup(id, data) {
     return (
       <ToolGroup key={id} name={meta.name} icon={meta.icon}>
         <StatusLine>{copy("limits.status.not_connected")}</StatusLine>
+      </ToolGroup>
+    );
+  }
+  if (data.status === "cooldown") {
+    return (
+      <ToolGroup key={id} name={meta.name} icon={meta.icon}>
+        <StatusLine tone="warning">
+          {copy("limits.status.cooldown", {
+            duration: formatDurationSeconds(data.retry_after_seconds),
+          })}
+        </StatusLine>
+      </ToolGroup>
+    );
+  }
+  if (data.status === "setup_required") {
+    return (
+      <ToolGroup key={id} name={meta.name} icon={meta.icon}>
+        <StatusLine tone="warning">{copy("limits.status.setup_required")}</StatusLine>
+        {id === "gemini" ? (
+          <StatusLine>{copy("limits.gemini.setup_hint")}</StatusLine>
+        ) : null}
       </ToolGroup>
     );
   }

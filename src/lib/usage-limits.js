@@ -63,6 +63,63 @@ function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function parseRetryAfterSeconds(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric >= 0) {
+    return Math.ceil(numeric);
+  }
+  const ts = Date.parse(String(value));
+  if (!Number.isFinite(ts)) return null;
+  const diffSeconds = Math.ceil((ts - Date.now()) / 1000);
+  return diffSeconds > 0 ? diffSeconds : 0;
+}
+
+function createTypedProviderState({
+  configured = true,
+  status,
+  rawError,
+  retryAfterSeconds,
+  ...rest
+} = {}) {
+  const state = {
+    configured,
+    error: null,
+    status,
+    raw_error: typeof rawError === "string" && rawError ? rawError : null,
+    ...rest,
+  };
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+    state.retry_after_seconds = Math.ceil(retryAfterSeconds);
+  }
+  return state;
+}
+
+function buildClaudeCooldownState(error) {
+  return createTypedProviderState({
+    status: "cooldown",
+    rawError: error?.message || "Claude API rate limited.",
+    retryAfterSeconds:
+      Number.isFinite(error?.retry_after_seconds) && error.retry_after_seconds >= 0
+        ? error.retry_after_seconds
+        : 60,
+  });
+}
+
+function isGeminiSetupRequiredMessage(message) {
+  const lowered = String(message || "").toLowerCase();
+  return lowered.includes("not logged in to gemini")
+    || lowered.includes("use google account (oauth) instead")
+    || lowered.includes("could not find gemini cli oauth configuration");
+}
+
+function buildGeminiSetupRequiredState(message) {
+  return createTypedProviderState({
+    status: "setup_required",
+    rawError: message,
+  });
+}
+
 function mergeAbortSignals(signalA, signalB) {
   if (!signalA) return signalB;
   if (!signalB) return signalA;
@@ -115,9 +172,12 @@ async function fetchClaudeUsageLimits(accessToken, { fetchImpl = fetch, maxAttem
     }
     if (!res.ok) {
       if (res.status === 429) {
-        throw new Error(
+        const error = new Error(
           "Claude API rate limited (429). Too many usage checks — wait ~1 minute and refresh.",
         );
+        error.provider_status = "cooldown";
+        error.retry_after_seconds = parseRetryAfterSeconds(res.headers.get("retry-after")) ?? 60;
+        throw error;
       }
       throw new Error(`Claude API returned ${res.status}`);
     }
@@ -741,15 +801,21 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
     return { configured: false };
   }
   if (selectedType === "api-key") {
-    return { configured: true, error: "Gemini API key auth not supported. Use Google account (OAuth) instead." };
+    return buildGeminiSetupRequiredState(
+      "Gemini API key auth not supported. Use Google account (OAuth) instead.",
+    );
   }
   if (selectedType === "vertex-ai") {
-    return { configured: true, error: "Gemini Vertex AI auth not supported. Use Google account (OAuth) instead." };
+    return buildGeminiSetupRequiredState(
+      "Gemini Vertex AI auth not supported. Use Google account (OAuth) instead.",
+    );
   }
 
   const creds = loadGeminiCredentials({ home, env });
   if (!creds?.access_token) {
-    return { configured: true, error: "Not logged in to Gemini. Run 'gemini' in Terminal to authenticate." };
+    return buildGeminiSetupRequiredState(
+      "Not logged in to Gemini. Run 'gemini' in Terminal to authenticate.",
+    );
   }
 
   try {
@@ -792,9 +858,13 @@ async function fetchGeminiLimits({ home, env, fetchImpl = fetch, commandRunner }
       }),
     };
   } catch (error) {
+    const message = error?.message || "Unknown error";
+    if (isGeminiSetupRequiredMessage(message)) {
+      return buildGeminiSetupRequiredState(message);
+    }
     return {
       configured: true,
-      error: error?.message || "Unknown error",
+      error: message,
     };
   }
 }
@@ -1602,7 +1672,11 @@ async function getUsageLimits({
   if (!claudeToken) {
     claude = { configured: false };
   } else if (!claudeResult || claudeResult.status === "rejected") {
-    claude = { configured: true, error: claudeResult?.reason?.message || "Unknown error" };
+    if (claudeResult?.reason?.provider_status === "cooldown") {
+      claude = buildClaudeCooldownState(claudeResult.reason);
+    } else {
+      claude = { configured: true, error: claudeResult?.reason?.message || "Unknown error" };
+    }
   } else {
     claude = {
       configured: true,

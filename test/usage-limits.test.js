@@ -463,7 +463,47 @@ describe("getUsageLimits", () => {
 
       assert.equal(calls, 1);
       assert.equal(result.claude.configured, true);
-      assert.match(result.claude.error, /rate limited/);
+      assert.equal(result.claude.error, null);
+      assert.equal(result.claude.status, "cooldown");
+      assert.equal(result.claude.retry_after_seconds, 30);
+      assert.match(result.claude.raw_error, /rate limited/i);
+    } finally {
+      resetUsageLimitsCache();
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a setup-required Gemini state when OAuth credentials are missing", async () => {
+    resetUsageLimitsCache();
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-setup-"));
+    try {
+      const geminiHome = path.join(tmp, ".gemini");
+      fs.mkdirSync(geminiHome, { recursive: true });
+      fs.writeFileSync(
+        path.join(geminiHome, "settings.json"),
+        JSON.stringify({ security: { auth: { selectedType: "oauth-personal" } } }),
+      );
+
+      const result = await getUsageLimits({
+        home: tmp,
+        env: { HOME: tmp },
+        platform: "darwin",
+        providerTimeoutMs: 1000,
+        securityRunner() {
+          return { status: 1, stdout: "" };
+        },
+        commandRunner() {
+          return { status: 1, stdout: "" };
+        },
+        fetchImpl() {
+          return new Promise(() => {});
+        },
+      });
+
+      assert.equal(result.gemini.configured, true);
+      assert.equal(result.gemini.error, null);
+      assert.equal(result.gemini.status, "setup_required");
+      assert.match(result.gemini.raw_error, /Not logged in to Gemini/i);
     } finally {
       resetUsageLimitsCache();
       fs.rmSync(tmp, { recursive: true, force: true });

@@ -462,6 +462,9 @@ limits.label.copilot_chat,ui,LimitsPage,UsageLimitsPanel,copilot_chat,Chat,,acti
 limits.status.not_connected,ui,LimitsPage,UsageLimitsPanel,status_not_connected,Not connected,,active
 limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,No live limit data returned,,active
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,All limit providers are hidden. Open display settings to show them.,,active
+limits.status.cooldown,ui,LimitsPage,UsageLimitsPanel,status_cooldown,Rate limited. Try again in {{duration}}.,,active
+limits.status.setup_required,ui,LimitsPage,UsageLimitsPanel,status_setup_required,Setup required,,active
+limits.gemini.setup_hint,ui,LimitsPage,UsageLimitsPanel,gemini_setup_hint,"Sign in with Gemini CLI OAuth, then refresh limits.",,active
 shared.time.now,shared,*,Shared,time_now,now,,active
 nav.skills,shared,*,Sidebar,nav_skills,Skills,,active
 skills.page.title,ui,SkillsPage,SkillsPage,title,Skills,,active

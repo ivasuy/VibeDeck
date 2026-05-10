@@ -151,8 +151,8 @@ describe("BranchesPage", () => {
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect((await screen.findAllByText("repo-a")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("feature-a").length).toBeGreaterThan(0);
-    expect(screen.getByRole("heading", { name: "Project summary" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Branch cost ranking" })).toBeTruthy();
+    expect(screen.getByText("Project summary")).toBeTruthy();
+    expect(screen.getByText("Branch cost ranking")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Branch ledger" })).toBeTruthy();
     expect(screen.getByText("/repo-a")).toBeTruthy();
     expect(screen.queryAllByText("/repo-b")).toHaveLength(0);
@@ -183,24 +183,6 @@ describe("BranchesPage", () => {
     expect(await screen.findByText("Session details")).toBeTruthy();
     expect(screen.getAllByText("$9.10 est.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
-  });
-
-  it("excludes unknown-cost branches from the branch cost ranking", async () => {
-    render(<BranchesPage />);
-
-    const projectSelect = await screen.findByRole("combobox", {
-      name: copy("branches.project.select_label"),
-    });
-
-    fireEvent.change(projectSelect, { target: { value: "/repo-b" } });
-
-    await waitFor(() => {
-      expect(screen.getByText("/repo-b")).toBeTruthy();
-    });
-
-    expect(screen.getByText("No branch cost entries with known cost for this project.")).toBeTruthy();
-    expect(screen.getByText("Unknown cost branches remain in the ledger below.")).toBeTruthy();
-    expect(screen.queryByText("2,500 tokens")).toBeNull();
   });
 
   it("switches projects and applies the branch filter locally", async () => {

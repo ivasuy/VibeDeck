@@ -396,9 +396,6 @@ branches.summary.confidence,dashboard,BranchesPage,BranchProjectSummary,summary_
 branches.summary.confidence_aria,dashboard,BranchesPage,BranchProjectSummary,summary_confidence_aria,Confidence mix for {{project}},,active
 branches.chart.title,dashboard,BranchesPage,BranchCostBars,chart_title,Branch cost ranking,,active
 branches.chart.aria,dashboard,BranchesPage,BranchCostBars,chart_aria,Branch cost ranking for {{project}},,active
-branches.chart.summary,dashboard,BranchesPage,BranchCostBars,chart_summary,Showing {{count}} branches with known cost,,active
-branches.chart.empty_known_cost,dashboard,BranchesPage,BranchCostBars,chart_empty_known_cost,No branch cost entries with known cost for this project.,,active
-branches.chart.empty_note,dashboard,BranchesPage,BranchCostBars,chart_empty_note,Unknown cost branches remain in the ledger below.,,active
 branches.chart.tokens_fallback,dashboard,BranchesPage,BranchCostBars,chart_tokens_fallback,{{tokens}} tokens,,active
 branches.total.tokens,dashboard,BranchesPage,BranchesPage,total_tokens,Tokens,,active
 branches.total.cost,dashboard,BranchesPage,BranchesPage,total_cost,Cost,,active

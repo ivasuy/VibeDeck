@@ -1,7 +1,7 @@
 import React from "react";
 import { Card } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
-import { formatUsdCurrency } from "../../lib/format";
+import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { MiniBarChart } from "../../ui/ops";
 
 function toKnownNumber(value) {
@@ -12,40 +12,44 @@ function toKnownNumber(value) {
 
 function toBarRow(row) {
   const knownCost = toKnownNumber(row?.total_cost_usd);
-  if (knownCost == null) return null;
+  const tokens = Number(row?.total_tokens ?? 0);
+  const value = knownCost ?? tokens;
 
   return {
     key: String(row?.branch || "branch"),
     label: String(row?.branch || "—"),
-    value: knownCost,
-    valueLabel: `${formatUsdCurrency(String(knownCost))}${row?.cost_estimated ? ` ${copy("live.cost.estimated_suffix")}` : ""}`,
+    value,
+    valueLabel:
+      knownCost != null
+        ? `${formatUsdCurrency(String(knownCost))}${row?.cost_estimated ? ` ${copy("live.cost.estimated_suffix")}` : ""}`
+        : copy("branches.chart.tokens_fallback", {
+          tokens: toDisplayNumber(tokens),
+        }),
   };
 }
 
 export function BranchCostBars({ repoRoot = "", rows = [] }) {
-  const chartRows = (Array.isArray(rows) ? rows : []).filter(Boolean).map(toBarRow).filter(Boolean);
+  const chartRows = (Array.isArray(rows) ? rows : []).filter(Boolean).map(toBarRow);
 
   return (
     <Card bodyClassName="space-y-4 p-4 sm:p-5">
       <div>
-        <h2 className="text-sm font-semibold text-oai-black dark:text-white">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
           {copy("branches.chart.title")}
-        </h2>
+        </div>
         <p className="mt-1 text-sm text-oai-gray-600 dark:text-oai-gray-300">
-          {chartRows.length
-            ? copy("branches.chart.summary", { count: chartRows.length })
-            : copy("branches.chart.empty_known_cost")}
+          {copy("branches.filter.summary", { count: chartRows.length, total: chartRows.length })}
         </p>
       </div>
 
       {chartRows.length ? (
         <MiniBarChart
           ariaLabel={copy("branches.chart.aria", { project: repoRoot || "—" })}
-          accent="cost"
+          accent="branch"
           rows={chartRows}
         />
       ) : (
-        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.chart.empty_note")}</p>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.empty")}</p>
       )}
     </Card>
   );

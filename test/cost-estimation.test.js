@@ -69,6 +69,30 @@ test("estimateUsageCost falls back to output or cache pricing when input pricing
   assert.equal(result.total_cost_usd, 15);
 });
 
+test("estimateUsageCost ignores __private_test_pricing outside test mode", () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  try {
+    delete process.env.NODE_ENV;
+
+    const result = estimateUsageCost({
+      model: "definitely-not-real",
+      total_tokens: 1000,
+      __private_test_pricing: { input: 1 },
+    });
+
+    assert.equal(result.total_cost_usd, null);
+    assert.equal(result.cost_estimated, true);
+    assert.equal(result.cost_quality, "pricing_missing");
+  } finally {
+    if (previousNodeEnv == null) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previousNodeEnv;
+    }
+  }
+});
+
 test("estimateUsageCost returns exact zero for known free pricing on positive tokens", () => {
   const result = estimateUsageCost({
     model: "kimi-k2.5-free",

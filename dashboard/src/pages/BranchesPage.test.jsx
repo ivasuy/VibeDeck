@@ -160,7 +160,7 @@ describe("BranchesPage", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
-    expect(await screen.findByText("Session details")).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
     expect(screen.getByText("s-001")).toBeTruthy();
     expect(screen.getByText("s-002")).toBeTruthy();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);

@@ -35,13 +35,21 @@ export function BranchSessionDrawer({ row = null, onClose }) {
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
   const models = Array.isArray(row?.models) ? row.models : [];
   const hasModels = models.length !== 0;
+  const titleId = "branch-session-drawer-title";
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
-      <div className="h-full w-full max-w-2xl border-l border-oai-gray-200 bg-white shadow-xl dark:border-oai-gray-800 dark:bg-oai-gray-900">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="h-full w-full max-w-2xl border-l border-oai-gray-200 bg-white shadow-xl dark:border-oai-gray-800 dark:bg-oai-gray-900"
+      >
         <div className="flex items-start justify-between border-b border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("branches.drawer.title")}</h2>
+            <h2 id={titleId} className="text-sm font-semibold text-oai-black dark:text-white">
+              {copy("branches.drawer.title")}
+            </h2>
             <p className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
               {String(row?.repo_root || "—")} · {String(row?.branch || "—")}
             </p>

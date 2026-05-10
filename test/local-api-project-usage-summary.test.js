@@ -603,3 +603,45 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("project usage filters project-queue rows by usage bucket day instead of newer recency metadata", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+
+    await writeJsonLines(queuePath, [
+      {
+        source: "codex",
+        hour_start: "2026-05-10T08:00:00.000Z",
+        total_tokens: 25,
+        billable_total_tokens: 25,
+      },
+    ]);
+    await writeJsonLines(projectQueuePath, [
+      {
+        project_key: "acme/stale-project",
+        project_ref: "https://github.com/acme/stale-project",
+        source: "codex",
+        hour_start: "2026-05-01T09:00:00.000Z",
+        timestamp: "2026-05-10T18:15:00.000Z",
+        total_tokens: 100,
+        billable_total_tokens: 100,
+      },
+    ]);
+
+    const body = await callEndpoint(
+      queuePath,
+      "/functions/vibedeck-project-usage-summary?from=2026-05-10&to=2026-05-10&source=codex",
+    );
+
+    assert.equal(body.entries.length, 1);
+    assert.equal(body.entries[0].project_key, "codex");
+    assert.equal(body.entries[0].total_tokens, "25");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});

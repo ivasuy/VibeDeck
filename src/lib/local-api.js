@@ -385,6 +385,10 @@ function projectUsageDayKey(value, timeZoneContext) {
   return formatPartsDayKey(getZonedParts(new Date(iso), timeZoneContext)) || iso.slice(0, 10);
 }
 
+function projectUsageRowDayKey(row, timeZoneContext) {
+  return projectUsageDayKey(row?.hour_start || projectRowLastSeenAt(row), timeZoneContext);
+}
+
 function formatProjectUsageCost(value) {
   return Number.isFinite(value) ? Number(value).toFixed(6) : null;
 }
@@ -1886,7 +1890,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const sourceFilter = normalizeProjectUsageSourceFilter(url.searchParams.get("source"));
       const projectRows = readProjectQueueData(projectQueuePath).filter((row) => {
         if (!matchesProjectUsageSourceFilter(sourceFilter, row?.source)) return false;
-        const day = projectUsageDayKey(projectRowLastSeenAt(row), timeZoneContext);
+        const day = projectUsageRowDayKey(row, timeZoneContext);
         if (from && (!day || day < from)) return false;
         if (to && (!day || day > to)) return false;
         return true;

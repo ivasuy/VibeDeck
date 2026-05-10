@@ -4,9 +4,10 @@ import { copy } from "../lib/copy";
 import { getAttributionStats, getSyncStatus } from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
-import { LiveSessionList } from "../components/live/LiveSessionList";
 import { AttributionHealthCard } from "../components/live/AttributionHealthCard";
 import { BranchOverridePanel } from "../components/live/BranchOverridePanel";
+import { LiveProjectWorkbench } from "../components/live/LiveProjectWorkbench";
+import { LiveSessionDetailPanel } from "../components/live/LiveSessionDetailPanel";
 
 function sessionKey(row) {
   if (!row?.provider || !row?.session_id) return null;
@@ -99,14 +100,15 @@ export function LivePage() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="min-w-0">
-          <LiveSessionList
+        <section className="grid min-w-0 content-start gap-4">
+          <LiveProjectWorkbench
             sessions={sessions}
             selectedKey={selectedKey}
             onSelectSession={setSelectedKey}
             streamStatus={status}
             streamError={error}
           />
+          <LiveSessionDetailPanel session={selectedSession} />
         </section>
         <aside className="grid content-start gap-4">
           <AttributionHealthCard

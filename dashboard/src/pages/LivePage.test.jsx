@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
 import { LivePage } from "./LivePage.jsx";
@@ -82,20 +82,29 @@ vi.mock("../lib/vibedeck-api", () => ({
 }));
 
 describe("LivePage", () => {
-  it("renders active sessions and attribution confidence", async () => {
+  it("renders grouped projects and preserves selected session behavior", async () => {
     render(<LivePage />);
 
     expect(await screen.findByText("Live Workbench")).toBeTruthy();
-    expect(screen.getAllByText(/codex/i).length).toBeGreaterThan(0);
-    expect(screen.getByText("main")).toBeTruthy();
-    expect(screen.getByText("feature/costs")).toBeTruthy();
-    expect(screen.getByText("mystery")).toBeTruthy();
-    expect(screen.getByText("idle")).toBeTruthy();
+    expect(screen.getByText("Selected session")).toBeTruthy();
+    expect(screen.getAllByText(/vibedeck/i).length).toBeGreaterThan(0);
+    expect(screen.getByText("Selected repo: /repo/vibedeck")).toBeTruthy();
+    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("feature/costs").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("mystery").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("idle").length).toBeGreaterThan(0);
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
-    expect(screen.getByText("$0.05 est.")).toBeTruthy();
+    expect(screen.getAllByText("$0.05 est.").length).toBeGreaterThan(0);
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
-    expect(screen.queryByText("$0.00 est.")).toBeNull();
-    expect(screen.getByText("$0.00")).toBeTruthy();
+    expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
     expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
+    expect(screen.getAllByText("Branch totals").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Providers").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Projects").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select session unknown mystery s3" }));
+    expect(screen.getAllByText("Current branch").length).toBeGreaterThan(0);
+    expect(screen.getByText("Branch: mystery")).toBeTruthy();
+    expect(screen.getByText("Selected repo: /repo/unknown")).toBeTruthy();
   });
 });

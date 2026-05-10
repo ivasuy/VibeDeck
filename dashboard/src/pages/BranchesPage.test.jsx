@@ -3,6 +3,7 @@
 import React from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { copy } from "../lib/copy";
 import { render } from "../test/test-utils";
 import { BranchesPage } from "./BranchesPage.jsx";
 
@@ -20,10 +21,10 @@ const SAMPLE_PAYLOAD = {
   },
   repos: [
     {
-      repo_root: "/Users/dev/repo-alpha",
+      repo_root: "/repo-a",
       branches: [
         {
-          branch: "feature/live",
+          branch: "feature-a",
           total_tokens: 12000,
           total_cost_usd: 12.34,
           session_count: 3,
@@ -71,10 +72,10 @@ const SAMPLE_PAYLOAD = {
       ],
     },
     {
-      repo_root: "/Users/dev/repo-beta",
+      repo_root: "/repo-b",
       branches: [
         {
-          branch: "main",
+          branch: "release-b",
           total_tokens: 2500,
           total_cost_usd: null,
           session_count: 2,
@@ -117,20 +118,20 @@ afterEach(() => {
 });
 
 describe("BranchesPage", () => {
-  it("renders repo rows, totals, confidence mix, and session drill-down", async () => {
+  it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
     render(<BranchesPage />);
 
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
     expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
-    expect(await screen.findByText("/Users/dev/repo-alpha")).toBeTruthy();
-    expect(await screen.findByText("/Users/dev/repo-beta")).toBeTruthy();
-    expect(screen.getByText("feature/live")).toBeTruthy();
-    expect(screen.getByText("main")).toBeTruthy();
-    expect(screen.getByText("14,500")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
+    expect(await screen.findByText("/repo-a")).toBeTruthy();
+    expect(screen.getByText("feature-a")).toBeTruthy();
+    expect(screen.queryByText("/repo-b")).toBeNull();
+    expect(screen.queryByText("release-b")).toBeNull();
+    expect(screen.getByText("Showing 1 of 1 branches")).toBeTruthy();
     expect(screen.getByText("high 2 · medium 1 · low 0 · unattributed 0")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Top model" })).toBeTruthy();
     expect(screen.getByText("gpt-5.2 +1")).toBeTruthy();
-    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
@@ -142,17 +143,29 @@ describe("BranchesPage", () => {
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
-  it("applies repo and branch filters locally", async () => {
+  it("switches projects and applies the branch filter locally", async () => {
     render(<BranchesPage />);
 
-    await screen.findByText("/Users/dev/repo-alpha");
-    fireEvent.change(screen.getByLabelText("Repo filter"), { target: { value: "repo-beta" } });
-    fireEvent.change(screen.getByLabelText("Branch filter"), { target: { value: "main" } });
+    const projectSelect = await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+
+    expect(screen.getByText("/repo-a")).toBeTruthy();
+
+    fireEvent.change(projectSelect, { target: { value: "/repo-b" } });
 
     await waitFor(() => {
-      expect(screen.queryByText("/Users/dev/repo-alpha")).toBeNull();
-      expect(screen.getByText("/Users/dev/repo-beta")).toBeTruthy();
-      expect(screen.getByText("main")).toBeTruthy();
+      expect(screen.queryByText("/repo-a")).toBeNull();
+      expect(screen.queryByText("feature-a")).toBeNull();
+      expect(screen.getByText("/repo-b")).toBeTruthy();
+      expect(screen.getByText("release-b")).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByLabelText("Branch filter"), { target: { value: "release" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("/repo-b")).toBeTruthy();
+      expect(screen.getByText("release-b")).toBeTruthy();
     });
   });
 });

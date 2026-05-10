@@ -329,8 +329,8 @@ branches.subtitle,dashboard,BranchesPage,BranchesPage,subtitle,Review branch-lev
 branches.loading,dashboard,BranchesPage,BranchesPage,loading,Loading branch usage…,,active
 branches.error,dashboard,BranchesPage,BranchesPage,error,Unable to load branch usage: {{error}},,active
 branches.error.fallback,dashboard,BranchesPage,BranchesPage,error_fallback,Request failed,,active
-branches.filter.repo.label,dashboard,BranchesPage,BranchesPage,filter_repo_label,Repo filter,,active
-branches.filter.repo.placeholder,dashboard,BranchesPage,BranchesPage,filter_repo_placeholder,Filter by repo path,,active
+branches.project.select_label,dashboard,BranchesPage,BranchesPage,project_select_label,Project,,active
+branches.project.empty,dashboard,BranchesPage,BranchesPage,project_empty,No project branches yet.,,active
 branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Branch filter,,active
 branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by branch name,,active
 branches.filter.summary,dashboard,BranchesPage,BranchesPage,filter_summary,Showing {{count}} of {{total}} branches,,active

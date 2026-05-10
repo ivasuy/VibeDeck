@@ -29,11 +29,37 @@ function flattenRows(repos) {
   });
 }
 
+function repoLastSeenAt(repoEntry) {
+  const branches = Array.isArray(repoEntry?.branches) ? repoEntry.branches : [];
+  return branches.reduce((latest, branchEntry) => {
+    const timestamp = Date.parse(String(branchEntry?.last_seen_at || ""));
+    if (Number.isNaN(timestamp)) return latest;
+    return Math.max(latest, timestamp);
+  }, 0);
+}
+
+function sortReposByLastSeen(repos) {
+  if (!Array.isArray(repos)) return [];
+  return [...repos].sort((left, right) => {
+    const rightSeenAt = repoLastSeenAt(right);
+    const leftSeenAt = repoLastSeenAt(left);
+    if (rightSeenAt !== leftSeenAt) return rightSeenAt - leftSeenAt;
+    return String(left?.repo_root || "").localeCompare(String(right?.repo_root || ""));
+  });
+}
+
+function repoOptionLabel(repoRoot) {
+  const normalized = String(repoRoot || "").trim();
+  if (!normalized) return "—";
+  const parts = normalized.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
 export function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState(null);
-  const [repoFilter, setRepoFilter] = useState("");
+  const [selectedRepo, setSelectedRepo] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [selectedRow, setSelectedRow] = useState(null);
 
@@ -60,21 +86,48 @@ export function BranchesPage() {
     };
   }, []);
 
-  const rows = useMemo(() => flattenRows(payload?.repos), [payload]);
+  const repos = useMemo(() => sortReposByLastSeen(payload?.repos || []), [payload]);
+
+  useEffect(() => {
+    if (repos.length === 0) {
+      setSelectedRepo("");
+      return;
+    }
+    setSelectedRepo((current) => {
+      if (repos.some((repoEntry) => String(repoEntry?.repo_root || "") === current)) return current;
+      return String(repos[0]?.repo_root || "");
+    });
+  }, [repos]);
+
+  const selectedRepoEntry = useMemo(
+    () => repos.find((repoEntry) => String(repoEntry?.repo_root || "") === selectedRepo) || null,
+    [repos, selectedRepo],
+  );
+
+  const rows = useMemo(
+    () => flattenRows(selectedRepoEntry ? [selectedRepoEntry] : []),
+    [selectedRepoEntry],
+  );
 
   const filteredRows = useMemo(() => {
-    const repoNeedle = repoFilter.trim().toLowerCase();
     const branchNeedle = branchFilter.trim().toLowerCase();
     return rows.filter((row) => {
-      const repoMatches = repoNeedle
-        ? String(row?.repo_root || "").toLowerCase().includes(repoNeedle)
-        : true;
       const branchMatches = branchNeedle
         ? String(row?.branch || "").toLowerCase().includes(branchNeedle)
         : true;
-      return repoMatches && branchMatches;
+      return branchMatches;
     });
-  }, [rows, repoFilter, branchFilter]);
+  }, [rows, branchFilter]);
+
+  useEffect(() => {
+    if (!selectedRow) return;
+    const rowStillVisible = filteredRows.some(
+      (row) =>
+        String(row?.repo_root || "") === String(selectedRow?.repo_root || "")
+        && String(row?.branch || "") === String(selectedRow?.branch || ""),
+    );
+    if (!rowStillVisible) setSelectedRow(null);
+  }, [filteredRows, selectedRow]);
 
   const totals = useMemo(() => {
     if (!filteredRows.length) {
@@ -96,9 +149,11 @@ export function BranchesPage() {
 
   const appliedCount = filteredRows.length;
   const totalCount = rows.length;
-  const emptyMessage = totalCount === 0
+  const emptyMessage = repos.length === 0
     ? copy("branches.empty.no_repo_rows")
-    : copy("branches.empty");
+    : totalCount === 0
+      ? copy("branches.project.empty")
+      : copy("branches.empty");
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
@@ -110,13 +165,31 @@ export function BranchesPage() {
       <div className="grid gap-4">
         <Card>
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Input
-              value={repoFilter}
-              onChange={(event) => setRepoFilter(event.target.value)}
-              placeholder={copy("branches.filter.repo.placeholder")}
-              label={copy("branches.filter.repo.label")}
-              aria-label={copy("branches.filter.repo.label")}
-            />
+            <div className="w-full">
+              <label
+                htmlFor="branches-project-select"
+                className="mb-1.5 block text-sm font-medium text-oai-gray-700 transition-colors duration-200 dark:text-oai-gray-300"
+              >
+                {copy("branches.project.select_label")}
+              </label>
+              <select
+                id="branches-project-select"
+                value={selectedRepo}
+                onChange={(event) => setSelectedRepo(event.target.value)}
+                disabled={repos.length === 0}
+                className="h-10 w-full rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-1 focus:ring-oai-brand/30 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                aria-label={copy("branches.project.select_label")}
+              >
+                {repos.map((repoEntry) => {
+                  const repoRoot = String(repoEntry?.repo_root || "");
+                  return (
+                    <option key={repoRoot} value={repoRoot} title={repoRoot || undefined}>
+                      {repoOptionLabel(repoRoot)}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
             <Input
               value={branchFilter}
               onChange={(event) => setBranchFilter(event.target.value)}

@@ -28,6 +28,23 @@ test('splitSessionByBranchTransitions: no transitions returns single window with
   });
 });
 
+test('splitSessionByBranchTransitions preserves unknown cost as null', () => {
+  const windows = splitSessionByBranchTransitions({
+    session: {
+      started_at: '2026-05-10T00:00:00.000Z',
+      ended_at: '2026-05-10T00:30:00.000Z',
+      total_tokens: 1_000_000,
+      total_cost_usd: null,
+      branch: 'main',
+    },
+    transitions: [],
+  });
+
+  assert.equal(windows.length, 1);
+  assert.equal(windows[0].prorated_tokens, 1_000_000);
+  assert.equal(windows[0].prorated_cost_usd, null);
+});
+
 test('splitSessionByBranchTransitions: one checkout splits into two windows and prorates', () => {
   const session = {
     provider: 'codex',
@@ -133,4 +150,3 @@ test('splitSessionByBranchTransitions: idempotent output', () => {
   const w2 = splitSessionByBranchTransitions({ session, transitions });
   assert.deepEqual(w1, w2);
 });
-

@@ -246,3 +246,63 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('GET /functions/vibedeck-branch-usage estimates branch window cost when stored cost is null', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-null-cost-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'split-null-cost',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T01:00:00.000Z',
+        cwd: '/repo',
+        repo_root: '/repo',
+        branch: 'main',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 100000,
+        total_cost_usd: null,
+      });
+      db.prepare(`
+        INSERT INTO vibedeck_session_branch_windows
+          (provider, session_id, branch, window_start, window_end, prorated_tokens, prorated_cost_usd)
+        VALUES
+          ('codex', 'split-null-cost', 'main', '2026-05-10T00:00:00.000Z', '2026-05-10T00:30:00.000Z', 60000, NULL),
+          ('codex', 'split-null-cost', 'feature', '2026-05-10T00:30:00.000Z', '2026-05-10T01:00:00.000Z', 40000, NULL)
+      `).run();
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    assert.ok(branch.total_cost_usd > 0);
+    assert.ok(branch.models[0].total_cost_usd > 0);
+    assert.ok(branch.sessions[0].total_cost_usd > 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

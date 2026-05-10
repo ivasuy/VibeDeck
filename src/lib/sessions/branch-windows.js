@@ -24,7 +24,8 @@ function splitSessionByBranchTransitions({ session, transitions } = {}) {
   if (endMs < startMs) throw new TypeError('splitSessionByBranchTransitions: ended_at must be >= started_at');
 
   const totalTokens = Number.isFinite(session.total_tokens) ? session.total_tokens : 0;
-  const totalCost = Number.isFinite(session.total_cost_usd) ? session.total_cost_usd : 0;
+  const hasKnownCost = Number.isFinite(session.total_cost_usd);
+  const totalCost = hasKnownCost ? session.total_cost_usd : null;
   const totalMs = endMs - startMs;
 
   const baseBranch = isNonEmptyString(session.branch) ? session.branch : null;
@@ -36,7 +37,7 @@ function splitSessionByBranchTransitions({ session, transitions } = {}) {
         window_start: startedAt,
         window_end: endedAt,
         prorated_tokens: totalTokens,
-        prorated_cost_usd: totalCost,
+        prorated_cost_usd: hasKnownCost ? totalCost : null,
       },
     ];
   }
@@ -61,7 +62,7 @@ function splitSessionByBranchTransitions({ session, transitions } = {}) {
         window_start: startedAt,
         window_end: endedAt,
         prorated_tokens: totalTokens,
-        prorated_cost_usd: totalCost,
+        prorated_cost_usd: hasKnownCost ? totalCost : null,
       },
     ];
   }
@@ -83,21 +84,21 @@ function splitSessionByBranchTransitions({ session, transitions } = {}) {
     let cost;
     if (i === boundsIso.length - 2) {
       tokens = totalTokens - tokensAssigned;
-      cost = totalCost - costAssigned;
+      cost = hasKnownCost ? totalCost - costAssigned : null;
     } else {
       tokens = Math.round((totalTokens * durMs) / totalMs);
-      cost = (totalCost * durMs) / totalMs;
+      cost = hasKnownCost ? (totalCost * durMs) / totalMs : null;
     }
 
     tokensAssigned += tokens;
-    costAssigned += cost;
+    if (hasKnownCost) costAssigned += cost;
 
     windows.push({
       branch: branches[i] ?? null,
       window_start: windowStartIso,
       window_end: windowEndIso,
       prorated_tokens: tokens,
-      prorated_cost_usd: roundTo4(cost),
+      prorated_cost_usd: hasKnownCost ? roundTo4(cost) : null,
     });
   }
 
@@ -106,9 +107,11 @@ function splitSessionByBranchTransitions({ session, transitions } = {}) {
   if (tokenDelta !== 0) windows[windows.length - 1].prorated_tokens += tokenDelta;
 
   // Ensure cost conservation (within float error), last absorbs.
-  const costSum = windows.reduce((acc, w) => acc + w.prorated_cost_usd, 0);
-  const costDelta = roundTo4(totalCost - costSum);
-  if (costDelta !== 0) windows[windows.length - 1].prorated_cost_usd = roundTo4(windows[windows.length - 1].prorated_cost_usd + costDelta);
+  if (hasKnownCost) {
+    const costSum = windows.reduce((acc, w) => acc + w.prorated_cost_usd, 0);
+    const costDelta = roundTo4(totalCost - costSum);
+    if (costDelta !== 0) windows[windows.length - 1].prorated_cost_usd = roundTo4(windows[windows.length - 1].prorated_cost_usd + costDelta);
+  }
 
   return windows;
 }

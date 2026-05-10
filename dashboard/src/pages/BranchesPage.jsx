@@ -77,6 +77,12 @@ function buildRepoOptionLabels(repos) {
   return labels;
 }
 
+function formatSummaryCostLabel(totals) {
+  if (totals.costUnknown) return copy("branches.value.unknown_cost");
+  const formatted = formatUsdCurrency(String(totals.cost));
+  return totals.costEstimated ? `${formatted} ${copy("live.cost.estimated_suffix")}` : formatted;
+}
+
 export function BranchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -148,7 +154,7 @@ export function BranchesPage() {
 
   const totals = useMemo(() => {
     if (!filteredRows.length) {
-      return { tokens: 0, cost: 0, sessions: 0, costUnknown: false };
+      return { tokens: 0, cost: 0, sessions: 0, costUnknown: false, costEstimated: false };
     }
     return filteredRows.reduce(
       (acc, row) => {
@@ -158,9 +164,10 @@ export function BranchesPage() {
           cost: acc.cost + (knownCost ?? 0),
           sessions: acc.sessions + toCount(row?.session_count),
           costUnknown: acc.costUnknown || knownCost == null,
+          costEstimated: acc.costEstimated || row?.cost_estimated === true,
         };
       },
-      { tokens: 0, cost: 0, sessions: 0, costUnknown: false },
+      { tokens: 0, cost: 0, sessions: 0, costUnknown: false, costEstimated: false },
     );
   }, [filteredRows]);
 
@@ -229,7 +236,7 @@ export function BranchesPage() {
                 {copy("branches.total.cost")}
               </div>
               <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {totals.costUnknown ? copy("branches.value.unknown_cost") : formatUsdCurrency(String(totals.cost))}
+                {formatSummaryCostLabel(totals)}
               </div>
             </div>
             <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">

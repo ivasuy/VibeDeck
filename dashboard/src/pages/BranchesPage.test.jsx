@@ -172,7 +172,7 @@ describe("BranchesPage", () => {
     render(<BranchesPage />);
 
     expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
-    expect(screen.getAllByText("$12.34 est.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$12.34 est.").length).toBe(2);
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 

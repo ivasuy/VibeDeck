@@ -163,3 +163,95 @@ test("status does not migrate legacy tracker directory", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("status prints session db counts, stale sync lock, and relative parse age", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibeusage-status-freshness-"));
+  const prevHome = process.env.HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevWrite = process.stdout.write;
+  const realNow = Date.now;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, ".codex");
+
+    const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+
+    await fs.writeFile(
+      path.join(process.env.CODEX_HOME, "config.toml"),
+      'notify = [\"/usr/bin/env\", \"node\", \"~/.vibedeck/bin/notify.cjs\"]\n',
+      "utf8",
+    );
+    await fs.writeFile(path.join(trackerDir, "queue.jsonl"), "", "utf8");
+    await fs.writeFile(
+      path.join(trackerDir, "queue.state.json"),
+      JSON.stringify({ offset: 0 }) + "\n",
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(trackerDir, "cursors.json"),
+      JSON.stringify({ updatedAt: "2026-05-10T10:30:00.000Z" }) + "\n",
+      "utf8",
+    );
+
+    const { ensureSchema } = require("../src/lib/db");
+    const { DatabaseSync } = require("node:sqlite");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, created_at, updated_at
+        ) VALUES
+        (
+          'codex', 's1', '2026-05-10T10:00:00.000Z', NULL, NULL,
+          '/repo', '/repo', NULL, NULL,
+          'main', 'A', 'high', NULL,
+          'gpt-5.2', 100, 0.1, '2026-05-10T10:00:00.000Z', '2026-05-10T10:00:00.000Z'
+        ),
+        (
+          'claude', 's2', '2026-05-10T09:00:00.000Z', '2026-05-10T09:45:00.000Z', 'stop',
+          '/repo', '/repo', NULL, NULL,
+          'feature/live', 'B', 'medium', NULL,
+          'claude-sonnet-4-6', 200, 0.2, '2026-05-10T09:00:00.000Z', '2026-05-10T09:45:00.000Z'
+        );
+      `);
+    } finally {
+      db.close();
+    }
+
+    const syncLockPath = path.join(trackerDir, "sync.lock");
+    await fs.writeFile(syncLockPath, "", "utf8");
+    const staleAt = new Date("2026-05-10T10:20:00.000Z");
+    await fs.utimes(syncLockPath, staleAt, staleAt);
+
+    Date.now = () => new Date("2026-05-10T11:00:00.000Z").getTime();
+
+    let out = "";
+    process.stdout.write = (chunk, enc, cb) => {
+      out += typeof chunk === "string" ? chunk : chunk.toString(enc || "utf8");
+      if (typeof cb === "function") cb();
+      return true;
+    };
+
+    await cmdStatus();
+
+    assert.match(out, /- Last parse: 2026-05-10T10:30:00.000Z \(30m ago\)/);
+    assert.match(out, /- Session DB: 2 total, 1 open/);
+    assert.match(out, /- Sync lock: stale \(40m old\)/);
+  } finally {
+    Date.now = realNow;
+    process.stdout.write = prevWrite;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

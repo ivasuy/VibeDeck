@@ -127,7 +127,7 @@ async function cmdServe(argv) {
   }
 
   // 3. Create handler
-  const handleApi = createLocalApiHandler({ queuePath });
+  const handleApi = createLocalApiHandler({ queuePath, syncEnabled: opts.sync });
 
   const server = http.createServer(async (req, res) => {
     try {

@@ -7,6 +7,7 @@ import {
   getCheckpoint,
   getCheckpoints,
   getEntireStatus,
+  getSyncStatus,
   postAttribute,
   postEntireCommand,
 } from "../vibedeck-api";
@@ -22,6 +23,17 @@ describe("vibedeck-api", () => {
     await getAttributionStats(fetchMock as any);
 
     expect(fetchMock).toHaveBeenCalledWith("/functions/vibedeck-attribution-stats", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+  });
+
+  it("fetches sync status without local auth", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ sync_enabled: true }) });
+
+    await getSyncStatus(fetchMock as any);
+
+    expect(fetchMock).toHaveBeenCalledWith("/functions/vibedeck-sync-status", {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });

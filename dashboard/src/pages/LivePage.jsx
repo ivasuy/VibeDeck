@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card } from "../ui/openai/components";
 import { copy } from "../lib/copy";
-import { getAttributionStats } from "../lib/vibedeck-api";
+import { getAttributionStats, getSyncStatus } from "../lib/vibedeck-api";
+import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
 import { LiveSessionList } from "../components/live/LiveSessionList";
 import { AttributionHealthCard } from "../components/live/AttributionHealthCard";
@@ -18,6 +19,7 @@ export function LivePage() {
   const [attributionStats, setAttributionStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [statsError, setStatsError] = useState(null);
+  const [syncWarning, setSyncWarning] = useState(null);
 
   const refreshAttributionStats = useCallback(async () => {
     setStatsLoading(true);
@@ -36,6 +38,23 @@ export function LivePage() {
   useEffect(() => {
     refreshAttributionStats();
   }, [refreshAttributionStats]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const payload = await getSyncStatus();
+        if (!active) return;
+        setSyncWarning(getSyncFreshnessWarning(payload));
+      } catch (_err) {
+        if (!active) return;
+        setSyncWarning(null);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!Array.isArray(sessions) || sessions.length === 0) {
@@ -68,6 +87,11 @@ export function LivePage() {
         <div className="min-w-0">
           <h1 className="text-xl font-semibold text-oai-black dark:text-white">{copy("live.title")}</h1>
           <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.subtitle")}</p>
+          {syncWarning ? (
+            <div className="mt-2 inline-flex min-h-8 items-center rounded-md border border-amber-300/60 bg-amber-50/60 px-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
+              {syncWarning}
+            </div>
+          ) : null}
         </div>
         <div className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 ring-1 ring-oai-black/10 dark:bg-white/[0.08] dark:text-oai-gray-200 dark:ring-white/10">
           {streamStatusLabel}

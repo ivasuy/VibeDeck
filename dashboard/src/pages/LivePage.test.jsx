@@ -29,6 +29,15 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
 vi.mock("../lib/vibedeck-api", () => ({
   getAttributionStats: () =>
     Promise.resolve({ high: 1, medium: 0, low: 0, unattributed: 0, total: 1 }),
+  getSyncStatus: () =>
+    Promise.resolve({
+      last_parse_at: "2026-05-10T09:30:00.000Z",
+      queue_updated_at: "2026-05-10T09:30:00.000Z",
+      project_queue_updated_at: "2026-05-10T09:30:00.000Z",
+      session_count: 1,
+      open_session_count: 1,
+      sync_enabled: false,
+    }),
 }));
 
 describe("LivePage", () => {
@@ -39,5 +48,6 @@ describe("LivePage", () => {
     expect(screen.getByText(/codex/i)).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
+    expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
   });
 });

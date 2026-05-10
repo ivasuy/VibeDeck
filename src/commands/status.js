@@ -2,6 +2,7 @@ const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const fssync = require("node:fs");
+const { DatabaseSync } = require("node:sqlite");
 
 const { readJson } = require("../lib/fs");
 const { readCodexNotify, readEveryCodeNotify } = require("../lib/codex-config");
@@ -47,6 +48,8 @@ const {
   resolveCraftSessionFiles,
   resolveCraftConfigDir,
 } = require("../lib/rollout");
+
+const SYNC_LOCK_STALE_MS = 5 * 60 * 1000;
 
 async function cmdStatus(argv = []) {
   const opts = parseArgs(argv);
@@ -99,6 +102,11 @@ async function cmdStatus(argv = []) {
 
   const queueSize = await safeStatSize(queuePath);
   const pendingBytes = Math.max(0, queueSize - (queueState.offset || 0));
+  const sessionDbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  const sessionCounts = await readSessionCounts(sessionDbPath);
+  const syncLockLine = await describeSyncLock(
+    path.join(trackerDir, "sync.lock"),
+  );
 
   const lastNotify = (await safeReadText(notifySignalPath))?.trim() || null;
   const lastOpenclawSync =
@@ -213,7 +221,9 @@ async function cmdStatus(argv = []) {
       `- Base URL: ${config?.baseUrl || "unset"}`,
       `- Device token: ${config?.deviceToken ? "set" : "unset"}`,
       `- Queue: ${pendingBytes} bytes pending`,
-      `- Last parse: ${cursors?.updatedAt || "never"}`,
+      `- Last parse: ${formatTimestampWithAge(cursors?.updatedAt)}`,
+      `- Session DB: ${sessionCounts.session_count} total, ${sessionCounts.open_session_count} open`,
+      syncLockLine,
       `- Last notify: ${lastNotify || "never"}`,
       `- Last OpenClaw-triggered sync: ${lastOpenclawSync || "never"}`,
       `- Last notify-triggered sync: ${lastNotifySpawn || "never"}`,
@@ -358,6 +368,66 @@ function parseEpochMsToIso(v) {
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
+}
+
+function formatAgeMs(ms) {
+  if (!Number.isFinite(ms)) return null;
+  const safeMs = Math.max(0, ms);
+  const seconds = Math.floor(safeMs / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+function formatTimestampWithAge(value) {
+  if (!value) return "never";
+  const parsed = Date.parse(String(value));
+  if (!Number.isFinite(parsed)) return String(value);
+  const age = formatAgeMs(Date.now() - parsed);
+  return age ? `${new Date(parsed).toISOString()} (${age} ago)` : new Date(parsed).toISOString();
+}
+
+async function readSessionCounts(dbPath) {
+  try {
+    if (!fssync.existsSync(dbPath)) {
+      return { session_count: 0, open_session_count: 0 };
+    }
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const row = db
+        .prepare(`
+          SELECT
+            COUNT(*) AS session_count,
+            SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS open_session_count
+          FROM vibedeck_sessions
+        `)
+        .get();
+      return {
+        session_count: Number(row?.session_count || 0),
+        open_session_count: Number(row?.open_session_count || 0),
+      };
+    } finally {
+      db.close();
+    }
+  } catch (_e) {
+    return { session_count: 0, open_session_count: 0 };
+  }
+}
+
+async function describeSyncLock(lockPath) {
+  try {
+    const stat = await fs.stat(lockPath);
+    const ageMs = Date.now() - stat.mtimeMs;
+    const age = formatAgeMs(ageMs);
+    const state = ageMs > SYNC_LOCK_STALE_MS ? "stale" : "active";
+    return age ? `- Sync lock: ${state} (${age} old)` : `- Sync lock: ${state}`;
+  } catch (_e) {
+    return null;
+  }
 }
 
 module.exports = { cmdStatus };

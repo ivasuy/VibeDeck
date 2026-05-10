@@ -123,6 +123,67 @@ function readProjectQueueData(projectQueuePath) {
   return Array.from(seen.values());
 }
 
+function safeReadJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function safeStatMtimeIso(filePath) {
+  try {
+    return fs.statSync(filePath).mtime.toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function readSessionCounts(dbPath) {
+  try {
+    if (!fs.existsSync(dbPath)) {
+      return { session_count: 0, open_session_count: 0 };
+    }
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const row = db
+        .prepare(`
+          SELECT
+            COUNT(*) AS session_count,
+            SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS open_session_count
+          FROM vibedeck_sessions
+        `)
+        .get();
+      return {
+        session_count: Number(row?.session_count || 0),
+        open_session_count: Number(row?.open_session_count || 0),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return { session_count: 0, open_session_count: 0 };
+  }
+}
+
+function readSyncStatus({ queuePath, syncEnabled = true }) {
+  const trackerDir = path.dirname(queuePath);
+  const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+  const cursorsPath = path.join(trackerDir, "cursors.json");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  const cursors = safeReadJsonFile(cursorsPath);
+  const sessionCounts = readSessionCounts(dbPath);
+
+  return {
+    last_parse_at: normalizeIsoTimestamp(cursors?.updatedAt),
+    queue_updated_at: safeStatMtimeIso(queuePath),
+    project_queue_updated_at: safeStatMtimeIso(projectQueuePath),
+    session_count: sessionCounts.session_count,
+    open_session_count: sessionCounts.open_session_count,
+    sync_enabled: syncEnabled !== false,
+  };
+}
+
 function normalizeIsoTimestamp(value) {
   if (typeof value === "number" && Number.isFinite(value)) {
     const date = new Date(value);
@@ -636,7 +697,7 @@ function isValidCheckpointPath(filePath) {
 // Main handler factory
 // ---------------------------------------------------------------------------
 
-function createLocalApiHandler({ queuePath }) {
+function createLocalApiHandler({ queuePath, syncEnabled = true }) {
   const qp = queuePath || resolveQueuePath();
 
   const localAuthToken = crypto.randomBytes(24).toString("hex");
@@ -845,6 +906,15 @@ function createLocalApiHandler({ queuePath }) {
       } catch (e) {
         json(res, { ok: false, error: e?.message, code: e?.code ?? null, stdout: e?.stdout || "", stderr: e?.stderr || "" }, 500);
       }
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-sync-status") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, readSyncStatus({ queuePath: qp, syncEnabled }));
       return true;
     }
 

@@ -24,6 +24,7 @@ export function DashboardView(props) {
     activeDays,
     identitySubscriptions,
     identityScrambleDurationMs,
+    syncFreshnessWarning,
     projectUsageEntries,
     projectUsageLimit,
     setProjectUsageLimit,
@@ -113,7 +114,13 @@ export function DashboardView(props) {
         className={screenshotMode ? "screenshot-mode" : ""}
       >
         {(showExpiredGate || showAuthGate) ? null : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div>
+            {syncFreshnessWarning ? (
+              <div className="mb-4 rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
+                {syncFreshnessWarning}
+              </div>
+            ) : null}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
               <div className="lg:col-span-4 flex flex-col gap-4 min-w-0 order-2 lg:order-1">
                 {screenshotMode ? (
                   <div className="flex items-start justify-between gap-4">
@@ -271,6 +278,7 @@ export function DashboardView(props) {
                   </FadeIn>
                 ) : null}
               </div>
+            </div>
           </div>
         )}
       </Shell>

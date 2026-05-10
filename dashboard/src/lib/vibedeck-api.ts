@@ -47,6 +47,15 @@ export type BranchUsageParams = {
   includeSessions?: boolean;
 };
 
+export type SyncStatus = {
+  last_parse_at?: string | null;
+  queue_updated_at?: string | null;
+  project_queue_updated_at?: string | null;
+  session_count?: number;
+  open_session_count?: number;
+  sync_enabled?: boolean;
+};
+
 function origin() {
   if (typeof window !== "undefined" && window.location?.origin) return window.location.origin;
   return "http://127.0.0.1";
@@ -78,6 +87,10 @@ const readOptions = {
 
 export function getAttributionStats(fetchImpl: FetchImpl = fetch) {
   return fetchImpl("/functions/vibedeck-attribution-stats", readOptions).then(jsonOrThrow);
+}
+
+export function getSyncStatus(fetchImpl: FetchImpl = fetch) {
+  return fetchImpl("/functions/vibedeck-sync-status", readOptions).then(jsonOrThrow<SyncStatus>);
 }
 
 export function getBranchUsage(params: BranchUsageParams = {}, fetchImpl: FetchImpl = fetch) {

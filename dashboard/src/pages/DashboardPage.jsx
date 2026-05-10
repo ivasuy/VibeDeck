@@ -37,6 +37,8 @@ import {
   getUserStatus,
   triggerLocalSync,
 } from "../lib/api";
+import { getSyncStatus } from "../lib/vibedeck-api";
+import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
 import { MatrixButton } from "../ui/foundation/MatrixButton.jsx";
 import { ActivityHeatmap } from "../ui/matrix-a/components/ActivityHeatmap.jsx";
@@ -136,6 +138,7 @@ export function DashboardPage({
   }, []);
   const forceInstall = useMemo(() => isForceInstallEnabled(), []);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [syncFreshnessWarning, setSyncFreshnessWarning] = useState(null);
   const identityScrambleDurationMs = 2200;
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
   const [installCopied, setInstallCopied] = useState(false);
@@ -445,6 +448,23 @@ export function DashboardPage({
     tzOffsetMinutes,
   });
 
+  const refreshSyncStatus = useCallback(async () => {
+    if (!isLocalMode) {
+      setSyncFreshnessWarning(null);
+      return;
+    }
+    try {
+      const payload = await getSyncStatus();
+      setSyncFreshnessWarning(getSyncFreshnessWarning(payload));
+    } catch (_err) {
+      setSyncFreshnessWarning(null);
+    }
+  }, [isLocalMode]);
+
+  useEffect(() => {
+    refreshSyncStatus();
+  }, [refreshSyncStatus]);
+
   const shareDailyToTrend = period === "week" || period === "month";
   const useDailyTrend = period === "week" || period === "month";
   const visibleDaily = useMemo(() => {
@@ -726,12 +746,14 @@ export function DashboardPage({
       refreshProjectUsage(),
       refreshDailyBreakdown(),
       refreshUsageLimits(),
+      refreshSyncStatus(),
     ]);
   }, [
     refreshDailyBreakdown,
     refreshHeatmap,
     refreshModelBreakdown,
     refreshProjectUsage,
+    refreshSyncStatus,
     refreshTrend,
     refreshUsage,
     refreshUsageLimits,
@@ -1184,6 +1206,7 @@ export function DashboardPage({
       activeDays={activeDays}
       identitySubscriptions={identitySubscriptions}
       identityScrambleDurationMs={identityScrambleDurationMs}
+      syncFreshnessWarning={syncFreshnessWarning}
       projectUsageEntries={projectUsageEntries}
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}

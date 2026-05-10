@@ -131,7 +131,7 @@ function readSessionProjectUsage(dbPath) {
       SELECT
         repo_root,
         SUM(COALESCE(total_tokens, 0)) AS total_tokens,
-        MAX(started_at) AS last_seen_at
+        MAX(COALESCE(ended_at, updated_at, started_at)) AS last_seen_at
       FROM vibedeck_sessions
       WHERE repo_root IS NOT NULL AND repo_root <> ''
       GROUP BY repo_root

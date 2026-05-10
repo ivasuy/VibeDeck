@@ -243,11 +243,71 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
       ["VibeDeck", "SWE-AF"],
     );
     assert.equal(body.entries[0].project_ref, "/Users/vasuyadav/Downloads/Projects/VibeDeck");
-    assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:30:00.000Z");
+    assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:55:00.000Z");
     assert.equal(body.entries[0].total_tokens, "525");
     assert.equal(body.entries[1].project_ref, "/Users/vasuyadav/Downloads/Projects/SWE-AF");
-    assert.equal(body.entries[1].last_seen_at, "2026-05-10T11:15:00.000Z");
+    assert.equal(body.entries[1].last_seen_at, "2026-05-10T11:45:00.000Z");
     assert.equal(body.entries[1].total_tokens, "320");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage recent sort uses latest session activity instead of latest start time", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "repo-a",
+        started_at: "2026-05-10T09:00:00.000Z",
+        ended_at: "2026-05-10T13:30:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 200,
+      });
+      insertSession(db, {
+        provider: "claude",
+        session_id: "repo-b",
+        started_at: "2026-05-10T12:00:00.000Z",
+        ended_at: "2026-05-10T12:45:00.000Z",
+        cwd: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        repo_root: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "claude-sonnet-4-6",
+        total_tokens: 150,
+      });
+    } finally {
+      db.close();
+    }
+
+    const body = await callEndpoint(
+      queuePath,
+      "/functions/vibedeck-project-usage-summary?sort=recent&limit=2",
+    );
+
+    assert.deepEqual(
+      body.entries.map((entry) => entry.project_key),
+      ["VibeDeck", "SWE-AF"],
+    );
+    assert.equal(body.entries[0].last_seen_at, "2026-05-10T13:30:00.000Z");
+    assert.equal(body.entries[1].last_seen_at, "2026-05-10T12:45:00.000Z");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }

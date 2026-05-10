@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 import { copy } from "../../../lib/copy";
 import { formatCompactNumber, toDisplayNumber, toFiniteNumber } from "../../../lib/format";
+import { ProviderModelChips } from "../../ops";
 import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
 import {
   ProjectUsageBreakdown,
@@ -100,10 +101,6 @@ function resolveTokens(entry) {
   return billable ?? total ?? null;
 }
 
-function resolveProjectCost(entry) {
-  return resolveProjectUsageCostValue(entry);
-}
-
 function resolveTopModel(entry) {
   const topModel = Array.isArray(entry?.top_models) ? entry.top_models[0] : null;
   if (!topModel) return null;
@@ -121,6 +118,32 @@ function resolveRepoMeta(repoId) {
 function cacheRepoMeta(repoId, meta) {
   if (!repoId || !meta) return;
   REPO_META_CACHE.set(repoId, meta);
+}
+
+function countProviders(entry) {
+  return Array.isArray(entry?.providers) ? entry.providers.length : 0;
+}
+
+function countModels(entry) {
+  return (Array.isArray(entry?.providers) ? entry.providers : []).reduce(
+    (sum, providerEntry) => sum + (Array.isArray(providerEntry?.models) ? providerEntry.models.length : 0),
+    0,
+  );
+}
+
+function toMetricCount(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 ? toDisplayNumber(numeric) : "0";
+}
+
+function buildSummaryChips(entry) {
+  return (Array.isArray(entry?.top_models) ? entry.top_models : [])
+    .slice(0, 3)
+    .map((item) => ({
+      provider: item?.provider,
+      model: item?.model,
+      total_tokens: item?.total_tokens,
+    }));
 }
 
 function useGithubRepoMeta(repoId) {
@@ -173,6 +196,22 @@ function useGithubRepoMeta(repoId) {
   return state;
 }
 
+function SummaryMetric({ label, value, title = "" }) {
+  return (
+    <div className="rounded-md border border-oai-gray-200/80 bg-oai-black/[0.02] px-3 py-2 dark:border-oai-gray-800/80 dark:bg-white/[0.04]">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+        {label}
+      </div>
+      <div
+        className="mt-1 truncate text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums"
+        title={title || undefined}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectUsagePanel({
   entries = [],
   limit = 3,
@@ -182,10 +221,12 @@ export function ProjectUsagePanel({
   className = "",
 }) {
   const placeholder = copy("shared.placeholder.short");
-  const tokensLabel = copy("dashboard.projects.tokens_label");
   const starsLabel = copy("dashboard.projects.stars_label");
-  const emptyLabel = copy("dashboard.projects.empty");
-  const limitLabel = copy("dashboard.projects.limit_label");
+  const emptyLabel = loading
+    ? copy("dashboard.projects.loading")
+    : error
+      ? copy("dashboard.projects.error")
+      : copy("dashboard.projects.empty");
   const limitAria = copy("dashboard.projects.limit_aria");
   const optionLabels = {
     3: copy("dashboard.projects.limit_top_3"),
@@ -215,9 +256,9 @@ export function ProjectUsagePanel({
   }, [displayEntries, expandedKey]);
 
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
+    <div className={`rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
           {copy("dashboard.projects.title")}
         </h3>
         <Select.Root
@@ -234,23 +275,23 @@ export function ProjectUsagePanel({
         >
           <Select.Trigger
             aria-label={limitAria}
-            className="px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
+            className="rounded border border-oai-gray-200 bg-white px-2 py-1 text-xs text-oai-gray-600 hover:border-oai-gray-300 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-gray-300 dark:hover:border-oai-gray-600"
           >
             <Select.Value />
           </Select.Trigger>
           <Select.Portal>
             <Select.Positioner align="end" side="bottom" sideOffset={4} className="z-50">
-              <Select.Popup className="w-32 border border-oai-gray-200 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 rounded-lg shadow-lg">
+              <Select.Popup className="w-32 rounded-lg border border-oai-gray-200 bg-white shadow-lg dark:border-oai-gray-700 dark:bg-oai-gray-900">
                 <Select.List aria-label={limitAria} role="listbox">
                   {LIMIT_OPTIONS.map((value) => (
                     <Select.Item
                       key={value}
                       value={value}
                       className={({ selected }) =>
-                        `w-full text-left px-3 py-2 text-xs ${
+                        `w-full px-3 py-2 text-left text-xs ${
                           selected
-                            ? "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-black dark:text-oai-white"
-                            : "text-oai-gray-600 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
+                            ? "bg-oai-gray-100 text-oai-black dark:bg-oai-gray-800 dark:text-oai-white"
+                            : "text-oai-gray-600 hover:bg-oai-gray-50 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
                         }`
                       }
                     >
@@ -267,14 +308,13 @@ export function ProjectUsagePanel({
       {displayEntries.length === 0 ? (
         <div className="text-sm text-oai-gray-400 dark:text-oai-gray-400">{emptyLabel}</div>
       ) : (
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
           {displayEntries.map((entry) => (
             <ProjectUsageCard
               key={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
               entryKey={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
               entry={entry}
               placeholder={placeholder}
-              tokensLabel={tokensLabel}
               starsLabel={starsLabel}
               tokenFormatOptions={tokenFormatOptions}
               expanded={expandedKey === `${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
@@ -293,40 +333,35 @@ function ProjectUsageCard({
   entryKey,
   entry,
   placeholder,
-  tokensLabel,
   starsLabel,
   tokenFormatOptions,
   expanded = false,
   onToggleExpand,
 }) {
-  const {
-    displayName,
-    githubRepoId,
-    owner,
-    href,
-  } = resolveProjectIdentity(entry, placeholder);
+  const { displayName, githubRepoId, owner, href } = resolveProjectIdentity(entry, placeholder);
   const meta = useGithubRepoMeta(githubRepoId);
   const avatarUrl =
     meta?.avatarUrl || (owner && githubRepoId ? `https://github.com/${owner}.png?size=80` : "");
   const starsRaw = meta?.stars;
-  const starsFull =
-    starsRaw == null ? placeholder : toDisplayNumber(starsRaw);
+  const starsFull = starsRaw == null ? placeholder : toDisplayNumber(starsRaw);
   const starsCompact =
-    starsRaw == null
-      ? placeholder
-      : formatCompactNumber(starsRaw, tokenFormatOptions);
+    starsRaw == null ? placeholder : formatCompactNumber(starsRaw, tokenFormatOptions);
   const tokensRaw = resolveTokens(entry);
-  const tokensFull =
-    tokensRaw == null ? placeholder : toDisplayNumber(tokensRaw);
+  const tokensFull = tokensRaw == null ? placeholder : toDisplayNumber(tokensRaw);
   const tokensCompact =
-    tokensRaw == null
-      ? placeholder
-      : formatCompactNumber(tokensRaw, tokenFormatOptions);
+    tokensRaw == null ? placeholder : formatCompactNumber(tokensRaw, tokenFormatOptions);
   const lastUsed = formatLastUsed(entry?.last_seen_at);
-  const totalCost = formatProjectUsageCostLabel(resolveProjectCost(entry), entry?.cost_estimated === true);
+  const totalCost = formatProjectUsageCostLabel(
+    resolveProjectUsageCostValue(entry),
+    entry?.cost_estimated === true,
+  );
   const topModelHint = resolveTopModel(entry);
   const githubAria = copy("dashboard.projects.github_link_aria", { project: displayName });
   const providers = Array.isArray(entry?.providers) ? entry.providers : [];
+  const providerCount = countProviders(entry);
+  const modelCount = countModels(entry);
+  const branchCount = Number(entry?.branch_count || 0);
+  const summaryChips = buildSummaryChips(entry);
   const showExternalLink = Boolean(href && href !== "#");
   const buttonAriaLabel = expanded
     ? copy("dashboard.projects.collapse_project", { project: displayName })
@@ -340,47 +375,69 @@ function ProjectUsageCard({
           aria-expanded={expanded}
           aria-label={buttonAriaLabel}
           onClick={() => onToggleExpand?.(entryKey)}
-          className="flex flex-1 items-center gap-3 p-4 text-left transition-colors hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/70"
+          className="flex flex-1 items-start gap-3 p-4 text-left transition-colors hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/70"
         >
           {avatarUrl ? (
-            <img src={avatarUrl} alt="" className="h-10 w-10 rounded bg-oai-gray-100 object-cover dark:bg-oai-gray-800" />
+            <img src={avatarUrl} alt="" className="h-10 w-10 rounded-md bg-oai-gray-100 object-cover dark:bg-oai-gray-800" />
           ) : (
-            <div className="h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="h-10 w-10 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800" />
           )}
+
           <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-oai-black dark:text-oai-white">
                   {displayName}
                 </div>
-                {lastUsed ? (
-                  <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                    {copy("dashboard.projects.last_used", { time: lastUsed })}
-                  </div>
-                ) : null}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                  {lastUsed ? <span>{copy("dashboard.projects.last_used", { time: lastUsed })}</span> : null}
+                  <span title={`${starsLabel}: ${starsFull}`}>★ {starsCompact}</span>
+                  {topModelHint ? (
+                    <span className="truncate">
+                      {copy("dashboard.projects.top_model_label")}: {topModelHint}
+                    </span>
+                  ) : null}
+                </div>
               </div>
+
               <div className="shrink-0 text-right">
-                <div className="text-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                  {copy("dashboard.projects.cost_label")}
+                </div>
+                <div className="mt-1 text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
                   {totalCost}
                 </div>
-                {topModelHint ? (
-                  <div className="mt-0.5 max-w-[160px] truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-                    {topModelHint}
-                  </div>
-                ) : null}
               </div>
             </div>
-            <div className="mt-2 flex items-center gap-3 text-xs text-oai-gray-400 dark:text-oai-gray-400">
-              <span title={`${starsLabel}: ${starsFull}`}>★ {starsCompact}</span>
-              <span title={`${tokensLabel}: ${tokensFull}`}>{tokensCompact}</span>
-              {topModelHint ? (
-                <span className="truncate text-oai-gray-500 dark:text-oai-gray-400">
-                  {copy("dashboard.projects.top_model_label")}: {topModelHint}
-                </span>
-              ) : null}
+
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <SummaryMetric
+                label={copy("dashboard.projects.tokens_label")}
+                value={tokensCompact}
+                title={tokensFull}
+              />
+              <SummaryMetric
+                label={copy("dashboard.projects.branches_label")}
+                value={toMetricCount(branchCount)}
+              />
+              <SummaryMetric
+                label={copy("dashboard.projects.providers_label")}
+                value={toMetricCount(providerCount)}
+              />
+              <SummaryMetric
+                label={copy("dashboard.projects.models_label")}
+                value={toMetricCount(modelCount)}
+              />
             </div>
+
+            {summaryChips.length ? (
+              <div className="mt-3">
+                <ProviderModelChips items={summaryChips} />
+              </div>
+            ) : null}
           </div>
-          <div className="shrink-0 text-oai-gray-400 dark:text-oai-gray-500" aria-hidden="true">
+
+          <div className="shrink-0 pt-1 text-oai-gray-400 dark:text-oai-gray-500" aria-hidden="true">
             {expanded ? <ChevronUp className="h-4 w-4" aria-hidden /> : <ChevronDown className="h-4 w-4" aria-hidden />}
           </div>
         </button>
@@ -398,7 +455,13 @@ function ProjectUsageCard({
         ) : null}
       </div>
 
-      {expanded ? <ProjectUsageBreakdown providers={providers} /> : null}
+      {expanded ? (
+        <ProjectUsageBreakdown
+          providers={providers}
+          topModels={entry?.top_models}
+          projectName={displayName}
+        />
+      ) : null}
     </div>
   );
 }

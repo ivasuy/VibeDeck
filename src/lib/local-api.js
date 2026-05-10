@@ -193,6 +193,44 @@ function readSessionProjectUsage(dbPath, filters = {}) {
   }
 }
 
+function readSessionProjectBranchCounts(dbPath, filters = {}) {
+  if (!fs.existsSync(dbPath)) return new Map();
+  const clauses = [
+    "repo_root IS NOT NULL",
+    "repo_root <> ''",
+    "branch IS NOT NULL",
+    "branch <> ''",
+  ];
+  const params = [];
+
+  if (filters.sourceFilter && filters.sourceFilter.size > 0) {
+    const placeholders = Array.from(filters.sourceFilter, () => "?").join(", ");
+    clauses.push(`LOWER(COALESCE(provider, '')) IN (${placeholders})`);
+    params.push(...filters.sourceFilter);
+  }
+
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const rows = db.prepare(`
+      SELECT
+        repo_root,
+        COUNT(DISTINCT branch) AS branch_count
+      FROM vibedeck_sessions
+      WHERE ${clauses.join(" AND ")}
+      GROUP BY repo_root
+    `).all(...params);
+
+    return new Map(
+      rows.map((row) => [
+        String(row?.repo_root || "").trim(),
+        Number(row?.branch_count || 0),
+      ]),
+    );
+  } finally {
+    db.close();
+  }
+}
+
 function safeReadJsonFile(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -432,6 +470,7 @@ function createProjectUsageEntry({ project_key, project_ref, repo_root }) {
     last_seen_at: null,
     _cost: createCostAccumulator(),
     _providers: new Map(),
+    _branch_count: 0,
   };
 }
 
@@ -450,6 +489,12 @@ function ensureProjectUsageEntry(map, descriptor) {
     entry.project_key = descriptor.project_key;
   }
   return entry;
+}
+
+function assignProjectUsageBranchCount(entry, branchCount) {
+  const numeric = Number(branchCount || 0);
+  if (!Number.isFinite(numeric) || numeric < 0) return;
+  entry._branch_count = Math.max(entry._branch_count || 0, Math.trunc(numeric));
 }
 
 function ensureProviderUsageEntry(projectEntry, providerName) {
@@ -639,6 +684,7 @@ function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
         repo_root: entry.repo_root,
         total_tokens: String(entry.total_tokens),
         billable_total_tokens: String(entry.billable_total_tokens),
+        branch_count: entry._branch_count || 0,
         estimated_total_cost_usd: formatProjectUsageCost(totalCost.total_cost_usd),
         cost_estimated: totalCost.cost_estimated,
         cost_quality: totalCost.cost_quality,
@@ -1924,13 +1970,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       });
       let sessionProjectRows = [];
+      let sessionProjectBranchCounts = new Map();
       try {
         sessionProjectRows = aggregateSessionProjectUsageRows(
           readSessionProjectUsage(dbPath, { sourceFilter }),
           { from, to, timeZoneContext },
         );
+        sessionProjectBranchCounts = readSessionProjectBranchCounts(dbPath, { sourceFilter });
       } catch {
         sessionProjectRows = [];
+        sessionProjectBranchCounts = new Map();
       }
       const localProjectKeys = buildLocalProjectKeyMap(sessionProjectRows);
 
@@ -1943,6 +1992,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           project_ref: repoRoot,
           repo_root: repoRoot,
         });
+        assignProjectUsageBranchCount(entry, sessionProjectBranchCounts.get(repoRoot));
         const groupCost = createCostAccumulator();
         if (Number(row?.non_null_cost_count || 0) > 0) {
           addCostToAccumulator(groupCost, {
@@ -1978,6 +2028,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           project_ref: projectRef,
           repo_root: path.isAbsolute(String(projectRef || "")) ? String(projectRef).trim() : null,
         });
+        if (entry.repo_root) {
+          assignProjectUsageBranchCount(entry, sessionProjectBranchCounts.get(entry.repo_root));
+        }
         const costResult = resolveUsageCost({
           source: row?.source,
           model: row?.model || "unknown",
@@ -2048,6 +2101,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             repo_root: null,
             total_tokens: String(e.total_tokens),
             billable_total_tokens: String(e.billable_total_tokens),
+            branch_count: 0,
             estimated_total_cost_usd: null,
             cost_estimated: true,
             cost_quality: "pricing_missing",

@@ -108,12 +108,42 @@ function SummaryTile({ icon: Icon, label, value, tone = "neutral" }) {
     ? "text-amber-700 dark:text-amber-300"
     : "text-oai-black dark:text-white";
   return (
-    <div className="min-w-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.018] px-3 py-2.5 dark:border-oai-gray-800 dark:bg-white/[0.035]">
+    <div className="flex min-h-[64px] min-w-0 flex-col justify-between rounded-md border border-oai-gray-200 bg-oai-black/[0.018] px-3.5 py-3 dark:border-oai-gray-800 dark:bg-white/[0.035]">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
         <Icon className="h-3.5 w-3.5" aria-hidden />
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
       </div>
       <div className={`mt-1 truncate text-sm font-semibold tabular-nums ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function LiveSummaryWidget({ activeSessions, summary }) {
+  const tiles = [
+    { icon: Radio, label: "Live sessions", value: toDisplayNumber(activeSessions.length) },
+    { icon: Layers3, label: "Providers active", value: toDisplayNumber(summary.providerCount) },
+    { icon: Cpu, label: "Active tokens", value: toDisplayNumber(summary.tokens) },
+    {
+      icon: summary.risk > 0 ? ShieldAlert : CircleDollarSign,
+      label: summary.risk > 0 ? "Needs attribution" : "Known cost",
+      value: summary.risk > 0 ? toDisplayNumber(summary.risk) : formatUsdCurrency(String(summary.cost)),
+      tone: summary.risk > 0 ? "risk" : "neutral",
+    },
+  ];
+
+  return (
+    <div className="border-b border-oai-gray-200/70 px-0 py-3 dark:border-oai-gray-800/70">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {tiles.map((tile) => (
+          <SummaryTile
+            key={tile.label}
+            icon={tile.icon}
+            label={tile.label}
+            value={tile.value}
+            tone={tile.tone}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -213,17 +243,7 @@ export function LiveSessionList({
         </div>
       ) : null}
 
-      <div className="grid w-full grid-cols-1 gap-2 border-b border-oai-gray-200/70 px-5 py-3 dark:border-oai-gray-800/70 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryTile icon={Radio} label="Live sessions" value={toDisplayNumber(activeSessions.length)} />
-        <SummaryTile icon={Layers3} label="Providers active" value={toDisplayNumber(summary.providerCount)} />
-        <SummaryTile icon={Cpu} label="Active tokens" value={toDisplayNumber(summary.tokens)} />
-        <SummaryTile
-          icon={summary.risk > 0 ? ShieldAlert : CircleDollarSign}
-          label={summary.risk > 0 ? "Needs attribution" : "Known cost"}
-          value={summary.risk > 0 ? toDisplayNumber(summary.risk) : formatUsdCurrency(String(summary.cost))}
-          tone={summary.risk > 0 ? "risk" : "neutral"}
-        />
-      </div>
+      <LiveSummaryWidget activeSessions={activeSessions} summary={summary} />
 
       {activeSessions.length === 0 ? (
         <div className="px-5 py-12 text-center">

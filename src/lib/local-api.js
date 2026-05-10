@@ -181,6 +181,7 @@ function readSessionProjectUsage(dbPath, filters = {}) {
       SELECT
         repo_root,
         provider,
+        branch,
         model,
         COALESCE(total_tokens, 0) AS total_tokens,
         total_cost_usd,
@@ -432,6 +433,7 @@ function createProjectUsageEntry({ project_key, project_ref, repo_root }) {
     last_seen_at: null,
     _cost: createCostAccumulator(),
     _providers: new Map(),
+    _branches: new Set(),
   };
 }
 
@@ -506,6 +508,13 @@ function addProjectUsageGroup(entry, group) {
   entry.billable_total_tokens += billableTotalTokens;
   updateProjectUsageLastSeen(entry, lastSeenAt);
   addCostToAccumulator(entry._cost, costResult);
+  if (Array.isArray(group?.branches)) {
+    for (const branchName of group.branches) {
+      if (typeof branchName === "string" && branchName.trim()) {
+        entry._branches.add(branchName.trim());
+      }
+    }
+  }
 
   providerEntry.total_tokens += totalTokens;
   providerEntry.billable_total_tokens += billableTotalTokens;
@@ -533,6 +542,7 @@ function aggregateSessionProjectUsageRows(rows, { from = "", to = "", timeZoneCo
     if (!repoRoot) continue;
     const provider = typeof row?.provider === "string" && row.provider.trim() ? row.provider.trim() : "unknown";
     const model = typeof row?.model === "string" && row.model.trim() ? row.model.trim() : "unknown";
+    const branch = typeof row?.branch === "string" && row.branch.trim() ? row.branch.trim() : "";
     const key = `${repoRoot}\u0000${provider}\u0000${model}`;
     if (!grouped.has(key)) {
       grouped.set(key, {
@@ -546,6 +556,7 @@ function aggregateSessionProjectUsageRows(rows, { from = "", to = "", timeZoneCo
         non_null_cost_count: 0,
         session_count: 0,
         last_seen_at: null,
+        branches: new Set(),
       });
     }
     const group = grouped.get(key);
@@ -565,9 +576,13 @@ function aggregateSessionProjectUsageRows(rows, { from = "", to = "", timeZoneCo
     if (activityAt && (!group.last_seen_at || activityAt > group.last_seen_at)) {
       group.last_seen_at = activityAt;
     }
+    if (branch) group.branches.add(branch);
   }
 
-  return Array.from(grouped.values());
+  return Array.from(grouped.values()).map((group) => ({
+    ...group,
+    branches: Array.from(group.branches).sort(),
+  }));
 }
 
 function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
@@ -633,6 +648,7 @@ function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
         });
 
       const totalCost = finalizeCostAccumulator(entry._cost);
+      const branches = Array.from(entry._branches).sort();
       return {
         project_key: entry.project_key,
         project_ref: entry.project_ref,
@@ -643,6 +659,8 @@ function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
         cost_estimated: totalCost.cost_estimated,
         cost_quality: totalCost.cost_quality,
         last_seen_at: entry.last_seen_at,
+        branch_count: branches.length,
+        branches,
         providers,
         top_models: topModels,
       };
@@ -1967,6 +1985,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           billable_total_tokens: Number(row?.total_tokens || 0),
           session_count: Number(row?.session_count || 0),
           last_seen_at: normalizeIsoTimestamp(row?.last_seen_at),
+          branches: row?.branches,
           costResult: finalizeCostAccumulator(groupCost),
         });
       }

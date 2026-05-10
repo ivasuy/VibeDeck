@@ -51,10 +51,11 @@ function insertSession(db, row) {
     ) VALUES (
       @provider, @session_id, @started_at, @ended_at, NULL,
       @cwd, @repo_root, NULL, NULL,
-      NULL, @branch_resolution_tier, @confidence, NULL,
+      @branch, @branch_resolution_tier, @confidence, NULL,
       @model, @total_tokens, @total_cost_usd, @created_at, @updated_at
     )
   `).run({
+    branch: null,
     total_cost_usd: null,
     created_at: row.started_at,
     updated_at: row.started_at,
@@ -205,6 +206,7 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
         ended_at: "2026-05-10T12:55:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -281,6 +283,7 @@ test("project usage recent sort uses latest session activity instead of latest s
         ended_at: "2026-05-10T13:30:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch: "feature/project-cards",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -341,6 +344,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T09:30:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -356,6 +360,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T10:20:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch: "feature/project-cards",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -371,6 +376,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
         ended_at: "2026-05-10T11:45:00.000Z",
         cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
         repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
         model: "claude-sonnet-4-6",
@@ -396,6 +402,8 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     assert.equal(entry.cost_estimated, true);
     assert.equal(entry.cost_quality, "mixed_known");
     assert.match(entry.estimated_total_cost_usd, /^\d+\.\d+$/);
+    assert.equal(entry.branch_count, 2);
+    assert.deepEqual(entry.branches, ["feature/project-cards", "main"]);
 
     assert.deepEqual(
       entry.providers.map((provider) => provider.provider),

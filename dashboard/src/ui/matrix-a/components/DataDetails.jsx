@@ -1,5 +1,212 @@
 import React, { useState } from "react";
+import { CircleDollarSign, Cpu, GitBranch, Layers3 } from "lucide-react";
 import { Card } from "../../openai/components";
+import { formatUsdCurrency, toDisplayNumber } from "../../../lib/format";
+import { ProviderIcon } from "./ProviderIcon.jsx";
+
+function toKnownNumber(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatCompact(value) {
+  const n = toKnownNumber(value);
+  if (n == null) return "—";
+  return n.toLocaleString();
+}
+
+function resolveProjectTokens(entry) {
+  return entry?.billable_total_tokens ?? entry?.total_tokens ?? null;
+}
+
+function resolveProjectCost(entry) {
+  const exact = toKnownNumber(entry?.total_cost_usd);
+  const estimated = toKnownNumber(entry?.estimated_total_cost_usd);
+  const value = exact ?? estimated;
+  if (value == null) return "—";
+  const formatted = formatUsdCurrency(String(value));
+  if (formatted === "-") return "—";
+  return formatted;
+}
+
+function projectDisplayName(entry) {
+  const key = typeof entry?.project_key === "string" ? entry.project_key.trim() : "";
+  const ref = typeof entry?.project_ref === "string" ? entry.project_ref.trim() : "";
+  const value = key || ref;
+  if (!value) return "—";
+  return value.split("/").filter(Boolean).pop() || value;
+}
+
+function projectInitial(entry) {
+  const name = projectDisplayName(entry);
+  return (name[0] || "?").toUpperCase();
+}
+
+function resolveWorktreeCount(entry) {
+  const explicit = toKnownNumber(entry?.worktree_count ?? entry?.branch_count);
+  if (explicit != null) return Math.max(0, Math.round(explicit));
+  return Array.isArray(entry?.branches) ? entry.branches.length : null;
+}
+
+function providerRows(entry) {
+  return Array.isArray(entry?.providers) ? entry.providers : [];
+}
+
+function maxModelTokens(providers) {
+  let max = 0;
+  for (const provider of providers) {
+    const models = Array.isArray(provider?.models) ? provider.models : [];
+    for (const model of models) {
+      max = Math.max(max, toKnownNumber(model?.total_tokens) || 0);
+    }
+  }
+  return max;
+}
+
+function modelCostLabel(model) {
+  const exact = toKnownNumber(model?.total_cost_usd);
+  const estimated = toKnownNumber(model?.estimated_total_cost_usd);
+  const value = exact ?? estimated;
+  if (value == null) return "—";
+  const formatted = formatUsdCurrency(String(value));
+  if (formatted === "-") return "—";
+  return formatted;
+}
+
+function percentLabel(value, total) {
+  const n = toKnownNumber(value) || 0;
+  const denominator = toKnownNumber(total) || 0;
+  if (denominator <= 0) return "0%";
+  const percent = (n / denominator) * 100;
+  if (percent < 0.1 && percent > 0) return "0.1%";
+  return `${Number(percent.toFixed(1)).toString()}%`;
+}
+
+function ProjectUsageCard({ entry, copy }) {
+  const providers = providerRows(entry);
+  const maxTokens = maxModelTokens(providers);
+  const projectTokens = toKnownNumber(resolveProjectTokens(entry)) || 0;
+  const href = typeof entry?.project_ref === "string" && /^https?:\/\//.test(entry.project_ref)
+    ? entry.project_ref
+    : null;
+  const content = (
+    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors hover:bg-oai-gray-50 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:bg-oai-gray-800/60">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oai-gray-100 text-sm font-medium text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-200">
+          {projectInitial(entry)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate oai-text-body-sm font-medium text-oai-black dark:text-oai-white">
+                {projectDisplayName(entry)}
+              </div>
+              {entry?.project_ref ? (
+                <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                  {entry.project_ref}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <ProjectStat
+              icon={GitBranch}
+              label={copy("dashboard.projects.worktrees_label")}
+              value={resolveWorktreeCount(entry) ?? "—"}
+            />
+            <ProjectStat
+              icon={Cpu}
+              label={copy("dashboard.projects.tokens_label")}
+              value={formatCompact(resolveProjectTokens(entry))}
+            />
+            <ProjectStat
+              icon={CircleDollarSign}
+              label={copy("dashboard.projects.cost_label")}
+              value={resolveProjectCost(entry)}
+            />
+            <ProjectStat
+              icon={Layers3}
+              label={copy("dashboard.projects.providers_label")}
+              value={providers.length || "—"}
+            />
+          </div>
+
+          {providers.length ? (
+            <div className="mt-4 space-y-5">
+              {providers.map((provider) => {
+                const providerName = String(provider?.provider || "unknown");
+                const models = Array.isArray(provider?.models) ? provider.models : [];
+                return (
+                  <div key={providerName}>
+                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-oai-gray-700 dark:text-oai-gray-200">
+                      <ProviderIcon provider={providerName} size={16} className="shrink-0" />
+                      <span>{providerName}</span>
+                    </div>
+                    <div>
+                      {models.map((model) => {
+                        const tokens = toKnownNumber(model?.total_tokens) || 0;
+                        const width = maxTokens > 0 ? Math.max(6, Math.round((tokens / maxTokens) * 100)) : 0;
+                        const modelName = String(model?.model || "unknown");
+                        return (
+                          <div
+                            key={`${providerName}-${modelName}`}
+                            className="border-b border-oai-gray-100 py-2 last:border-b-0 dark:border-oai-gray-800"
+                          >
+                            <div className="mb-1.5 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-4 text-sm">
+                              <span className="truncate text-oai-gray-700 dark:text-oai-gray-200">{modelName}</span>
+                              <span className="text-right tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                                {formatCompact(tokens)}
+                              </span>
+                              <span className="w-20 text-right tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                                {modelCostLabel(model)}
+                              </span>
+                              <span className="w-12 text-right tabular-nums font-medium text-oai-black dark:text-oai-white">
+                                {percentLabel(tokens, projectTokens)}
+                              </span>
+                            </div>
+                            <div className="h-0.5 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                              <div
+                                className="h-full rounded-full bg-emerald-600 dark:bg-emerald-500"
+                                style={{ width: `${width}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!href) return content;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="block">
+      {content}
+    </a>
+  );
+}
+
+function ProjectStat({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
+      <div className="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+        {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 truncate text-sm font-medium tabular-nums text-oai-black dark:text-oai-white">
+        {toDisplayNumber(value)}
+      </div>
+    </div>
+  );
+}
 
 export function DataDetails({
   // Project props
@@ -82,31 +289,13 @@ export function DataDetails({
 
       {/* Projects Tab */}
       {activeTab === "projects" && (
-        <div className="space-y-1">
+        <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 oai-scrollbar">
           {projectEntries.slice(0, projectLimit).map((entry) => (
-            <a
+            <ProjectUsageCard
               key={entry?.project_key || entry?.project_ref}
-              href={entry?.project_ref || "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 p-2 rounded-lg hover:oai-bg-elevated transition-colors"
-            >
-              <div className="w-8 h-8 rounded-md oai-bg-elevated flex items-center justify-center oai-text-caption font-medium text-oai-gray-500 dark:text-oai-gray-300">
-                {(entry?.project_key?.[0] || "?").toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="oai-text-body-sm font-medium text-oai-black dark:text-oai-white truncate">
-                  {entry?.project_key || entry?.project_ref?.split("/")?.pop() || "—"}
-                </div>
-              </div>
-              <div className="oai-text-body-sm font-medium text-oai-black dark:text-oai-white tabular-nums">
-                {(() => {
-                  const raw = entry?.billable_total_tokens ?? entry?.total_tokens;
-                  const n = Number(raw);
-                  return Number.isFinite(n) ? n.toLocaleString() : "—";
-                })()}
-              </div>
-            </a>
+              entry={entry}
+              copy={copy}
+            />
           ))}
         </div>
       )}

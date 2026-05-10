@@ -137,6 +137,9 @@ dashboard.projects.github_link_aria,ui,ProjectUsagePanel,ProjectUsagePanel,githu
 dashboard.projects.expand_project,ui,ProjectUsagePanel,ProjectUsagePanel,expand_project,Expand {{project}} usage breakdown,,active
 dashboard.projects.collapse_project,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_project,Collapse {{project}} usage breakdown,,active
 dashboard.projects.top_model_label,ui,ProjectUsagePanel,ProjectUsagePanel,top_model_label,Top model,,active
+dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,Cost,,active
+dashboard.projects.worktrees_label,ui,DataDetails,DataDetails,worktrees_label,Worktrees,,active
+dashboard.projects.providers_label,ui,DataDetails,DataDetails,providers_label,Providers,,active
 dashboard.projects.breakdown_heading,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_heading,Model breakdown,,active
 dashboard.projects.breakdown_columns,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_columns,Estimated cost · tokens,,active
 dashboard.projects.provider_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,provider_label,Provider,,active

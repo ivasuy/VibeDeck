@@ -17,7 +17,9 @@ function targetAssignmentCount(items) {
 
 export function SkillSourceSummary({ items = [] }) {
   const rows = Array.isArray(items) ? items : [];
-  const managedCount = rows.filter((skill) => skill?.managed).length;
+  const managedCount = rows.filter((skill) => {
+    return Boolean(skill?.managed);
+  }).length;
   const localCount = rows.length - managedCount;
 
   return (

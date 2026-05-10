@@ -16,7 +16,9 @@ export function MiniBarChart({ rows = [], ariaLabel, accent = "default", classNa
   if (!items.length) return null;
 
   const token = getAccentToken(accent);
-  const maxValue = items.reduce((max, row) => Math.max(max, row.numericValue), 0);
+  const maxValue = items.reduce((max, row) => {
+    return Math.max(max, row.numericValue);
+  }, 0);
 
   return (
     <div aria-label={ariaLabel} className={cn("space-y-2", className)} role="img">

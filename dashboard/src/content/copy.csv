@@ -336,8 +336,8 @@ live.override.error.submit,dashboard,LivePage,BranchOverridePanel,error_submit,U
 live.override.error.fallback,dashboard,LivePage,BranchOverridePanel,error_fallback,Request failed,,active
 live.workbench.metrics.projects,dashboard,LivePage,LiveProjectWorkbench,metric_projects,Projects,,active
 live.workbench.metrics.branches,dashboard,LivePage,LiveProjectWorkbench,metric_branches,Branches,,active
-live.workbench.metrics.sessions,dashboard,LivePage,LiveProjectWorkbench,metric_sessions,Sessions,,active
-live.workbench.metrics.providers,dashboard,LivePage,LiveProjectWorkbench,metric_providers,Providers,,active
+live.workbench.metrics.tokens,dashboard,LivePage,LiveProjectWorkbench,metric_tokens,Tokens,,active
+live.workbench.metrics.cost,dashboard,LivePage,LiveProjectWorkbench,metric_cost,Cost,,active
 live.workbench.stream_error,dashboard,LivePage,LiveProjectWorkbench,stream_error,Live stream error: {{error}},,active
 live.workbench.project.unknown_repo,dashboard,LivePage,LiveProjectWorkbench,project_unknown_repo,Unknown repo,,active
 live.workbench.project.updated_label,dashboard,LivePage,LiveProjectWorkbench,project_updated_label,Last activity,,active

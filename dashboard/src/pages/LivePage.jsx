@@ -14,6 +14,12 @@ function sessionKey(row) {
   return `${String(row.provider)}:${String(row.session_id)}`;
 }
 
+function isActiveRow(row) {
+  if (!row) return false;
+  if (row.ended_at) return false;
+  return String(row.state || "").trim().toLowerCase() !== "ended";
+}
+
 export function LivePage() {
   const { sessions, status, error } = useVibeDeckLiveSessions();
   const [selectedKey, setSelectedKey] = useState(null);
@@ -40,6 +46,11 @@ export function LivePage() {
     refreshAttributionStats();
   }, [refreshAttributionStats]);
 
+  const visibleSessions = useMemo(
+    () => (Array.isArray(sessions) ? sessions.filter(isActiveRow) : []),
+    [sessions],
+  );
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -58,21 +69,21 @@ export function LivePage() {
   }, []);
 
   useEffect(() => {
-    if (!Array.isArray(sessions) || sessions.length === 0) {
+    if (!Array.isArray(visibleSessions) || visibleSessions.length === 0) {
       if (selectedKey !== null) setSelectedKey(null);
       return;
     }
     const existing = selectedKey != null
-      ? sessions.some((row) => sessionKey(row) === selectedKey)
+      ? visibleSessions.some((row) => sessionKey(row) === selectedKey)
       : false;
     if (!existing) {
-      setSelectedKey(sessionKey(sessions[0]));
+      setSelectedKey(sessionKey(visibleSessions[0]));
     }
-  }, [sessions, selectedKey]);
+  }, [selectedKey, visibleSessions]);
 
   const selectedSession = useMemo(
-    () => sessions.find((row) => sessionKey(row) === selectedKey) || null,
-    [sessions, selectedKey],
+    () => visibleSessions.find((row) => sessionKey(row) === selectedKey) || null,
+    [selectedKey, visibleSessions],
   );
 
   const streamStatusLabel = useMemo(() => {
@@ -102,15 +113,15 @@ export function LivePage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section className="grid min-w-0 content-start gap-4">
           <LiveProjectWorkbench
-            sessions={sessions}
+            sessions={visibleSessions}
             selectedKey={selectedKey}
             onSelectSession={setSelectedKey}
             streamStatus={status}
             streamError={error}
           />
-          <LiveSessionDetailPanel session={selectedSession} />
         </section>
         <aside className="grid content-start gap-4">
+          <LiveSessionDetailPanel session={selectedSession} />
           <AttributionHealthCard
             stats={attributionStats}
             loading={statsLoading}

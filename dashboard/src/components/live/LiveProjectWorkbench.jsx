@@ -105,12 +105,6 @@ function formatTimestamp(value) {
   });
 }
 
-function isActiveRow(row) {
-  if (!row) return false;
-  if (row.ended_at) return false;
-  return String(row.state || "").trim().toLowerCase() !== "ended";
-}
-
 function groupProjects(rows) {
   const projects = new Map();
 
@@ -174,26 +168,32 @@ export function LiveProjectWorkbench({
   streamStatus = "idle",
   streamError = null,
 }) {
-  const activeSessions = useMemo(
-    () => (Array.isArray(sessions) ? sessions.filter(isActiveRow) : []),
-    [sessions],
-  );
+  const activeSessions = useMemo(() => (Array.isArray(sessions) ? sessions : []), [sessions]);
   const projects = useMemo(() => groupProjects(activeSessions), [activeSessions]);
 
   const counts = useMemo(() => {
-    const providers = new Set();
     let branches = 0;
+    let totalTokens = 0;
+    let totalCost = 0;
+    let knownCostCount = 0;
+    let estimatedCost = false;
     for (const project of projects) {
       branches += project.branchGroups.length;
-      for (const session of project.sessions) providers.add(String(session?.provider || "unknown"));
+      totalTokens += project.totalTokens;
+      if (project.totalCost != null) {
+        totalCost += project.totalCost;
+        knownCostCount += 1;
+      }
+      if (project.costEstimated || project.totalCost == null) estimatedCost = true;
     }
     return {
       projectCount: projects.length,
       branchCount: branches,
-      sessionCount: activeSessions.length,
-      providerCount: providers.size,
+      totalTokens,
+      totalCost: knownCostCount > 0 ? totalCost : null,
+      estimatedCost,
     };
-  }, [activeSessions.length, projects]);
+  }, [projects]);
 
   if (!activeSessions.length) {
     return (
@@ -221,16 +221,19 @@ export function LiveProjectWorkbench({
             accent: "branch",
           },
           {
-            key: "sessions",
-            label: copy("live.workbench.metrics.sessions"),
-            value: String(counts.sessionCount),
+            key: "tokens",
+            label: copy("live.workbench.metrics.tokens"),
+            value: counts.totalTokens.toLocaleString(),
             accent: "live",
           },
           {
-            key: "providers",
-            label: copy("live.workbench.metrics.providers"),
-            value: String(counts.providerCount),
-            accent: "confidence",
+            key: "cost",
+            label: copy("live.workbench.metrics.cost"),
+            value:
+              counts.totalCost != null
+                ? `${formatUsdCurrency(String(counts.totalCost))}${counts.estimatedCost ? ` ${copy("live.cost.estimated_suffix")}` : ""}`
+                : "—",
+            accent: "cost",
           },
         ]}
       />

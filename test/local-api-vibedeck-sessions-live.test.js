@@ -9,6 +9,7 @@ const { afterEach, test } = require('node:test');
 const { ensureSchema } = require('../src/lib/db');
 const { DatabaseSync } = require('node:sqlite');
 const { getLiveBus } = require('../src/lib/sessions/live-bus');
+const { processSessionEvent } = require('../src/lib/sessions/pipeline');
 const { createLocalApiHandler } = require('../src/lib/local-api');
 
 function resetLiveSseState() {
@@ -166,6 +167,103 @@ test('vibedeck-sessions-live streams snapshot then deltas', async () => {
     assert.equal(events[1].session_id, 's-live-1');
     exchange.close();
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live keeps recent log_complete sessions active and streams updates', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-current-log-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  const srv = await startLocalApiServer({ queuePath });
+  try {
+    const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
+    assert.equal(res.statusCode, 200);
+    res.setEncoding('utf8');
+    res.resume();
+
+    let buf = '';
+    const got = [];
+    let resolveSnapshot;
+    let resolveUpdate;
+    const snapshotPromise = new Promise((resolve) => {
+      resolveSnapshot = resolve;
+    });
+    const updatePromise = new Promise((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const snapshotTimeout = setTimeout(() => resolveSnapshot(new Error('timeout waiting for snapshot')), 1000);
+    const updateTimeout = setTimeout(() => resolveUpdate(new Error('timeout waiting for checkpoint update')), 3000);
+
+    res.on('data', (chunk) => {
+      buf += chunk;
+      const parsed = parseSseEvents(buf);
+      buf = parsed.rest;
+      for (const e of parsed.events) {
+        got.push(e);
+        if (e.type === 'snapshot') resolveSnapshot();
+        if (e.type === 'session:update' && e.session_id === 'current-session') resolveUpdate();
+      }
+    });
+
+    const snapResult = await snapshotPromise;
+    clearTimeout(snapshotTimeout);
+    if (snapResult instanceof Error) throw snapResult;
+
+    const now = new Date();
+    const started = new Date(now.getTime() - 2 * 60 * 1000).toISOString();
+    const observed = new Date(now.getTime() - 30 * 1000).toISOString();
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'current-session',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: 'current-session',
+      observed_at: observed,
+      delta_tokens: 1000,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    await processSessionEvent(dbPath, {
+      kind: 'end',
+      provider: 'codex',
+      session_id: 'current-session',
+      ended_at: observed,
+      total_tokens: 1000,
+      end_reason: 'log_complete',
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+
+    const updateResult = await updatePromise;
+    clearTimeout(updateTimeout);
+    if (updateResult instanceof Error) throw updateResult;
+
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    const row = db
+      .prepare('SELECT ended_at FROM vibedeck_sessions WHERE provider = ? AND session_id = ?')
+      .get('codex', 'current-session');
+    db.close();
+
+    assert.equal(row?.ended_at, null);
+    assert.ok(got.some((e) => e.type === 'session:update' && e.session_id === 'current-session'));
+    assert.equal(got.some((e) => e.type === 'session:end' && e.session_id === 'current-session'), false);
+    req.destroy();
+    res.destroy();
+  } finally {
+    await srv.close();
     await fs.rm(root, { recursive: true, force: true });
   }
 });

@@ -12,6 +12,32 @@ function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
 }
 
+function getIdleTimeoutMin() {
+  const parsed = parseInt(process.env.VIBEDECK_IDLE_TIMEOUT_MIN || '30', 10);
+  return Number.isFinite(parsed) ? parsed : 30;
+}
+
+function toValidDate(value) {
+  if (!isNonEmptyString(value)) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function isRecentLogCompleteCheckpoint(event, now = new Date()) {
+  if (!event || event.kind !== 'end' || event.end_reason !== 'log_complete') return false;
+  const endedAt = toValidDate(event.ended_at);
+  if (!endedAt) return false;
+  const ageMs = now.getTime() - endedAt.getTime();
+  return ageMs <= getIdleTimeoutMin() * 60 * 1000;
+}
+
+function shouldKeepSessionOpenForCheckpoint(existing, event) {
+  if (!isRecentLogCompleteCheckpoint(event)) return false;
+  if (!existing) return true;
+  if (existing.ended_at == null) return true;
+  return existing.end_reason === 'log_complete';
+}
+
 function loadSession(db, { provider, session_id } = {}) {
   return (
     db
@@ -83,10 +109,33 @@ function persistBranchWindows(db, { provider, session_id, windows } = {}) {
   }
 }
 
+function updateSessionEndedState(db, { provider, session_id, ended_at, end_reason } = {}) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `
+    UPDATE vibedeck_sessions
+    SET ended_at = ?, end_reason = ?, updated_at = ?
+    WHERE provider = ? AND session_id = ?
+    `,
+  ).run(ended_at, end_reason, now, provider, session_id);
+}
+
 async function processSessionEvent(dbPath, event) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEvent: dbPath must be a non-empty string');
   if (!event || typeof event !== 'object') return;
   if (!isNonEmptyString(event.provider) || !isNonEmptyString(event.session_id)) return;
+
+  let existingBeforeUpsert = null;
+  {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      existingBeforeUpsert = loadSession(db, { provider: event.provider, session_id: event.session_id });
+    } finally {
+      db.close();
+    }
+  }
+
+  const keepOpenForCheckpoint = shouldKeepSessionOpenForCheckpoint(existingBeforeUpsert, event);
 
   let repo = null;
   if (isNonEmptyString(event.cwd)) {
@@ -105,6 +154,26 @@ async function processSessionEvent(dbPath, event) {
     try {
       db.exec('BEGIN');
       try {
+        if (keepOpenForCheckpoint) {
+          updateSessionEndedState(db, {
+            provider: event.provider,
+            session_id: event.session_id,
+            ended_at: null,
+            end_reason: null,
+          });
+        } else if (
+          isRecentLogCompleteCheckpoint(event) &&
+          existingBeforeUpsert &&
+          existingBeforeUpsert.ended_at != null &&
+          existingBeforeUpsert.end_reason !== 'log_complete'
+        ) {
+          updateSessionEndedState(db, {
+            provider: event.provider,
+            session_id: event.session_id,
+            ended_at: existingBeforeUpsert.ended_at,
+            end_reason: existingBeforeUpsert.end_reason,
+          });
+        }
         updateRepoMeta(db, { provider: event.provider, session_id: event.session_id, repo });
         db.exec('COMMIT');
       } catch (err) {
@@ -170,6 +239,8 @@ async function processSessionEvent(dbPath, event) {
             transitions,
           });
           persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows });
+        } else if (latest) {
+          persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
         }
 
         db.exec('COMMIT');
@@ -182,15 +253,19 @@ async function processSessionEvent(dbPath, event) {
 
       const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
       const bus = getLiveBus();
+      const busEventKind = keepOpenForCheckpoint ? 'update' : event.kind;
       const payload = {
         ...event,
+        kind: busEventKind,
+        ended_at: latest ? latest.ended_at : event.ended_at,
+        end_reason: latest ? latest.end_reason : event.end_reason,
         repo_root: latest ? latest.repo_root : null,
         branch: latest ? latest.branch : null,
         tier: latest ? latest.branch_resolution_tier : null,
         confidence: latest ? latest.confidence : null,
         total_tokens: latest ? latest.total_tokens : event.total_tokens,
       };
-      bus.emit(`session:${event.kind}`, payload);
+      bus.emit(`session:${busEventKind}`, payload);
     } finally {
       db.close();
     }

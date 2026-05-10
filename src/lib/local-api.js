@@ -609,10 +609,12 @@ function isLoopbackHostname(hostname) {
   return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1" || hostname === "[::1]";
 }
 
-function hasAllowedLoopbackOrigin(headers = {}) {
+function hasAllowedLoopbackOrigin(headers = {}, { requirePresence = false } = {}) {
   const candidates = [headers.origin, headers.referer];
+  let sawCandidate = false;
   for (const raw of candidates) {
     if (raw == null || raw === "") continue;
+    sawCandidate = true;
     try {
       const url = new URL(String(raw));
       if (url.protocol !== "http:" || !isLoopbackHostname(url.hostname)) return false;
@@ -620,7 +622,7 @@ function hasAllowedLoopbackOrigin(headers = {}) {
       return false;
     }
   }
-  return true;
+  return requirePresence ? sawCandidate : true;
 }
 
 function readJsonBody(req) {
@@ -831,12 +833,21 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       ? headerToken.trim()
       : cookieToken || "";
     if (!token || token !== localAuthToken) return false;
-    return hasAllowedLoopbackOrigin(req?.headers || {});
+    return hasAllowedLoopbackOrigin(req?.headers || {}, { requirePresence: true });
   }
 
   function requireVibeDeckMutationAuth(req, res, tokenPath) {
     if (isAuthorizedLocalMutation(req)) return true;
     return requireWriteAuth(req, res, { tokenPath });
+  }
+
+  function requireLocalBrowserContext(req, res) {
+    if (hasAllowedLoopbackOrigin(req?.headers || {}, { requirePresence: true })) return true;
+    json(res, {
+      error: "missing_auth",
+      message: "Loopback Origin or Referer required",
+    }, 401);
+    return false;
   }
 
   return async function handleLocalApi(req, res, url) {
@@ -847,6 +858,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "Method Not Allowed" }, 405);
         return true;
       }
+      if (!requireLocalBrowserContext(req, res)) return true;
       res.writeHead(200, {
         "Content-Type": "application/json",
         "Cache-Control": "no-store",

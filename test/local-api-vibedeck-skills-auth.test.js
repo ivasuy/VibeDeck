@@ -7,6 +7,9 @@ const fs = require("node:fs/promises");
 const { test, beforeEach, afterEach } = require("node:test");
 
 const auth = require("../src/lib/local-auth");
+const LOOPBACK_REFERER = "http://127.0.0.1:7690/dashboard";
+const LOOPBACK_ORIGIN = "http://127.0.0.1:7690";
+const NON_LOOPBACK_ORIGIN = "http://example.com";
 
 async function startLocalApiServer({ queuePath }) {
   const { createLocalApiHandler } = require("../src/lib/local-api");
@@ -129,7 +132,9 @@ beforeEach(async () => {
   delete require.cache[require.resolve("../src/lib/local-api")];
 
   srv = await startLocalApiServer({ queuePath });
-  const localAuthRes = await getJson(srv.baseUrl, "/api/local-auth");
+  const localAuthRes = await getJson(srv.baseUrl, "/api/local-auth", {
+    referer: LOOPBACK_REFERER,
+  });
   localAuthToken = localAuthRes.body?.token;
 });
 
@@ -140,13 +145,31 @@ afterEach(async () => {
   tmpRoot = null;
 });
 
+test("GET /api/local-auth requires loopback browser headers", async () => {
+  const missingContext = await getJson(srv.baseUrl, "/api/local-auth");
+  assert.equal(missingContext.status, 401);
+  assert.equal(missingContext.body?.error, "missing_auth");
+
+  const wrongOrigin = await getJson(srv.baseUrl, "/api/local-auth", {
+    origin: NON_LOOPBACK_ORIGIN,
+  });
+  assert.equal(wrongOrigin.status, 401);
+  assert.equal(wrongOrigin.body?.error, "missing_auth");
+
+  const loopbackContext = await getJson(srv.baseUrl, "/api/local-auth", {
+    referer: LOOPBACK_REFERER,
+  });
+  assert.equal(loopbackContext.status, 200);
+  assert.ok(loopbackContext.body?.token);
+});
+
 test("POST /functions/vibedeck-skills/uninstall accepts local dashboard auth from loopback origin", async () => {
   const res = await postJson(
     srv.baseUrl,
     "/functions/vibedeck-skills/uninstall",
     { id: "skill-id" },
     {
-      origin: "http://127.0.0.1:7690",
+      origin: LOOPBACK_ORIGIN,
       "x-tokentracker-local-auth": localAuthToken,
     },
   );
@@ -162,7 +185,7 @@ test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth wit
     "/functions/vibedeck-skills/uninstall",
     { id: "skill-id" },
     {
-      origin: "http://example.com",
+      origin: NON_LOOPBACK_ORIGIN,
       "x-tokentracker-local-auth": localAuthToken,
     },
   );
@@ -171,6 +194,105 @@ test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth wit
   assert.equal(res.body?.error, "missing_auth");
   assert.equal(calls.length, 0);
 });
+
+test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth without origin or referer", async () => {
+  const res = await postJson(
+    srv.baseUrl,
+    "/functions/vibedeck-skills/uninstall",
+    { id: "skill-id" },
+    {
+      "x-tokentracker-local-auth": localAuthToken,
+    },
+  );
+
+  assert.equal(res.status, 401);
+  assert.equal(res.body?.error, "missing_auth");
+  assert.equal(calls.length, 0);
+});
+
+const localMutationCases = [
+  {
+    name: "confirm-destructive",
+    pathname: "/functions/vibedeck-confirm-destructive",
+    body: {},
+    expectedAuthPassStatus: 400,
+    expectedAuthPassError: "missing_op",
+  },
+  {
+    name: "entire unknown command",
+    pathname: "/functions/vibedeck-entire/not-a-command",
+    body: {},
+    expectedAuthPassStatus: 400,
+    expectedAuthPassError: "unknown_command",
+  },
+  {
+    name: "entire rewind",
+    pathname: "/functions/vibedeck-entire/rewind",
+    body: {},
+    expectedAuthPassStatus: 400,
+    expectedAuthPassError: "missing_params",
+  },
+  {
+    name: "entire clean",
+    pathname: "/functions/vibedeck-entire/clean",
+    body: {},
+    expectedAuthPassStatus: 400,
+    expectedAuthPassError: "missing_params",
+  },
+  {
+    name: "attribute",
+    pathname: "/functions/vibedeck-attribute",
+    body: {},
+    expectedAuthPassStatus: 400,
+    expectedAuthPassError: "missing_params",
+  },
+];
+
+for (const routeCase of localMutationCases) {
+  test(`local dashboard auth reaches ${routeCase.name} validation from loopback`, async () => {
+    const res = await postJson(
+      srv.baseUrl,
+      routeCase.pathname,
+      routeCase.body,
+      {
+        origin: LOOPBACK_ORIGIN,
+        "x-tokentracker-local-auth": localAuthToken,
+      },
+    );
+
+    assert.equal(res.status, routeCase.expectedAuthPassStatus);
+    assert.equal(res.body?.error, routeCase.expectedAuthPassError);
+  });
+
+  test(`local dashboard auth rejects ${routeCase.name} without loopback browser headers`, async () => {
+    const res = await postJson(
+      srv.baseUrl,
+      routeCase.pathname,
+      routeCase.body,
+      {
+        "x-tokentracker-local-auth": localAuthToken,
+      },
+    );
+
+    assert.equal(res.status, 401);
+    assert.equal(res.body?.error, "missing_auth");
+  });
+
+  test(`local dashboard auth rejects ${routeCase.name} with non-loopback origin`, async () => {
+    const res = await postJson(
+      srv.baseUrl,
+      routeCase.pathname,
+      routeCase.body,
+      {
+        origin: NON_LOOPBACK_ORIGIN,
+        "x-tokentracker-local-auth": localAuthToken,
+      },
+    );
+
+    assert.equal(res.status, 401);
+    assert.equal(res.body?.error, "missing_auth");
+  });
+}
 
 for (const cmd of ["install", "uninstall", "restore", "setTargets", "importLocal", "deleteLocal"]) {
   test(`POST /functions/vibedeck-skills/${cmd} without Bearer returns 401`, async () => {

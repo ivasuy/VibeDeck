@@ -449,3 +449,46 @@ settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,Use
 settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,System,,active
 settings.appearance.language.english,ui,SettingsPage,SettingsPage,language_english,English,,active
 settings.appearance.language.chinese,ui,SettingsPage,SettingsPage,language_chinese,Simplified Chinese,,active
+entire.title,dashboard,EntirePage,EntirePage,title,Entire,,active
+entire.subtitle,dashboard,EntirePage,EntirePage,subtitle,Read-only repository status and checkpoint history.,,active
+entire.repo.title,dashboard,EntirePage,RepoPathSelector,title,Repository,,active
+entire.repo.subtitle,dashboard,EntirePage,RepoPathSelector,subtitle,Use an absolute repository path to load Entire status and checkpoints.,,active
+entire.repo.input.label,dashboard,EntirePage,RepoPathSelector,input_label,Repository path,,active
+entire.repo.input.placeholder,dashboard,EntirePage,RepoPathSelector,input_placeholder,/Users/you/project,,active
+entire.repo.action.load,dashboard,EntirePage,RepoPathSelector,action_load,Load repo,,active
+entire.repo.action.loading,dashboard,EntirePage,RepoPathSelector,action_loading,Loading…,,active
+entire.repo.validation.absolute_path,dashboard,EntirePage,RepoPathSelector,validation_absolute_path,Enter an absolute repository path.,,active
+entire.repo.suggestions.label,dashboard,EntirePage,RepoPathSelector,suggestions_label,Recent repos,,active
+entire.status.title,dashboard,EntirePage,EntireStatusCard,title,Entire status,,active
+entire.status.loading,dashboard,EntirePage,EntireStatusCard,loading,Loading status…,,active
+entire.status.error,dashboard,EntirePage,EntireStatusCard,error,Unable to load status: {{error}},,active
+entire.status.error_fallback,dashboard,EntirePage,EntireStatusCard,error_fallback,Request failed,,active
+entire.status.empty,dashboard,EntirePage,EntireStatusCard,empty,Select a repository to load Entire status.,,active
+entire.status.state,dashboard,EntirePage,EntireStatusCard,state_label,State,,active
+entire.status.version,dashboard,EntirePage,EntireStatusCard,version_label,Version,,active
+entire.status.tip,dashboard,EntirePage,EntireStatusCard,tip_label,Checkpoint branch tip,,active
+entire.status.cached_state,dashboard,EntirePage,EntireStatusCard,cached_state_label,Cached state,,active
+entire.state.not_installed,dashboard,EntirePage,EntireStatusCard,state_not_installed,Entire not installed,,active
+entire.state.not_enabled,dashboard,EntirePage,EntireStatusCard,state_not_enabled,Not enabled,,active
+entire.state.enabled_no_commits,dashboard,EntirePage,EntireStatusCard,state_enabled_no_commits,"Enabled, waiting for checkpoints",,active
+entire.state.active,dashboard,EntirePage,EntireStatusCard,state_active,Active,,active
+entire.state.unknown,dashboard,EntirePage,EntireStatusCard,state_unknown,Unknown,,active
+entire.checkpoints.title,dashboard,EntirePage,CheckpointList,title,Checkpoints,,active
+entire.checkpoints.count,dashboard,EntirePage,CheckpointList,count,{{count}} files,,active
+entire.checkpoints.loading,dashboard,EntirePage,CheckpointList,loading,Loading checkpoints…,,active
+entire.checkpoints.error,dashboard,EntirePage,CheckpointList,error,Unable to load checkpoints: {{error}},,active
+entire.checkpoints.error_fallback,dashboard,EntirePage,CheckpointList,error_fallback,Request failed,,active
+entire.checkpoints.empty,dashboard,EntirePage,CheckpointList,empty,Select a repository to view checkpoints.,,active
+entire.checkpoints.none,dashboard,EntirePage,CheckpointList,none,No checkpoint files found.,,active
+entire.checkpoints.detail.title,dashboard,EntirePage,CheckpointList,detail_title,Checkpoint detail,,active
+entire.checkpoints.detail.loading,dashboard,EntirePage,CheckpointList,detail_loading,Loading checkpoint detail…,,active
+entire.checkpoints.detail.error,dashboard,EntirePage,CheckpointList,detail_error,Unable to load checkpoint: {{error}},,active
+entire.checkpoints.detail.error_fallback,dashboard,EntirePage,CheckpointList,detail_error_fallback,Request failed,,active
+entire.checkpoints.detail.empty,dashboard,EntirePage,CheckpointList,detail_empty,Select a checkpoint file.,,active
+entire.checkpoints.detail.mode.metadata,dashboard,EntirePage,CheckpointList,mode_metadata,Metadata,,active
+entire.checkpoints.detail.mode.raw,dashboard,EntirePage,CheckpointList,mode_raw,Raw content,,active
+entire.checkpoints.detail.meta.path,dashboard,EntirePage,CheckpointList,meta_path,File,,active
+entire.checkpoints.detail.meta.type,dashboard,EntirePage,CheckpointList,meta_type,Type,,active
+entire.checkpoints.detail.meta.keys,dashboard,EntirePage,CheckpointList,meta_keys,Keys,,active
+entire.checkpoints.detail.meta.fields,dashboard,EntirePage,CheckpointList,meta_fields,Fields,,active
+entire.checkpoints.detail.meta.none,dashboard,EntirePage,CheckpointList,meta_none,No metadata fields available.,,active

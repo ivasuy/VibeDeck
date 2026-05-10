@@ -257,6 +257,38 @@ live_sniffer.event.sync,ui,LiveSniffer,LiveSniffer,event,> SYNC: UPLOADING_TO_CO
 live_sniffer.event.batch,ui,LiveSniffer,LiveSniffer,event,[STATUS] BATCH_TRANSMISSION_COMPLETE,,active
 live_sniffer.event.hooking,ui,LiveSniffer,LiveSniffer,event,> HOOKING: AI_CLI_PIPE_LINK,,active
 live_sniffer.event.capture,ui,LiveSniffer,LiveSniffer,event,> CAPTURE: +128 NEURAL_TOKENS,,active
+live.title,dashboard,LivePage,LivePage,title,Live Workbench,,active
+live.subtitle,dashboard,LivePage,LivePage,subtitle,"Active sessions, branch confidence, and correction controls.",,active
+live.status.connected,dashboard,LivePage,LivePage,status,Live stream connected,,active
+live.status.connecting,dashboard,LivePage,LivePage,status,Connecting live stream…,,active
+live.status.degraded,dashboard,LivePage,LivePage,status,Live stream degraded,,active
+live.status.idle,dashboard,LivePage,LivePage,status,Live stream idle,,active
+live.sessions.title,dashboard,LivePage,LiveSessionList,title,Active sessions,,active
+live.sessions.count,dashboard,LivePage,LiveSessionList,count,{{count}} sessions,,active
+live.empty.title,dashboard,LivePage,LiveSessionList,empty_title,No live sessions,,active
+live.empty.subtitle,dashboard,LivePage,LiveSessionList,empty_subtitle,Start a supported coding session to populate live activity.,,active
+live.stream.degraded,dashboard,LivePage,LiveSessionList,stream_state,Stream connection degraded. Data may lag.,,active
+live.stream.connecting,dashboard,LivePage,LiveSessionList,stream_state,Connecting to live stream…,,active
+live.stream.error,dashboard,LivePage,LiveSessionList,stream_error,Live stream error: {{error}},,active
+live.value.unknown_repo,dashboard,LivePage,LiveSessionList,unknown_repo,Unknown repo,,active
+live.value.unknown_time,dashboard,LivePage,LiveSessionList,unknown_time,—,,active
+live.value.unattributed_branch,dashboard,LivePage,LiveSessionList,unattributed_branch,unattributed,,active
+live.value.unknown_provider,dashboard,LivePage,LiveSessionList,unknown_provider,unknown,,active
+live.row.selected,dashboard,LivePage,LiveSessionList,row_selected,Selected,,active
+live.meta.tier,dashboard,LivePage,LiveSessionList,meta_tier,Tier,,active
+live.meta.model,dashboard,LivePage,LiveSessionList,meta_model,Model,,active
+live.meta.tokens,dashboard,LivePage,LiveSessionList,meta_tokens,Tokens,,active
+live.meta.cost,dashboard,LivePage,LiveSessionList,meta_cost,Cost,,active
+live.meta.started,dashboard,LivePage,LiveSessionList,meta_started,Started,,active
+live.meta.updated,dashboard,LivePage,LiveSessionList,meta_updated,Updated,,active
+live.meta.state,dashboard,LivePage,LiveSessionList,meta_state,State,,active
+live.repo_state.title,dashboard,LivePage,LivePage,repo_title,Repo / Entire state,,active
+live.repo_state.selected,dashboard,LivePage,LivePage,repo_selected,Selected repo: {{repo}},,active
+live.repo_state.empty,dashboard,LivePage,LivePage,repo_empty,Select a session with a repo to inspect Entire status.,,active
+live.attribution.title,dashboard,LivePage,AttributionHealthCard,title,Attribution health,,active
+live.attribution.loading,dashboard,LivePage,AttributionHealthCard,loading,Loading attribution stats…,,active
+live.attribution.error,dashboard,LivePage,AttributionHealthCard,error,Unable to load attribution stats: {{error}},,active
+live.attribution.total,dashboard,LivePage,AttributionHealthCard,total,Total sessions,,active
 nav.live,shared,*,Sidebar,nav_live,Live,,active
 nav.usage,shared,*,Sidebar,nav_usage,Usage,,active
 nav.branches,shared,*,Sidebar,nav_branches,Branches,,active

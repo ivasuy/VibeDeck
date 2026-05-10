@@ -1,12 +1,115 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "../ui/openai/components";
+import { copy } from "../lib/copy";
+import { getAttributionStats } from "../lib/vibedeck-api";
+import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
+import { LiveSessionList } from "../components/live/LiveSessionList";
+import { AttributionHealthCard } from "../components/live/AttributionHealthCard";
+
+function sessionKey(row) {
+  if (!row?.provider || !row?.session_id) return null;
+  return `${String(row.provider)}:${String(row.session_id)}`;
+}
 
 export function LivePage() {
+  const { sessions, status, error } = useVibeDeckLiveSessions();
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [attributionStats, setAttributionStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    setStatsLoading(true);
+    setStatsError(null);
+    getAttributionStats()
+      .then((payload) => {
+        if (!active) return;
+        setAttributionStats(payload || null);
+      })
+      .catch((cause) => {
+        if (!active) return;
+        const message = cause instanceof Error ? cause.message : copy("live.attribution.error");
+        setStatsError(message);
+      })
+      .finally(() => {
+        if (!active) return;
+        setStatsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      if (selectedKey !== null) setSelectedKey(null);
+      return;
+    }
+    const existing = selectedKey != null
+      ? sessions.some((row) => sessionKey(row) === selectedKey)
+      : false;
+    if (!existing) {
+      setSelectedKey(sessionKey(sessions[0]));
+    }
+  }, [sessions, selectedKey]);
+
+  const selectedSession = useMemo(
+    () => sessions.find((row) => sessionKey(row) === selectedKey) || null,
+    [sessions, selectedKey],
+  );
+
+  const streamStatusLabel = useMemo(() => {
+    if (status === "connected") return copy("live.status.connected");
+    if (status === "connecting") return copy("live.status.connecting");
+    if (status === "degraded") return copy("live.status.degraded");
+    return copy("live.status.idle");
+  }, [status]);
+
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-      <Card>
-        <h1 className="text-xl font-semibold text-oai-black dark:text-white">Live Workbench</h1>
-      </Card>
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold text-oai-black dark:text-white">{copy("live.title")}</h1>
+          <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.subtitle")}</p>
+        </div>
+        <div className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 ring-1 ring-oai-black/10 dark:bg-white/[0.08] dark:text-oai-gray-200 dark:ring-white/10">
+          {streamStatusLabel}
+        </div>
+      </header>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0">
+          <LiveSessionList
+            sessions={sessions}
+            selectedKey={selectedKey}
+            onSelectSession={setSelectedKey}
+            streamStatus={status}
+            streamError={error}
+          />
+        </section>
+        <aside className="grid content-start gap-4">
+          <AttributionHealthCard
+            stats={attributionStats}
+            loading={statsLoading}
+            error={statsError}
+          />
+          <Card>
+            <h2 className="text-sm font-semibold text-oai-black dark:text-white">
+              {copy("live.repo_state.title")}
+            </h2>
+            {selectedSession?.repo_root ? (
+              <p className="mt-2 truncate text-sm text-oai-gray-500 dark:text-oai-gray-400" title={selectedSession.repo_root}>
+                {copy("live.repo_state.selected", { repo: selectedSession.repo_root })}
+              </p>
+            ) : (
+              <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                {copy("live.repo_state.empty")}
+              </p>
+            )}
+          </Card>
+        </aside>
+      </div>
     </main>
   );
 }

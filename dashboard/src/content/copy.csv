@@ -305,6 +305,42 @@ live.override.success.saved,dashboard,LivePage,BranchOverridePanel,success_saved
 live.override.success.cleared,dashboard,LivePage,BranchOverridePanel,success_cleared,Override cleared.,,active
 live.override.error.submit,dashboard,LivePage,BranchOverridePanel,error_submit,Unable to update attribution: {{error}},,active
 live.override.error.fallback,dashboard,LivePage,BranchOverridePanel,error_fallback,Request failed,,active
+branches.title,dashboard,BranchesPage,BranchesPage,title,Branch cost intelligence,,active
+branches.subtitle,dashboard,BranchesPage,BranchesPage,subtitle,Review branch-level tokens and cost with attribution confidence and session detail.,,active
+branches.loading,dashboard,BranchesPage,BranchesPage,loading,Loading branch usage…,,active
+branches.error,dashboard,BranchesPage,BranchesPage,error,Unable to load branch usage: {{error}},,active
+branches.error.fallback,dashboard,BranchesPage,BranchesPage,error_fallback,Request failed,,active
+branches.filter.repo.label,dashboard,BranchesPage,BranchesPage,filter_repo_label,Repo filter,,active
+branches.filter.repo.placeholder,dashboard,BranchesPage,BranchesPage,filter_repo_placeholder,Filter by repo path,,active
+branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Branch filter,,active
+branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by branch name,,active
+branches.filter.summary,dashboard,BranchesPage,BranchesPage,filter_summary,Showing {{count}} of {{total}} branches,,active
+branches.total.tokens,dashboard,BranchesPage,BranchesPage,total_tokens,Tokens,,active
+branches.total.cost,dashboard,BranchesPage,BranchesPage,total_cost,Cost,,active
+branches.total.sessions,dashboard,BranchesPage,BranchesPage,total_sessions,Sessions,,active
+branches.empty,dashboard,BranchesPage,BranchUsageTable,empty,No branch rows match current filters.,,active
+branches.value.unknown_time,dashboard,BranchesPage,BranchUsageTable,unknown_time,—,,active
+branches.table.repo,dashboard,BranchesPage,BranchUsageTable,table_repo,Repo,,active
+branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Branch,,active
+branches.table.tokens,dashboard,BranchesPage,BranchUsageTable,table_tokens,Tokens,,active
+branches.table.cost,dashboard,BranchesPage,BranchUsageTable,table_cost,Cost,,active
+branches.table.sessions,dashboard,BranchesPage,BranchUsageTable,table_sessions,Sessions,,active
+branches.table.last_seen,dashboard,BranchesPage,BranchUsageTable,table_last_seen,Last seen,,active
+branches.table.confidence_mix,dashboard,BranchesPage,BranchUsageTable,table_confidence_mix,Confidence mix,,active
+branches.table.view_sessions,dashboard,BranchesPage,BranchUsageTable,table_view_sessions,View sessions,,active
+branches.confidence.note,dashboard,BranchesPage,BranchUsageTable,confidence_note,Medium/low/unattributed indicate uncertain branch attribution; review session details before acting.,,active
+branches.drawer.title,dashboard,BranchesPage,BranchSessionDrawer,drawer_title,Session details,,active
+branches.drawer.close,dashboard,BranchesPage,BranchSessionDrawer,drawer_close,Close sessions panel,,active
+branches.drawer.empty,dashboard,BranchesPage,BranchSessionDrawer,drawer_empty,No sessions available for this branch.,,active
+branches.drawer.provider,dashboard,BranchesPage,BranchSessionDrawer,drawer_provider,Provider,,active
+branches.drawer.session_id,dashboard,BranchesPage,BranchSessionDrawer,drawer_session_id,Session ID,,active
+branches.drawer.start,dashboard,BranchesPage,BranchSessionDrawer,drawer_start,Start,,active
+branches.drawer.end,dashboard,BranchesPage,BranchSessionDrawer,drawer_end,End,,active
+branches.drawer.model,dashboard,BranchesPage,BranchSessionDrawer,drawer_model,Model,,active
+branches.drawer.tokens,dashboard,BranchesPage,BranchSessionDrawer,drawer_tokens,Tokens,,active
+branches.drawer.cost,dashboard,BranchesPage,BranchSessionDrawer,drawer_cost,Cost,,active
+branches.drawer.confidence,dashboard,BranchesPage,BranchSessionDrawer,drawer_confidence,Confidence,,active
+branches.drawer.tier,dashboard,BranchesPage,BranchSessionDrawer,drawer_tier,Tier,,active
 nav.live,shared,*,Sidebar,nav_live,Live,,active
 nav.usage,shared,*,Sidebar,nav_usage,Usage,,active
 nav.branches,shared,*,Sidebar,nav_branches,Branches,,active

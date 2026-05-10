@@ -338,11 +338,13 @@ branches.total.sessions,dashboard,BranchesPage,BranchesPage,total_sessions,Sessi
 branches.empty,dashboard,BranchesPage,BranchUsageTable,empty,No branch rows match current filters.,,active
 branches.empty.no_repo_rows,dashboard,BranchesPage,BranchUsageTable,empty_no_repo_rows,No branch usage rows found for this range.,,active
 branches.confidence.mix,dashboard,BranchesPage,BranchUsageTable,confidence_mix,{{high_label}} {{high}} · {{medium_label}} {{medium}} · {{low_label}} {{low}} · {{unattributed_label}} {{unattributed}},,active
+branches.value.unknown_cost,dashboard,BranchesPage,BranchUsageTable,unknown_cost,Unknown,,active
 branches.value.unknown_time,dashboard,BranchesPage,BranchUsageTable,unknown_time,—,,active
 branches.table.repo,dashboard,BranchesPage,BranchUsageTable,table_repo,Repo,,active
 branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Branch,,active
 branches.table.tokens,dashboard,BranchesPage,BranchUsageTable,table_tokens,Tokens,,active
 branches.table.cost,dashboard,BranchesPage,BranchUsageTable,table_cost,Cost,,active
+branches.table.top_model,dashboard,BranchesPage,BranchUsageTable,table_top_model,Top model,,active
 branches.table.sessions,dashboard,BranchesPage,BranchUsageTable,table_sessions,Sessions,,active
 branches.table.last_seen,dashboard,BranchesPage,BranchUsageTable,table_last_seen,Last seen,,active
 branches.table.confidence_mix,dashboard,BranchesPage,BranchUsageTable,table_confidence_mix,Confidence mix,,active
@@ -355,6 +357,7 @@ branches.drawer.provider,dashboard,BranchesPage,BranchSessionDrawer,drawer_provi
 branches.drawer.session_id,dashboard,BranchesPage,BranchSessionDrawer,drawer_session_id,Session ID,,active
 branches.drawer.start,dashboard,BranchesPage,BranchSessionDrawer,drawer_start,Start,,active
 branches.drawer.end,dashboard,BranchesPage,BranchSessionDrawer,drawer_end,End,,active
+branches.drawer.model_summary,dashboard,BranchesPage,BranchSessionDrawer,drawer_model_summary,Model summary,,active
 branches.drawer.model,dashboard,BranchesPage,BranchSessionDrawer,drawer_model,Model,,active
 branches.drawer.tokens,dashboard,BranchesPage,BranchSessionDrawer,drawer_tokens,Tokens,,active
 branches.drawer.cost,dashboard,BranchesPage,BranchSessionDrawer,drawer_cost,Cost,,active

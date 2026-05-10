@@ -15,7 +15,7 @@ vi.mock("../lib/vibedeck-api", () => ({
 const SAMPLE_PAYLOAD = {
   totals: {
     total_tokens: 14500,
-    total_cost_usd: 19.55,
+    total_cost_usd: 12.34,
     session_count: 5,
   },
   repos: [
@@ -29,6 +29,20 @@ const SAMPLE_PAYLOAD = {
           session_count: 3,
           last_seen_at: "2026-05-10T10:10:00.000Z",
           confidence: { high: 2, medium: 1, low: 0, unattributed: 0 },
+          models: [
+            {
+              model: "gpt-5.2",
+              total_tokens: 9000,
+              total_cost_usd: 9.1,
+              session_count: 1,
+            },
+            {
+              model: "claude-opus-4.1",
+              total_tokens: 3000,
+              total_cost_usd: 3.24,
+              session_count: 1,
+            },
+          ],
           sessions: [
             {
               provider: "codex",
@@ -45,10 +59,10 @@ const SAMPLE_PAYLOAD = {
               provider: "claude",
               session_id: "s-002",
               started_at: "2026-05-10T09:00:00.000Z",
-              ended_at: null,
+              ended_at: "2026-05-10T09:25:00.000Z",
               model: "claude-opus-4.1",
               total_tokens: 3000,
-              total_cost_usd: 3.24,
+              total_cost_usd: null,
               confidence: "medium",
               branch_resolution_tier: "B",
             },
@@ -62,10 +76,18 @@ const SAMPLE_PAYLOAD = {
         {
           branch: "main",
           total_tokens: 2500,
-          total_cost_usd: 7.21,
+          total_cost_usd: null,
           session_count: 2,
           last_seen_at: "2026-05-09T08:00:00.000Z",
           confidence: { high: 0, medium: 0, low: 1, unattributed: 1 },
+          models: [
+            {
+              model: "gpt-5.1",
+              total_tokens: 1200,
+              total_cost_usd: null,
+              session_count: 1,
+            },
+          ],
           sessions: [
             {
               provider: "codex",
@@ -74,7 +96,7 @@ const SAMPLE_PAYLOAD = {
               ended_at: "2026-05-09T08:00:00.000Z",
               model: "gpt-5.1",
               total_tokens: 1200,
-              total_cost_usd: 3.2,
+              total_cost_usd: null,
               confidence: "low",
               branch_resolution_tier: "C",
             },
@@ -104,17 +126,20 @@ describe("BranchesPage", () => {
     expect(await screen.findByText("/Users/dev/repo-beta")).toBeTruthy();
     expect(screen.getByText("feature/live")).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();
-    expect(screen.getByText("$19.55")).toBeTruthy();
     expect(screen.getByText("14,500")).toBeTruthy();
     expect(screen.getByText("high 2 · medium 1 · low 0 · unattributed 0")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Top model" })).toBeTruthy();
+    expect(screen.getByText("gpt-5.2 +1")).toBeTruthy();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
     expect(await screen.findByText("Session details")).toBeTruthy();
     expect(screen.getByText("s-001")).toBeTruthy();
     expect(screen.getByText("s-002")).toBeTruthy();
-    expect(screen.getByText("gpt-5.2")).toBeTruthy();
+    expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
     expect(screen.getByText("A")).toBeTruthy();
+    expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
   it("applies repo and branch filters locally", async () => {

@@ -82,18 +82,24 @@ function resetPricingForTests() {
   state.negativeCache.clear();
 }
 
-function getModelPricing(model) {
-  if (!model) return ZERO_PRICING;
-  if (state.negativeCache.has(model)) return ZERO_PRICING;
+function lookupModelPricing(model) {
+  if (!model) return { hit: false, source: "empty", value: ZERO_PRICING };
+  if (state.negativeCache.has(model)) {
+    return { hit: false, source: "negative-cache", value: ZERO_PRICING };
+  }
 
   const result = lookupPricing(model, {
     curated: curatedOverrides,
     litellm: state.litellmPerMillionMap,
   });
-  if (result.hit) return result.value;
+  if (result.hit) return result;
 
   state.negativeCache.add(model);
-  return ZERO_PRICING;
+  return { hit: false, source: result.source, value: ZERO_PRICING };
+}
+
+function getModelPricing(model) {
+  return lookupModelPricing(model).value;
 }
 
 // Same formula and Codex/every-code reasoning-folding rule as the previous
@@ -125,6 +131,7 @@ const MODEL_PRICING = curatedOverrides.exact;
 
 module.exports = {
   ensurePricingLoaded,
+  lookupModelPricing,
   getModelPricing,
   computeRowCost,
   resetPricingForTests,

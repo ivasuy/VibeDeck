@@ -77,23 +77,37 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
         branch: 'main',
         branch_resolution_tier: 'A',
         confidence: 'high',
-        model: 'gpt-5.2',
-        total_tokens: 100,
-        total_cost_usd: 0.25,
+        model: 'claude-sonnet-4-6',
+        total_tokens: 100000,
+        total_cost_usd: null,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 's2',
+        started_at: '2026-05-10T01:00:00.000Z',
+        ended_at: '2026-05-10T01:15:00.000Z',
+        cwd: '/repo',
+        repo_root: '/repo',
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-4o-mini',
+        total_tokens: 25000,
+        total_cost_usd: null,
       });
       insertSession(db, {
         provider: 'claude',
-        session_id: 's2',
-        started_at: '2026-05-10T01:00:00.000Z',
+        session_id: 's3',
+        started_at: '2026-05-10T02:00:00.000Z',
         ended_at: null,
         cwd: '/repo',
         repo_root: '/repo',
         branch: 'feature/live',
         branch_resolution_tier: 'B',
         confidence: 'medium',
-        model: 'opus',
+        model: 'unknown-model',
         total_tokens: 40,
-        total_cost_usd: 0.1,
+        total_cost_usd: null,
       });
     } finally {
       db.close();
@@ -114,13 +128,34 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     assert.equal(handled, true);
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.body.toString('utf8'));
-    assert.equal(body.totals.total_tokens, 140);
+    assert.equal(body.totals.total_tokens, 125040);
     assert.equal(body.repos.length, 1);
     assert.equal(body.repos[0].repo_root, '/repo');
     assert.equal(body.repos[0].branches.length, 2);
-    assert.equal(body.repos[0].branches[0].sessions.length, 1);
+    const mainBranch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    const featureBranch = body.repos[0].branches.find((entry) => entry.branch === 'feature/live');
+    assert.ok(mainBranch);
+    assert.ok(featureBranch);
+    assert.equal(mainBranch.sessions.length, 2);
+    assert.ok(mainBranch.total_cost_usd > 0);
     assert.deepEqual(
-      Object.keys(body.repos[0].branches[0].confidence).sort(),
+      mainBranch.models.map((model) => model.model),
+      ['claude-sonnet-4-6', 'gpt-4o-mini'],
+    );
+    assert.equal(mainBranch.models[0].total_tokens, 100000);
+    assert.ok(mainBranch.models[0].total_cost_usd > 0);
+    assert.equal(mainBranch.models[0].session_count, 1);
+    assert.equal(featureBranch.total_cost_usd, null);
+    assert.deepEqual(featureBranch.models, [
+      {
+        model: 'unknown-model',
+        total_tokens: 40,
+        total_cost_usd: null,
+        session_count: 1,
+      },
+    ]);
+    assert.deepEqual(
+      Object.keys(mainBranch.confidence).sort(),
       ['high', 'low', 'medium', 'unattributed'],
     );
   } finally {
@@ -211,4 +246,3 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
     await fs.rm(root, { recursive: true, force: true });
   }
 });
-

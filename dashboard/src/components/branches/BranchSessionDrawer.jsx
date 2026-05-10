@@ -17,9 +17,17 @@ function formatTimestamp(value) {
   });
 }
 
+function formatCostLabel(value) {
+  if (value == null || value === "") return copy("branches.value.unknown_cost");
+  const n = Number(value);
+  if (!Number.isFinite(n)) return copy("branches.value.unknown_cost");
+  return formatUsdCurrency(String(n));
+}
+
 export function BranchSessionDrawer({ row = null, onClose }) {
   if (!row) return null;
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
+  const models = Array.isArray(row?.models) ? row.models : [];
 
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
@@ -43,6 +51,29 @@ export function BranchSessionDrawer({ row = null, onClose }) {
         </div>
 
         <div className="h-[calc(100%-57px)] overflow-auto p-4">
+          {models.length > 0 ? (
+            <div className="mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] p-3 dark:border-oai-gray-800 dark:bg-white/[0.03]">
+              <div className="mb-2 text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
+                {copy("branches.drawer.model_summary")}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {models.map((modelEntry) => (
+                  <div
+                    key={String(modelEntry?.model || "unknown")}
+                    className="min-w-0 rounded-md border border-oai-gray-200 bg-white px-2.5 py-2 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+                  >
+                    <div className="max-w-[220px] truncate text-xs font-medium text-oai-black dark:text-white">
+                      {String(modelEntry?.model || "—")}
+                    </div>
+                    <div className="mt-1 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                      {toDisplayNumber(modelEntry?.total_tokens ?? 0)} · {formatCostLabel(modelEntry?.total_cost_usd)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {sessions.length === 0 ? (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.drawer.empty")}</p>
           ) : (
@@ -74,7 +105,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">{String(session?.model || "—")}</td>
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">{toDisplayNumber(session?.total_tokens ?? 0)}</td>
                       <td className="px-3 py-2 text-oai-gray-700 dark:text-oai-gray-200">
-                        {formatUsdCurrency(String(session?.total_cost_usd ?? 0))}
+                        {formatCostLabel(session?.total_cost_usd)}
                       </td>
                       <td className="px-3 py-2">
                         <ConfidenceBadge confidence={session?.confidence} className="h-5 px-1.5 text-[10px]" />

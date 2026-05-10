@@ -44,10 +44,28 @@ function confidenceMixText(confidence) {
   });
 }
 
+function formatCostLabel(value) {
+  if (value == null || value === "") return copy("branches.value.unknown_cost");
+  const n = Number(value);
+  if (!Number.isFinite(n)) return copy("branches.value.unknown_cost");
+  return formatUsdCurrency(String(n));
+}
+
+function modelSummary(models) {
+  const list = Array.isArray(models) ? models : [];
+  if (list.length === 0) return null;
+  const topModel = String(list[0]?.model || "—");
+  const extraModels = Math.max(0, list.length - 1);
+  return {
+    label: extraModels > 0 ? `${topModel} +${extraModels}` : topModel,
+    detail: `${toDisplayNumber(list[0]?.total_tokens ?? 0)} tokens`,
+  };
+}
+
 function ConfidenceMix({ confidence }) {
   const mix = confidenceMix(confidence);
   return (
-    <div className="min-w-[240px] space-y-1">
+    <div className="min-w-[220px] space-y-1">
       <div className="text-xs text-oai-gray-600 dark:text-oai-gray-300">{confidenceMixText(confidence)}</div>
       <div className="flex flex-wrap gap-1.5 text-[11px]">
         <span className="inline-flex items-center gap-1">
@@ -82,6 +100,7 @@ export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" 
               <th className="px-4 py-3 font-semibold">{copy("branches.table.branch")}</th>
               <th className="px-4 py-3 font-semibold">{copy("branches.table.tokens")}</th>
               <th className="px-4 py-3 font-semibold">{copy("branches.table.cost")}</th>
+              <th className="px-4 py-3 font-semibold">{copy("branches.table.top_model")}</th>
               <th className="px-4 py-3 font-semibold">{copy("branches.table.sessions")}</th>
               <th className="px-4 py-3 font-semibold">{copy("branches.table.last_seen")}</th>
               <th className="px-4 py-3 font-semibold">{copy("branches.table.confidence_mix")}</th>
@@ -90,7 +109,7 @@ export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" 
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                <td colSpan={8} className="px-4 py-12 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
                   {emptyMessage || copy("branches.empty")}
                 </td>
               </tr>
@@ -98,6 +117,7 @@ export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" 
               rows.map((row) => {
                 const sessionCount = toCount(row?.session_count);
                 const sessionLabel = copy("branches.table.view_sessions");
+                const topModel = modelSummary(row?.models);
                 return (
                   <tr
                     key={`${String(row?.repo_root || "")}:${String(row?.branch || "")}`}
@@ -111,7 +131,17 @@ export function BranchUsageTable({ rows = [], onOpenSessions, emptyMessage = "" 
                       {toDisplayNumber(row?.total_tokens ?? 0)}
                     </td>
                     <td className="px-4 py-3 align-top text-oai-gray-700 dark:text-oai-gray-200">
-                      {formatUsdCurrency(String(row?.total_cost_usd ?? 0))}
+                      {formatCostLabel(row?.total_cost_usd)}
+                    </td>
+                    <td className="px-4 py-3 align-top text-oai-gray-700 dark:text-oai-gray-200">
+                      {topModel ? (
+                        <div className="max-w-[220px] min-w-0">
+                          <div className="truncate text-sm text-oai-black dark:text-white">{topModel.label}</div>
+                          <div className="truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">{topModel.detail}</div>
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td className="px-4 py-3 align-top text-oai-gray-700 dark:text-oai-gray-200">
                       <div className="flex items-center gap-2">

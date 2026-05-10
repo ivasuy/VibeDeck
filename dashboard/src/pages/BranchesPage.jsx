@@ -11,6 +11,12 @@ function toCount(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function toKnownCost(value) {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function flattenRows(repos) {
   if (!Array.isArray(repos)) return [];
   return repos.flatMap((repoEntry) => {
@@ -72,15 +78,19 @@ export function BranchesPage() {
 
   const totals = useMemo(() => {
     if (!filteredRows.length) {
-      return { tokens: 0, cost: 0, sessions: 0 };
+      return { tokens: 0, cost: 0, sessions: 0, costUnknown: false };
     }
     return filteredRows.reduce(
-      (acc, row) => ({
-        tokens: acc.tokens + toCount(row?.total_tokens),
-        cost: acc.cost + toCount(row?.total_cost_usd),
-        sessions: acc.sessions + toCount(row?.session_count),
-      }),
-      { tokens: 0, cost: 0, sessions: 0 },
+      (acc, row) => {
+        const knownCost = toKnownCost(row?.total_cost_usd);
+        return {
+          tokens: acc.tokens + toCount(row?.total_tokens),
+          cost: acc.cost + (knownCost ?? 0),
+          sessions: acc.sessions + toCount(row?.session_count),
+          costUnknown: acc.costUnknown || knownCost == null,
+        };
+      },
+      { tokens: 0, cost: 0, sessions: 0, costUnknown: false },
     );
   }, [filteredRows]);
 
@@ -129,7 +139,7 @@ export function BranchesPage() {
                 {copy("branches.total.cost")}
               </div>
               <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-                {formatUsdCurrency(String(totals.cost))}
+                {totals.costUnknown ? copy("branches.value.unknown_cost") : formatUsdCurrency(String(totals.cost))}
               </div>
             </div>
             <div className="rounded-md bg-oai-black/[0.03] px-3 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">

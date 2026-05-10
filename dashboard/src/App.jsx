@@ -7,6 +7,9 @@ import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
 import { getBackendBaseUrl } from "./lib/config";
 import { DashboardPage } from "./pages/DashboardPage.jsx";
+import { LivePage } from "./pages/LivePage.jsx";
+import { BranchesPage } from "./pages/BranchesPage.jsx";
+import { EntirePage } from "./pages/EntirePage.jsx";
 import { LimitsPage } from "./pages/LimitsPage.jsx";
 import { SettingsPage } from "./pages/SettingsPage.jsx";
 import { SkillsPage } from "./pages/SkillsPage.jsx";
@@ -34,13 +37,23 @@ export default function App() {
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const baseUrl = getBackendBaseUrl();
 
+  const isLivePath = normalizedPath === "/" || normalizedPath === "/dashboard";
+  const isUsagePath = normalizedPath === "/usage";
+  const isBranchesPath = normalizedPath === "/branches";
+  const isEntirePath = normalizedPath === "/entire";
   const isLimitsPath = normalizedPath === "/limits";
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
 
-  let PageComponent = DashboardPage;
-  if (isLimitsPath) {
+  let PageComponent = LivePage;
+  if (isUsagePath) {
+    PageComponent = DashboardPage;
+  } else if (isBranchesPath) {
+    PageComponent = BranchesPage;
+  } else if (isEntirePath) {
+    PageComponent = EntirePage;
+  } else if (isLimitsPath) {
     PageComponent = LimitsPage;
   } else if (isSettingsPath) {
     PageComponent = SettingsPage;
@@ -52,8 +65,10 @@ export default function App() {
 
   const showSidebar =
     !publicMode &&
-    (normalizedPath === "/dashboard" ||
-      normalizedPath === "/" ||
+    (isLivePath ||
+      isUsagePath ||
+      isBranchesPath ||
+      isEntirePath ||
       isLimitsPath ||
       isSettingsPath ||
       isSkillsPath ||

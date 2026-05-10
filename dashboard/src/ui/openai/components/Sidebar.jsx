@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+  Activity,
   BarChart3,
+  GitBranch,
+  GitGraph,
   Gauge,
   LayoutGrid,
   Puzzle,
@@ -29,25 +32,28 @@ function getNavGroups() {
   // Validator regex picks up these literal calls.
   return [
     {
-      id: "general",
+      id: "work",
       label: copy("nav.group.general"),
       items: [
-        { id: "usage", to: "/dashboard", icon: BarChart3, label: copy("nav.usage") },
-        { id: "limits", to: "/limits", icon: Gauge, label: copy("nav.limits") },
+        { id: "live", to: "/dashboard", icon: Activity, label: copy("nav.live") },
+        { id: "usage", to: "/usage", icon: BarChart3, label: copy("nav.usage") },
+        { id: "branches", to: "/branches", icon: GitBranch, label: copy("nav.branches") },
       ],
     },
     {
-      id: "tools",
+      id: "control",
       label: copy("nav.group.tools"),
       items: [
-        { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
+        { id: "entire", to: "/entire", icon: GitGraph, label: copy("nav.entire") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
       ],
     },
     {
-      id: "account",
+      id: "system",
       label: copy("nav.group.account"),
       items: [
+        { id: "limits", to: "/limits", icon: Gauge, label: copy("nav.limits") },
+        { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
         { id: "settings", to: "/settings", icon: SettingsIcon, label: copy("nav.settings") },
       ],
     },

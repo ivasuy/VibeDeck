@@ -257,7 +257,10 @@ live_sniffer.event.sync,ui,LiveSniffer,LiveSniffer,event,> SYNC: UPLOADING_TO_CO
 live_sniffer.event.batch,ui,LiveSniffer,LiveSniffer,event,[STATUS] BATCH_TRANSMISSION_COMPLETE,,active
 live_sniffer.event.hooking,ui,LiveSniffer,LiveSniffer,event,> HOOKING: AI_CLI_PIPE_LINK,,active
 live_sniffer.event.capture,ui,LiveSniffer,LiveSniffer,event,> CAPTURE: +128 NEURAL_TOKENS,,active
-nav.usage,shared,*,Sidebar,nav_usage,Tokens,,active
+nav.live,shared,*,Sidebar,nav_live,Live,,active
+nav.usage,shared,*,Sidebar,nav_usage,Usage,,active
+nav.branches,shared,*,Sidebar,nav_branches,Branches,,active
+nav.entire,shared,*,Sidebar,nav_entire,Entire,,active
 nav.limits,shared,*,Sidebar,nav_limits,Limits,,active
 nav.widgets,shared,*,Sidebar,nav_widgets,macOS Widgets,,active
 nav.collapse,shared,*,Sidebar,nav_collapse,Collapse sidebar,,active

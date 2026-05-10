@@ -178,6 +178,7 @@ Required backend surface:
 - Response shape:
   - `{ repos: [{ repo_root, branches: [...] }], totals: {...} }`
   - Each branch row includes `branch`, `total_tokens`, `total_cost_usd`, `session_count`, `last_seen_at`, and confidence counts: `high`, `medium`, `low`, `unattributed`.
+  - Each branch row also includes enough session drill-down data for the Branches page: either `sessions: [...]` when `include_sessions=1` is passed, or a documented secondary mode on the same endpoint. Session rows must include `provider`, `session_id`, `started_at`, `ended_at`, `model`, `total_tokens`, `total_cost_usd`, `confidence`, and `branch_resolution_tier`.
 - Source tables: `vibedeck_sessions`, `vibedeck_session_branch_windows` where available.
 - Read-only only. No mutation, no auth required.
 
@@ -211,6 +212,7 @@ Repo selection:
   - manual absolute path input,
   - validation and clear error states for missing/non-repo paths.
 - A richer repo picker is a backend/API gap, not a Plan 5 assumption.
+- Browser filesystem APIs cannot reliably provide absolute local repo paths. Plan 5 uses typed/pasted absolute paths plus recent session/branch repo suggestions; native folder picking belongs in the later macOS Phase 6.
 
 Entire state labels:
 
@@ -263,6 +265,16 @@ Current page already has browse/install/target-toggle behavior. Plan 5 should:
 - Plan 5 must mirror any currently legacy-only Skills discovery/search/repo-management behavior under `vibedeck-skills`.
 - The dashboard should not call `tokentracker-skills` after this plan.
 
+Required backend mirror:
+
+- `GET /functions/vibedeck-skills?mode=installed` should return the current installed shape.
+- `GET /functions/vibedeck-skills?mode=repos` should call `skills.listRepos()`.
+- `GET /functions/vibedeck-skills?mode=discover&force=1` should call `skills.discoverSkills({ force })`.
+- `GET /functions/vibedeck-skills?mode=search&q=<query>&limit=<n>&offset=<n>` should call `skills.searchSkillsSh(...)`.
+- `POST /functions/vibedeck-skills/addRepo` should call `skills.addRepo(body.repo)`.
+- `POST /functions/vibedeck-skills/removeRepo` should call `skills.removeRepo(body.owner, body.name)`.
+- Existing mutation auth requirements still apply to POST routes.
+
 ### Limits / Widgets / Settings
 
 Keep these pages functionally stable. Apply only:
@@ -298,6 +310,26 @@ Keep these pages functionally stable. Apply only:
 | `GET /functions/vibedeck-skills` | Skills installed/discover/search/repos | mirror legacy modes under VibeDeck name |
 | `POST /functions/vibedeck-skills/*` | Skills mutations and repo management | update existing page |
 | `GET/POST /functions/tokentracker-skills` | Legacy Skills endpoint | dashboard stops calling this endpoint |
+
+## Backend Gap Review Before Implementation
+
+The current backend already supports:
+
+- Live session SSE (`vibedeck-sessions-live`)
+- Attribution stats (`vibedeck-attribution-stats`)
+- Session branch override (`vibedeck-attribute`)
+- Entire status/checkpoints/checkpoint detail
+- Entire enable/disable/agent add/remove/status/doctor/configure
+- Entire rewind/clean with destructive confirmation
+- Installed skill list and core skill mutations under `vibedeck-skills`
+
+Plan 5 must add or extend only these narrow backend surfaces before dashboard work depends on them:
+
+- `GET /functions/vibedeck-branch-usage`, including session drill-down rows for branch detail.
+- `GET /functions/vibedeck-skills?mode=repos|discover|search`.
+- `POST /functions/vibedeck-skills/addRepo` and `POST /functions/vibedeck-skills/removeRepo`.
+
+No additional backend is required for adding Entire to a repo from the dashboard. Existing `POST /functions/vibedeck-entire/enable` accepts a repo path and agent list; the dashboard should provide manual absolute-path entry and suggestions from recent branch/session data.
 
 ## Copy And Labels
 
@@ -350,6 +382,7 @@ Required test categories:
 - Route tests for `/`, `/dashboard`, `/usage`, `/branches`, `/entire`, `/skills`.
 - API helper tests for every new helper.
 - Backend tests for `GET /functions/vibedeck-branch-usage`.
+- Backend tests for branch drill-down rows from `vibedeck-branch-usage`.
 - Backend tests for VibeDeck Skills discovery/search/repo-management modes.
 - SSE parser/hook tests for snapshot, update, end, reconnect, dropped events, and 503 cap handling.
 - Live Workbench tests for confidence labels and override actions.

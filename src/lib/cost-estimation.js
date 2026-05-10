@@ -18,6 +18,16 @@ function hasTokenBuckets(row) {
   ].some((key) => toFiniteNumber(row?.[key]) != null);
 }
 
+function sumTokenBuckets(row) {
+  return [
+    "input_tokens",
+    "output_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "reasoning_output_tokens",
+  ].reduce((sum, key) => sum + (toFiniteNumber(row?.[key]) || 0), 0);
+}
+
 function pickFallbackRate(pricing) {
   if (!pricing || typeof pricing !== "object") return null;
 
@@ -50,12 +60,16 @@ function estimateUsageCost(row = {}) {
   }
 
   if (hasTokenBuckets(row)) {
-    const cost = computeRowCost(row);
-    return {
-      total_cost_usd: Number.isFinite(cost) ? cost : null,
-      cost_estimated: false,
-      cost_quality: Number.isFinite(cost) ? "token_buckets" : "pricing_missing",
-    };
+    const bucketTotal = sumTokenBuckets(row);
+    const canUseBucketExact = totalTokens == null || totalTokens <= bucketTotal;
+    if (canUseBucketExact) {
+      const cost = computeRowCost(row);
+      return {
+        total_cost_usd: Number.isFinite(cost) ? cost : null,
+        cost_estimated: false,
+        cost_quality: Number.isFinite(cost) ? "token_buckets" : "pricing_missing",
+      };
+    }
   }
 
   if (totalTokens == null) {
@@ -66,8 +80,8 @@ function estimateUsageCost(row = {}) {
     };
   }
 
-  const pricing = row.__test_pricing
-    ? { hit: true, value: row.__test_pricing }
+  const pricing = process.env.NODE_ENV === "test" && row.__private_test_pricing
+    ? { hit: true, value: row.__private_test_pricing }
     : lookupModelPricing(row.model);
   if (!pricing.hit) {
     return {
@@ -133,7 +147,7 @@ function resolveUsageCost(row = {}) {
 }
 
 function createCostAccumulator() {
-  return { sum: 0, unknown: false, estimated: false };
+  return { sum: 0, unknown: false, estimated: false, qualities: new Set() };
 }
 
 function addCostToAccumulator(acc, costResult) {
@@ -147,6 +161,9 @@ function addCostToAccumulator(acc, costResult) {
 
   if (costResult.cost_estimated) {
     acc.estimated = true;
+  }
+  if (costResult.total_cost_usd != null && costResult.cost_quality) {
+    acc.qualities.add(costResult.cost_quality);
   }
 }
 
@@ -170,7 +187,14 @@ function finalizeCostAccumulator(acc) {
   return {
     total_cost_usd: acc.sum,
     cost_estimated: acc.estimated,
-    cost_quality: acc.estimated ? "estimated_total_tokens" : "stored",
+    cost_quality:
+      acc.qualities.size === 1
+        ? [...acc.qualities][0]
+        : acc.qualities.size > 1
+          ? "mixed_known"
+          : acc.estimated
+            ? "estimated_total_tokens"
+            : "mixed_known",
   };
 }
 

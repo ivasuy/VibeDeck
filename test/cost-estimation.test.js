@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
+process.env.NODE_ENV = "test";
+
 const {
   estimateUsageCost,
   resolveUsageCost,
@@ -25,6 +27,19 @@ test("estimateUsageCost uses token buckets when available", () => {
   assert.ok(result.total_cost_usd > 0);
 });
 
+test("estimateUsageCost falls back to total-token estimate when partial buckets undercount total tokens", () => {
+  const result = estimateUsageCost({
+    source: "codex",
+    model: "gpt-5.4",
+    output_tokens: 100,
+    total_tokens: 1_000,
+  });
+
+  assert.equal(result.cost_estimated, true);
+  assert.equal(result.cost_quality, "estimated_total_tokens");
+  assert.ok(result.total_cost_usd > 0);
+});
+
 test("estimateUsageCost falls back to total-token estimate when buckets are absent", () => {
   const result = estimateUsageCost({
     source: "codex",
@@ -41,7 +56,7 @@ test("estimateUsageCost falls back to output or cache pricing when input pricing
   const result = estimateUsageCost({
     model: "test-output-fallback",
     total_tokens: 2_000_000,
-    __test_pricing: {
+    __private_test_pricing: {
       input: 0,
       output: 7.5,
       cache_read: 0.25,
@@ -153,4 +168,42 @@ test("cost accumulator tracks unknown costs without converting them to zero", ()
   assert.equal(final.total_cost_usd, null);
   assert.equal(final.cost_estimated, true);
   assert.equal(final.cost_quality, "partial_unknown");
+});
+
+test("cost accumulator preserves token_buckets provenance for exact aggregates", () => {
+  const acc = createCostAccumulator();
+  addCostToAccumulator(acc, {
+    total_cost_usd: 1,
+    cost_estimated: false,
+    cost_quality: "token_buckets",
+  });
+  addCostToAccumulator(acc, {
+    total_cost_usd: 2,
+    cost_estimated: false,
+    cost_quality: "token_buckets",
+  });
+  const final = finalizeCostAccumulator(acc);
+
+  assert.equal(final.total_cost_usd, 3);
+  assert.equal(final.cost_estimated, false);
+  assert.equal(final.cost_quality, "token_buckets");
+});
+
+test("cost accumulator reports mixed_known for mixed exact qualities", () => {
+  const acc = createCostAccumulator();
+  addCostToAccumulator(acc, {
+    total_cost_usd: 1,
+    cost_estimated: false,
+    cost_quality: "stored",
+  });
+  addCostToAccumulator(acc, {
+    total_cost_usd: 0,
+    cost_estimated: false,
+    cost_quality: "free_pricing",
+  });
+  const final = finalizeCostAccumulator(acc);
+
+  assert.equal(final.total_cost_usd, 1);
+  assert.equal(final.cost_estimated, false);
+  assert.equal(final.cost_quality, "mixed_known");
 });

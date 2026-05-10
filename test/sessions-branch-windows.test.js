@@ -45,6 +45,24 @@ test('splitSessionByBranchTransitions preserves unknown cost as null', () => {
   assert.equal(windows[0].prorated_cost_usd, null);
 });
 
+test('splitSessionByBranchTransitions preserves unknown cost as null across split windows', () => {
+  const session = {
+    provider: 'codex',
+    session_id: 's1-null-split',
+    started_at: '2026-05-09T10:00:00.000Z',
+    ended_at: '2026-05-09T10:10:00.000Z',
+    total_tokens: 100,
+    total_cost_usd: null,
+    branch: 'a',
+  };
+  const transitions = [{ transitioned_at: '2026-05-09T10:04:00.000Z', ref_name: 'b' }];
+  const windows = splitSessionByBranchTransitions({ session, transitions });
+
+  assert.equal(windows.length, 2);
+  assert.equal(sum(windows, 'prorated_tokens'), 100);
+  assert.deepEqual(windows.map((w) => w.prorated_cost_usd), [null, null]);
+});
+
 test('splitSessionByBranchTransitions: one checkout splits into two windows and prorates', () => {
   const session = {
     provider: 'codex',

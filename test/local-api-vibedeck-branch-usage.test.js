@@ -9,6 +9,7 @@ const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('../src/lib/db');
+const { lookupModelPricing } = require('../src/lib/pricing');
 
 function createRequest({ method = 'GET', headers = {}, body } = {}) {
   const req = new EventEmitter();
@@ -52,6 +53,30 @@ function insertSession(db, row) {
       @model, @total_tokens, @total_cost_usd, @started_at, @started_at
     )
   `).run(row);
+}
+
+function toFiniteNumber(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickApproximateTokenRate(pricing) {
+  if (!pricing || typeof pricing !== 'object') return null;
+  const candidates = [pricing.input, pricing.output, pricing.cache_read, pricing.cache_write]
+    .map((value) => toFiniteNumber(value))
+    .filter((value) => value != null && value > 0);
+  if (candidates.length === 0) {
+    const zeroCandidate = [pricing.input, pricing.output, pricing.cache_read, pricing.cache_write]
+      .map((value) => toFiniteNumber(value))
+      .find((value) => value === 0);
+    return zeroCandidate === 0 ? 0 : null;
+  }
+  return pricing.input > 0 ? pricing.input : candidates[0];
+}
+
+function assertClose(actual, expected, epsilon = 1e-12) {
+  assert.ok(Math.abs(actual - expected) <= epsilon, `expected ${actual} to be within ${epsilon} of ${expected}`);
 }
 
 test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branch', async () => {
@@ -299,9 +324,14 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
 
     const body = JSON.parse(res.body.toString('utf8'));
     const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
-    assert.ok(branch.total_cost_usd > 0);
-    assert.ok(branch.models[0].total_cost_usd > 0);
-    assert.ok(branch.sessions[0].total_cost_usd > 0);
+    const pricingMatch = lookupModelPricing('gpt-5.4');
+    assert.equal(pricingMatch.hit, true);
+    const approximateRate = pickApproximateTokenRate(pricingMatch.value);
+    const expectedCostUsd = (60000 * approximateRate) / 1_000_000;
+
+    assertClose(branch.total_cost_usd, expectedCostUsd);
+    assertClose(branch.models[0].total_cost_usd, expectedCostUsd);
+    assertClose(branch.sessions[0].total_cost_usd, expectedCostUsd);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

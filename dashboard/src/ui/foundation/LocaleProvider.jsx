@@ -1,63 +1,24 @@
-import React, { createContext, useCallback, useLayoutEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useLayoutEffect, useMemo } from "react";
 import { setCopyLocale } from "../../lib/copy";
-import {
-  getInitialLocalePreference,
-  normalizeLocalePreference,
-  persistLocalePreference,
-  resolvePreferredLocale,
-  SYSTEM_LOCALE,
-} from "../../lib/locale";
-import { isNativeEmbed, setNativeSetting } from "../../lib/native-bridge.js";
+import { EN_LOCALE, persistLocalePreference } from "../../lib/locale";
 
 export const LocaleContext = createContext(null);
 
-function getInitialResolvedLocale() {
-  return resolvePreferredLocale(getInitialLocalePreference());
-}
-
-function applyDocumentLanguage(locale) {
-  if (typeof document === "undefined") return;
-  document.documentElement.lang = locale;
-}
-
-function syncResolvedLocale(locale, setResolvedLocale) {
-  setCopyLocale(locale);
-  setResolvedLocale((prev) => (prev === locale ? prev : locale));
-}
-
 export function LocaleProvider({ children }) {
-  const [locale, setLocaleState] = useState(getInitialLocalePreference);
-  const [resolvedLocale, setResolvedLocale] = useState(getInitialResolvedLocale);
+  setCopyLocale(EN_LOCALE);
 
   useLayoutEffect(() => {
-    applyDocumentLanguage(resolvedLocale);
-  }, [resolvedLocale]);
+    if (typeof document !== "undefined") document.documentElement.lang = EN_LOCALE;
+  }, []);
 
-  useLayoutEffect(() => {
-    if (!isNativeEmbed()) return;
-    setNativeSetting("locale", locale);
-  }, [locale]);
-
-  useLayoutEffect(() => {
-    if (locale !== SYSTEM_LOCALE || typeof window === "undefined") return undefined;
-    const handleChange = () => syncResolvedLocale(resolvePreferredLocale(SYSTEM_LOCALE), setResolvedLocale);
-    window.addEventListener("languagechange", handleChange);
-    return () => window.removeEventListener("languagechange", handleChange);
-  }, [locale]);
-
-  const setLocale = useCallback((value) => {
-    const next = normalizeLocalePreference(value);
-    syncResolvedLocale(resolvePreferredLocale(next), setResolvedLocale);
-    setLocaleState(next);
-    persistLocalePreference(next);
-    if (isNativeEmbed()) {
-      setNativeSetting("locale", next);
-    }
+  const setLocale = useCallback(() => {
+    persistLocalePreference();
+    setCopyLocale(EN_LOCALE);
   }, []);
 
   const contextValue = useMemo(
-    () => ({ locale, setLocale, resolvedLocale }),
-    [locale, resolvedLocale, setLocale],
+    () => ({ locale: EN_LOCALE, setLocale, resolvedLocale: EN_LOCALE }),
+    [setLocale],
   );
 
   return <LocaleContext.Provider value={contextValue}>{children}</LocaleContext.Provider>;

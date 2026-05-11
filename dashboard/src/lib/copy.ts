@@ -1,22 +1,12 @@
 import copyRaw from "../content/copy.csv?raw";
-import zhCore from "../content/i18n/zh/core.json";
-import zhDashboard from "../content/i18n/zh/dashboard.json";
-import zhMarketing from "../content/i18n/zh/marketing.json";
 import {
   getInitialLocalePreference,
   normalizeResolvedLocale,
   resolvePreferredLocale,
-  ZH_CN_LOCALE,
 } from "./locale";
 
 const REQUIRED_COLUMNS = ["key", "module", "page", "component", "slot", "text"];
-const LOCALE_REGISTRIES: Record<string, TranslationRegistry> = {
-  [ZH_CN_LOCALE]: {
-    ...zhCore,
-    ...zhDashboard,
-    ...zhMarketing,
-  },
-};
+const LOCALE_REGISTRIES: Record<string, TranslationRegistry> = {};
 
 type AnyRecord = Record<string, any>;
 type TranslationRegistry = Record<string, string>;

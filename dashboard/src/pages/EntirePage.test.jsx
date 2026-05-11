@@ -86,4 +86,19 @@ describe("EntirePage", () => {
     expect(await screen.findByText("checkpoints/2026-05-10.json")).toBeTruthy();
     expect(screen.getByText("checkpoints/2026-05-09.json")).toBeTruthy();
   });
+
+  it("adds a manually loaded repo to recent repos immediately", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [] });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({ available: true, files: [] });
+
+    render(<EntirePage />);
+
+    const input = await screen.findByPlaceholderText("/Users/you/project");
+    fireEvent.change(input, { target: { value: "/Users/dev/manual-repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
+
+    expect(await screen.findByText("/Users/dev/manual-repo")).toBeTruthy();
+  });
 });

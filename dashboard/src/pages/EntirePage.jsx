@@ -57,6 +57,11 @@ export function EntirePage() {
     setRepoInput(repo);
     setRepoError("");
     setSelectedRepo(repo);
+    setRepoSuggestions((prev) => {
+      const existing = Array.isArray(prev) ? prev : [];
+      if (existing.includes(repo)) return existing;
+      return [repo, ...existing].slice(0, 20);
+    });
 
     setStatusLoading(true);
     setStatusError("");

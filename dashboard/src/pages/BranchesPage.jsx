@@ -81,6 +81,10 @@ function buildRepoOptionLabels(repos) {
   return labels;
 }
 
+function attributionBranchName(value) {
+  return String(value || "").replace(/~\d+$/, "");
+}
+
 function formatSummaryCostLabel(totals) {
   if (totals.costUnknown) return copy("branches.value.unknown_cost");
   return formatUsdCurrency(String(totals.cost));
@@ -107,6 +111,7 @@ export function BranchesPage() {
   const [error, setError] = useState("");
   const [payload, setPayload] = useState(null);
   const [selectedRepo, setSelectedRepo] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const [selectedRow, setSelectedRow] = useState(null);
   const [branchPage, setBranchPage] = useState(0);
@@ -152,19 +157,49 @@ export function BranchesPage() {
     [selectedRepoEntry],
   );
 
+  const gitBranches = useMemo(() => {
+    return Array.isArray(selectedRepoEntry?.git_branches)
+      ? selectedRepoEntry.git_branches.map((branchName) => String(branchName || "").trim()).filter(Boolean)
+      : [];
+  }, [selectedRepoEntry]);
+
+  const attributionBranchCounts = useMemo(() => {
+    const counts = new Map();
+    for (const row of rows) {
+      const branchName = String(row?.attribution_branch || attributionBranchName(row?.branch));
+      if (!branchName) continue;
+      counts.set(branchName, (counts.get(branchName) || 0) + 1);
+    }
+    return counts;
+  }, [rows]);
+
+  const effectiveSelectedBranch = useMemo(() => {
+    if (gitBranches.length === 0) return "";
+    if (gitBranches.includes(selectedBranch)) return selectedBranch;
+    return gitBranches.find((branchName) => attributionBranchCounts.has(branchName)) || gitBranches[0];
+  }, [attributionBranchCounts, gitBranches, selectedBranch]);
+
   const filteredRows = useMemo(() => {
     const branchNeedle = branchFilter.trim().toLowerCase();
     return rows.filter((row) => {
+      const attributionBranch = String(row?.attribution_branch || attributionBranchName(row?.branch));
+      const selectedBranchMatches = effectiveSelectedBranch
+        ? attributionBranch === effectiveSelectedBranch
+        : true;
       const branchMatches = branchNeedle
         ? String(row?.branch || "").toLowerCase().includes(branchNeedle)
         : true;
-      return branchMatches;
+      return selectedBranchMatches && branchMatches;
     });
-  }, [rows, branchFilter]);
+  }, [rows, branchFilter, effectiveSelectedBranch]);
 
   useEffect(() => {
     setBranchPage(0);
-  }, [effectiveSelectedRepo, branchFilter]);
+  }, [effectiveSelectedRepo, effectiveSelectedBranch, branchFilter]);
+
+  useEffect(() => {
+    setSelectedBranch("");
+  }, [effectiveSelectedRepo]);
 
   useEffect(() => {
     if (!selectedRow) return;
@@ -213,7 +248,7 @@ export function BranchesPage() {
     <PageFrame maxWidth="max-w-[1760px]" hideHeader>
       <div className="grid min-h-0 gap-2 overflow-hidden">
         <Card bodyClassName="p-5">
-          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <div className="w-full">
               <label
                 htmlFor="branches-project-select"
@@ -238,6 +273,34 @@ export function BranchesPage() {
                       </option>
                     );
                   })}
+                </select>
+                <ChevronDown
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-oai-gray-400 dark:text-oai-gray-500"
+                  aria-hidden
+                />
+              </div>
+            </div>
+            <div className="w-full">
+              <label
+                htmlFor="branches-branch-select"
+                className="mb-1.5 block text-sm font-medium text-oai-gray-700 transition-colors duration-200 dark:text-oai-gray-300"
+              >
+                {copy("branches.branch.select_label")}
+              </label>
+              <div className="relative">
+                <select
+                  id="branches-branch-select"
+                  value={effectiveSelectedBranch}
+                  onChange={(event) => setSelectedBranch(event.target.value)}
+                  disabled={gitBranches.length === 0}
+                  className="h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  aria-label={copy("branches.branch.select_label")}
+                >
+                  {gitBranches.map((branchName) => (
+                    <option key={branchName} value={branchName}>
+                      {branchName}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown
                   className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-oai-gray-400 dark:text-oai-gray-500"

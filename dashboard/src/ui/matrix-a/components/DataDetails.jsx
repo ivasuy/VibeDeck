@@ -43,9 +43,10 @@ function projectInitial(entry) {
   return (name[0] || "?").toUpperCase();
 }
 
-function resolveWorktreeCount(entry) {
-  const explicit = toKnownNumber(entry?.worktree_count ?? entry?.branch_count);
+function resolveBranchCount(entry) {
+  const explicit = toKnownNumber(entry?.git_branch_count ?? entry?.worktree_count ?? entry?.branch_count);
   if (explicit != null) return Math.max(0, Math.round(explicit));
+  if (Array.isArray(entry?.git_branches)) return entry.git_branches.length;
   return Array.isArray(entry?.branches) ? entry.branches.length : null;
 }
 
@@ -114,7 +115,7 @@ function ProjectUsageCard({ entry, copy }) {
             <ProjectStat
               icon={GitBranch}
               label={copy("dashboard.projects.worktrees_label")}
-              value={resolveWorktreeCount(entry) ?? "—"}
+              value={resolveBranchCount(entry) ?? "—"}
             />
             <ProjectStat
               icon={Cpu}

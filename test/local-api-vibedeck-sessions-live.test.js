@@ -229,6 +229,77 @@ test('vibedeck-sessions-live snapshot estimates positive-token known-model rows'
   }
 });
 
+test('vibedeck-sessions-live snapshot includes live workstreams with recent ended session breakdown', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-workstreams-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  const repoRoot = path.join(root, 'repo');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.mkdir(repoRoot, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+
+  ensureSchema(dbPath);
+  const now = new Date();
+  const startedMain = new Date(now.getTime() - 20 * 60 * 1000).toISOString();
+  const startedRelated = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
+  const endedRelated = new Date(now.getTime() - 2 * 60 * 1000).toISOString();
+  const updatedMain = new Date(now.getTime() - 30 * 1000).toISOString();
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    `INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd,
+      created_at, updated_at
+    ) VALUES
+    (
+      'codex', 'main-live', '${startedMain}', NULL, NULL,
+      '${repoRoot}', '${repoRoot}', NULL, NULL,
+      'publish-main', 'A', 'high', NULL,
+      'gpt-5.5', 1000, 0.50,
+      '${startedMain}', '${updatedMain}'
+    ),
+    (
+      'codex', 'related-ended', '${startedRelated}', '${endedRelated}', 'complete',
+      '${repoRoot}', '${repoRoot}', NULL, NULL,
+      'dashboard', 'B', 'medium', NULL,
+      'gpt-5.3-codex-spark', 500, 0.20,
+      '${startedRelated}', '${endedRelated}'
+    );`,
+  );
+  db.close();
+
+  try {
+    const exchange = createMockSseExchange();
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+
+    await flushAsyncEvents();
+    const snapshot = exchange.readEvents().find((event) => event.type === 'snapshot');
+    assert.ok(snapshot);
+    assert.equal(snapshot.sessions.length, 2);
+    assert.ok(Array.isArray(snapshot.workstreams));
+    assert.equal(snapshot.workstreams.length, 1);
+
+    const workstream = snapshot.workstreams[0];
+    assert.equal(workstream.repo_root, repoRoot);
+    assert.deepEqual(workstream.branches.sort(), ['dashboard', 'publish-main']);
+    assert.equal(workstream.active_session_count, 1);
+    assert.equal(workstream.recently_completed_count, 1);
+    assert.equal(workstream.total_tokens, 1500);
+    assert.equal(workstream.total_cost_usd, 0.70);
+    assert.equal(workstream.primary_session.session_id, 'main-live');
+    assert.equal(workstream.branch_groups.length, 2);
+    assert.equal(workstream.branch_groups.find((group) => group.branch === 'dashboard').sessions[0].session_id, 'related-ended');
+    exchange.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('vibedeck-sessions-live keeps recent log_complete sessions active and streams updates', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-current-log-'));
   const trackerDir = path.join(root, '.vibedeck', 'tracker');

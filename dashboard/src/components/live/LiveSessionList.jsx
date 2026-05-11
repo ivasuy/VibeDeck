@@ -7,10 +7,10 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "./ConfidenceBadge";
+import { buildLiveWorkstreams, isActiveLiveSession, liveSessionKey } from "../../lib/live-workstreams";
 
 function getSessionKey(row) {
-  if (!row?.provider || !row?.session_id) return null;
-  return `${String(row.provider)}:${String(row.session_id)}`;
+  return liveSessionKey(row);
 }
 
 function repoBasename(value) {
@@ -41,9 +41,7 @@ function getBranch(row) {
 }
 
 function isActiveRow(row) {
-  if (!row) return false;
-  if (row.ended_at) return false;
-  return String(row.state || "").trim().toLowerCase() !== "ended";
+  return isActiveLiveSession(row);
 }
 
 function streamNote(status) {
@@ -76,6 +74,18 @@ function formatLiveSessionCost(row) {
   return formatted;
 }
 
+function formatWorkstreamCost(workstream) {
+  if (Number(workstream?.cost_unknown_count || 0) > 0) return "—";
+  const n = Number(workstream?.total_cost_usd);
+  if (!Number.isFinite(n)) return "—";
+  const formatted = formatUsdCurrency(n.toFixed(2));
+  return formatted === "-" ? "—" : formatted;
+}
+
+function formatStatus(row) {
+  return isActiveRow(row) ? "active" : "stale";
+}
+
 function MetaItem({ label, value, icon: Icon }) {
   return (
     <div className="min-w-0">
@@ -85,6 +95,43 @@ function MetaItem({ label, value, icon: Icon }) {
       </div>
       <div className="mt-1 truncate text-sm font-semibold text-oai-gray-700 dark:text-oai-gray-200">{value}</div>
     </div>
+  );
+}
+
+function SessionDetailRow({ row, selected, label, onSelectSession }) {
+  const key = getSessionKey(row);
+  return (
+    <button
+      type="button"
+      onClick={() => key && onSelectSession?.(key)}
+      className={cn(
+        "grid w-full gap-2 rounded-md border px-3 py-2 text-left transition-colors sm:grid-cols-[minmax(110px,0.7fr)_minmax(0,1fr)_auto_auto]",
+        selected
+          ? "border-oai-brand/50 bg-oai-brand/5 dark:border-oai-brand/40 dark:bg-oai-brand/10"
+          : "border-oai-gray-200/70 bg-oai-black/[0.02] hover:bg-oai-gray-50 dark:border-oai-gray-800/70 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ProviderIcon provider={row?.provider} size={16} className="shrink-0" />
+        <span className="truncate text-xs font-semibold text-oai-black dark:text-white">
+          {String(row?.provider || copy("live.value.unknown_provider"))}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
+          {String(row?.model || "—")}
+        </div>
+        <div className="mt-0.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+          {label} · {formatStatus(row)}
+        </div>
+      </div>
+      <div className="text-right text-xs tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
+        {toDisplayNumber(row?.total_tokens ?? 0)}
+      </div>
+      <div className="text-right text-xs tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
+        {formatLiveSessionCost(row)}
+      </div>
+    </button>
   );
 }
 
@@ -99,7 +146,8 @@ export function LiveSessionList({
 }) {
   const hint = streamNote(streamStatus);
   const emptyState = emptyStateCopy(streamStatus);
-  const activeSessions = Array.isArray(sessions) ? sessions.filter(isActiveRow) : [];
+  const workstreams = React.useMemo(() => buildLiveWorkstreams(sessions), [sessions]);
+  const visibleWorkstreams = workstreams.filter((workstream) => workstream.active_session_count > 0);
 
   const content = (
     <>
@@ -107,11 +155,11 @@ export function LiveSessionList({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
-            <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.sessions.title")}</h2>
+            <h2 className="text-sm font-semibold text-oai-black dark:text-white">Active workstreams</h2>
           </div>
         </div>
         <span className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
-          {copy("live.sessions.count", { count: activeSessions.length })}
+          {`${visibleWorkstreams.length} ${visibleWorkstreams.length === 1 ? "workstream" : "workstreams"}`}
         </span>
       </div>
 
@@ -126,7 +174,7 @@ export function LiveSessionList({
         </div>
       ) : null}
 
-      {activeSessions.length === 0 ? (
+      {visibleWorkstreams.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-5 py-12 text-center">
           <h3 className="text-sm font-semibold text-oai-black dark:text-white">{emptyState.title}</h3>
           <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{emptyState.subtitle}</p>
@@ -134,22 +182,18 @@ export function LiveSessionList({
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <StaggerContainer className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70" staggerDelay={0.035}>
-          {activeSessions.map((row, index) => {
-            const key = getSessionKey(row) || `${String(row?.provider || "unknown")}:${String(row?.session_id || index)}`;
-            const selected = key === selectedKey;
-            const repoRoot = String(row?.repo_root || row?.cwd || "");
-            const tier = String(row?.branch_resolution_tier || "—");
-            const startedAt = row?.started_at;
-            const updatedAt = row?.updated_at || row?.last_observed_at || row?.observed_at || row?.ended_at;
+          {visibleWorkstreams.map((workstream, index) => {
+            const primary = workstream.primary_session || workstream.sessions[0] || {};
+            const primaryKey = getSessionKey(primary) || `${String(primary?.provider || "unknown")}:${String(primary?.session_id || index)}`;
+            const selected = workstream.sessions.some((row) => getSessionKey(row) === selectedKey);
+            const repoRoot = String(workstream.repo_root || workstream.cwd || primary?.repo_root || primary?.cwd || "");
+            const branchLabel = workstream.branches.join(", ");
+            const relatedCount = Math.max(0, workstream.sessions.length - 1);
             return (
-              <StaggerItem key={key}>
-                <button
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => onSelectSession?.(key)}
+              <StaggerItem key={workstream.id || primaryKey}>
+                <div
                   className={cn(
                     "grid min-h-[132px] w-full gap-3 px-5 py-4 text-left transition-colors",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60",
                     selected
                       ? "bg-oai-black/[0.03] dark:bg-white/[0.06]"
                       : "hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900/80",
@@ -158,9 +202,9 @@ export function LiveSessionList({
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-center gap-2">
-                        <ProviderIcon provider={row?.provider} size={16} className="shrink-0" />
+                        <ProviderIcon provider={primary?.provider} size={16} className="shrink-0" />
                         <span className="truncate text-sm font-semibold text-oai-black dark:text-white">
-                          {String(row?.provider || copy("live.value.unknown_provider"))}
+                          {repoBasename(repoRoot)}
                         </span>
                         {selected ? (
                           <span className="inline-flex h-5 items-center rounded-md bg-oai-black/[0.06] px-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:bg-white/[0.1] dark:text-oai-gray-300">
@@ -172,24 +216,68 @@ export function LiveSessionList({
                         className="mt-1 truncate text-sm text-oai-gray-600 dark:text-oai-gray-300"
                         title={repoRoot || undefined}
                       >
-                        {repoBasename(repoRoot)}
+                        Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || "—")}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
-                        {getBranch(row)}
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {workstream.branches.map((branch) => (
+                          <span key={branch} className="inline-flex h-6 max-w-full items-center rounded-md bg-oai-black/[0.05] px-2 text-[11px] font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+                            <span className="truncate">{branch}</span>
+                          </span>
+                        ))}
                       </div>
                     </div>
-                    <ConfidenceBadge confidence={row?.confidence} className="shrink-0" />
+                    <ConfidenceBadge confidence={primary?.confidence} className="shrink-0" />
                   </div>
 
                   <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
-                    <MetaItem icon={GitBranch} label={copy("live.meta.tier")} value={tier} />
-                    <MetaItem icon={Cpu} label={copy("live.meta.model")} value={String(row?.model || "—")} />
-                    <MetaItem icon={Radio} label={copy("live.meta.tokens")} value={toDisplayNumber(row?.total_tokens ?? 0)} />
-                    <MetaItem icon={CircleDollarSign} label={copy("live.meta.cost")} value={formatLiveSessionCost(row)} />
-                    <MetaItem icon={Clock3} label={copy("live.meta.started")} value={formatTimestamp(startedAt)} />
-                    <MetaItem icon={Clock3} label={copy("live.meta.updated")} value={formatTimestamp(updatedAt)} />
+                    <MetaItem icon={GitBranch} label="Branches" value={branchLabel || getBranch(primary)} />
+                    <MetaItem icon={Activity} label="Related sessions" value={toDisplayNumber(relatedCount)} />
+                    <MetaItem icon={Radio} label={copy("live.meta.tokens")} value={toDisplayNumber(workstream.total_tokens ?? 0)} />
+                    <MetaItem icon={CircleDollarSign} label={copy("live.meta.cost")} value={formatWorkstreamCost(workstream)} />
+                    <MetaItem icon={Clock3} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
+                    <MetaItem icon={Clock3} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
                   </div>
-                </button>
+
+                  {selected ? (
+                    <div className="mt-1 grid gap-3 rounded-lg border border-oai-gray-200/70 bg-white/60 p-3 dark:border-oai-gray-800/70 dark:bg-oai-gray-950/30">
+                      <div>
+                        <div className="mb-2 text-xs font-semibold text-oai-black dark:text-white">Primary session</div>
+                        <SessionDetailRow
+                          row={primary}
+                          selected={getSessionKey(primary) === selectedKey}
+                          label={getBranch(primary)}
+                          onSelectSession={onSelectSession}
+                        />
+                      </div>
+                      {relatedCount > 0 ? (
+                        <div>
+                          <div className="mb-2 text-xs font-semibold text-oai-black dark:text-white">Related sessions</div>
+                          <div className="grid gap-2">
+                            {workstream.branch_groups.map((group) => (
+                              <div key={group.branch} className="grid gap-1.5">
+                                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+                                  <GitBranch className="h-3.5 w-3.5" aria-hidden />
+                                  {group.branch}
+                                </div>
+                                {group.sessions
+                                  .filter((row) => getSessionKey(row) !== getSessionKey(primary))
+                                  .map((row) => (
+                                    <SessionDetailRow
+                                      key={getSessionKey(row)}
+                                      row={row}
+                                      selected={getSessionKey(row) === selectedKey}
+                                      label={group.branch}
+                                      onSelectSession={onSelectSession}
+                                    />
+                                  ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </StaggerItem>
             );
           })}

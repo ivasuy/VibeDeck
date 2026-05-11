@@ -1,11 +1,12 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { spawn, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
 const { reapOrphanedSessions } = require("./sessions/reaper");
+const { buildLiveWorkstreams } = require("./sessions/workstreams");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
   filterRowsByUsageScope,
@@ -33,6 +34,7 @@ const SSE_RETRY_AFTER_SECONDS = 30;
 const SSE_HEARTBEAT_MS = readMsEnv("VIBEDECK_SSE_HEARTBEAT_MS", 30_000);
 const SSE_IDLE_MS = readMsEnv("VIBEDECK_SSE_IDLE_MS", 60 * 60 * 1000);
 const SSE_IDLE_SCAN_MS = readMsEnv("VIBEDECK_SSE_IDLE_SCAN_MS", 60 * 60 * 1000);
+const LIVE_RECENT_ENDED_MS = readMsEnv("VIBEDECK_LIVE_RECENT_ENDED_MS", 60 * 60 * 1000);
 
 let liveSseClientCount = 0;
 let liveSseClients = new Set();
@@ -151,6 +153,119 @@ function readProjectQueueData(projectQueuePath) {
   return Array.from(seen.values());
 }
 
+function repoRootExists(repoRoot) {
+  if (typeof repoRoot !== "string" || !repoRoot.trim()) return false;
+  try {
+    return fs.statSync(repoRoot.trim()).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function normalizeGitRemoteRef(value) {
+  if (typeof value !== "string") return "";
+  let raw = value.trim();
+  if (!raw) return "";
+  raw = raw.replace(/^git@([^:]+):(.+)$/i, "https://$1/$2");
+  raw = raw.replace(/^ssh:\/\/git@([^/]+)\/(.+)$/i, "https://$1/$2");
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    let pathname = parsed.pathname.replace(/\/+$/, "");
+    pathname = pathname.replace(/\.git$/i, "");
+    if (host === "github.com") pathname = pathname.toLowerCase();
+    return `${parsed.protocol === "http:" ? "http" : "https"}://${host}${pathname}`;
+  } catch {
+    return raw.replace(/\/+$/, "").replace(/\.git$/i, "").toLowerCase();
+  }
+}
+
+function readGitOriginRemote(repoRoot) {
+  if (!repoRootExists(repoRoot)) return "";
+  const gitPath = path.join(repoRoot, ".git");
+  let configPath = path.join(gitPath, "config");
+  try {
+    const stat = fs.statSync(gitPath);
+    if (!stat.isDirectory()) {
+      const gitFile = fs.readFileSync(gitPath, "utf8");
+      const match = gitFile.match(/^gitdir:\s*(.+)\s*$/im);
+      if (!match) return "";
+      const gitDir = path.resolve(repoRoot, match[1].trim());
+      const commonDirPath = path.join(gitDir, "commondir");
+      const commonDir = fs.existsSync(commonDirPath)
+        ? fs.readFileSync(commonDirPath, "utf8").trim()
+        : "";
+      configPath = commonDir
+        ? path.join(path.resolve(gitDir, commonDir), "config")
+        : path.join(gitDir, "config");
+    }
+  } catch {
+    return "";
+  }
+
+  let config;
+  try {
+    config = fs.readFileSync(configPath, "utf8");
+  } catch {
+    return "";
+  }
+
+  let inOrigin = false;
+  for (const line of config.split(/\r?\n/)) {
+    const section = line.match(/^\s*\[remote\s+"([^"]+)"\]\s*$/);
+    if (section) {
+      inOrigin = section[1] === "origin";
+      continue;
+    }
+    if (!inOrigin) continue;
+    const urlMatch = line.match(/^\s*url\s*=\s*(.+?)\s*$/);
+    if (urlMatch) return urlMatch[1].trim();
+  }
+  return "";
+}
+
+function buildRepoRootByRemote(sessionProjectRows) {
+  const out = new Map();
+  for (const row of Array.isArray(sessionProjectRows) ? sessionProjectRows : []) {
+    const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
+    if (!repoRoot || !repoRootExists(repoRoot)) continue;
+    const remote = normalizeGitRemoteRef(readGitOriginRemote(repoRoot));
+    if (remote && !out.has(remote)) out.set(remote, repoRoot);
+  }
+  return out;
+}
+
+function listGitBranches(repoRoot) {
+  if (!repoRootExists(repoRoot)) return [];
+  try {
+    const out = execFileSync("git", ["-C", repoRoot, "branch", "--format=%(refname:short)"], {
+      encoding: "utf8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return Array.from(
+      new Set(
+        String(out || "")
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+function buildGitBranchesByRepo(sessionProjectRows) {
+  const out = new Map();
+  for (const row of Array.isArray(sessionProjectRows) ? sessionProjectRows : []) {
+    const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
+    if (!repoRoot || out.has(repoRoot)) continue;
+    out.set(repoRoot, listGitBranches(repoRoot));
+  }
+  return out;
+}
+
 function normalizeProjectUsageSourceFilter(rawValue) {
   const values = String(rawValue || "")
     .split(",")
@@ -177,7 +292,7 @@ function readSessionProjectUsage(dbPath, filters = {}) {
 
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT
         repo_root,
         provider,
@@ -189,6 +304,7 @@ function readSessionProjectUsage(dbPath, filters = {}) {
       FROM vibedeck_sessions
       WHERE ${clauses.join(" AND ")}
     `).all(...params);
+    return rows.filter((row) => repoRootExists(row?.repo_root));
   } finally {
     db.close();
   }
@@ -431,6 +547,7 @@ function createProjectUsageEntry({ project_key, project_ref, repo_root }) {
     total_tokens: 0,
     billable_total_tokens: 0,
     last_seen_at: null,
+    _gitBranches: new Set(),
     _cost: createCostAccumulator(),
     _providers: new Map(),
     _branches: new Set(),
@@ -444,6 +561,13 @@ function ensureProjectUsageEntry(map, descriptor) {
   }
   const entry = map.get(identity);
   if (!entry.repo_root && descriptor.repo_root) entry.repo_root = descriptor.repo_root;
+  if (Array.isArray(descriptor.git_branches)) {
+    for (const branchName of descriptor.git_branches) {
+      if (typeof branchName === "string" && branchName.trim()) {
+        entry._gitBranches.add(branchName.trim());
+      }
+    }
+  }
   if (!entry.project_ref && descriptor.project_ref) entry.project_ref = descriptor.project_ref;
   if (
     descriptor.project_key &&
@@ -649,6 +773,7 @@ function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
 
       const totalCost = finalizeCostAccumulator(entry._cost);
       const branches = Array.from(entry._branches).sort();
+      const gitBranches = Array.from(entry._gitBranches).sort();
       return {
         project_key: entry.project_key,
         project_ref: entry.project_ref,
@@ -661,6 +786,8 @@ function finalizeProjectUsageEntries(byProject, sortMode, requestedLimit) {
         last_seen_at: entry.last_seen_at,
         branch_count: branches.length,
         branches,
+        git_branch_count: gitBranches.length,
+        git_branches: gitBranches,
         providers,
         top_models: topModels,
       };
@@ -1215,7 +1342,11 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         reapOrphanedSessions(dbPath);
         const db = new DatabaseSync(dbPath);
         try {
-          sessions = db.prepare("SELECT * FROM vibedeck_sessions WHERE ended_at IS NULL").all()
+          const recentEndedCutoff = new Date(Date.now() - LIVE_RECENT_ENDED_MS).toISOString();
+          sessions = db.prepare(`
+            SELECT * FROM vibedeck_sessions
+            WHERE ended_at IS NULL OR ended_at >= ?
+          `).all(recentEndedCutoff)
             .map(enrichLiveSessionCost);
         } finally {
           db.close();
@@ -1332,7 +1463,13 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       res.write(": ok\n\n");
 
       // Snapshot first, after listeners exist but before heartbeats.
-      enqueue({ type: "snapshot", sessions, generated_at: generatedAt, last_sync_at: lastSyncAt });
+      enqueue({
+        type: "snapshot",
+        sessions,
+        workstreams: buildLiveWorkstreams(sessions, { now: generatedAt }),
+        generated_at: generatedAt,
+        last_sync_at: lastSyncAt,
+      });
 
       client.heartbeatInterval = setInterval(() => {
         if (client.closed) return;
@@ -1964,6 +2101,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         sessionProjectRows = [];
       }
       const localProjectKeys = buildLocalProjectKeyMap(sessionProjectRows);
+      const repoRootByRemote = buildRepoRootByRemote(sessionProjectRows);
+      const gitBranchesByRepo = buildGitBranchesByRepo(sessionProjectRows);
 
       const byProject = new Map();
       for (const row of sessionProjectRows) {
@@ -1973,6 +2112,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           project_key: localProjectKeys.get(repoRoot) || repoRoot,
           project_ref: repoRoot,
           repo_root: repoRoot,
+          git_branches: gitBranchesByRepo.get(repoRoot) || [],
         });
         const groupCost = createCostAccumulator();
         if (Number(row?.non_null_cost_count || 0) > 0) {
@@ -2005,10 +2145,21 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       for (const row of projectRows) {
         const projectRef = row.project_ref || row.project_key || "unknown";
         const projectKey = row.project_key || "unknown";
+        const cleanProjectRef = String(projectRef || "").trim();
+        if (path.isAbsolute(cleanProjectRef) && !repoRootExists(cleanProjectRef)) continue;
+        const remoteRepoRoot = repoRootByRemote.get(normalizeGitRemoteRef(cleanProjectRef));
+        if (remoteRepoRoot && byProject.has(projectUsageIdentity({ project_ref: remoteRepoRoot }))) {
+          continue;
+        }
+        const entryRepoRoot = remoteRepoRoot || (path.isAbsolute(cleanProjectRef) ? cleanProjectRef : null);
+        const entryProjectRef = remoteRepoRoot || projectRef;
+        const entryProjectKey = remoteRepoRoot
+          ? localProjectKeys.get(remoteRepoRoot) || remoteRepoRoot
+          : projectKey;
         const entry = ensureProjectUsageEntry(byProject, {
-          project_key: projectKey,
-          project_ref: projectRef,
-          repo_root: path.isAbsolute(String(projectRef || "")) ? String(projectRef).trim() : null,
+          project_key: entryProjectKey,
+          project_ref: entryProjectRef,
+          repo_root: entryRepoRoot,
         });
         const costResult = resolveUsageCost({
           source: row?.source,

@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const {
   resolveUsageCost,
@@ -43,6 +44,40 @@ function toFiniteNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function repoRootExists(repoRoot) {
+  if (typeof repoRoot !== 'string' || !repoRoot.trim()) return false;
+  try {
+    return fs.statSync(repoRoot.trim()).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function listGitBranches(repoRoot) {
+  if (!repoRootExists(repoRoot)) return [];
+  try {
+    const out = execFileSync('git', ['-C', repoRoot, 'branch', '--format=%(refname:short)'], {
+      encoding: 'utf8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return Array.from(
+      new Set(
+        String(out || '')
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+function attributionBranchName(value) {
+  return String(value || '').replace(/~\d+$/, '');
+}
+
 function queryBranchUsage(
   dbPath,
   { from = null, to = null, repo = null, branch = null, limit = 100, includeSessions = false } = {},
@@ -73,6 +108,8 @@ function queryBranchUsage(
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
+    const requestedLimit = clampLimit(limit);
+    const scanLimit = Math.max(requestedLimit, 500);
     const rows = db
       .prepare(
         `
@@ -121,7 +158,9 @@ function queryBranchUsage(
         LIMIT @limit
       `,
       )
-      .all({ ...params, limit: clampLimit(limit) });
+      .all({ ...params, limit: scanLimit })
+      .filter((row) => repoRootExists(row.repo_root))
+      .slice(0, requestedLimit);
 
     const repos = new Map();
     const totalsCost = createCostAccumulator();
@@ -155,6 +194,7 @@ function queryBranchUsage(
       if (!branches.has(row.branch)) {
         branches.set(row.branch, {
           branch: row.branch,
+          attribution_branch: attributionBranchName(row.branch),
           total_tokens: 0,
           total_cost_usd: null,
           cost_estimated: false,
@@ -213,10 +253,14 @@ function queryBranchUsage(
     Object.assign(totals, finalizeCostAccumulator(totalsCost));
 
     return {
-      repos: Array.from(repos.entries()).map(([repo_root, branches]) => ({
-        repo_root,
-        branches: Array.from(branches.values())
-          .map((branchEntry) => {
+      repos: Array.from(repos.entries()).map(([repo_root, branches]) => {
+        const gitBranches = listGitBranches(repo_root);
+        return {
+          repo_root,
+          git_branches: gitBranches,
+          git_branch_count: gitBranches.length,
+          branches: Array.from(branches.values())
+            .map((branchEntry) => {
             const branchCost = finalizeCostAccumulator(branchEntry._cost);
             return {
               ...branchEntry,
@@ -237,10 +281,11 @@ function queryBranchUsage(
                 })
                 .sort((a, b) => b.total_tokens - a.total_tokens),
             };
-          })
-          .map(({ _cost, ...branchEntry }) => branchEntry)
-          .sort((a, b) => b.total_tokens - a.total_tokens),
-      })),
+            })
+            .map(({ _cost, ...branchEntry }) => branchEntry)
+            .sort((a, b) => b.total_tokens - a.total_tokens),
+        };
+      }),
       totals,
     };
   } finally {

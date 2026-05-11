@@ -45,7 +45,7 @@ describe("reduceLiveSessionEvent", () => {
     expect(state).toEqual([{ provider: "codex", session_id: "s1", total_tokens: 10, state: "live" }]);
   });
 
-  it("filters ended rows out of snapshot events", () => {
+  it("keeps recently ended rows from snapshot events for workstream breakdowns", () => {
     const state = reduceLiveSessionEvent([], {
       type: "snapshot",
       sessions: [
@@ -58,7 +58,16 @@ describe("reduceLiveSessionEvent", () => {
         },
       ],
     });
-    expect(state).toEqual([{ provider: "codex", session_id: "s-live", total_tokens: 10, state: "live" }]);
+    expect(state).toEqual([
+      { provider: "codex", session_id: "s-live", total_tokens: 10, state: "live" },
+      {
+        provider: "codex",
+        session_id: "s-ended",
+        total_tokens: 20,
+        ended_at: "2026-05-10T10:00:00.000Z",
+        state: "ended",
+      },
+    ]);
   });
 
   it("creates or upserts a session for session:start", () => {
@@ -85,7 +94,7 @@ describe("reduceLiveSessionEvent", () => {
     expect(state[0]).toMatchObject({ provider: "codex", session_id: "s1", total_tokens: 2, model: "gpt-5" });
   });
 
-  it("removes active rows on session:end", () => {
+  it("marks active rows stale on session:end", () => {
     const state = reduceLiveSessionEvent(
       [{ provider: "codex", session_id: "s1", total_tokens: 2 }],
       {
@@ -95,7 +104,15 @@ describe("reduceLiveSessionEvent", () => {
         ended_at: "2026-05-10T10:00:00.000Z",
       },
     );
-    expect(state).toEqual([]);
+    expect(state).toEqual([
+      {
+        provider: "codex",
+        session_id: "s1",
+        total_tokens: 2,
+        ended_at: "2026-05-10T10:00:00.000Z",
+        state: "ended",
+      },
+    ]);
   });
 });
 
@@ -158,7 +175,7 @@ describe("useVibeDeckLiveSessions", () => {
     expect(result.current.sessions[0].total_tokens).toBe(2);
   });
 
-  it("keeps the active session count free of ended rows", () => {
+  it("keeps recently ended snapshot rows for stale workstream detail", () => {
     const { result } = renderHook(() => useVibeDeckLiveSessions());
     const source = MockEventSource.instances[0];
 
@@ -177,8 +194,9 @@ describe("useVibeDeckLiveSessions", () => {
       }));
     });
 
-    expect(result.current.sessions).toHaveLength(1);
-    expect(result.current.sessions[0]).toMatchObject({ session_id: "s-live" });
+    expect(result.current.sessions).toHaveLength(2);
+    expect(result.current.sessions[0]).toMatchObject({ session_id: "s-live", state: "live" });
+    expect(result.current.sessions[1]).toMatchObject({ session_id: "s-ended", state: "ended" });
   });
 
   it("marks degraded state for invalid JSON", () => {

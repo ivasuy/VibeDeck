@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const { DatabaseSync } = require("node:sqlite");
 const { test } = require("node:test");
 
@@ -61,6 +62,19 @@ function insertSession(db, row) {
     updated_at: row.started_at,
     ...row,
   });
+}
+
+function initGitRepo(repoRoot, branches = ["main"]) {
+  fs.mkdirSync(repoRoot, { recursive: true });
+  execFileSync("git", ["init", "-b", branches[0]], { cwd: repoRoot, stdio: "ignore" });
+  execFileSync("git", ["config", "user.email", "vibedeck@example.test"], { cwd: repoRoot, stdio: "ignore" });
+  execFileSync("git", ["config", "user.name", "VibeDeck Test"], { cwd: repoRoot, stdio: "ignore" });
+  fs.writeFileSync(path.join(repoRoot, "README.md"), "test\n", "utf8");
+  execFileSync("git", ["add", "README.md"], { cwd: repoRoot, stdio: "ignore" });
+  execFileSync("git", ["commit", "-m", "init"], { cwd: repoRoot, stdio: "ignore" });
+  for (const branch of branches.slice(1)) {
+    execFileSync("git", ["branch", branch], { cwd: repoRoot, stdio: "ignore" });
+  }
 }
 
 test("vibedeck project usage alias matches the legacy response shape", async () => {
@@ -162,7 +176,10 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
   try {
     const trackerDir = path.join(tmp, "tracker");
+    const liveRepo = path.join(tmp, "Projects", "VibeDeck");
+    const missingRepo = path.join(tmp, "Projects", "SWE-AF");
     await fs.promises.mkdir(trackerDir, { recursive: true });
+    await fs.promises.mkdir(liveRepo, { recursive: true });
 
     const queuePath = path.join(trackerDir, "queue.jsonl");
     const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
@@ -187,8 +204,8 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
         billable_total_tokens: 120,
       },
       {
-        project_key: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        project_ref: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        project_key: liveRepo,
+        project_ref: liveRepo,
         source: "codex",
         hour_start: "2026-05-09T08:30:00.000Z",
         total_tokens: 25,
@@ -204,8 +221,8 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
         session_id: "vd-1",
         started_at: "2026-05-10T12:30:00.000Z",
         ended_at: "2026-05-10T12:55:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        cwd: liveRepo,
+        repo_root: liveRepo,
         branch: "main",
         branch_resolution_tier: "A",
         confidence: "high",
@@ -217,8 +234,8 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
         session_id: "swe-1",
         started_at: "2026-05-10T11:15:00.000Z",
         ended_at: "2026-05-10T11:45:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        cwd: missingRepo,
+        repo_root: missingRepo,
         branch_resolution_tier: "A",
         confidence: "high",
         model: "gpt-5",
@@ -229,8 +246,8 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
         session_id: "vd-2",
         started_at: "2026-05-09T18:00:00.000Z",
         ended_at: "2026-05-09T18:20:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        cwd: liveRepo,
+        repo_root: liveRepo,
         branch_resolution_tier: "B",
         confidence: "medium",
         model: "claude-sonnet-4-6",
@@ -247,14 +264,118 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
 
     assert.deepEqual(
       body.entries.map((entry) => entry.project_key),
-      ["VibeDeck", "SWE-AF"],
+      ["VibeDeck", "acme/public-alpha"],
     );
-    assert.equal(body.entries[0].project_ref, "/Users/vasuyadav/Downloads/Projects/VibeDeck");
+    assert.equal(body.entries[0].project_ref, liveRepo);
     assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:55:00.000Z");
     assert.equal(body.entries[0].total_tokens, "525");
-    assert.equal(body.entries[1].project_ref, "/Users/vasuyadav/Downloads/Projects/SWE-AF");
-    assert.equal(body.entries[1].last_seen_at, "2026-05-10T11:45:00.000Z");
-    assert.equal(body.entries[1].total_tokens, "320");
+    assert.equal(body.entries.some((entry) => entry.project_ref === missingRepo), false);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage skips remote queue rows when a matching live local repo has DB sessions", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    const repoRoot = path.join(tmp, "Projects", "switchyard");
+    initGitRepo(repoRoot, ["publish-main", "main", "entire/checkpoints/v1"]);
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/ivasuy/Switchyard.git"], {
+      cwd: repoRoot,
+      stdio: "ignore",
+    });
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, [
+      {
+        project_key: "ivasuy/Switchyard",
+        project_ref: "https://github.com/ivasuy/Switchyard",
+        source: "codex",
+        hour_start: "2026-05-10T09:00:00.000Z",
+        total_tokens: 75,
+        billable_total_tokens: 75,
+      },
+    ]);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "switchyard-1",
+        started_at: "2026-05-10T12:00:00.000Z",
+        ended_at: "2026-05-10T12:15:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: "main",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 125,
+      });
+    } finally {
+      db.close();
+    }
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    assert.equal(body.entries.length, 1);
+    assert.equal(body.entries[0].project_key, "switchyard");
+    assert.equal(body.entries[0].project_ref, repoRoot);
+    assert.equal(body.entries[0].repo_root, repoRoot);
+    assert.equal(body.entries[0].total_tokens, "125");
+    assert.equal(body.entries[0].git_branch_count, 3);
+    assert.deepEqual(body.entries[0].git_branches, [
+      "entire/checkpoints/v1",
+      "main",
+      "publish-main",
+    ]);
+    assert.deepEqual(
+      body.entries[0].top_models.map((model) => model.model),
+      ["gpt-5"],
+    );
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage keeps remote-only historical project queue rows", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, [
+      {
+        project_key: "ivasuy/agentfield",
+        project_ref: "https://github.com/ivasuy/agentfield",
+        source: "codex",
+        hour_start: "2026-05-10T09:00:00.000Z",
+        total_tokens: 75,
+        billable_total_tokens: 75,
+      },
+    ]);
+
+    ensureSchema(dbPath);
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    assert.equal(body.entries.length, 1);
+    assert.equal(body.entries[0].project_key, "ivasuy/agentfield");
+    assert.equal(body.entries[0].project_ref, "https://github.com/ivasuy/agentfield");
+    assert.equal(body.entries[0].repo_root, null);
+    assert.equal(body.entries[0].total_tokens, "75");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -264,7 +385,11 @@ test("project usage recent sort uses latest session activity instead of latest s
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
   try {
     const trackerDir = path.join(tmp, "tracker");
+    const repoA = path.join(tmp, "Projects", "VibeDeck");
+    const repoB = path.join(tmp, "Projects", "SWE-AF");
     await fs.promises.mkdir(trackerDir, { recursive: true });
+    await fs.promises.mkdir(repoA, { recursive: true });
+    await fs.promises.mkdir(repoB, { recursive: true });
 
     const queuePath = path.join(trackerDir, "queue.jsonl");
     const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
@@ -281,8 +406,8 @@ test("project usage recent sort uses latest session activity instead of latest s
         session_id: "repo-a",
         started_at: "2026-05-10T09:00:00.000Z",
         ended_at: "2026-05-10T13:30:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        cwd: repoA,
+        repo_root: repoA,
         branch: "feature/project-cards",
         branch_resolution_tier: "A",
         confidence: "high",
@@ -294,8 +419,8 @@ test("project usage recent sort uses latest session activity instead of latest s
         session_id: "repo-b",
         started_at: "2026-05-10T12:00:00.000Z",
         ended_at: "2026-05-10T12:45:00.000Z",
-        cwd: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
-        repo_root: "/Users/vasuyadav/Downloads/Projects/SWE-AF",
+        cwd: repoB,
+        repo_root: repoB,
         branch_resolution_tier: "A",
         confidence: "high",
         model: "claude-sonnet-4-6",

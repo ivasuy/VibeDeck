@@ -24,9 +24,12 @@ const SAMPLE_PAYLOAD = {
   repos: [
     {
       repo_root: "/repo-a",
+      git_branches: ["feature-a", "main"],
+      git_branch_count: 2,
       branches: [
         {
           branch: "feature-a",
+          attribution_branch: "feature-a",
           total_tokens: 12000,
           total_cost_usd: 12.34,
           cost_estimated: true,
@@ -83,9 +86,12 @@ const SAMPLE_PAYLOAD = {
     },
     {
       repo_root: "/repo-b",
+      git_branches: ["release-b"],
+      git_branch_count: 1,
       branches: [
         {
           branch: "release-b",
+          attribution_branch: "release-b",
           total_tokens: 2500,
           total_cost_usd: null,
           cost_estimated: true,
@@ -151,7 +157,7 @@ describe("BranchesPage", () => {
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
     expect(screen.queryByText("/repo-a")).toBeNull();
-    expect(screen.getByText("feature-a")).toBeTruthy();
+    expect(screen.getAllByText("feature-a").length).toBeGreaterThan(0);
     expect(screen.queryByText("/repo-b")).toBeNull();
     expect(screen.queryByText("release-b")).toBeNull();
     expect(screen.queryByText("Showing 1 of 1 branches")).toBeNull();
@@ -199,14 +205,81 @@ describe("BranchesPage", () => {
       expect(screen.queryByText("/repo-a")).toBeNull();
       expect(screen.queryByText("feature-a")).toBeNull();
       expect(screen.queryByText("/repo-b")).toBeNull();
-      expect(screen.getByText("release-b")).toBeTruthy();
+      expect(screen.getAllByText("release-b").length).toBeGreaterThan(0);
     });
 
-    fireEvent.change(screen.getByLabelText("Branch filter"), { target: { value: "release" } });
+    fireEvent.change(screen.getByLabelText("Attribution filter"), { target: { value: "release" } });
 
     await waitFor(() => {
       expect(screen.queryByText("/repo-b")).toBeNull();
-      expect(screen.getByText("release-b")).toBeTruthy();
+      expect(screen.getAllByText("release-b").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("filters attribution rows and totals by selected real branch", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-routes",
+        git_branches: ["main", "release"],
+        git_branch_count: 2,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 100,
+            total_cost_usd: 1,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+          {
+            branch: "main~1",
+            attribution_branch: "main",
+            total_tokens: 200,
+            total_cost_usd: 2,
+            session_count: 2,
+            last_seen_at: "2026-05-10T11:00:00.000Z",
+            confidence: { high: 0, medium: 1, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+          {
+            branch: "release",
+            attribution_branch: "release",
+            total_tokens: 900,
+            total_cost_usd: 9,
+            session_count: 9,
+            last_seen_at: "2026-05-10T10:00:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const branchSelect = await screen.findByRole("combobox", {
+      name: copy("branches.branch.select_label"),
+    });
+
+    expect(branchSelect.value).toBe("main");
+    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    expect(screen.getByText("main~1")).toBeTruthy();
+    expect(screen.queryByText("900")).toBeNull();
+    expect(screen.getByText("300")).toBeTruthy();
+    expect(screen.getByText("$3.00")).toBeTruthy();
+
+    fireEvent.change(branchSelect, { target: { value: "release" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("main~1")).toBeNull();
+      expect(screen.getAllByText("release").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("900").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("$9.00").length).toBeGreaterThan(0);
     });
   });
 
@@ -254,7 +327,7 @@ describe("BranchesPage", () => {
     expect(options).toContain("/work/acme/app");
     expect(options).toContain("/tmp/sandbox/app");
     expect(projectSelect.value).toBe("/work/acme/app");
-    expect(screen.getByText("feature-acme")).toBeTruthy();
+    expect(screen.getAllByText("feature-acme").length).toBeGreaterThan(0);
     expect(screen.queryByText("feature-sandbox")).toBeNull();
   });
 
@@ -300,7 +373,7 @@ describe("BranchesPage", () => {
 
     expect(projectSelect.value).toBe("/repo-newer");
     expect(screen.queryByText("/repo-newer")).toBeNull();
-    expect(screen.getByText("newer-branch")).toBeTruthy();
+    expect(screen.getAllByText("newer-branch").length).toBeGreaterThan(0);
     expect(screen.queryByText("/repo-older")).toBeNull();
     expect(screen.queryByText("older-branch")).toBeNull();
   });

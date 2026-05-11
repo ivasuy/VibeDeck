@@ -29,7 +29,8 @@ function isEndedSession(row: LiveSession): boolean {
 function eventPayload(event: LiveSessionEvent): LiveSession {
   if (isRecord(event.session)) return event.session;
   if (isRecord(event.payload)) return event.payload;
-  return event;
+  const { type: _type, dropped: _dropped, ...payload } = event;
+  return payload;
 }
 
 function sortByRecent(rows: LiveSession[]): LiveSession[] {
@@ -50,7 +51,6 @@ export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEv
       snapshotRows
         .filter(isRecord)
         .map((row) => normalizeSessionState({ ...row }))
-        .filter((row) => !isEndedSession(row)),
     );
   }
 
@@ -77,7 +77,8 @@ export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEv
 
   const current = keyed.get(key) || {};
   if (event.type === "session:end") {
-    keyed.delete(key);
+    const ended = normalizeSessionState({ ...current, ...incoming, state: "ended" });
+    keyed.set(key, ended);
     return sortByRecent([...passthrough, ...keyed.values()]);
   }
 

@@ -13,7 +13,7 @@ const copyMap = {
   "dashboard.projects.limit_top_3": "TOP 3",
   "dashboard.projects.limit_top_6": "TOP 6",
   "dashboard.projects.limit_top_10": "TOP 10",
-  "dashboard.projects.worktrees_label": "Worktrees",
+  "dashboard.projects.worktrees_label": "Branches",
   "dashboard.projects.tokens_label": "Tokens",
   "dashboard.projects.cost_label": "Cost",
   "dashboard.projects.providers_label": "Providers",
@@ -38,7 +38,8 @@ describe("DataDetails project tab", () => {
           {
             project_key: "VibeDeck",
             project_ref: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
-            branch_count: 2,
+            branch_count: 9,
+            git_branch_count: 2,
             total_tokens: "242400602",
             estimated_total_cost_usd: "24.5",
             cost_estimated: true,
@@ -77,7 +78,7 @@ describe("DataDetails project tab", () => {
     await user.click(screen.getByRole("tab", { name: "Project Usage" }));
 
     expect(screen.getByText("VibeDeck")).toBeInTheDocument();
-    expect(screen.getByText("Worktrees")).toBeInTheDocument();
+    expect(screen.getByText("Branches")).toBeInTheDocument();
     expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("242,400,602")).toBeInTheDocument();
     expect(screen.getByText("$24.50")).toBeInTheDocument();

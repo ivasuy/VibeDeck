@@ -17,6 +17,12 @@ function sessionKey(row) {
   return `${String(row.provider)}:${String(row.session_id)}`;
 }
 
+function isActiveSession(row) {
+  if (!row) return false;
+  if (row.ended_at) return false;
+  return String(row.state || "").trim().toLowerCase() !== "ended";
+}
+
 function entireStateLabel(state) {
   if (state === "not_installed") return copy("entire.state.not_installed");
   if (state === "not_enabled") return copy("entire.state.not_enabled");
@@ -143,7 +149,8 @@ export function LivePage() {
       ? sessions.some((row) => sessionKey(row) === selectedKey)
       : false;
     if (!existing) {
-      setSelectedKey(sessionKey(sessions[0]));
+      const activeSession = sessions.find(isActiveSession);
+      setSelectedKey(sessionKey(activeSession || sessions[0]));
     }
   }, [sessions, selectedKey]);
 

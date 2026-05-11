@@ -3,7 +3,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+const { execFileSync } = require('node:child_process');
 const fs = require('node:fs/promises');
+const fssync = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
@@ -55,6 +57,19 @@ function insertSession(db, row) {
   `).run(row);
 }
 
+function initGitRepo(repoRoot, branches = ['main']) {
+  fssync.mkdirSync(repoRoot, { recursive: true });
+  execFileSync('git', ['init', '-b', branches[0]], { cwd: repoRoot, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.email', 'vibedeck@example.test'], { cwd: repoRoot, stdio: 'ignore' });
+  execFileSync('git', ['config', 'user.name', 'VibeDeck Test'], { cwd: repoRoot, stdio: 'ignore' });
+  fssync.writeFileSync(path.join(repoRoot, 'README.md'), 'test\n', 'utf8');
+  execFileSync('git', ['add', 'README.md'], { cwd: repoRoot, stdio: 'ignore' });
+  execFileSync('git', ['commit', '-m', 'init'], { cwd: repoRoot, stdio: 'ignore' });
+  for (const branch of branches.slice(1)) {
+    execFileSync('git', ['branch', branch], { cwd: repoRoot, stdio: 'ignore' });
+  }
+}
+
 function toFiniteNumber(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
@@ -83,7 +98,9 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-usage-'));
   try {
     const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
     await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['feature/live', 'main', 'release']);
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
@@ -97,8 +114,8 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
         session_id: 's1',
         started_at: '2026-05-10T00:00:00.000Z',
         ended_at: '2026-05-10T00:20:00.000Z',
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'main',
         branch_resolution_tier: 'A',
         confidence: 'high',
@@ -111,8 +128,8 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
         session_id: 's2',
         started_at: '2026-05-10T01:00:00.000Z',
         ended_at: '2026-05-10T01:15:00.000Z',
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'main',
         branch_resolution_tier: 'A',
         confidence: 'high',
@@ -125,8 +142,8 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
         session_id: 's3',
         started_at: '2026-05-10T02:00:00.000Z',
         ended_at: null,
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'feature/live',
         branch_resolution_tier: 'B',
         confidence: 'medium',
@@ -155,7 +172,9 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     const body = JSON.parse(res.body.toString('utf8'));
     assert.equal(body.totals.total_tokens, 125040);
     assert.equal(body.repos.length, 1);
-    assert.equal(body.repos[0].repo_root, '/repo');
+    assert.equal(body.repos[0].repo_root, repoRoot);
+    assert.equal(body.repos[0].git_branch_count, 3);
+    assert.deepEqual(body.repos[0].git_branches, ['feature/live', 'main', 'release']);
     assert.equal(body.repos[0].branches.length, 2);
     const mainBranch = body.repos[0].branches.find((entry) => entry.branch === 'main');
     const featureBranch = body.repos[0].branches.find((entry) => entry.branch === 'feature/live');
@@ -225,7 +244,9 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-windows-'));
   try {
     const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
     await fs.mkdir(trackerDir, { recursive: true });
+    await fs.mkdir(repoRoot, { recursive: true });
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
@@ -239,8 +260,8 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
         session_id: 'split',
         started_at: '2026-05-10T00:00:00.000Z',
         ended_at: '2026-05-10T01:00:00.000Z',
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'main',
         branch_resolution_tier: 'B',
         confidence: 'medium',
@@ -280,11 +301,77 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
   }
 });
 
+test('GET /functions/vibedeck-branch-usage hides deleted repo roots', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-stale-repo-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const liveRepo = path.join(root, 'live-repo');
+    const deletedRepo = path.join(root, 'deleted-repo');
+    await fs.mkdir(trackerDir, { recursive: true });
+    await fs.mkdir(liveRepo, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'live',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:20:00.000Z',
+        cwd: liveRepo,
+        repo_root: liveRepo,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: null,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'deleted',
+        started_at: '2026-05-10T01:00:00.000Z',
+        ended_at: '2026-05-10T01:20:00.000Z',
+        cwd: deletedRepo,
+        repo_root: deletedRepo,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-5.4',
+        total_tokens: 900,
+        total_cost_usd: null,
+      });
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(req, res, new URL('http://127.0.0.1/functions/vibedeck-branch-usage'));
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.deepEqual(body.repos.map((repo) => repo.repo_root), [liveRepo]);
+    assert.equal(body.totals.total_tokens, 100);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('GET /functions/vibedeck-branch-usage estimates branch window cost when stored cost is null', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-null-cost-'));
   try {
     const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
     await fs.mkdir(trackerDir, { recursive: true });
+    await fs.mkdir(repoRoot, { recursive: true });
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
@@ -298,8 +385,8 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
         session_id: 'split-null-cost',
         started_at: '2026-05-10T00:00:00.000Z',
         ended_at: '2026-05-10T01:00:00.000Z',
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'main',
         branch_resolution_tier: 'B',
         confidence: 'medium',
@@ -349,7 +436,9 @@ test('GET /functions/vibedeck-branch-usage estimates stale zero branch window co
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-stale-zero-cost-'));
   try {
     const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
     await fs.mkdir(trackerDir, { recursive: true });
+    await fs.mkdir(repoRoot, { recursive: true });
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
@@ -363,8 +452,8 @@ test('GET /functions/vibedeck-branch-usage estimates stale zero branch window co
         session_id: 'split-stale-zero-cost',
         started_at: '2026-05-10T00:00:00.000Z',
         ended_at: '2026-05-10T01:00:00.000Z',
-        cwd: '/repo',
-        repo_root: '/repo',
+        cwd: repoRoot,
+        repo_root: repoRoot,
         branch: 'main',
         branch_resolution_tier: 'B',
         confidence: 'medium',

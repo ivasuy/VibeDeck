@@ -143,7 +143,7 @@ dashboard.projects.expand_project,ui,ProjectUsagePanel,ProjectUsagePanel,expand_
 dashboard.projects.collapse_project,ui,ProjectUsagePanel,ProjectUsagePanel,collapse_project,Collapse {{project}} usage breakdown,,active
 dashboard.projects.top_model_label,ui,ProjectUsagePanel,ProjectUsagePanel,top_model_label,Top model,,active
 dashboard.projects.cost_label,ui,ProjectUsagePanel,ProjectUsagePanel,cost_label,Cost,,active
-dashboard.projects.worktrees_label,ui,DataDetails,DataDetails,worktrees_label,Worktrees,,active
+dashboard.projects.worktrees_label,ui,DataDetails,DataDetails,worktrees_label,Branches,,active
 dashboard.projects.providers_label,ui,DataDetails,DataDetails,providers_label,Providers,,active
 dashboard.projects.breakdown_heading,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_heading,Model breakdown,,active
 dashboard.projects.breakdown_columns,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_columns,Estimated cost · tokens,,active
@@ -349,19 +349,20 @@ branches.error,dashboard,BranchesPage,BranchesPage,error,Unable to load branch u
 branches.error.fallback,dashboard,BranchesPage,BranchesPage,error_fallback,Request failed,,active
 branches.project.select_label,dashboard,BranchesPage,BranchesPage,project_select_label,Project,,active
 branches.project.empty,dashboard,BranchesPage,BranchesPage,project_empty,No project branches yet.,,active
-branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Branch filter,,active
-branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by branch name,,active
-branches.filter.summary,dashboard,BranchesPage,BranchesPage,filter_summary,Showing {{count}} of {{total}} branches,,active
+branches.branch.select_label,dashboard,BranchesPage,BranchesPage,branch_select_label,Branch,,active
+branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Attribution filter,,active
+branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by attribution name,,active
+branches.filter.summary,dashboard,BranchesPage,BranchesPage,filter_summary,Showing {{count}} of {{total}} attributions,,active
 branches.total.tokens,dashboard,BranchesPage,BranchesPage,total_tokens,Tokens,,active
 branches.total.cost,dashboard,BranchesPage,BranchesPage,total_cost,Cost,,active
 branches.total.sessions,dashboard,BranchesPage,BranchesPage,total_sessions,Sessions,,active
-branches.empty,dashboard,BranchesPage,BranchUsageTable,empty,No branch rows match current filters.,,active
-branches.empty.no_repo_rows,dashboard,BranchesPage,BranchUsageTable,empty_no_repo_rows,No branch usage rows found for this range.,,active
+branches.empty,dashboard,BranchesPage,BranchUsageTable,empty,No attribution rows match current filters.,,active
+branches.empty.no_repo_rows,dashboard,BranchesPage,BranchUsageTable,empty_no_repo_rows,No attribution rows found for this range.,,active
 branches.confidence.mix,dashboard,BranchesPage,BranchUsageTable,confidence_mix,{{high_label}} {{high}} · {{medium_label}} {{medium}} · {{low_label}} {{low}} · {{unattributed_label}} {{unattributed}},,active
 branches.value.unknown_cost,dashboard,BranchesPage,BranchUsageTable,unknown_cost,Unknown,,active
 branches.value.unknown_time,dashboard,BranchesPage,BranchUsageTable,unknown_time,—,,active
 branches.table.repo,dashboard,BranchesPage,BranchUsageTable,table_repo,Repo,,active
-branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Branch,,active
+branches.table.branch,dashboard,BranchesPage,BranchUsageTable,table_branch,Attribution,,active
 branches.table.tokens,dashboard,BranchesPage,BranchUsageTable,table_tokens,Tokens,,active
 branches.table.cost,dashboard,BranchesPage,BranchUsageTable,table_cost,Cost,,active
 branches.table.top_model,dashboard,BranchesPage,BranchUsageTable,table_top_model,Top model,,active
@@ -372,7 +373,7 @@ branches.table.view_sessions,dashboard,BranchesPage,BranchUsageTable,table_view_
 branches.confidence.note,dashboard,BranchesPage,BranchUsageTable,confidence_note,Medium/low/unattributed indicate uncertain branch attribution; review session details before acting.,,active
 branches.drawer.title,dashboard,BranchesPage,BranchSessionDrawer,drawer_title,Session details,,active
 branches.drawer.close,dashboard,BranchesPage,BranchSessionDrawer,drawer_close,Close sessions panel,,active
-branches.drawer.empty,dashboard,BranchesPage,BranchSessionDrawer,drawer_empty,No sessions available for this branch.,,active
+branches.drawer.empty,dashboard,BranchesPage,BranchSessionDrawer,drawer_empty,No sessions available for this attribution.,,active
 branches.drawer.provider,dashboard,BranchesPage,BranchSessionDrawer,drawer_provider,Provider,,active
 branches.drawer.session_id,dashboard,BranchesPage,BranchSessionDrawer,drawer_session_id,Session ID,,active
 branches.drawer.start,dashboard,BranchesPage,BranchSessionDrawer,drawer_start,Start,,active

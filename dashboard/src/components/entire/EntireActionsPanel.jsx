@@ -140,11 +140,11 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
           <div className="mb-1 text-xs uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
             {copy("entire.actions.enable.agents_label")}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+          <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
             {AGENTS.map((agent) => (
               <label
                 key={agent}
-                className="flex items-center gap-2 rounded-md border border-oai-gray-200 px-2.5 py-1.5 text-xs text-oai-gray-700 dark:border-oai-gray-800 dark:text-oai-gray-200"
+                className="flex h-8 items-center gap-2 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
               >
                 <input
                   type="checkbox"

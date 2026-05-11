@@ -218,4 +218,34 @@ describe("EntirePage", () => {
     expect(await screen.findByText("sha256")).toBeTruthy();
     expect(screen.queryByText(/Unable to load checkpoint/)).toBeNull();
   });
+
+  it("uses a three panel checkpoint workbench after repo load", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active", version: "0.6.1" });
+    getCheckpoints.mockResolvedValue({
+      available: true,
+      files: ["06/e2abdc1ec6/metadata.json", "06/e2abdc1ec6/0/prompt.txt"],
+    });
+    getCheckpoint.mockResolvedValue({
+      path: "06/e2abdc1ec6/metadata.json",
+      file_name: "metadata.json",
+      kind: "json",
+      raw: "{\"branch\":\"publish-main\"}",
+      parsed: { branch: "publish-main" },
+      parse_error: null,
+      size_bytes: 25,
+      line_count: 1,
+    });
+
+    render(<EntirePage />);
+    const input = await screen.findByPlaceholderText("/Users/you/project");
+    fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
+
+    expect(await screen.findByText("Checkpoint files")).toBeTruthy();
+    expect(screen.getByText("Entire status")).toBeTruthy();
+    expect(screen.getByText("Actions")).toBeTruthy();
+    expect(screen.getByText("metadata.json")).toBeTruthy();
+  });
 });

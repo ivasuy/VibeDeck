@@ -120,7 +120,7 @@ export function EntirePage() {
         <div
           className={cn(
             "grid min-h-0 flex-1 gap-3 overflow-hidden",
-            selectedRepo ? "xl:grid-cols-[360px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]",
+            selectedRepo ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]",
           )}
         >
           <div className="flex min-h-0 flex-col gap-3 overflow-auto pr-1">

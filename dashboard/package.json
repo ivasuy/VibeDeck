@@ -12,7 +12,6 @@
     "preview": "vite preview",
     "screenshot": "node scripts/capture-dashboard-screenshot.mjs",
     "compare:baselines": "node scripts/compare-visual-baselines.mjs",
-    "verify:share-clipboard": "node scripts/verify-share-clipboard.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

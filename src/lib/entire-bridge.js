@@ -102,7 +102,90 @@ async function readCheckpoint(repoRoot, filePath) {
     ['-C', repoRoot, 'show', `${CHECKPOINT_BRANCH}:${filePath}`],
     { timeout: 5000 },
   );
-  return JSON.parse(stdout);
+  return buildCheckpointPayload(filePath, stdout);
+}
+
+function checkpointKind(filePath) {
+  const name = path.basename(filePath);
+  if (name === 'content_hash.txt') return 'hash';
+  if (name.endsWith('.jsonl')) return 'jsonl';
+  if (name.endsWith('.json')) return 'json';
+  if (name.endsWith('.txt')) return 'text';
+  return 'unknown';
+}
+
+function lineCount(raw) {
+  const text = String(raw || '');
+  if (!text) return 0;
+  return text.replace(/\n$/, '').split(/\r?\n/).length;
+}
+
+function parseHash(raw) {
+  const text = String(raw || '').trim();
+  const idx = text.indexOf(':');
+  if (idx === -1) return { algorithm: null, value: text };
+  return { algorithm: text.slice(0, idx), value: text.slice(idx + 1) };
+}
+
+function parseJsonl(raw, { previewLimit = 50 } = {}) {
+  const text = String(raw || '');
+  const lines = text.split(/\r?\n/);
+  const preview = [];
+  let validLines = 0;
+  let invalidLines = 0;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.trim()) continue;
+    try {
+      const value = JSON.parse(line);
+      validLines += 1;
+      if (preview.length < previewLimit) preview.push({ line: i + 1, value });
+    } catch (err) {
+      invalidLines += 1;
+      if (preview.length < previewLimit) {
+        preview.push({ line: i + 1, error: err?.message || String(err), raw: line });
+      }
+    }
+  }
+
+  return { valid_lines: validLines, invalid_lines: invalidLines, preview };
+}
+
+function buildCheckpointPayload(filePath, raw) {
+  const kind = checkpointKind(filePath);
+  const payload = {
+    path: filePath,
+    file_name: path.basename(filePath),
+    extension: path.extname(filePath).replace(/^\./, ''),
+    kind,
+    raw,
+    parsed: null,
+    parse_error: null,
+    size_bytes: Buffer.byteLength(String(raw || ''), 'utf8'),
+    line_count: lineCount(raw),
+  };
+
+  if (kind === 'json') {
+    try {
+      payload.parsed = JSON.parse(raw);
+    } catch (err) {
+      payload.parse_error = err?.message || String(err);
+    }
+    return payload;
+  }
+
+  if (kind === 'jsonl') {
+    payload.parsed = parseJsonl(raw);
+    return payload;
+  }
+
+  if (kind === 'hash') {
+    payload.parsed = parseHash(raw);
+    return payload;
+  }
+
+  return payload;
 }
 
 async function getCheckpointsBranchTip(repoRoot) {

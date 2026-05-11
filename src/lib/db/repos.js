@@ -42,6 +42,15 @@ function maxIso(a, b) {
   return a >= b ? a : b;
 }
 
+function repoPathExists(repoRoot) {
+  if (!repoRoot) return false;
+  try {
+    return fs.statSync(repoRoot).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 function listKnownRepos(dbPath, { limit = 50 } = {}) {
   if (!dbPath || !fs.existsSync(dbPath)) return { repos: [] };
 
@@ -53,6 +62,7 @@ function listKnownRepos(dbPath, { limit = 50 } = {}) {
     for (const row of entireRows) {
       const repoRoot = typeof row.repo_root === 'string' ? row.repo_root.trim() : '';
       if (!repoRoot) continue;
+      if (!repoPathExists(repoRoot)) continue;
       repos.set(repoRoot, {
         repo_root: repoRoot,
         entire_state: row.entire_state ?? null,
@@ -83,6 +93,7 @@ function listKnownRepos(dbPath, { limit = 50 } = {}) {
     for (const row of sessionRows) {
       const repoRoot = typeof row.repo_root === 'string' ? row.repo_root.trim() : '';
       if (!repoRoot) continue;
+      if (!repoPathExists(repoRoot)) continue;
       const existing = repos.get(repoRoot) || {
         repo_root: repoRoot,
         entire_state: null,

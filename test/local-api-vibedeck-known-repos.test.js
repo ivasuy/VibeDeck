@@ -90,22 +90,27 @@ function insertSession(dbPath, row) {
 
 test("vibedeck-known-repos merges Entire repo state and attributed sessions", async () => {
   const { root, queuePath, dbPath } = await createTracker();
+  const switchyardRepo = path.join(root, "switchyard");
+  const vibedeckRepo = path.join(root, "vibedeck");
   try {
+    await fs.mkdir(switchyardRepo, { recursive: true });
+    await fs.mkdir(vibedeckRepo, { recursive: true });
+
     upsertEntireState(dbPath, {
-      repoRoot: "/repos/switchyard",
+      repoRoot: switchyardRepo,
       entire_state: "active",
       entire_version: "0.6.1",
     });
     insertSession(dbPath, {
       session_id: "s1",
-      repo_root: "/repos/vibedeck",
+      repo_root: vibedeckRepo,
       branch: "main",
       confidence: "low",
       updated_at: "2026-05-11T02:00:00.000Z",
     });
     insertSession(dbPath, {
       session_id: "s2",
-      repo_root: "/repos/switchyard",
+      repo_root: switchyardRepo,
       branch: "dashboard",
       confidence: "high",
       ended_at: null,
@@ -128,14 +133,55 @@ test("vibedeck-known-repos merges Entire repo state and attributed sessions", as
     assert.equal(res.statusCode, 200);
     const payload = JSON.parse(res.body.toString("utf8"));
     assert.deepEqual(payload.repos.map((repo) => repo.repo_root).sort(), [
-      "/repos/switchyard",
-      "/repos/vibedeck",
+      switchyardRepo,
+      vibedeckRepo,
     ]);
-    const switchyard = payload.repos.find((repo) => repo.repo_root === "/repos/switchyard");
+    const switchyard = payload.repos.find((repo) => repo.repo_root === switchyardRepo);
     assert.equal(switchyard.entire_state, "active");
     assert.equal(switchyard.entire_version, "0.6.1");
     assert.equal(switchyard.open_session_count, 1);
     assert.equal(switchyard.session_count, 1);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("vibedeck-known-repos hides repos that no longer exist on disk", async () => {
+  const { root, queuePath, dbPath } = await createTracker();
+  const existingRepo = path.join(root, "existing");
+  const missingSessionRepo = path.join(root, "deleted-session-repo");
+  const missingEntireRepo = path.join(root, "deleted-entire-repo");
+  try {
+    await fs.mkdir(existingRepo, { recursive: true });
+    upsertEntireState(dbPath, {
+      repoRoot: missingEntireRepo,
+      entire_state: "active",
+      entire_version: "0.6.1",
+    });
+    insertSession(dbPath, {
+      session_id: "existing",
+      repo_root: existingRepo,
+      branch: "main",
+      updated_at: "2026-05-11T04:00:00.000Z",
+    });
+    insertSession(dbPath, {
+      session_id: "missing",
+      repo_root: missingSessionRepo,
+      branch: "main",
+      updated_at: "2026-05-11T05:00:00.000Z",
+    });
+
+    delete require.cache[require.resolve("../src/lib/local-api")];
+    const { createLocalApiHandler } = require("../src/lib/local-api");
+    const handler = createLocalApiHandler({ queuePath });
+    const req = createRequest();
+    const res = createResponse();
+    const handled = await handler(req, res, new URL("http://127.0.0.1/functions/vibedeck-known-repos"));
+
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body.toString("utf8"));
+    assert.deepEqual(payload.repos.map((repo) => repo.repo_root), [existingRepo]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

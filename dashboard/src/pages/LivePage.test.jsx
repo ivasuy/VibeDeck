@@ -133,11 +133,11 @@ describe("LivePage", () => {
 
     expect(await screen.findByText("Live control center")).toBeTruthy();
     expect(screen.getAllByText(/codex/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("feature/costs").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("idle").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("visible-fifth").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("second-page-session").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/main/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/feature\/costs/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/idle/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/visible-fifth/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/second-page-session/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i })[0]);
@@ -157,7 +157,7 @@ describe("LivePage", () => {
     expect(screen.getByText("Unrouted")).toBeTruthy();
     expect(screen.getByText("Provider limits")).toBeTruthy();
     expect(screen.getByText("Codex")).toBeTruthy();
-    expect(screen.getByText("5h")).toBeTruthy();
+    expect(screen.getAllByText("5h").length).toBeGreaterThan(0);
     expect(screen.getByText("7d")).toBeTruthy();
     expect(screen.queryByText("Gemini")).toBeNull();
     expect(screen.queryByRole("button", { name: "Next" })).toBeNull();

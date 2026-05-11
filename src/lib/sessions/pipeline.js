@@ -195,6 +195,41 @@ function updateSessionEndedState(db, { provider, session_id, ended_at, end_reaso
   ).run(ended_at, end_reason, now, provider, session_id);
 }
 
+function shouldResolveBranch({ existing, session, repo, event, keepOpenForCheckpoint, reopenOrphanedSession, preserveExistingTerminalEnd }) {
+  if (!session) return false;
+  if (keepOpenForCheckpoint || reopenOrphanedSession || preserveExistingTerminalEnd) return true;
+  if (event?.kind === 'start' || event?.kind === 'end') return true;
+  const repoRoot = isNonEmptyString(repo?.repo_root) ? repo.repo_root : null;
+  if (repoRoot && repoRoot !== existing?.repo_root) return true;
+  if (!isNonEmptyString(session.repo_root)) return !isNonEmptyString(session.branch_resolution_tier);
+  if (!isNonEmptyString(session.branch_resolution_tier) || !isNonEmptyString(session.confidence)) return true;
+  return false;
+}
+
+function emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession }) {
+  const bus = getLiveBus();
+  const busEventKind = keepOpenForCheckpoint || reopenOrphanedSession ? 'update' : event.kind;
+  const payload = {
+    ...event,
+    kind: busEventKind,
+    ended_at: latest ? latest.ended_at : event.ended_at,
+    end_reason: latest ? latest.end_reason : event.end_reason,
+    repo_root: latest ? latest.repo_root : null,
+    branch: latest ? latest.branch : null,
+    tier: latest ? latest.branch_resolution_tier : null,
+    confidence: latest ? latest.confidence : null,
+    model: latest ? latest.model : event.model,
+    total_tokens: latest ? latest.total_tokens : event.total_tokens,
+    total_cost_usd: latest ? latest.total_cost_usd : event.total_cost_usd,
+    input_tokens: latest ? latest.input_tokens : event.input_tokens,
+    cached_input_tokens: latest ? latest.cached_input_tokens : event.cached_input_tokens,
+    cache_creation_input_tokens: latest ? latest.cache_creation_input_tokens : event.cache_creation_input_tokens,
+    output_tokens: latest ? latest.output_tokens : event.output_tokens,
+    reasoning_output_tokens: latest ? latest.reasoning_output_tokens : event.reasoning_output_tokens,
+  };
+  bus.emit(`session:${busEventKind}`, payload);
+}
+
 function restoreSessionUpdatedAt(dbPath, { provider, session_id, updated_at } = {}) {
   if (!isNonEmptyString(updated_at)) return;
   const db = new DatabaseSync(dbPath);
@@ -232,7 +267,13 @@ async function processSessionEvent(dbPath, event) {
   const preserveExistingTerminalEnd = shouldPreserveExistingTerminalEnd(existingBeforeUpsert, event);
 
   let repo = null;
-  if (isNonEmptyString(event.cwd)) {
+  const existingRepoStillApplies =
+    event.kind === 'update' &&
+    isNonEmptyString(existingBeforeUpsert?.repo_root) &&
+    isNonEmptyString(existingBeforeUpsert?.cwd) &&
+    isNonEmptyString(event.cwd) &&
+    existingBeforeUpsert.cwd === event.cwd;
+  if (!existingRepoStillApplies && isNonEmptyString(event.cwd)) {
     try {
       repo = resolveRepo(event.cwd);
     } catch {
@@ -288,6 +329,20 @@ async function processSessionEvent(dbPath, event) {
   }
   if (!session) return;
 
+  if (!shouldResolveBranch({
+    existing: existingBeforeUpsert,
+    session,
+    repo,
+    event,
+    keepOpenForCheckpoint,
+    reopenOrphanedSession,
+    preserveExistingTerminalEnd,
+  })) {
+    if (preserveExistingTerminalEnd) return;
+    emitSessionEvent({ event, latest: session, keepOpenForCheckpoint, reopenOrphanedSession });
+    return;
+  }
+
   const branchRes = await resolveBranchForSession({
     provider: session.provider,
     session_id: session.session_id,
@@ -341,21 +396,8 @@ async function processSessionEvent(dbPath, event) {
       }
 
       const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
-      const bus = getLiveBus();
       if (preserveExistingTerminalEnd) return;
-      const busEventKind = keepOpenForCheckpoint || reopenOrphanedSession ? 'update' : event.kind;
-      const payload = {
-        ...event,
-        kind: busEventKind,
-        ended_at: latest ? latest.ended_at : event.ended_at,
-        end_reason: latest ? latest.end_reason : event.end_reason,
-        repo_root: latest ? latest.repo_root : null,
-        branch: latest ? latest.branch : null,
-        tier: latest ? latest.branch_resolution_tier : null,
-        confidence: latest ? latest.confidence : null,
-        total_tokens: latest ? latest.total_tokens : event.total_tokens,
-      };
-      bus.emit(`session:${busEventKind}`, payload);
+      emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession });
     } finally {
       db.close();
     }

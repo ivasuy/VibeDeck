@@ -222,6 +222,55 @@ test('recent log_complete after a real end does not reopen or emit duplicate ses
   }
 });
 
+test('live update events include persisted model for realtime cost pricing', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-update-model-'));
+  try {
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+    const now = new Date();
+    const started = new Date(now.getTime() - 2 * 60 * 1000).toISOString();
+    const observed = new Date(now.getTime() - 30 * 1000).toISOString();
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'model-preserved-session',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.3-codex-spark',
+    });
+
+    const bus = getLiveBus();
+    const seen = [];
+    const onUpdate = (event) => seen.push(event);
+    bus.on('session:update', onUpdate);
+    try {
+      await processSessionEvent(dbPath, {
+        kind: 'update',
+        provider: 'codex',
+        session_id: 'model-preserved-session',
+        observed_at: observed,
+        delta_tokens: 1000,
+        input_tokens: 200,
+        cached_input_tokens: 700,
+        output_tokens: 100,
+        reasoning_output_tokens: 0,
+      });
+    } finally {
+      bus.off('session:update', onUpdate);
+    }
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].model, 'gpt-5.3-codex-spark');
+    assert.equal(seen[0].total_tokens, 1000);
+    assert.equal(seen[0].input_tokens, 200);
+    assert.equal(seen[0].cached_input_tokens, 700);
+    assert.equal(seen[0].output_tokens, 100);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('new activity after orphan_reaped reopens the session', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-reopen-reaped-'));
   try {

@@ -579,7 +579,23 @@ async function cmdSync(argv) {
       }
     }
 
-    const sessionEventDrain = await sessionEventProcessor.drain();
+    if (progress?.enabled && sessionEventProcessor.total > 0) {
+      progress.start(
+        `Attributing sessions ${renderBar(sessionEventProcessor.processed / sessionEventProcessor.total)} ${formatNumber(
+          sessionEventProcessor.processed,
+        )}/${formatNumber(sessionEventProcessor.total)} events`,
+      );
+    }
+    const sessionEventDrain = await sessionEventProcessor.drain({
+      onProgress: progress?.enabled
+        ? ({ processed, total }) => {
+            const pct = total > 0 ? processed / total : 1;
+            progress.update(
+              `Attributing sessions ${renderBar(pct)} ${formatNumber(processed)}/${formatNumber(total)} events`,
+            );
+          }
+        : null,
+    });
     if (!opts.auto && sessionEventDrain.errors.length > 0) {
       process.stderr.write(
         `Session live-state sync: ${sessionEventDrain.errors.length} event(s) failed\n`,
@@ -678,22 +694,50 @@ function createSessionEventProcessor(processor) {
 
   const errors = [];
   let queue = Promise.resolve();
+  let total = 0;
+  let processed = 0;
+  let progressCallback = null;
 
   const onSessionEvent = (event) => {
+    total += 1;
     queue = queue
       .then(() => processor(event))
       .catch((err) => {
         errors.push(err);
+      })
+      .finally(() => {
+        processed += 1;
+        if (typeof progressCallback === "function") {
+          progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+        }
       });
     return queue;
   };
 
-  const drain = async () => {
+  const drain = async ({ onProgress } = {}) => {
+    progressCallback = typeof onProgress === "function" ? onProgress : null;
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+    }
     await queue;
-    return { errors };
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: 0 });
+    }
+    progressCallback = null;
+    return { errors, processed, total };
   };
 
-  return { onSessionEvent, drain, errors };
+  return {
+    onSessionEvent,
+    drain,
+    errors,
+    get processed() {
+      return processed;
+    },
+    get total() {
+      return total;
+    },
+  };
 }
 
 module.exports = {

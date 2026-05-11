@@ -50,8 +50,7 @@ describe("LiveSessionList", () => {
     expect(screen.getByText("Active workstreams")).toBeTruthy();
     expect(screen.getByText("1 workstream")).toBeTruthy();
     expect(screen.getByText("VibeDeck")).toBeTruthy();
-    expect(screen.getAllByText("publish-main").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("dashboard").length).toBeGreaterThan(0);
+    expect(screen.getByText(/dashboard, publish-main|publish-main, dashboard/)).toBeTruthy();
     expect(screen.queryByText("Primary session")).toBeNull();
     expect(screen.getByText("Related sessions")).toBeTruthy();
     expect(screen.getByText("1 active")).toBeTruthy();

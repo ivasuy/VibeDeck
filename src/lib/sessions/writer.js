@@ -44,6 +44,10 @@ function sumInts(base, values) {
   return sum;
 }
 
+function sumEventField(base, events, field) {
+  return sumInts(base, events.map((e) => e[field]));
+}
+
 function safeJsonParse(str) {
   if (typeof str !== 'string' || str.trim() === '') return null;
   try {
@@ -182,6 +186,20 @@ function upsertSessionFromEvents(dbPath, events) {
       total_tokens = existing ? existing.total_tokens : null;
     }
 
+    const input_tokens = sumEventField(existing ? existing.input_tokens : null, newUpdates, 'input_tokens');
+    const cached_input_tokens = sumEventField(existing ? existing.cached_input_tokens : null, newUpdates, 'cached_input_tokens');
+    const cache_creation_input_tokens = sumEventField(
+      existing ? existing.cache_creation_input_tokens : null,
+      newUpdates,
+      'cache_creation_input_tokens',
+    );
+    const output_tokens = sumEventField(existing ? existing.output_tokens : null, newUpdates, 'output_tokens');
+    const reasoning_output_tokens = sumEventField(
+      existing ? existing.reasoning_output_tokens : null,
+      newUpdates,
+      'reasoning_output_tokens',
+    );
+
     const mergedEventKeys = existingSources && Array.isArray(existingSources.events) ? [...existingSources.events] : [];
     for (const e of validated) {
       const k = eventKey(e);
@@ -202,6 +220,11 @@ function upsertSessionFromEvents(dbPath, events) {
       cwd,
       model,
       total_tokens,
+      input_tokens,
+      cached_input_tokens,
+      cache_creation_input_tokens,
+      output_tokens,
+      reasoning_output_tokens,
       branch_resolution_tier: existing ? existing.branch_resolution_tier : 'D',
       confidence: existing ? existing.confidence : 'unattributed',
       override_user,
@@ -223,6 +246,8 @@ function upsertSessionFromEvents(dbPath, events) {
         cwd, repo_root, repo_common_dir, parent_repo,
         branch, branch_resolution_tier, confidence, override_user,
         model, total_tokens, total_cost_usd,
+        input_tokens, cached_input_tokens, cache_creation_input_tokens,
+        output_tokens, reasoning_output_tokens,
         created_at, updated_at
       ) VALUES (
         @provider, @session_id,
@@ -230,6 +255,8 @@ function upsertSessionFromEvents(dbPath, events) {
         @cwd, @repo_root, @repo_common_dir, @parent_repo,
         @branch, @branch_resolution_tier, @confidence, @override_user,
         @model, @total_tokens, @total_cost_usd,
+        @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
+        @output_tokens, @reasoning_output_tokens,
         @created_at, @updated_at
       )
       ON CONFLICT(provider, session_id) DO UPDATE SET
@@ -239,6 +266,11 @@ function upsertSessionFromEvents(dbPath, events) {
         cwd = excluded.cwd,
         model = excluded.model,
         total_tokens = excluded.total_tokens,
+        input_tokens = excluded.input_tokens,
+        cached_input_tokens = excluded.cached_input_tokens,
+        cache_creation_input_tokens = excluded.cache_creation_input_tokens,
+        output_tokens = excluded.output_tokens,
+        reasoning_output_tokens = excluded.reasoning_output_tokens,
         branch_resolution_tier = excluded.branch_resolution_tier,
         confidence = excluded.confidence,
         updated_at = excluded.updated_at
@@ -259,6 +291,11 @@ function upsertSessionFromEvents(dbPath, events) {
       override_user,
       model,
       total_tokens,
+      input_tokens,
+      cached_input_tokens,
+      cache_creation_input_tokens,
+      output_tokens,
+      reasoning_output_tokens,
       total_cost_usd: existing ? existing.total_cost_usd : null,
       created_at: existing ? existing.created_at : now,
       updated_at: now,

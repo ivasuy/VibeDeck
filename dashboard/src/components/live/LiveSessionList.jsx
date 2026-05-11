@@ -178,13 +178,6 @@ export function LiveSessionList({
                       >
                         Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || "—")}
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {workstream.branches.map((branch) => (
-                          <span key={branch} className="inline-flex h-6 max-w-full items-center rounded-md bg-oai-black/[0.05] px-2 text-[11px] font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
-                            <span className="truncate">{branch}</span>
-                          </span>
-                        ))}
-                      </div>
                     </div>
                     <ConfidenceBadge confidence={primary?.confidence} className="shrink-0" />
                   </div>

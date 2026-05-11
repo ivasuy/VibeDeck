@@ -13,7 +13,7 @@ function tileFor(label) {
 
 describe("LiveWorkbenchOverview", () => {
   it("counts attribution gaps, limit sources, and active repos separately", () => {
-    render(
+    const { container } = render(
       <LiveWorkbenchOverview
         status="connected"
         sessions={[
@@ -59,5 +59,6 @@ describe("LiveWorkbenchOverview", () => {
     expect(within(tileFor("Limit sources")).getByText("2")).toBeTruthy();
     expect(within(tileFor("Active repos")).getByText("2")).toBeTruthy();
     expect(screen.getByText("$3.00")).toBeTruthy();
+    expect(container.querySelector('[data-counter-root="true"]')).not.toBeNull();
   });
 });

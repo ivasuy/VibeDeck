@@ -84,12 +84,134 @@ function toLiveCostNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function liveBucketTotal(row) {
+  return [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+  ].reduce((sum, key) => sum + (Number(row?.[key] || 0) || 0), 0);
+}
+
+function normalizeCodexUsage(u) {
+  const input = Math.max(0, Math.floor(Number(u?.input_tokens || 0) || 0));
+  const cached = Math.max(0, Math.floor(Number(u?.cached_input_tokens || 0) || 0));
+  const cacheCreation = Math.max(0, Math.floor(Number(u?.cache_creation_input_tokens || 0) || 0));
+  const output = Math.max(0, Math.floor(Number(u?.output_tokens || 0) || 0));
+  const reasoning = Math.max(0, Math.floor(Number(u?.reasoning_output_tokens || 0) || 0));
+  const total = Math.max(0, Math.floor(Number(u?.total_tokens || 0) || 0));
+  return {
+    input_tokens: Math.max(0, input - cached),
+    cached_input_tokens: cached,
+    cache_creation_input_tokens: cacheCreation,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+  };
+}
+
+function pickCodexDelta(lastUsage, totalUsage, previous) {
+  const hasLast = lastUsage && typeof lastUsage === "object";
+  const hasTotal = totalUsage && typeof totalUsage === "object";
+  const hasPrevious = previous && typeof previous === "object";
+  if (hasTotal && hasPrevious) {
+    const delta = {};
+    for (const key of [
+      "input_tokens",
+      "cached_input_tokens",
+      "cache_creation_input_tokens",
+      "output_tokens",
+      "reasoning_output_tokens",
+      "total_tokens",
+    ]) {
+      const current = Number(totalUsage[key]);
+      const prev = Number(previous[key]);
+      if (Number.isFinite(current) && Number.isFinite(prev)) delta[key] = Math.max(0, current - prev);
+    }
+    return normalizeCodexUsage(delta);
+  }
+  if (hasLast) return normalizeCodexUsage(lastUsage);
+  if (hasTotal) return normalizeCodexUsage(totalUsage);
+  return null;
+}
+
+function readActiveCodexTokenBuckets(row) {
+  const provider = String(row?.provider || "").toLowerCase();
+  if (provider !== "codex" && provider !== "every-code") return null;
+  const filePath = String(row?.session_id || "");
+  if (!filePath.endsWith(".jsonl") || !fs.existsSync(filePath)) return null;
+
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch {
+    return null;
+  }
+
+  const out = {
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: 0,
+    reasoning_output_tokens: 0,
+    total_tokens: 0,
+  };
+  let latestTotalUsage = null;
+  let previousTotals = null;
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.includes("token_count")) continue;
+    let obj;
+    try {
+      obj = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const payload = obj?.payload;
+    const info = payload?.type === "token_count"
+      ? payload.info
+      : payload?.msg?.type === "token_count"
+        ? payload.msg.info
+        : null;
+    if (!info || typeof info !== "object") continue;
+    const delta = pickCodexDelta(info.last_token_usage, info.total_token_usage, previousTotals);
+    if (!delta) continue;
+    if (info.total_token_usage && typeof info.total_token_usage === "object") {
+      previousTotals = info.total_token_usage;
+      latestTotalUsage = info.total_token_usage;
+    }
+    for (const key of Object.keys(out)) out[key] += Number(delta[key] || 0) || 0;
+  }
+  if (latestTotalUsage) {
+    const snapshot = normalizeCodexUsage(latestTotalUsage);
+    if (snapshot.total_tokens > 0) return snapshot;
+  }
+  return out.total_tokens > 0 ? out : null;
+}
+
+function enrichActiveLiveTokenBuckets(row) {
+  if (row?.ended_at || String(row?.state || "").trim().toLowerCase() === "ended") return row;
+  const buckets = readActiveCodexTokenBuckets(row);
+  if (buckets) return { ...row, ...buckets, usage_source: "active_log" };
+  const currentBucketTotal = liveBucketTotal(row);
+  const total = Number(row?.total_tokens || 0) || 0;
+  if (currentBucketTotal > 0 && total <= currentBucketTotal) return row;
+  return row;
+}
+
 function enrichLiveSessionCost(row) {
+  row = enrichActiveLiveTokenBuckets(row);
+  const active = !row?.ended_at && String(row?.state || "").trim().toLowerCase() !== "ended";
   const costResult = resolveUsageCost({
-    stored_cost_usd: row?.total_cost_usd,
+    stored_cost_usd: active ? null : row?.total_cost_usd,
     source: row?.provider,
     model: row?.model,
     total_tokens: row?.total_tokens,
+    input_tokens: row?.input_tokens,
+    cached_input_tokens: row?.cached_input_tokens,
+    cache_creation_input_tokens: row?.cache_creation_input_tokens,
+    output_tokens: row?.output_tokens,
+    reasoning_output_tokens: row?.reasoning_output_tokens,
   });
 
   return {

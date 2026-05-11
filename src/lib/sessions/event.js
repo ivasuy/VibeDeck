@@ -10,6 +10,12 @@ function isNullableString(v) {
   return v === null || v === undefined || typeof v === 'string';
 }
 
+function assertNullableNonNegativeInteger(name, v) {
+  if (v != null && (!Number.isInteger(v) || v < 0)) {
+    throw new TypeError(`SessionEvent.${name} must be a non-negative integer or null`);
+  }
+}
+
 function assertIsoString(name, v) {
   if (!isNonEmptyString(v)) {
     throw new TypeError(`${name} must be a non-empty ISO string`);
@@ -28,9 +34,12 @@ function validateEvent(e) {
   }
   if (e.kind === 'update') {
     assertIsoString('SessionEvent.observed_at', e.observed_at);
-    if (e.delta_tokens != null && (!Number.isInteger(e.delta_tokens) || e.delta_tokens < 0)) {
-      throw new TypeError('SessionEvent.delta_tokens must be a non-negative integer or null');
-    }
+    assertNullableNonNegativeInteger('delta_tokens', e.delta_tokens);
+    assertNullableNonNegativeInteger('input_tokens', e.input_tokens);
+    assertNullableNonNegativeInteger('cached_input_tokens', e.cached_input_tokens);
+    assertNullableNonNegativeInteger('cache_creation_input_tokens', e.cache_creation_input_tokens);
+    assertNullableNonNegativeInteger('output_tokens', e.output_tokens);
+    assertNullableNonNegativeInteger('reasoning_output_tokens', e.reasoning_output_tokens);
   }
   if (e.kind === 'end') {
     assertIsoString('SessionEvent.ended_at', e.ended_at);
@@ -53,8 +62,33 @@ function makeStart({ provider, session_id, started_at, cwd = null, model = null 
   return validateEvent(e);
 }
 
-function makeUpdate({ provider, session_id, observed_at, delta_tokens = null, cwd = null, model = null }) {
-  const e = { kind: 'update', provider, session_id, observed_at, delta_tokens, cwd, model };
+function makeUpdate({
+  provider,
+  session_id,
+  observed_at,
+  delta_tokens = null,
+  cwd = null,
+  model = null,
+  input_tokens = null,
+  cached_input_tokens = null,
+  cache_creation_input_tokens = null,
+  output_tokens = null,
+  reasoning_output_tokens = null,
+}) {
+  const e = {
+    kind: 'update',
+    provider,
+    session_id,
+    observed_at,
+    delta_tokens,
+    cwd,
+    model,
+    input_tokens,
+    cached_input_tokens,
+    cache_creation_input_tokens,
+    output_tokens,
+    reasoning_output_tokens,
+  };
   return validateEvent(e);
 }
 

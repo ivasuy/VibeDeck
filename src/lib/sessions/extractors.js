@@ -17,7 +17,19 @@ function normalizeUpdates(updates) {
       const delta_tokens = u.delta_tokens;
       if (!observed_at) return null;
       if (delta_tokens != null && (!Number.isInteger(delta_tokens) || delta_tokens < 0)) return null;
-      return { observed_at, delta_tokens: delta_tokens == null ? null : delta_tokens };
+      const out = { observed_at, delta_tokens: delta_tokens == null ? null : delta_tokens };
+      for (const key of [
+        'input_tokens',
+        'cached_input_tokens',
+        'cache_creation_input_tokens',
+        'output_tokens',
+        'reasoning_output_tokens',
+      ]) {
+        if (u[key] == null) continue;
+        if (!Number.isInteger(u[key]) || u[key] < 0) return null;
+        out[key] = u[key];
+      }
+      return out;
     })
     .filter(Boolean);
 }
@@ -51,6 +63,11 @@ function extractSessionEvents({
         delta_tokens: u.delta_tokens,
         cwd: cwd ?? null,
         model: model ?? null,
+        input_tokens: u.input_tokens ?? null,
+        cached_input_tokens: u.cached_input_tokens ?? null,
+        cache_creation_input_tokens: u.cache_creation_input_tokens ?? null,
+        output_tokens: u.output_tokens ?? null,
+        reasoning_output_tokens: u.reasoning_output_tokens ?? null,
       }),
     );
   }

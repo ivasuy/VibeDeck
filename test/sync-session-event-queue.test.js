@@ -56,3 +56,23 @@ test("sync session event drain waits after processor errors and continues later 
   assert.equal(drain.errors.length, 1);
   assert.equal(drain.errors[0].message, "expected failure");
 });
+
+test("sync session event drain reports attribution progress", async () => {
+  const seen = [];
+  const processor = createSessionEventProcessor(async (event) => {
+    seen.push(event.id);
+  });
+
+  processor.onSessionEvent({ id: "first" });
+  processor.onSessionEvent({ id: "second" });
+
+  const progress = [];
+  const drain = await processor.drain({
+    onProgress: (state) => progress.push(state),
+  });
+
+  assert.deepEqual(seen, ["first", "second"]);
+  assert.equal(drain.total, 2);
+  assert.equal(drain.processed, 2);
+  assert.deepEqual(progress.at(-1), { processed: 2, total: 2, pending: 0 });
+});

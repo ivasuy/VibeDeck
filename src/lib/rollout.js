@@ -742,7 +742,15 @@ async function parseOpenclawSessionFile({
     if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
     sessionEndedAt = tokenTimestamp;
     sessionTotalTokens += Number(delta.total_tokens || 0);
-    sessionUpdates.push({ observed_at: tokenTimestamp, delta_tokens: Number(delta.total_tokens || 0) });
+    sessionUpdates.push({
+      observed_at: tokenTimestamp,
+      delta_tokens: Number(delta.total_tokens || 0),
+      input_tokens: delta.input_tokens,
+      cached_input_tokens: delta.cached_input_tokens,
+      cache_creation_input_tokens: delta.cache_creation_input_tokens,
+      output_tokens: delta.output_tokens,
+      reasoning_output_tokens: delta.reasoning_output_tokens,
+    });
 
     const bucketStart = toUtcHalfHourStart(tokenTimestamp);
     if (!bucketStart) continue;
@@ -886,7 +894,15 @@ async function parseRolloutFile({
     sessionEndedAt = tokenTimestamp;
     sessionCwd = currentCwd || sessionCwd;
     sessionTotalTokens += Number(delta.total_tokens || 0);
-    sessionUpdates.push({ observed_at: tokenTimestamp, delta_tokens: Number(delta.total_tokens || 0) });
+    sessionUpdates.push({
+      observed_at: tokenTimestamp,
+      delta_tokens: Number(delta.total_tokens || 0),
+      input_tokens: delta.input_tokens,
+      cached_input_tokens: delta.cached_input_tokens,
+      cache_creation_input_tokens: delta.cache_creation_input_tokens,
+      output_tokens: delta.output_tokens,
+      reasoning_output_tokens: delta.reasoning_output_tokens,
+    });
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);

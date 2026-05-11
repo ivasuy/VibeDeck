@@ -264,13 +264,14 @@ async function getEntireRepoStatus(
   repoRoot,
   {
     persist = true,
+    dbPathOverride = null,
     dbPathOverrideForTests = null,
     detectionOverrideForTests = null,
     checkpointsTipOverrideForTests,
   } = {},
 ) {
   const detection = detectionOverrideForTests || (await detectEntire());
-  const dbPath = dbPathOverrideForTests || (await _getDbPath());
+  const dbPath = dbPathOverride || dbPathOverrideForTests || (await _getDbPath());
 
   if (!detection.present) {
     if (persist) upsertEntireState(dbPath, { repoRoot, entire_state: 'not_installed' });

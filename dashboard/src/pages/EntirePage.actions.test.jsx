@@ -10,6 +10,7 @@ const getEntireStatus = vi.fn();
 const getCheckpoints = vi.fn();
 const getCheckpoint = vi.fn();
 const getBranchUsage = vi.fn();
+const getKnownRepos = vi.fn();
 const postEntireCommand = vi.fn();
 const confirmDestructive = vi.fn();
 
@@ -18,9 +19,26 @@ vi.mock("../lib/vibedeck-api", () => ({
   getCheckpoints: (...args) => getCheckpoints(...args),
   getCheckpoint: (...args) => getCheckpoint(...args),
   getBranchUsage: (...args) => getBranchUsage(...args),
+  getKnownRepos: (...args) => getKnownRepos(...args),
   postEntireCommand: (...args) => postEntireCommand(...args),
   confirmDestructive: (...args) => confirmDestructive(...args),
 }));
+
+function createStorage() {
+  const data = new Map();
+  return {
+    getItem: vi.fn((key) => (data.has(key) ? data.get(key) : null)),
+    setItem: vi.fn((key, value) => {
+      data.set(String(key), String(value));
+    }),
+    removeItem: vi.fn((key) => {
+      data.delete(key);
+    }),
+    clear: vi.fn(() => {
+      data.clear();
+    }),
+  };
+}
 
 async function loadRepo(repo = "/Users/dev/repo") {
   const input = await screen.findByPlaceholderText("/Users/you/project");
@@ -30,13 +48,21 @@ async function loadRepo(repo = "/Users/dev/repo") {
 }
 
 beforeEach(() => {
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: createStorage(),
+  });
+
   getEntireStatus.mockReset();
   getCheckpoints.mockReset();
   getCheckpoint.mockReset();
   getBranchUsage.mockReset();
+  getKnownRepos.mockReset();
   postEntireCommand.mockReset();
   confirmDestructive.mockReset();
+  window.localStorage.clear();
 
+  getKnownRepos.mockResolvedValue({ repos: [] });
   getBranchUsage.mockResolvedValue({ repos: [] });
   getEntireStatus.mockResolvedValue({ state: "active" });
   getCheckpoints.mockResolvedValue({ available: true, files: [] });
@@ -104,6 +130,47 @@ describe("EntirePage write actions", () => {
     expect(screen.queryByRole("button", { name: "Run configure" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
     expect(await screen.findByRole("button", { name: "Run configure" })).toBeTruthy();
+  });
+
+  it("remembers action controls per repo", async () => {
+    render(<EntirePage />);
+    await loadRepo("/Users/dev/repo");
+
+    fireEvent.click(screen.getByLabelText("codex"));
+    fireEvent.change(screen.getByPlaceholderText("checkpoint-id"), { target: { value: "cp-001" } });
+    fireEvent.click(screen.getByLabelText("Clean all checkpoints"));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("vibedeck:entire:actions:/Users/dev/repo")).toContain("cp-001");
+    });
+
+    cleanup();
+    render(<EntirePage />);
+    await loadRepo("/Users/dev/repo");
+
+    expect(screen.getByLabelText("codex").checked).toBe(true);
+    expect(screen.getByPlaceholderText("checkpoint-id").value).toBe("cp-001");
+    expect(screen.getByLabelText("Clean all checkpoints").checked).toBe(true);
+  });
+
+  it("loads saved configure args for the selected repo", async () => {
+    render(<EntirePage />);
+    await loadRepo("/Users/dev/repo");
+
+    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
+    fireEvent.change(await screen.findByPlaceholderText("--arg value --flag"), {
+      target: { value: "--agent codex --mode careful" },
+    });
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("vibedeck:entire:configure:/Users/dev/repo")).toContain("--agent codex");
+    });
+
+    cleanup();
+    render(<EntirePage />);
+    await loadRepo("/Users/dev/repo");
+
+    expect(await screen.findByDisplayValue("--agent codex --mode careful")).toBeTruthy();
   });
 
   it("confirms destructive actions before rewind/clean commands", async () => {

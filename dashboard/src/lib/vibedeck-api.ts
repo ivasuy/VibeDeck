@@ -104,6 +104,10 @@ export function getBranchUsage(params: BranchUsageParams = {}, fetchImpl: FetchI
   ).then(jsonOrThrow);
 }
 
+export function getKnownRepos(params: { limit?: number } = {}, fetchImpl: FetchImpl = fetch) {
+  return fetchImpl(query("vibedeck-known-repos", params), readOptions).then(jsonOrThrow);
+}
+
 export function getEntireStatus(repo: string, fetchImpl: FetchImpl = fetch) {
   return fetchImpl(query("vibedeck-entire-status", { repo, cached: "1" }), readOptions).then(jsonOrThrow);
 }

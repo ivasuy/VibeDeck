@@ -1830,11 +1830,11 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "invalid_repo" }, 400);
         return true;
       }
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       const includeCached = url.searchParams.get("cached") === "1";
       let cached = null;
       if (includeCached) {
         try {
-          const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
           const { getRepoState } = require("./db/repos");
           const row = getRepoState(dbPath, repoRoot);
           cached = {
@@ -1847,8 +1847,21 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         }
       }
       const { getEntireRepoStatus } = require("./entire-bridge");
-      const status = await getEntireRepoStatus(repoRoot, { persist: false });
+      const status = await getEntireRepoStatus(repoRoot, { dbPathOverride: dbPath });
       json(res, cached ? { ...status, ...cached } : status);
+      return true;
+    }
+
+    // --- vibedeck-known-repos (GET) ---
+    if (p === "/functions/vibedeck-known-repos") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const { listKnownRepos } = require("./db/repos");
+      json(res, listKnownRepos(dbPath, { limit: url.searchParams.get("limit") }));
       return true;
     }
 

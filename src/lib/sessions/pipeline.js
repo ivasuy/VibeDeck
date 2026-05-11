@@ -38,6 +38,22 @@ function shouldPreserveExistingTerminalEnd(existing, event) {
   return isRecentLogCompleteCheckpoint(event) && !!existing && existing.ended_at != null && existing.end_reason !== 'log_complete';
 }
 
+function eventActivityDate(event) {
+  if (!event || typeof event !== 'object') return null;
+  if (event.kind === 'update') return toValidDate(event.observed_at);
+  if (event.kind === 'end') return toValidDate(event.ended_at);
+  if (event.kind === 'start') return toValidDate(event.started_at);
+  return null;
+}
+
+function shouldReopenOrphanedSession(existing, event) {
+  if (!existing || existing.end_reason !== 'orphan_reaped') return false;
+  const endedAt = toValidDate(existing.ended_at);
+  const activityAt = eventActivityDate(event);
+  if (!endedAt || !activityAt) return false;
+  return activityAt.getTime() > endedAt.getTime();
+}
+
 function loadSession(db, { provider, session_id } = {}) {
   return (
     db
@@ -136,6 +152,7 @@ async function processSessionEvent(dbPath, event) {
   }
 
   const keepOpenForCheckpoint = shouldKeepSessionOpenForCheckpoint(existingBeforeUpsert, event);
+  const reopenOrphanedSession = shouldReopenOrphanedSession(existingBeforeUpsert, event);
   const preserveExistingTerminalEnd = shouldPreserveExistingTerminalEnd(existingBeforeUpsert, event);
 
   let repo = null;
@@ -155,7 +172,7 @@ async function processSessionEvent(dbPath, event) {
     try {
       db.exec('BEGIN');
       try {
-        if (keepOpenForCheckpoint) {
+        if (keepOpenForCheckpoint || reopenOrphanedSession) {
           updateSessionEndedState(db, {
             provider: event.provider,
             session_id: event.session_id,
@@ -250,7 +267,7 @@ async function processSessionEvent(dbPath, event) {
       const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
       const bus = getLiveBus();
       if (preserveExistingTerminalEnd) return;
-      const busEventKind = keepOpenForCheckpoint ? 'update' : event.kind;
+      const busEventKind = keepOpenForCheckpoint || reopenOrphanedSession ? 'update' : event.kind;
       const payload = {
         ...event,
         kind: busEventKind,

@@ -18,6 +18,21 @@ function getSessionEndedState(dbPath, sessionId) {
   }
 }
 
+function markSessionReaped(dbPath, sessionId, endedAt) {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.prepare(
+      `
+      UPDATE vibedeck_sessions
+      SET ended_at = ?, end_reason = 'orphan_reaped', updated_at = ?
+      WHERE session_id = ?
+      `,
+    ).run(endedAt, endedAt, sessionId);
+  } finally {
+    db.close();
+  }
+}
+
 test('recent log_complete sessions remain open for live workbench', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-current-'));
   try {
@@ -189,6 +204,90 @@ test('recent log_complete after a real end does not reopen or emit duplicate ses
     assert.equal(row.ended_at, realEnded);
     assert.equal(row.end_reason, 'normal');
     assert.equal(seen.length, 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('new activity after orphan_reaped reopens the session', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-reopen-reaped-'));
+  try {
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+    const started = '2026-05-11T01:00:00.000Z';
+    const firstObserved = '2026-05-11T01:05:00.000Z';
+    const reapedAt = '2026-05-11T01:05:00.000Z';
+    const newObserved = '2026-05-11T01:40:00.000Z';
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'reaped-then-active',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: 'reaped-then-active',
+      observed_at: firstObserved,
+      delta_tokens: 100,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    markSessionReaped(dbPath, 'reaped-then-active', reapedAt);
+
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: 'reaped-then-active',
+      observed_at: newObserved,
+      delta_tokens: 200,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+
+    const row = getSessionEndedState(dbPath, 'reaped-then-active');
+    assert.equal(row.ended_at, null);
+    assert.equal(row.end_reason, null);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('old activity does not reopen an orphan_reaped session', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-stale-reaped-'));
+  try {
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+    const started = '2026-05-11T01:00:00.000Z';
+    const reapedAt = '2026-05-11T01:40:00.000Z';
+    const oldObserved = '2026-05-11T01:20:00.000Z';
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'reaped-stays-ended',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    markSessionReaped(dbPath, 'reaped-stays-ended', reapedAt);
+
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: 'reaped-stays-ended',
+      observed_at: oldObserved,
+      delta_tokens: 200,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+
+    const row = getSessionEndedState(dbPath, 'reaped-stays-ended');
+    assert.equal(row.ended_at, reapedAt);
+    assert.equal(row.end_reason, 'orphan_reaped');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

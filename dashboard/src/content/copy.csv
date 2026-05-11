@@ -20,14 +20,6 @@ error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload t
 error.boundary.no_details,shared,*,ErrorBoundary,details,No error details,,active
 error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,Reload,,active
 
-landing.screenshot.alt,landing,LandingPage,LandingPage,screenshot_alt,TokenTracker dashboard screenshot,,active
-landing.install.action.copy,landing,LandingPage,LandingPage,install_copy,COPY COMMAND,,active
-landing.install.action.copied,landing,LandingPage,LandingPage,install_copied,COPIED,,active
-landing.signal.identity_probe,landing,LandingPage,SignalBox,title,Identity_Probe,,active
-landing.signal.live_sniffer,landing,LandingPage,SignalBox,title,LIVE_SNIFFER,,active
-landing.handle.label,landing,LandingPage,LandingPage,handle_label,Set_Handle,,active
-landing.cta.primary,landing,LandingPage,LandingPage,cta_primary,View Dashboard,,active
-landing.cta.secondary,landing,LandingPage,LandingPage,cta_secondary,GITHUB SOURCE,,active
 
 
 shell.header.title,ui,MatrixShell,MatrixShell,header_title,VIBE USAGE,,active
@@ -48,32 +40,6 @@ boot.prompt,ui,BootScreen,BootScreen,prompt,Tracking all your AI tokens...,,acti
 boot.skip_hint,ui,BootScreen,BootScreen,skip_hint,Click to skip,,active
 boot.skip_aria,ui,BootScreen,BootScreen,aria_label,Skip boot screen,,active
 
-landing.v2.hero.title_line1,landing,LandingPage,MarketingLanding,hero_title_1,TRACK ALL YOUR,,active
-landing.v2.hero.title_line2,landing,LandingPage,MarketingLanding,hero_title_2,AI TOKENS,,active
-landing.v2.install.mac_cta,landing,LandingPage,MarketingLanding,mac_cta,MAC APP (DMG),,active
-landing.v2.models.title,landing,LandingPage,MarketingLanding,models_title,SUPPORTED AI CLI TOOLS,,active
-landing.v2.compare.kicker,landing,LandingPage,MarketingLanding,compare_kicker,SEAMLESS TRACKING,,active
-landing.v2.compare.title,landing,LandingPage,MarketingLanding,compare_title,Stop guessing your AI usage.,,active
-landing.v2.compare.subtitle,landing,LandingPage,MarketingLanding,compare_subtitle,"AI CLI tools hide your usage data in obscure local files. TokenTracker aggregates them into a single, beautiful dashboard in real-time.",,active
-landing.v2.distill.body,landing,LandingPage,MarketingLanding,distill_body,100% local processing. No prompts or code are ever collected.,,active
-landing.v2.compare.with.title,landing,LandingPage,MarketingLanding,with_title,WITH TOKEN TRACKER,,active
-landing.v2.compare.with.p1,landing,LandingPage,MarketingLanding,with_p1,Centralized usage dashboard,,active
-landing.v2.compare.with.p2,landing,LandingPage,MarketingLanding,with_p2,Real-time token metrics,,active
-landing.v2.compare.with.p3,landing,LandingPage,MarketingLanding,with_p3,"100% local, privacy-guaranteed",,active
-landing.v2.compare.without.title,landing,LandingPage,MarketingLanding,without_title,WITHOUT IT,,active
-landing.v2.compare.without.p1,landing,LandingPage,MarketingLanding,without_p1,Scattered JSON log files,,active
-landing.v2.compare.without.p2,landing,LandingPage,MarketingLanding,without_p2,Blind to token consumption,,active
-landing.v2.compare.without.p3,landing,LandingPage,MarketingLanding,without_p3,Unexpected API bills,,active
-landing.v2.footer.line,landing,LandingPage,MarketingLanding,footer_line,"Token Tracker — Made by developers, for developers.",,active
-landing.v2.nav.github,landing,LandingPage,MarketingLanding,nav_github,GITHUB,,active
-landing.v2.models.agent.codex,landing,LandingPage,MarketingLanding,agent_codex,CODEX,,active
-landing.v2.models.agent.claude_code,landing,LandingPage,MarketingLanding,agent_claude_code,CLAUDE CODE,,active
-landing.v2.models.agent.cursor,landing,LandingPage,MarketingLanding,agent_cursor,CURSOR,,active
-landing.v2.models.agent.gemini,landing,LandingPage,MarketingLanding,agent_gemini,GEMINI,,active
-landing.v2.models.agent.opencode,landing,LandingPage,MarketingLanding,agent_opencode,OPENCODE,,active
-landing.v2.models.agent.openclaw,landing,LandingPage,MarketingLanding,agent_openclaw,OPENCLAW,,active
-landing.v2.cta.primary,landing,LandingPage,MarketingLanding,cta_primary,Open Dashboard,,active
-landing.v2.hero.subtagline,landing,LandingPage,MarketingLanding,hero_subtagline,"Automatically monitor token usage across Claude Code, Cursor, Codex, and more. Local-first, privacy-focused, and zero manual configuration.",,active
 
 system.header.title_default,ui,SystemHeader,SystemHeader,title_default,VIBE_OS_v9.0,,active
 
@@ -151,8 +117,8 @@ dashboard.projects.provider_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown
 dashboard.projects.model_label,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,model_label,Model,,active
 dashboard.projects.breakdown_sessions,ui,ProjectUsageBreakdown,ProjectUsageBreakdown,breakdown_sessions,{{count}} sessions,,active
 dashboard.upgrade_alert.title,ui,UpgradeAlertModal,UpgradeAlertModal,title,Update available,,active
-dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,TokenTracker v{{required}} is now available.,,active
-dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,A new version of TokenTracker is available.,,active
+dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,VibeDeck v{{required}} is now available.,,active
+dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,A new version of VibeDeck is available.,,active
 dashboard.upgrade_alert.prompt,ui,UpgradeAlertModal,UpgradeAlertModal,prompt,$,,active
 dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,✨,,active
 dashboard.upgrade_alert.install_command,ui,UpgradeAlertModal,UpgradeAlertModal,install_command,npx --yes vibedeck-cli init,,active
@@ -160,7 +126,7 @@ dashboard.upgrade_alert.copy,ui,UpgradeAlertModal,UpgradeAlertModal,copy,[ COPY 
 dashboard.upgrade_alert.copied,ui,UpgradeAlertModal,UpgradeAlertModal,copied,[ COPIED ],,active
 dashboard.upgrade_alert.ignore,ui,UpgradeAlertModal,UpgradeAlertModal,ignore,Dismiss,,active
 dashboard.widgets.title,dashboard,DashboardPage,WidgetOnboardingCard,title,Desktop Widgets,,active
-dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""TokenTracker""",,active
+dashboard.widgets.hint,dashboard,DashboardPage,WidgetOnboardingCard,hint,"Right-click your desktop → Edit Widgets → search ""VibeDeck""",,active
 dashboard.widgets.dismiss_aria,dashboard,DashboardPage,WidgetOnboardingCard,dismiss_aria,Dismiss widget intro,,active
 widgets.page.title,dashboard,WidgetsPage,WidgetsPage,title,Widgets,,active
 widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,Open Widget Gallery,,active
@@ -271,12 +237,6 @@ dashboard.identity.fallback,dashboard,DashboardPage,IdentityCard,handle_fallback
 
 dashboard.version.label,dashboard,App,VersionBadge,label,Version,,active
 
-dashboard.screenshot.title_line1,dashboard,DashboardPage,ScreenshotTitle,title_line,Coding Agent,,active
-dashboard.screenshot.title_line2,dashboard,DashboardPage,ScreenshotTitle,title_line,2025 Wrapped,,active
-dashboard.screenshot.twitter_button,dashboard,DashboardPage,ScreenshotShare,button_label,Share on X,,active
-dashboard.screenshot.twitter_label,dashboard,DashboardPage,ScreenshotShare,aria_label,Share on X,,active
-dashboard.screenshot.twitter_hint,dashboard,DashboardPage,ScreenshotShare,helper_text,Auto-copies image to clipboard,,active
-dashboard.screenshot.twitter_text,dashboard,DashboardPage,ScreenshotShare,share_text,"{{total_tokens}} tokens on the record.\n{{model_name}} led with {{model_percent}}%.\n\nMy AI usage, unaudited →\ntokentracker.cc",,active
 
 live_sniffer.log.system,ui,LiveSniffer,LiveSniffer,log,[SYSTEM] KERNEL_LINK_ESTABLISHED,,active
 live_sniffer.log.socket,ui,LiveSniffer,LiveSniffer,log,[SOCKET] LISTENING_ON_LOCAL_CLI_PIPE...,,active
@@ -411,7 +371,7 @@ settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,Appearan
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,Account,,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,Limits Display,,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,Theme,,active
-settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,Choose how Token Tracker looks across the dashboard.,,active
+settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,Choose how VibeDeck looks across the dashboard.,,active
 settings.appearance.theme.light,ui,SettingsPage,SettingsPage,theme_light,Light,,active
 settings.appearance.theme.dark,ui,SettingsPage,SettingsPage,theme_dark,Dark,,active
 settings.appearance.theme.system,ui,SettingsPage,SettingsPage,theme_system,System,,active
@@ -420,14 +380,8 @@ settings.account.edit,ui,SettingsPage,SettingsPage,edit,Edit,,active
 settings.account.save,ui,SettingsPage,SettingsPage,save,Save,,active
 settings.account.saving,ui,SettingsPage,SettingsPage,saving,Saving...,,active
 settings.account.cancel,ui,SettingsPage,SettingsPage,cancel,Cancel,,active
-settings.account.cloudSync,ui,SettingsPage,SettingsPage,cloud_sync,Cloud sync,,active
-settings.account.cloudSyncHint,ui,SettingsPage,SettingsPage,cloud_sync_hint,Upload local usage to your Token Tracker cloud account.,,active
-settings.account.publicProfile,ui,SettingsPage,SettingsPage,public_profile,Public profile,,active
-settings.account.publicProfileHint,ui,SettingsPage,SettingsPage,public_profile_hint,Show your usage on the public leaderboard.,,active
-settings.account.displayNameAnonymousHint,ui,SettingsPage,SettingsPage,display_name_anon_hint,Anonymous — your name and avatar are hidden on the leaderboard,,active
 settings.account.displayNameDisabledWhileAnon,ui,SettingsPage,SettingsPage,display_name_disabled,Turn on the switch first to edit your name,,active
 settings.account.githubUrl,ui,SettingsPage,SettingsPage,github_url,GitHub profile,,active
-settings.account.githubUrlHint,ui,SettingsPage,SettingsPage,github_url_hint,Show a GitHub link next to your name on the leaderboard.,,active
 settings.account.githubUrlPlaceholder,ui,SettingsPage,SettingsPage,github_url_placeholder,username or https://github.com/username,,active
 stats.period.today,ui,DashboardPage,StatsPanel,period_today,today,,active
 stats.period.week,ui,DashboardPage,StatsPanel,period_week,week,,active
@@ -441,7 +395,7 @@ settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,D
 settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,Animated icon,,active
 settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Blink the Clawd character and play the syncing animation in the menu bar.,,active
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,Launch at login,,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start TokenTrackerBar automatically when you sign in to macOS.,,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start VibeDeckMac automatically when you sign in to macOS.,,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,Sync now,,active
 settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Trigger an immediate parse and upload of local AI tool logs.,,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
@@ -449,7 +403,7 @@ settings.menubar.updates,ui,SettingsPage,SettingsPage,mb_updates,Updates,,active
 settings.menubar.checkUpdates,ui,SettingsPage,SettingsPage,mb_check_updates,Check for updates,,active
 menubar.slot.primary,ui,WidgetsPage,MenuBarDisplayCard,slot_primary,Primary slot,,active
 menubar.slot.secondary,ui,WidgetsPage,MenuBarDisplayCard,slot_secondary,Secondary slot,,active
-menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,Open TokenTrackerBar for macOS to edit the live menu bar display.,,active
+menubar.native_only,ui,WidgetsPage,MenuBarDisplayCard,native_only,Open VibeDeckMac for macOS to edit the live menu bar display.,,active
 menubar.metric.today_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_today_tokens,Today Tokens,,active
 menubar.metric.today_cost,ui,WidgetsPage,MenuBarDisplayCard,metric_today_cost,Today Cost,,active
 menubar.metric.last_7d_tokens,ui,WidgetsPage,MenuBarDisplayCard,metric_last_7d,Last 7 Days,,active
@@ -459,8 +413,6 @@ menubar.metric.claude_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_5h,Clau
 menubar.metric.claude_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_claude_7d,Claude 7d Limit,,active
 menubar.metric.codex_5h,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_5h,Codex 5h Limit,,active
 menubar.metric.codex_7d,ui,WidgetsPage,MenuBarDisplayCard,metric_codex_7d,Codex 7d Limit,,active
-share.button.label,share,DashboardPage,DashboardHeader,share_button,Share,,active
-share.button.aria,share,DashboardPage,DashboardHeader,share_button_aria,Open share card,,active
 usage.overview.tablist_aria,ui,DashboardPage,UsageOverview,tablist_aria,Time period,,active
 usage.overview.cost_breakdown_aria,ui,DashboardPage,UsageOverview,cost_breakdown_aria,View cost breakdown,,active
 usage.overview.distribution_aria,ui,DashboardPage,UsageOverview,distribution_aria,Provider distribution: {{items}},,active

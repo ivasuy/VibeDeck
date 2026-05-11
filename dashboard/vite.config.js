@@ -30,6 +30,24 @@ const COPY_PATH = path.join(ROOT_DIR, "src", "content", "copy.csv");
 const PACKAGE_JSON_PATH = path.resolve(ROOT_DIR, "..", "package.json");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const LOCAL_SYNC_TIMEOUT_MS = 120_000;
+const LOCAL_API_ROUTES = {
+  localSync: "/functions/vibedeck-local-sync",
+  usageSummary: "/functions/vibedeck-usage-summary",
+  usageDaily: "/functions/vibedeck-usage-daily",
+  usageHeatmap: "/functions/vibedeck-usage-heatmap",
+  usageModelBreakdown: "/functions/vibedeck-usage-model-breakdown",
+  projectUsageSummary: "/functions/vibedeck-project-usage-summary",
+  usageLimits: "/functions/vibedeck-usage-limits",
+  userStatus: "/functions/vibedeck-user-status",
+};
+
+function legacyRoute(primaryRoute) {
+  return primaryRoute.replace("/functions/vibedeck-", "/functions/tokentracker-");
+}
+
+function isLocalApiRoute(pathname, primaryRoute) {
+  return pathname === primaryRoute || pathname === legacyRoute(primaryRoute);
+}
 
 function loadAppVersion() {
   try {
@@ -37,7 +55,7 @@ function loadAppVersion() {
     const parsed = JSON.parse(raw);
     return String(parsed?.version || "").trim() || null;
   } catch (error) {
-    console.warn("[tokentracker] Failed to read package.json version:", error.message);
+    console.warn("[vibedeck] Failed to read package.json version:", error.message);
     return null;
   }
 }
@@ -107,7 +125,7 @@ function loadCopyRegistry() {
   try {
     raw = fs.readFileSync(COPY_PATH, "utf8");
   } catch (error) {
-    console.warn("[tokentracker] Failed to read copy registry:", error.message);
+    console.warn("[vibedeck] Failed to read copy registry:", error.message);
     return new Map();
   }
 
@@ -118,7 +136,7 @@ function loadCopyRegistry() {
   const keyIndex = header.indexOf("key");
   const textIndex = header.indexOf("text");
   if (keyIndex === -1 || textIndex === -1) {
-    console.warn("[tokentracker] Copy registry missing key/text columns.");
+    console.warn("[vibedeck] Copy registry missing key/text columns.");
     return new Map();
   }
 
@@ -147,7 +165,7 @@ function buildMeta(prefix = "landing") {
 
   const missing = COPY_REQUIRED_KEYS.filter((key) => !map.has(key));
   if (missing.length) {
-    console.warn("[tokentracker] Copy registry missing keys:", missing.join(", "));
+    console.warn("[vibedeck] Copy registry missing keys:", missing.join(", "));
   }
 
   return {
@@ -163,8 +181,7 @@ function buildMeta(prefix = "landing") {
 
 function resolveMetaPrefix(ctx) {
   const rawPath = String(ctx?.path || ctx?.filename || ctx?.originalUrl || "").toLowerCase();
-  if (rawPath.includes("share")) return "share";
-  if (rawPath.includes("wrapped-2025")) return "share";
+  void rawPath;
   return "landing";
 }
 
@@ -194,14 +211,14 @@ function injectRichMeta(html, prefix) {
 
 function richLinkMetaPlugin() {
   return {
-    name: "tokentracker-rich-link-meta",
+    name: "vibedeck-rich-link-meta",
     transformIndexHtml(html, ctx) {
       return injectRichMeta(html, resolveMetaPrefix(ctx));
     },
   };
 }
 
-// 本地数据 API 插件 - 直接读取 ~/.tokentracker/tracker/queue.jsonl
+// 本地数据 API 插件 - 优先读取 ~/.vibedeck/tracker/queue.jsonl，兼容回退 ~/.tokentracker/tracker/queue.jsonl
 // 本地 API 处理函数
 function trimCommandOutput(value, maxLength = 4000) {
   const text = String(value || "");
@@ -295,7 +312,11 @@ const __pricing = __viteRequire(path.resolve(REPO_ROOT, "src/lib/pricing"));
 const { getModelPricing, computeRowCost } = __pricing;
 
 async function handleLocalApi(req, res, url) {
-  const QUEUE_PATH = path.join(os.homedir(), ".tokentracker", "tracker", "queue.jsonl");
+  const QUEUE_PATH_PRIMARY = path.join(os.homedir(), ".vibedeck", "tracker", "queue.jsonl");
+  const QUEUE_PATH_LEGACY = path.join(os.homedir(), ".tokentracker", "tracker", "queue.jsonl");
+  const QUEUE_PATH = fs.existsSync(QUEUE_PATH_PRIMARY)
+    ? QUEUE_PATH_PRIMARY
+    : QUEUE_PATH_LEGACY;
 
   function isLegacyInclusiveCodexRow(row) {
     if (!row || (row.source !== "codex" && row.source !== "every-code")) return false;
@@ -371,7 +392,7 @@ async function handleLocalApi(req, res, url) {
 
   const pathname = url.pathname;
 
-  if (pathname === "/functions/tokentracker-local-sync") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.localSync)) {
     if (String(req.method || "GET").toUpperCase() !== "POST") {
       res.statusCode = 405;
       res.setHeader("Allow", "POST");
@@ -419,7 +440,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-summary
-  if (pathname === "/functions/tokentracker-usage-summary") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageSummary)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -507,7 +528,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-daily
-  if (pathname === "/functions/tokentracker-usage-daily") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageDaily)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -518,7 +539,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-heatmap
-  if (pathname === "/functions/tokentracker-usage-heatmap") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageHeatmap)) {
     const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
     const rows = readQueueData();
     const daily = aggregateByDay(rows);
@@ -571,7 +592,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-model-breakdown
-  if (pathname === "/functions/tokentracker-usage-model-breakdown") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageModelBreakdown)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
@@ -650,9 +671,11 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 project-usage-summary
-  if (pathname === "/functions/tokentracker-project-usage-summary") {
-    // 优先读 ~/.tokentracker/tracker/project.queue.jsonl（与 7680 真实归因一致）
-    const projectQueuePath = path.join(os.homedir(), ".tokentracker", "tracker", "project.queue.jsonl");
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.projectUsageSummary)) {
+    // 优先读 ~/.vibedeck/tracker/project.queue.jsonl，兼容 ~/.tokentracker/tracker/project.queue.jsonl
+    const projectQueuePath = fs.existsSync(path.join(os.homedir(), ".vibedeck", "tracker", "project.queue.jsonl"))
+      ? path.join(os.homedir(), ".vibedeck", "tracker", "project.queue.jsonl")
+      : path.join(os.homedir(), ".tokentracker", "tracker", "project.queue.jsonl");
     try {
       const projectRaw = fs.readFileSync(projectQueuePath, "utf8");
       const dedup = new Map();
@@ -870,7 +893,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 usage-limits
-  if (pathname === "/functions/tokentracker-usage-limits") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageLimits)) {
     try {
       const esmRequire = createRequire(import.meta.url);
       const { getUsageLimits, resetUsageLimitsCache } = esmRequire("../src/lib/usage-limits");
@@ -894,7 +917,7 @@ async function handleLocalApi(req, res, url) {
   }
 
   // 处理 user-status
-  if (pathname === "/functions/tokentracker-user-status") {
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.userStatus)) {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
       user_id: "local-user", email: "local@localhost", name: "Local User", is_public: false,
@@ -939,7 +962,7 @@ async function proxyToLocalCli(req, res) {
 
 function localDataApiPlugin() {
   return {
-    name: "tokentracker-local-data-api",
+    name: "vibedeck-local-data-api",
     configureServer(server) {
       // 添加中间件到最前面，拦截所有请求
       server.middlewares.use((req, res, next) => {
@@ -976,8 +999,6 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           main: path.resolve(ROOT_DIR, "index.html"),
-          share: path.resolve(ROOT_DIR, "share.html"),
-          wrapped: path.resolve(ROOT_DIR, "wrapped-2025.html"),
         },
       },
     },

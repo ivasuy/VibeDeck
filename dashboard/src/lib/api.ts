@@ -7,46 +7,71 @@ import {
   getMockUsageModelBreakdown,
   getMockUsageSummary,
   getMockProjectUsageSummary,
-  getMockLeaderboard,
   isMockEnabled,
 } from "./mock-data";
-import { getInsforgeRemoteUrl, getInsforgeAnonKey } from "./insforge-config";
-import { isValidJwtShape } from "./auth-token";
 import { getLocalApiAuthHeaders } from "./local-api-auth";
 
 type AnyRecord = Record<string, any>;
 
 const PATHS = {
-  usageSummary: "tokentracker-usage-summary",
-  usageDaily: "tokentracker-usage-daily",
-  usageHourly: "tokentracker-usage-hourly",
-  usageMonthly: "tokentracker-usage-monthly",
-  usageHeatmap: "tokentracker-usage-heatmap",
-  usageModelBreakdown: "tokentracker-usage-model-breakdown",
+  usageSummary: "vibedeck-usage-summary",
+  usageDaily: "vibedeck-usage-daily",
+  usageHourly: "vibedeck-usage-hourly",
+  usageMonthly: "vibedeck-usage-monthly",
+  usageHeatmap: "vibedeck-usage-heatmap",
+  usageModelBreakdown: "vibedeck-usage-model-breakdown",
   projectUsageSummary: "vibedeck-project-usage-summary",
-  userStatus: "tokentracker-user-status",
-  localSync: "tokentracker-local-sync",
-  usageLimits: "tokentracker-usage-limits",
+  userStatus: "vibedeck-user-status",
+  localSync: "vibedeck-local-sync",
+  usageLimits: "vibedeck-usage-limits",
 };
 
+function getLocalRouteCandidates(slug: string) {
+  const primary = String(slug || "").trim();
+  const primaryPath = primary.startsWith("/functions/") ? primary : `/functions/${primary}`;
+  const legacyPath = primaryPath.includes("/functions/vibedeck-")
+    ? primaryPath.replace("/functions/vibedeck-", "/functions/tokentracker-")
+    : primaryPath;
+  return [primaryPath, ...(legacyPath === primaryPath ? [] : [legacyPath])];
+}
+
 async function fetchLocalJson(slug: string, params?: AnyRecord, options?: AnyRecord) {
-  const url = new URL(`/functions/${slug}`, window.location.origin);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
+  const routes = getLocalRouteCandidates(slug);
+  let lastStatus = 0;
+  let lastBody: string | null = null;
+
+  for (const route of routes) {
+    const url = new URL(route, window.location.origin);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value != null && value !== "") url.searchParams.set(key, String(value));
+      }
     }
+    const response = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      ...options,
+    });
+    if (response.ok) {
+      return response.json();
+    }
+    if (response.status !== 404) {
+      const err: any = new Error(`Request failed with HTTP ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    lastStatus = response.status;
+    lastBody = await response.text().catch(() => null);
   }
-  const response = await fetch(url.toString(), {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-    ...options,
-  });
-  if (!response.ok) {
-    const err: any = new Error(`Request failed with HTTP ${response.status}`);
-    err.status = response.status;
+
+  if (lastStatus === 404) {
+    const err: any = new Error("Request failed with HTTP 404");
+    err.status = 404;
+    err.body = lastBody;
     throw err;
   }
-  return response.json();
+
+  throw new Error(String(lastBody || "Request failed"));
 }
 
 function buildTimeZoneParams({ timeZone, tzOffsetMinutes }: AnyRecord = {}) {
@@ -114,133 +139,6 @@ export async function getProjectUsageSummary({
   if (limit != null) params.limit = String(limit);
   if (sort) params.sort = String(sort);
   return fetchLocalJson(PATHS.projectUsageSummary, params);
-}
-
-async function fetchInsforgeFunction(slug: string, options: {
-  method?: string;
-  accessToken?: string;
-  params?: AnyRecord;
-  body?: unknown;
-} = {}) {
-  const baseUrl = getInsforgeRemoteUrl();
-  if (!baseUrl) throw new Error("InsForge base URL not configured");
-  const root = baseUrl.replace(/\/$/, "");
-  const url = new URL(`${root}/functions/${slug}`);
-  if (options.params) {
-    for (const [key, value] of Object.entries(options.params)) {
-      if (value != null && value !== "") url.searchParams.set(key, String(value));
-    }
-  }
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "Content-Type": "application/json",
-  };
-  const anonKey = getInsforgeAnonKey();
-  if (anonKey) headers.apikey = anonKey;
-  // Only attach Authorization if the token is a well-formed JWT. InsForge's
-  // platform gateway validates the JWT before user code runs and returns
-  // HTTP 500 (JWSError) for any malformed value — which would break
-  // public endpoints like leaderboard for users whose stored token got
-  // corrupted or truncated.
-  if (options.accessToken && isValidJwtShape(options.accessToken)) {
-    headers.Authorization = `Bearer ${options.accessToken}`;
-  }
-
-  const res = await fetch(url.toString(), {
-    method: options.method || "GET",
-    headers,
-    ...(options.body != null ? { body: JSON.stringify(options.body) } : {}),
-  });
-  if (!res.ok) {
-    const err: any = new Error(`Request failed with HTTP ${res.status}`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
-
-export async function getLeaderboard({
-  accessToken,
-  userId,
-  period,
-  metric,
-  limit,
-  offset,
-}: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    return getMockLeaderboard({ seed: accessToken || userId, period, metric, limit, offset });
-  }
-  // Deliberately NOT passing accessToken. Leaderboard is a public read and
-  // InsForge's gateway returns opaque 500 (JWSError) for any JWT issue
-  // (bad signature, expired, rotated secret). Passing user_id as a query
-  // param lets the server compute `is_me` without ever touching the
-  // Authorization header.
-  return fetchInsforgeFunction("tokentracker-leaderboard", {
-    params: { period, limit, offset, user_id: userId },
-  });
-}
-
-export async function getPublicVisibility({ accessToken }: AnyRecord = {}) {
-  return fetchInsforgeFunction("tokentracker-public-visibility", {
-    accessToken,
-    method: "GET",
-  });
-}
-
-export async function setPublicVisibility({
-  accessToken,
-  enabled,
-  anonymous,
-  display_name,
-  github_url,
-  show_github_url,
-}: AnyRecord = {}) {
-  const body: AnyRecord = {};
-  if (enabled !== undefined) body.enabled = Boolean(enabled);
-  if (anonymous !== undefined) body.anonymous = Boolean(anonymous);
-  if (display_name !== undefined) body.display_name = String(display_name);
-  // null is a valid value (clears the URL), so check for presence via `in`-style
-  if (github_url !== undefined) body.github_url = github_url === null ? null : String(github_url);
-  if (show_github_url !== undefined) body.show_github_url = Boolean(show_github_url);
-  return fetchInsforgeFunction("tokentracker-public-visibility", {
-    accessToken,
-    method: "POST",
-    body,
-  });
-}
-
-export async function refreshLeaderboard({ accessToken, period, source }: AnyRecord = {}) {
-  const body: AnyRecord = {};
-  if (period) body.period = period;
-  if (typeof source === "string" && source.trim()) body.source = source.trim();
-  return fetchInsforgeFunction("tokentracker-leaderboard-refresh", {
-    accessToken,
-    method: "POST",
-    body,
-  });
-}
-
-export async function getLeaderboardProfile({
-  accessToken,
-  userId,
-  period,
-}: AnyRecord = {}) {
-  if (isMockEnabled()) {
-    const mock = getMockLeaderboard({ seed: accessToken, period, metric: "all", limit: 250, offset: 0 });
-    const entries = Array.isArray(mock?.entries) ? mock.entries : [];
-    const match = entries.find((entry: any) => entry?.user_id === userId) || null;
-    return {
-      period: mock?.period ?? "week",
-      from: mock?.from ?? null,
-      to: mock?.to ?? null,
-      generated_at: mock?.generated_at ?? new Date().toISOString(),
-      entry: match,
-    };
-  }
-  return fetchInsforgeFunction("tokentracker-leaderboard-profile", {
-    accessToken,
-    params: { user_id: userId, period },
-  });
 }
 
 export async function getUserStatus(_opts: AnyRecord = {}) {

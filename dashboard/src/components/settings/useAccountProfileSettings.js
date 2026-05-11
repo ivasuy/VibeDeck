@@ -1,50 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
-import { copy } from "../../lib/copy";
-
-// VibeDeck: cloud auth and cloud sync removed. This hook returns local-only stubs.
 export function useAccountProfileSettings() {
   return {
     enabled: false,
     loading: false,
-    signedIn: false,
+    signedIn: true,
     user: null,
-    displayName: "",
     email: "",
-    cloudSyncOn: false,
-    showLocalCloudSync: false,
-    handleCloudSyncToggle: () => {},
-    handlePublicProfileToggle: () => {},
+    signOut: () => Promise.resolve(),
     name: {
-      anonymousOn: false,
-      customDisplayName: null,
-      displayName: "",
-      editingName: false,
-      handleAnonymousToggle: () => {},
-      handleSaveName: () => {},
-      nameInput: "",
-      profileLoading: false,
-      profileSaving: false,
-      setEditingName: () => {},
-      setNameInput: () => {},
-      startEditingName: () => {},
+      displayName: "Local user",
     },
-    github: {
-      editingGithub: false,
-      githubError: null,
-      githubInput: "",
-      githubUrl: "",
-      handleSaveGithub: () => {},
-      handleShowGithubToggle: () => {},
-      profileLoading: false,
-      profileSaving: false,
-      setEditingGithub: () => {},
-      setGithubError: () => {},
-      setGithubInput: () => {},
-      showGithubOn: false,
-      startEditingGithub: () => {},
-    },
-    profileLoading: false,
-    profileSaving: false,
-    publicProfileOn: false,
   };
 }

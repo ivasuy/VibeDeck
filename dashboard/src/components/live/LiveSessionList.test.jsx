@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "../../test/test-utils";
 import { LiveSessionList } from "./LiveSessionList";
@@ -52,12 +52,20 @@ describe("LiveSessionList", () => {
     expect(screen.getByText("VibeDeck")).toBeTruthy();
     expect(screen.getAllByText("publish-main").length).toBeGreaterThan(0);
     expect(screen.getAllByText("dashboard").length).toBeGreaterThan(0);
-    expect(screen.getByText("Primary session")).toBeTruthy();
-    expect(screen.getAllByText("Related sessions").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Primary session")).toBeNull();
+    expect(screen.getByText("Related sessions")).toBeTruthy();
     expect(screen.getByText("1 active")).toBeTruthy();
     expect(screen.getByText("1 stale")).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("$0.70")).toBeTruthy();
+
+    const breakdownButton = screen.getByRole("button", { name: /view breakdown for VibeDeck/i });
+    fireEvent.click(breakdownButton);
+
+    expect(screen.getByRole("dialog", { name: /workstream breakdown/i })).toBeTruthy();
+    expect(screen.getByText("Primary session")).toBeTruthy();
+    expect(screen.getByText("gpt-5.5")).toBeTruthy();
+    expect(screen.getByText("gpt-5.3-codex-spark")).toBeTruthy();
 
     const relatedRow = screen.getByText("gpt-5.3-codex-spark").closest("button");
     expect(relatedRow).toBeTruthy();

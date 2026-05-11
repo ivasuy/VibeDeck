@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, AlertTriangle, CircleDollarSign, Clock3, Cpu, GitBranch, Radio } from "lucide-react";
+import { Activity, AlertTriangle, CircleDollarSign, CirclePlay, GitBranch, Layers3, PauseCircle, Radio } from "lucide-react";
 import { Card } from "../../ui/openai/components";
 import { StaggerContainer, StaggerItem } from "../../ui/foundation/FadeIn.jsx";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
@@ -8,6 +8,7 @@ import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { buildLiveWorkstreams, isActiveLiveSession, liveSessionKey } from "../../lib/live-workstreams";
+import { LiveWorkstreamDrawer } from "./LiveWorkstreamDrawer";
 
 function getSessionKey(row) {
   return liveSessionKey(row);
@@ -17,22 +18,6 @@ function repoBasename(value) {
   const normalized = String(value || "").replace(/\\/g, "/");
   const parts = normalized.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : copy("live.value.unknown_repo");
-}
-
-function formatTimestamp(value) {
-  if (!value) return copy("live.value.unknown_time");
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  const day = date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-  const time = date.toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-  return `${day} ${time}`;
 }
 
 function getBranch(row) {
@@ -63,27 +48,12 @@ function emptyStateCopy(status) {
   };
 }
 
-function formatLiveSessionCost(row) {
-  if (["pricing_missing", "missing_tokens", "partial_unknown"].includes(String(row?.cost_quality || ""))) {
-    return "—";
-  }
-  const preferredCost = row?.estimated_total_cost_usd ?? row?.total_cost_usd;
-  if (preferredCost == null) return "—";
-  const formatted = formatUsdCurrency(String(preferredCost));
-  if (formatted === "-") return "—";
-  return formatted;
-}
-
 function formatWorkstreamCost(workstream) {
   if (Number(workstream?.cost_unknown_count || 0) > 0) return "—";
   const n = Number(workstream?.total_cost_usd);
   if (!Number.isFinite(n)) return "—";
   const formatted = formatUsdCurrency(n.toFixed(2));
   return formatted === "-" ? "—" : formatted;
-}
-
-function formatStatus(row) {
-  return isActiveRow(row) ? "active" : "stale";
 }
 
 function MetaItem({ label, value, icon: Icon }) {
@@ -95,43 +65,6 @@ function MetaItem({ label, value, icon: Icon }) {
       </div>
       <div className="mt-1 truncate text-sm font-semibold text-oai-gray-700 dark:text-oai-gray-200">{value}</div>
     </div>
-  );
-}
-
-function SessionDetailRow({ row, selected, label, onSelectSession }) {
-  const key = getSessionKey(row);
-  return (
-    <button
-      type="button"
-      onClick={() => key && onSelectSession?.(key)}
-      className={cn(
-        "grid w-full gap-2 rounded-md border px-3 py-2 text-left transition-colors sm:grid-cols-[minmax(110px,0.7fr)_minmax(0,1fr)_auto_auto]",
-        selected
-          ? "border-oai-brand/50 bg-oai-brand/5 dark:border-oai-brand/40 dark:bg-oai-brand/10"
-          : "border-oai-gray-200/70 bg-oai-black/[0.02] hover:bg-oai-gray-50 dark:border-oai-gray-800/70 dark:bg-white/[0.04] dark:hover:bg-white/[0.07]",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-2">
-        <ProviderIcon provider={row?.provider} size={16} className="shrink-0" />
-        <span className="truncate text-xs font-semibold text-oai-black dark:text-white">
-          {String(row?.provider || copy("live.value.unknown_provider"))}
-        </span>
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-          {String(row?.model || "—")}
-        </div>
-        <div className="mt-0.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-          {label} · {formatStatus(row)}
-        </div>
-      </div>
-      <div className="text-right text-xs tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
-        {toDisplayNumber(row?.total_tokens ?? 0)}
-      </div>
-      <div className="text-right text-xs tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
-        {formatLiveSessionCost(row)}
-      </div>
-    </button>
   );
 }
 
@@ -148,6 +81,15 @@ export function LiveSessionList({
   const emptyState = emptyStateCopy(streamStatus);
   const workstreams = React.useMemo(() => buildLiveWorkstreams(sessions), [sessions]);
   const visibleWorkstreams = workstreams.filter((workstream) => workstream.active_session_count > 0);
+  const [openWorkstreamId, setOpenWorkstreamId] = React.useState(null);
+  const selectedWorkstream = React.useMemo(
+    () => visibleWorkstreams.find((workstream) => workstream.id === openWorkstreamId) || null,
+    [openWorkstreamId, visibleWorkstreams],
+  );
+
+  React.useEffect(() => {
+    if (openWorkstreamId && !selectedWorkstream) setOpenWorkstreamId(null);
+  }, [openWorkstreamId, selectedWorkstream]);
 
   const content = (
     <>
@@ -189,6 +131,7 @@ export function LiveSessionList({
             const repoRoot = String(workstream.repo_root || workstream.cwd || primary?.repo_root || primary?.cwd || "");
             const branchLabel = workstream.branches.join(", ");
             const relatedCount = Math.max(0, workstream.sessions.length - 1);
+            const repoName = repoBasename(repoRoot);
             return (
               <StaggerItem key={workstream.id || primaryKey}>
                 <div
@@ -204,7 +147,7 @@ export function LiveSessionList({
                       <div className="flex min-w-0 items-center gap-2">
                         <ProviderIcon provider={primary?.provider} size={16} className="shrink-0" />
                         <span className="truncate text-sm font-semibold text-oai-black dark:text-white">
-                          {repoBasename(repoRoot)}
+                          {repoName}
                         </span>
                         {selected ? (
                           <span className="inline-flex h-5 items-center rounded-md bg-oai-black/[0.06] px-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:bg-white/[0.1] dark:text-oai-gray-300">
@@ -231,52 +174,27 @@ export function LiveSessionList({
 
                   <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
                     <MetaItem icon={GitBranch} label="Branches" value={branchLabel || getBranch(primary)} />
-                    <MetaItem icon={Activity} label="Related sessions" value={toDisplayNumber(relatedCount)} />
+                    <MetaItem icon={Layers3} label="Related sessions" value={toDisplayNumber(relatedCount)} />
                     <MetaItem icon={Radio} label={copy("live.meta.tokens")} value={toDisplayNumber(workstream.total_tokens ?? 0)} />
                     <MetaItem icon={CircleDollarSign} label={copy("live.meta.cost")} value={formatWorkstreamCost(workstream)} />
-                    <MetaItem icon={Clock3} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
-                    <MetaItem icon={Clock3} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
+                    <MetaItem icon={CirclePlay} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
+                    <MetaItem icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
                   </div>
 
-                  {selected ? (
-                    <div className="mt-1 grid gap-3 rounded-lg border border-oai-gray-200/70 bg-white/60 p-3 dark:border-oai-gray-800/70 dark:bg-oai-gray-950/30">
-                      <div>
-                        <div className="mb-2 text-xs font-semibold text-oai-black dark:text-white">Primary session</div>
-                        <SessionDetailRow
-                          row={primary}
-                          selected={getSessionKey(primary) === selectedKey}
-                          label={getBranch(primary)}
-                          onSelectSession={onSelectSession}
-                        />
-                      </div>
-                      {relatedCount > 0 ? (
-                        <div>
-                          <div className="mb-2 text-xs font-semibold text-oai-black dark:text-white">Related sessions</div>
-                          <div className="grid gap-2">
-                            {workstream.branch_groups.map((group) => (
-                              <div key={group.branch} className="grid gap-1.5">
-                                <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-                                  <GitBranch className="h-3.5 w-3.5" aria-hidden />
-                                  {group.branch}
-                                </div>
-                                {group.sessions
-                                  .filter((row) => getSessionKey(row) !== getSessionKey(primary))
-                                  .map((row) => (
-                                    <SessionDetailRow
-                                      key={getSessionKey(row)}
-                                      row={row}
-                                      selected={getSessionKey(row) === selectedKey}
-                                      label={group.branch}
-                                      onSelectSession={onSelectSession}
-                                    />
-                                  ))}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                      {toDisplayNumber(workstream.active_session_count)} active · {toDisplayNumber(workstream.recently_completed_count)} stale · {String(primary?.model || "—")}
                     </div>
-                  ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setOpenWorkstreamId(workstream.id)}
+                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-gray-300 hover:text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:text-oai-gray-200 dark:hover:border-oai-gray-700 dark:hover:text-white"
+                      aria-label={`View breakdown for ${repoName}`}
+                    >
+                      <Activity className="h-3.5 w-3.5" aria-hidden />
+                      View breakdown
+                    </button>
+                  </div>
                 </div>
               </StaggerItem>
             );
@@ -284,6 +202,12 @@ export function LiveSessionList({
           </StaggerContainer>
         </div>
       )}
+      <LiveWorkstreamDrawer
+        workstream={selectedWorkstream}
+        selectedKey={selectedKey}
+        onSelectSession={onSelectSession}
+        onClose={() => setOpenWorkstreamId(null)}
+      />
     </>
   );
 

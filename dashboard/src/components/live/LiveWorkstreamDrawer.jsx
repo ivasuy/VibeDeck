@@ -1,0 +1,231 @@
+import React from "react";
+import {
+  Activity,
+  CalendarClock,
+  CircleDollarSign,
+  CirclePlay,
+  Clock3,
+  Cpu,
+  GitBranch,
+  Layers3,
+  PauseCircle,
+  Radio,
+  X,
+} from "lucide-react";
+import { Button } from "../../ui/openai/components";
+import { cn } from "../../lib/cn";
+import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
+import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
+import { ConfidenceBadge } from "./ConfidenceBadge";
+import { isActiveLiveSession, liveSessionCost, liveSessionKey } from "../../lib/live-workstreams";
+
+function repoBasename(value) {
+  const normalized = String(value || "").replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : "Unknown repo";
+}
+
+function formatTimestamp(value) {
+  if (!value) return "—";
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  const day = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: true });
+  return `${day} ${time}`;
+}
+
+function formatCost(value) {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  const formatted = formatUsdCurrency(n.toFixed(2));
+  return formatted === "-" ? "—" : formatted;
+}
+
+function Metric({ icon: Icon, label, value }) {
+  return (
+    <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-3 py-2 dark:border-oai-gray-800 dark:bg-white/[0.04]">
+      <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+        {label}
+      </div>
+      <div className="mt-1 truncate text-sm font-semibold tabular-nums text-oai-black dark:text-white">{value}</div>
+    </div>
+  );
+}
+
+function SessionRow({ session, primary = false, selected = false, onSelectSession }) {
+  const key = liveSessionKey(session);
+  const active = isActiveLiveSession(session);
+  const cost = liveSessionCost(session);
+  const StatusIcon = active ? CirclePlay : PauseCircle;
+
+  return (
+    <button
+      type="button"
+      onClick={() => key && onSelectSession?.(key)}
+      className={cn(
+        "grid w-full gap-3 rounded-md border px-3 py-3 text-left transition-colors",
+        "sm:grid-cols-[minmax(130px,0.7fr)_minmax(0,1.1fr)_minmax(90px,0.45fr)_minmax(90px,0.45fr)]",
+        selected
+          ? "border-oai-brand/50 bg-oai-brand/5 dark:border-oai-brand/40 dark:bg-oai-brand/10"
+          : "border-oai-gray-200 bg-white hover:bg-oai-gray-50 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:hover:bg-white/[0.05]",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <ProviderIcon provider={session?.provider} size={16} className="shrink-0" />
+        <div className="min-w-0">
+          <div className="truncate text-xs font-semibold text-oai-black dark:text-white">
+            {String(session?.provider || "unknown")}
+          </div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+            <StatusIcon className={cn("h-3.5 w-3.5", active ? "text-emerald-500" : "text-amber-500")} aria-hidden />
+            {active ? "active" : "stale"}
+          </div>
+        </div>
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="truncate text-xs font-medium text-oai-gray-800 dark:text-oai-gray-100">
+            {String(session?.model || "—")}
+          </span>
+          {primary ? (
+            <span className="inline-flex h-5 items-center rounded-md bg-oai-black/[0.06] px-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:bg-white/[0.1] dark:text-oai-gray-300">
+              Primary session
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate">{String(session?.branch || "unattributed")}</span>
+          </span>
+          <span>Tier {String(session?.branch_resolution_tier || "—")}</span>
+          <ConfidenceBadge confidence={session?.confidence} className="h-5 px-1.5 text-[10px]" />
+        </div>
+      </div>
+      <div className="text-left sm:text-right">
+        <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">Tokens</div>
+        <div className="mt-1 text-xs font-semibold tabular-nums text-oai-gray-800 dark:text-oai-gray-100">
+          {toDisplayNumber(session?.total_tokens ?? 0)}
+        </div>
+      </div>
+      <div className="text-left sm:text-right">
+        <div className="text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">Cost</div>
+        <div className="mt-1 text-xs font-semibold tabular-nums text-oai-gray-800 dark:text-oai-gray-100">
+          {formatCost(cost)}
+        </div>
+      </div>
+      <div className="sm:col-span-4 grid gap-2 text-[11px] text-oai-gray-500 dark:text-oai-gray-400 sm:grid-cols-3">
+        <span className="inline-flex items-center gap-1">
+          <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+          Started {formatTimestamp(session?.started_at)}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Clock3 className="h-3.5 w-3.5" aria-hidden />
+          Updated {formatTimestamp(session?.updated_at || session?.last_observed_at || session?.observed_at)}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <PauseCircle className="h-3.5 w-3.5" aria-hidden />
+          Ended {formatTimestamp(session?.ended_at)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, onSelectSession, onClose }) {
+  if (!workstream) return null;
+  const titleId = "live-workstream-breakdown-title";
+  const repoRoot = String(workstream.repo_root || workstream.cwd || "");
+  const primaryKey = liveSessionKey(workstream.primary_session);
+  const cost = Number(workstream?.cost_unknown_count || 0) > 0 ? null : workstream.total_cost_usd;
+
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="h-full w-full max-w-5xl border-l border-oai-gray-200 bg-white shadow-xl dark:border-oai-gray-800 dark:bg-oai-gray-900"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-oai-gray-200 px-5 py-4 dark:border-oai-gray-800">
+          <div className="min-w-0">
+            <h2 id={titleId} className="text-sm font-semibold text-oai-black dark:text-white">
+              Workstream breakdown
+            </h2>
+            <div className="mt-1 truncate text-sm font-medium text-oai-black dark:text-white">
+              {repoBasename(repoRoot)}
+            </div>
+            <div className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400" title={repoRoot || undefined}>
+              {repoRoot || "Unknown repo"}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-11 w-11 shrink-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-0 text-oai-gray-600 hover:border-oai-gray-300 hover:text-oai-black dark:border-oai-gray-800 dark:bg-white/[0.04] dark:text-oai-gray-300 dark:hover:border-oai-gray-700 dark:hover:text-white"
+            aria-label="Close workstream breakdown"
+            onClick={onClose}
+          >
+            <X className="h-5 w-5" aria-hidden />
+          </Button>
+        </div>
+
+        <div className="h-[calc(100%-81px)] overflow-auto p-5">
+          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <Metric icon={GitBranch} label="Branches" value={workstream.branches.join(", ") || "—"} />
+            <Metric icon={Activity} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
+            <Metric icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
+            <Metric icon={Radio} label="Tokens" value={toDisplayNumber(workstream.total_tokens ?? 0)} />
+            <Metric icon={CircleDollarSign} label="Cost" value={formatCost(cost)} />
+          </div>
+
+          <div className="grid gap-4">
+            {Array.isArray(workstream.branch_groups) && workstream.branch_groups.map((group) => (
+              <section
+                key={group.branch}
+                className="rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]"
+              >
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <GitBranch className="h-4 w-4 shrink-0 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+                    <h3 className="truncate text-sm font-semibold text-oai-black dark:text-white">{group.branch}</h3>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                    <span className="inline-flex items-center gap-1">
+                      <CirclePlay className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
+                      {toDisplayNumber(group.active_session_count)} active
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <PauseCircle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
+                      {toDisplayNumber(group.recently_completed_count)} stale
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid gap-2">
+                  {group.sessions.map((session) => (
+                    <SessionRow
+                      key={liveSessionKey(session)}
+                      session={session}
+                      primary={liveSessionKey(session) === primaryKey}
+                      selected={liveSessionKey(session) === selectedKey}
+                      onSelectSession={onSelectSession}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+
+          {!Array.isArray(workstream.branch_groups) || workstream.branch_groups.length === 0 ? (
+            <div className="rounded-md border border-oai-gray-200 p-6 text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+              No session detail available.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}

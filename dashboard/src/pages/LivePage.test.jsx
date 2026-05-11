@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
 import { LivePage } from "./LivePage.jsx";
@@ -139,6 +139,9 @@ describe("LivePage", () => {
     expect(screen.getAllByText("visible-fifth").length).toBeGreaterThan(0);
     expect(screen.getAllByText("second-page-session").length).toBeGreaterThan(0);
     expect(screen.getAllByText("high").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i }).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i })[0]);
+    expect(screen.getByRole("dialog", { name: /workstream breakdown/i })).toBeTruthy();
     expect(screen.getByText("$0.05")).toBeTruthy();
     expect(screen.queryByText("$0.05 est.")).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);

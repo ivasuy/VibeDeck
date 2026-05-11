@@ -10,13 +10,7 @@ function isActiveRow(row) {
 
 function branchName(row) {
   const branch = String(row?.branch || "").trim();
-  return branch || "unattributed";
-}
-
-function normalizeConfidence(value) {
-  const key = String(value || "").trim().toLowerCase();
-  if (key === "high" || key === "medium" || key === "low") return key;
-  return "unattributed";
+  return branch || null;
 }
 
 function WorkloadTile({ icon: Icon, label, value }) {
@@ -31,23 +25,40 @@ function WorkloadTile({ icon: Icon, label, value }) {
   );
 }
 
+function routeKey(row) {
+  const repo = String(row?.repo_root || "").trim();
+  const branch = branchName(row);
+  if (!repo || !branch) return null;
+  return `${repo}::${branch}`;
+}
+
 export function LiveBranchSignalMap({ sessions = [] }) {
   const model = useMemo(() => {
     const active = (Array.isArray(sessions) ? sessions : []).filter(isActiveRow);
     const branches = new Map();
-    const confidence = { high: 0, medium: 0, low: 0, unattributed: 0 };
+    let routedCount = 0;
+    let unroutedCount = 0;
     for (const row of active) {
-      const confidenceKey = normalizeConfidence(row?.confidence);
-      confidence[confidenceKey] += 1;
-      const branch = branchName(row);
-      branches.set(branch, true);
+      const key = routeKey(row);
+      if (key) {
+        routedCount += 1;
+        branches.set(key, true);
+      } else {
+        unroutedCount += 1;
+      }
     }
-    const reviewCount = confidence.low + confidence.unattributed;
-    const healthyCount = Math.max(0, active.length - reviewCount);
-    const reviewPct = active.length > 0 ? Math.round((reviewCount / active.length) * 100) : 0;
-    const healthyPct = active.length > 0 ? 100 - reviewPct : 0;
-    const density = branches.size > 0 ? (active.length / branches.size).toFixed(1) : "0";
-    return { activeCount: active.length, reviewCount, reviewPct, healthyCount, healthyPct, branchCount: branches.size, density };
+    const routePct = active.length > 0 ? Math.round((routedCount / active.length) * 100) : 0;
+    const unroutedPct = active.length > 0 ? 100 - routePct : 0;
+    const density = branches.size > 0 ? (routedCount / branches.size).toFixed(1) : "0";
+    return {
+      activeCount: active.length,
+      routePct,
+      unroutedCount,
+      unroutedPct,
+      routedCount,
+      branchCount: branches.size,
+      density,
+    };
   }, [sessions]);
 
   return (
@@ -76,8 +87,8 @@ export function LiveBranchSignalMap({ sessions = [] }) {
             </span>
           </div>
           <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-oai-black/[0.06] dark:bg-white/[0.08]">
-            <div className="h-full shrink-0 bg-oai-brand" style={{ flexBasis: `${model.healthyPct}%` }} aria-hidden />
-            <div className="h-full shrink-0 bg-amber-500" style={{ flexBasis: `${model.reviewPct}%` }} aria-hidden />
+            <div className="h-full shrink-0 bg-oai-brand" style={{ flexBasis: `${model.routePct}%` }} aria-hidden />
+            <div className="h-full shrink-0 bg-amber-500" style={{ flexBasis: `${model.unroutedPct}%` }} aria-hidden />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
@@ -85,14 +96,14 @@ export function LiveBranchSignalMap({ sessions = [] }) {
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Routed
               </div>
-              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.healthyCount}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.routedCount}</div>
             </div>
             <div className="rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
               <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
                 <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
-                Review
+                Unrouted
               </div>
-              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.reviewCount}</div>
+              <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.unroutedCount}</div>
             </div>
           </div>
         </div>
@@ -101,24 +112,24 @@ export function LiveBranchSignalMap({ sessions = [] }) {
           <div
             className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
             style={{
-              background: `conic-gradient(rgb(16 163 127) ${model.reviewPct}%, rgba(255,255,255,0.08) 0)`,
+              background: `conic-gradient(rgb(16 163 127) ${model.routePct}%, rgba(255,255,255,0.08) 0)`,
             }}
             aria-hidden
           >
             <div className="grid h-11 w-11 place-items-center rounded-full bg-white text-xs font-semibold tabular-nums text-oai-black dark:bg-oai-gray-950 dark:text-white">
-              {model.reviewPct}%
+              {model.routePct}%
             </div>
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
               <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
-              Review pressure
+              Routing coverage
             </div>
             <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">
-              {model.reviewCount} branch route{model.reviewCount === 1 ? "" : "s"} need attention
+              {model.unroutedCount} session{model.unroutedCount === 1 ? "" : "s"} need routing
             </div>
             <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-              Sorted by weakest attribution first, then newest signal.
+              Real routes require both repository and branch attribution.
             </p>
           </div>
         </div>

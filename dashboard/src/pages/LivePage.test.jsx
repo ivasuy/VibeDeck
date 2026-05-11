@@ -38,8 +38,8 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
       {
         provider: "unknown",
         session_id: "s3",
-        repo_root: "/repo/unknown",
-        branch: "mystery",
+        repo_root: null,
+        branch: null,
         confidence: "low",
         branch_resolution_tier: "C",
         model: "totally-unknown-model",
@@ -135,7 +135,6 @@ describe("LivePage", () => {
     expect(screen.getAllByText(/codex/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText("main").length).toBeGreaterThan(0);
     expect(screen.getAllByText("feature/costs").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("mystery").length).toBeGreaterThan(0);
     expect(screen.getAllByText("idle").length).toBeGreaterThan(0);
     expect(screen.getAllByText("visible-fifth").length).toBeGreaterThan(0);
     expect(screen.getAllByText("second-page-session").length).toBeGreaterThan(0);
@@ -148,6 +147,11 @@ describe("LivePage", () => {
     expect(screen.getAllByText("Live sessions").length).toBeGreaterThan(0);
     expect(screen.getByText("Live control center")).toBeTruthy();
     expect(screen.getByText("Providers")).toBeTruthy();
+    expect(screen.getByText("Needs attribution")).toBeTruthy();
+    expect(screen.getByText("Limit sources")).toBeTruthy();
+    expect(screen.getByText("Active repos")).toBeTruthy();
+    expect(screen.getByText("Branch routing")).toBeTruthy();
+    expect(screen.getByText("Unrouted")).toBeTruthy();
     expect(screen.getByText("Provider limits")).toBeTruthy();
     expect(screen.getByText("Codex")).toBeTruthy();
     expect(screen.getByText("5h")).toBeTruthy();

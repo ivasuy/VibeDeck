@@ -1,5 +1,6 @@
 'use strict';
 
+const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
 const { resolveRepo } = require('./repo-resolver');
@@ -52,6 +53,64 @@ function shouldReopenOrphanedSession(existing, event) {
   const activityAt = eventActivityDate(event);
   if (!endedAt || !activityAt) return false;
   return activityAt.getTime() > endedAt.getTime();
+}
+
+function recoverCodexSessionMetadata(event) {
+  if (!event || typeof event !== 'object') return {};
+  const provider = String(event.provider || '').trim().toLowerCase();
+  if (provider !== 'codex' && provider !== 'every-code') return {};
+  if (!isNonEmptyString(event.session_id)) return {};
+  if (!event.session_id.endsWith('.jsonl')) return {};
+
+  let fd;
+  try {
+    fd = fs.openSync(event.session_id, 'r');
+    const stat = fs.fstatSync(fd);
+    const buffer = Buffer.alloc(Math.min(stat.size, 64 * 1024));
+    fs.readSync(fd, buffer, 0, buffer.length, 0);
+    const lines = buffer.toString('utf8').split(/\r?\n/);
+    for (const line of lines) {
+      if (!line.includes('"session_meta"') && !line.includes('"turn_context"')) continue;
+      if (!line.includes('"cwd"') && !line.includes('"model"')) continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const payload = parsed?.payload && typeof parsed.payload === 'object' ? parsed.payload : null;
+      if (!payload) continue;
+      const cwd = isNonEmptyString(payload.cwd) ? payload.cwd.trim() : null;
+      const model = isNonEmptyString(payload.model) ? payload.model.trim() : null;
+      if (cwd || model) return { cwd, model };
+    }
+  } catch {
+    return {};
+  } finally {
+    if (fd != null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+  }
+  return {};
+}
+
+function enrichEventFromSessionMetadata(event) {
+  if (!event || typeof event !== 'object') return event;
+  if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model)) return event;
+  const recovered = recoverCodexSessionMetadata(event);
+  if (!recovered.cwd && !recovered.model) return event;
+  return {
+    ...event,
+    cwd: isNonEmptyString(event.cwd) ? event.cwd : recovered.cwd ?? event.cwd,
+    model: isNonEmptyString(event.model) ? event.model : recovered.model ?? event.model,
+  };
+}
+
+function isRecoverableProvider(provider) {
+  const normalized = String(provider || '').trim().toLowerCase();
+  return normalized === 'codex' || normalized === 'every-code';
 }
 
 function loadSession(db, { provider, session_id } = {}) {
@@ -140,6 +199,7 @@ async function processSessionEvent(dbPath, event) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEvent: dbPath must be a non-empty string');
   if (!event || typeof event !== 'object') return;
   if (!isNonEmptyString(event.provider) || !isNonEmptyString(event.session_id)) return;
+  event = enrichEventFromSessionMetadata(event);
 
   let existingBeforeUpsert = null;
   {
@@ -286,4 +346,47 @@ async function processSessionEvent(dbPath, event) {
   }
 }
 
-module.exports = { processSessionEvent };
+async function recoverActiveSessionMetadata(dbPath) {
+  if (!isNonEmptyString(dbPath)) throw new TypeError('recoverActiveSessionMetadata: dbPath must be a non-empty string');
+  let candidates = [];
+  {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      candidates = db
+        .prepare(
+          `
+          SELECT provider, session_id, model
+          FROM vibedeck_sessions
+          WHERE ended_at IS NULL
+            AND (cwd IS NULL OR cwd = '' OR repo_root IS NULL OR repo_root = '')
+          `,
+        )
+        .all()
+        .filter((row) => isRecoverableProvider(row.provider))
+        .filter((row) => isNonEmptyString(row.session_id) && row.session_id.endsWith('.jsonl'))
+        .filter((row) => fs.existsSync(row.session_id));
+    } finally {
+      db.close();
+    }
+  }
+
+  let recovered = 0;
+  for (const row of candidates) {
+    const metadata = recoverCodexSessionMetadata(row);
+    if (!isNonEmptyString(metadata.cwd)) continue;
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: row.provider,
+      session_id: row.session_id,
+      observed_at: new Date().toISOString(),
+      delta_tokens: null,
+      cwd: metadata.cwd,
+      model: isNonEmptyString(row.model) ? row.model : metadata.model ?? null,
+    });
+    recovered += 1;
+  }
+
+  return { scanned: candidates.length, recovered };
+}
+
+module.exports = { processSessionEvent, recoverActiveSessionMetadata };

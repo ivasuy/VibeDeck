@@ -25,6 +25,10 @@ function confidenceKey(value) {
   return "unattributed";
 }
 
+function hasAttributionGap(row) {
+  return !String(row?.repo_root || "").trim() || !String(row?.branch || "").trim();
+}
+
 function hasRecordedWindow(id, data) {
   if (!data || data.error || data.status === "setup_required" || data.status === "cooldown") return false;
   const windows = id === "claude"
@@ -53,9 +57,10 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
     const active = (Array.isArray(sessions) ? sessions : []).filter(isActiveRow);
     const providers = new Map();
     const confidence = { high: 0, medium: 0, low: 0, unattributed: 0 };
+    const repos = new Set();
     let tokens = 0;
     let cost = 0;
-    let risk = 0;
+    let attributionGaps = 0;
 
     for (const row of active) {
       const provider = String(row?.provider || "unknown").toLowerCase();
@@ -63,28 +68,25 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
       entry.count += 1;
       entry.tokens += Number(row?.total_tokens ?? 0) || 0;
       providers.set(provider, entry);
+      const repo = String(row?.repo_root || "").trim();
+      if (repo) repos.add(repo);
       tokens += Number(row?.total_tokens ?? 0) || 0;
       const rowCost = knownCost(row);
       if (rowCost != null) cost += rowCost;
       const key = confidenceKey(row?.confidence);
       confidence[key] += 1;
-      if (key === "low" || key === "unattributed") risk += 1;
+      if (hasAttributionGap(row)) attributionGaps += 1;
     }
 
     const providerRows = Array.from(providers.values());
 
-    return { active, providers: providerRows, confidence, tokens, cost, risk };
+    return { active, providers: providerRows, confidence, repos, tokens, cost, attributionGaps };
   }, [sessions]);
 
   const limitSummary = useMemo(() => {
     const recorded = LIMIT_PROVIDERS.filter((id) => hasRecordedWindow(id, limits?.[id])).length;
-    const active = new Set(
-      model.active
-        .map((row) => String(row?.provider || "").trim().toLowerCase())
-        .filter(Boolean),
-    ).size;
-    return { recorded, active };
-  }, [limits, model.active]);
+    return { recorded };
+  }, [limits]);
 
   const total = model.active.length;
   const confidenceRows = ["high", "medium", "low", "unattributed"].map((key) => ({
@@ -94,6 +96,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
   const tokenCounter = Number.isFinite(model.tokens) ? model.tokens : 0;
   const activeCost = Number.isFinite(model.cost) ? model.cost : 0;
   const costDisplay = formatUsdCurrency(activeCost.toFixed(2), { decimals: 2 });
+  const hasAttributionNeeds = model.attributionGaps > 0;
 
   return (
     <section className="rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
@@ -160,13 +163,13 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
         <OverviewTile icon={Activity} label="Providers" value={model.providers.length} />
         <OverviewTile icon={Cpu} label="Tokens" value={formatCompactNumber(model.tokens, { decimals: 1 })} />
         <OverviewTile
-          icon={model.risk > 0 ? ShieldAlert : CircleDollarSign}
-          label={model.risk > 0 ? "Needs attribution" : "Known cost"}
-          value={model.risk > 0 ? model.risk : formatUsdCurrency(String(model.cost))}
-          tone={model.risk > 0 ? "risk" : "neutral"}
+          icon={hasAttributionNeeds ? ShieldAlert : CircleDollarSign}
+          label={hasAttributionNeeds ? "Needs attribution" : "Known cost"}
+          value={hasAttributionNeeds ? model.attributionGaps : formatUsdCurrency(String(model.cost))}
+          tone={hasAttributionNeeds ? "risk" : "neutral"}
         />
-        <OverviewTile icon={ShieldCheck} label="Recording" value={limitSummary.recorded} />
-        <OverviewTile icon={Activity} label="Active" value={limitSummary.active} />
+        <OverviewTile icon={ShieldCheck} label="Limit sources" value={limitSummary.recorded} />
+        <OverviewTile icon={Activity} label="Active repos" value={model.repos.size} />
       </div>
     </section>
   );

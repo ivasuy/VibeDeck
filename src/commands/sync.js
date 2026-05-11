@@ -52,7 +52,7 @@ const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
-const { processSessionEvent } = require("../lib/sessions/pipeline");
+const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -585,6 +585,7 @@ async function cmdSync(argv) {
         `Session live-state sync: ${sessionEventDrain.errors.length} event(s) failed\n`,
       );
     }
+    await recoverActiveSessionMetadata(dbPath);
 
     cursors.updatedAt = new Date().toISOString();
     await writeJson(cursorsPath, cursors);

@@ -3,16 +3,28 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const cp = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('../src/lib/db');
-const { processSessionEvent } = require('../src/lib/sessions/pipeline');
+const { processSessionEvent, recoverActiveSessionMetadata } = require('../src/lib/sessions/pipeline');
 const { getLiveBus } = require('../src/lib/sessions/live-bus');
 
 function getSessionEndedState(dbPath, sessionId) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     return db.prepare('SELECT ended_at, end_reason FROM vibedeck_sessions WHERE session_id = ?').get(sessionId);
+  } finally {
+    db.close();
+  }
+}
+
+function getSessionAttribution(dbPath, sessionId) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return db
+      .prepare('SELECT cwd, repo_root, branch, confidence FROM vibedeck_sessions WHERE session_id = ?')
+      .get(sessionId);
   } finally {
     db.close();
   }
@@ -288,6 +300,108 @@ test('old activity does not reopen an orphan_reaped session', async () => {
     const row = getSessionEndedState(dbPath, 'reaped-stays-ended');
     assert.equal(row.ended_at, reapedAt);
     assert.equal(row.end_reason, 'orphan_reaped');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('codex session file metadata recovers cwd when incremental events omit cwd', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-cwd-recovery-'));
+  try {
+    cp.execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: root, stdio: 'ignore' });
+    await fs.writeFile(path.join(root, 'README.md'), 'test\n', 'utf8');
+    cp.execFileSync('git', ['add', 'README.md'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['commit', '-m', 'init'], { cwd: root, stdio: 'ignore' });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    const sessionFile = path.join(root, 'rollout-session.jsonl');
+    ensureSchema(dbPath);
+    await fs.writeFile(
+      sessionFile,
+      JSON.stringify({
+        timestamp: '2026-05-11T02:00:00.000Z',
+        type: 'session_meta',
+        payload: {
+          cwd: root,
+          model: 'gpt-5.5',
+        },
+      }) + '\n',
+      'utf8',
+    );
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: sessionFile,
+      started_at: '2026-05-11T02:00:00.000Z',
+      cwd: null,
+      model: 'gpt-5.5',
+    });
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: sessionFile,
+      observed_at: '2026-05-11T02:01:00.000Z',
+      delta_tokens: 100,
+      cwd: null,
+      model: 'gpt-5.5',
+    });
+
+    const row = getSessionAttribution(dbPath, sessionFile);
+    assert.equal(row.cwd, root);
+    assert.equal(row.repo_root, await fs.realpath(root));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('active unknown codex sessions can be backfilled from session file metadata', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-cwd-backfill-'));
+  try {
+    cp.execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    const sessionFile = path.join(root, 'rollout-session.jsonl');
+    ensureSchema(dbPath);
+    await fs.writeFile(
+      sessionFile,
+      JSON.stringify({
+        timestamp: '2026-05-11T02:00:00.000Z',
+        type: 'session_meta',
+        payload: { cwd: root, model: 'gpt-5.5' },
+      }) + '\n',
+      'utf8',
+    );
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare(
+        `
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd,
+          created_at, updated_at
+        ) VALUES (
+          'codex', ?, '2026-05-11T02:00:00.000Z', NULL, NULL,
+          NULL, NULL, NULL, NULL,
+          NULL, 'D', 'unattributed', NULL,
+          'gpt-5.5', 100, NULL,
+          '2026-05-11T02:00:00.000Z', '2026-05-11T02:00:00.000Z'
+        )
+        `,
+      ).run(sessionFile);
+    } finally {
+      db.close();
+    }
+
+    const result = await recoverActiveSessionMetadata(dbPath);
+
+    const row = getSessionAttribution(dbPath, sessionFile);
+    assert.equal(result.recovered, 1);
+    assert.equal(row.cwd, root);
+    assert.equal(row.repo_root, await fs.realpath(root));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

@@ -66,9 +66,8 @@ async function cmdSync(argv) {
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   ensureSchema(dbPath);
 
-  const onSessionEvent = (e) => {
-    processSessionEvent(dbPath, e).catch(() => {});
-  };
+  const sessionEventProcessor = createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
+  const onSessionEvent = sessionEventProcessor.onSessionEvent;
 
   await ensureDir(trackerDir);
   if (opts.fromOpenclaw) {
@@ -580,6 +579,13 @@ async function cmdSync(argv) {
       }
     }
 
+    const sessionEventDrain = await sessionEventProcessor.drain();
+    if (!opts.auto && sessionEventDrain.errors.length > 0) {
+      process.stderr.write(
+        `Session live-state sync: ${sessionEventDrain.errors.length} event(s) failed\n`,
+      );
+    }
+
     cursors.updatedAt = new Date().toISOString();
     await writeJson(cursorsPath, cursors);
 
@@ -664,8 +670,34 @@ function parseArgs(argv) {
   return out;
 }
 
+function createSessionEventProcessor(processor) {
+  if (typeof processor !== "function") {
+    throw new TypeError("processor must be a function");
+  }
+
+  const errors = [];
+  let queue = Promise.resolve();
+
+  const onSessionEvent = (event) => {
+    queue = queue
+      .then(() => processor(event))
+      .catch((err) => {
+        errors.push(err);
+      });
+    return queue;
+  };
+
+  const drain = async () => {
+    await queue;
+    return { errors };
+  };
+
+  return { onSessionEvent, drain, errors };
+}
+
 module.exports = {
   cmdSync,
+  createSessionEventProcessor,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   reincludeClaudeMemObserverFiles,

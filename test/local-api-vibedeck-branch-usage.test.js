@@ -240,6 +240,58 @@ test('GET /functions/vibedeck-branch-usage returns empty shape when db is absent
   }
 });
 
+test('GET /functions/vibedeck-branch-usage does not undercount when more than 100 sessions match', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-limit-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['main']);
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      for (let i = 0; i < 150; i += 1) {
+        insertSession(db, {
+          provider: 'codex',
+          session_id: `s-${i}`,
+          started_at: `2026-05-10T${String(Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}:00.000Z`,
+          ended_at: `2026-05-10T${String(Math.floor(i / 6)).padStart(2, '0')}:${String((i % 6) * 10 + 5).padStart(2, '0')}:00.000Z`,
+          cwd: repoRoot,
+          repo_root: repoRoot,
+          branch: 'main',
+          branch_resolution_tier: 'A',
+          confidence: 'high',
+          model: 'gpt-4o-mini',
+          total_tokens: 1,
+          total_cost_usd: 0.001,
+        });
+      }
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(req, res, new URL('http://127.0.0.1/functions/vibedeck-branch-usage'));
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.totals.total_tokens, 150);
+    assert.equal(body.repos[0].branches[0].total_tokens, 150);
+    assert.equal(body.repos[0].branches[0].session_count, 150);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('GET /functions/vibedeck-branch-usage prefers branch windows when a session was split', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-windows-'));
   try {

@@ -81,7 +81,7 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
 
   return (
     <section className={cn("grid h-full min-h-0 max-h-full grid-rows-[minmax(0,1fr)] gap-1 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]", className)}>
-      <div className="grid h-full min-h-0 max-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90">
+      <div className="grid h-full min-h-0 max-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass">
         <div className="flex min-h-0 items-center justify-between gap-2 border-b border-oai-gray-200 px-4 py-2.5 dark:border-oai-gray-800">
           <h2 className="text-sm font-semibold text-oai-black dark:text-white">Checkpoint files</h2>
           {files.length > 0 ? (
@@ -112,7 +112,7 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                     className={cn(
                       "overflow-hidden rounded-2xl border transition-colors",
                       isOpen
-                        ? "border-oai-brand-500/40 bg-emerald-500/[0.07]"
+                        ? "border-oai-brand-500/40 bg-oai-brand-50/70"
                         : "border-oai-gray-200 bg-oai-black/[0.025] dark:border-oai-gray-800 dark:bg-white/[0.04]",
                     )}
                   >

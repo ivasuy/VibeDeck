@@ -14,12 +14,12 @@ import { cn } from "../lib/cn";
 function WorkspacePanel({ title = "", subtitle = "", headerHidden = false, className = "", bodyClassName = "", children }) {
   return (
     <section className={cn(
-      "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90",
+      "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass",
       className,
     )}
     >
       {headerHidden ? null : (
-        <header className="shrink-0 border-b border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+        <header className="shrink-0 border-b border-[var(--glass-border)] px-4 py-3">
           {title ? <h2 className="text-sm font-semibold text-oai-black dark:text-white">{title}</h2> : null}
           {subtitle ? (
             <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">{subtitle}</p>
@@ -149,83 +149,83 @@ export function EntirePage() {
   }, [selectedRepo]);
 
   return (
-    <PageFrame hideHeader compact maxWidth="max-w-[1760px]" contentClassName="h-full px-1.5 sm:px-2 lg:px-2.5">
-      <div className="grid h-full min-h-0 max-h-full gap-1 overflow-hidden xl:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="grid min-h-0 grid-rows-[minmax(0,370px)_310px_minmax(0,1fr)] gap-2 overflow-hidden">
-          <RecentReposPane
-            className="h-full max-h-full"
-            repos={repoSuggestions}
-            selectedRepo={selectedRepo}
-            onSelect={loadRepo}
-            onRemove={removeRepo}
+    <PageFrame hideHeader compact maxWidth="max-w-[1760px]" contentClassName="h-full px-4 sm:px-5 lg:px-6">
+      <div className="flex h-full min-h-0 max-h-full flex-col gap-3 overflow-hidden">
+        <WorkspacePanel
+          headerHidden
+          className="shrink-0"
+          bodyClassName="overflow-hidden p-4"
+        >
+          <RepoPathSelector
+            value={repoInput}
+            onChange={setRepoInput}
+            onSubmit={loadRepo}
+            suggestions={repoSuggestions}
+            loading={statusLoading || checkpointsLoading}
+            error={repoError}
+            description={copy("entire.repo.subtitle")}
           />
-          <WorkspacePanel
-            title={copy("entire.status.title")}
-            className="h-[310px] min-h-0 shrink-0"
-            bodyClassName="overflow-hidden p-3"
-          >
-            <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} className="h-full" />
-          </WorkspacePanel>
-          <div aria-hidden />
-        </div>
-        <div className="grid min-h-0 grid-rows-[96px_132px_minmax(0,1fr)] gap-1 overflow-hidden">
-          <WorkspacePanel
-            headerHidden
-            className="h-[96px] min-h-0 shrink-0"
-            bodyClassName="overflow-hidden p-1.5"
-          >
-            <div className="grid gap-2">
-              <RepoPathSelector
-                value={repoInput}
-                onChange={setRepoInput}
-                onSubmit={loadRepo}
-                suggestions={repoSuggestions}
-                loading={statusLoading || checkpointsLoading}
-                error={repoError}
-                description={copy("entire.repo.subtitle")}
-              />
-            </div>
-          </WorkspacePanel>
+        </WorkspacePanel>
 
-          <WorkspacePanel
-            headerHidden
-            className="h-[132px] min-h-0 shrink-0"
-            bodyClassName="overflow-hidden p-1.5"
-          >
-            <h2 className="sr-only">Controls</h2>
-            {selectedRepo ? (
-              <div className="grid h-full min-h-0 gap-1.5 xl:grid-cols-[312px_minmax(0,1fr)_272px]">
-                <section className="min-h-0 overflow-hidden">
-                  <h3 className="sr-only">Checkpoint id</h3>
-                  <EntireMaintenancePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                </section>
+        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[220px_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+            <RecentReposPane
+              className="min-h-0 flex-1"
+              repos={repoSuggestions}
+              selectedRepo={selectedRepo}
+              onSelect={loadRepo}
+              onRemove={removeRepo}
+            />
+            <WorkspacePanel
+              title={copy("entire.status.title")}
+              className="shrink-0"
+              bodyClassName="overflow-hidden p-4"
+            >
+              <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
+            </WorkspacePanel>
+          </div>
 
-                <section className="min-h-0 overflow-hidden border-t border-oai-gray-200 pt-1.5 dark:border-oai-gray-800 xl:border-l xl:border-r xl:border-t-0 xl:px-1.5 xl:pt-0">
-                  <h3 className="sr-only">Actions</h3>
-                  <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                </section>
+          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+            <WorkspacePanel
+              headerHidden
+              className="shrink-0"
+              bodyClassName="overflow-hidden p-4"
+            >
+              <h2 className="sr-only">Controls</h2>
+              {selectedRepo ? (
+                <div className="grid min-h-0 gap-4 xl:grid-cols-[312px_minmax(0,1fr)_272px]">
+                  <section className="min-h-0 overflow-hidden">
+                    <h3 className="sr-only">Checkpoint id</h3>
+                    <EntireMaintenancePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                  </section>
 
-                <section className="min-h-0 overflow-hidden border-t border-oai-gray-200 pt-1.5 dark:border-oai-gray-800 xl:border-t-0 xl:pt-0">
-                  <h3 className="sr-only">Configure</h3>
-                  <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                </section>
-              </div>
-            ) : (
-              <div className="grid h-full gap-3 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.rewind.input_label")}</p>
-                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.empty")}</p>
-                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.empty")}</p>
-              </div>
-            )}
-          </WorkspacePanel>
+                  <section className="min-h-0 overflow-hidden border-t border-[var(--glass-border)] pt-4 xl:border-l xl:border-r xl:border-t-0 xl:px-4 xl:pt-0">
+                    <h3 className="sr-only">Actions</h3>
+                    <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                  </section>
 
-          <CheckpointList
-            className={cn("min-h-0")}
-            repo={selectedRepo}
-            checkpoints={checkpointsData}
-            loading={checkpointsLoading}
-            error={checkpointsError}
-          />
+                  <section className="min-h-0 overflow-hidden border-t border-[var(--glass-border)] pt-4 xl:border-t-0 xl:pt-0">
+                    <h3 className="sr-only">Configure</h3>
+                    <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                  </section>
+                </div>
+              ) : (
+                <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.rewind.input_label")}</p>
+                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.empty")}</p>
+                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.empty")}</p>
+                </div>
+              )}
+            </WorkspacePanel>
+
+            <CheckpointList
+              className={cn("min-h-0 flex-1")}
+              repo={selectedRepo}
+              checkpoints={checkpointsData}
+              loading={checkpointsLoading}
+              error={checkpointsError}
+            />
+          </div>
         </div>
       </div>
     </PageFrame>

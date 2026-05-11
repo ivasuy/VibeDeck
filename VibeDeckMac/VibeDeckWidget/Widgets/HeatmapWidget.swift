@@ -6,7 +6,7 @@ import WidgetKit
 // in the top corner and a one-line summary at the bottom.
 
 struct HeatmapWidget: Widget {
-    let kind: String = "TokenTrackerHeatmapWidget"
+    let kind: String = "VibeDeckHeatmapWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in

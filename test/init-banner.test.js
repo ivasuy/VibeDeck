@@ -7,7 +7,7 @@ function read(rel) {
   return fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 }
 
-test("init banner shows TOKEN TRACKER logo", () => {
+test("init banner shows VIBE DECK logo", () => {
   const src = read("src/commands/init.js");
   const startToken = "const ASCII_LOGO = [";
   const endToken = '].join("\\n");';

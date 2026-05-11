@@ -11,7 +11,6 @@ function usePrefersReducedMotion() {
 }
 
 /**
- * 实时演示组件 - 日志流
  */
 export const LiveSniffer = () => {
   const [logs, setLogs] = useState([

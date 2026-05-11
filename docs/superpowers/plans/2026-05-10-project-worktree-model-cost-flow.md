@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Implementation note (2026-05-11):** This plan predates the canonical ingestion and audit ledger work in `2026-05-11-vibedeck-canonical-ingestion-and-audit-ledger.md`. The current backend now treats `vibedeck.sqlite3` as the source of truth and stores canonical per-session bucket facts in `vibedeck_session_buckets`. Keep this document for the original project/worktree cost rollout, but defer to the 2026-05-11 plan for storage truth, rebuild flow, and audit semantics.
+
 **Goal:** Add reliable real-time estimated cost and model/provider breakdowns to Project Usage, Live Workbench, and existing branch/worktree views without merging `/usage` and `/branches`.
 
 **Architecture:** Treat `model + tokens` as the source of truth for estimated cost when stored `total_cost_usd` is missing or known-stale. Keep aggregate usage exact where token-type buckets exist, and clearly mark session/project/branch costs as estimated when they are derived from `total_tokens` only. Extend existing backend endpoints and existing dashboard components; do not replace the dashboard shell or major UI components.
@@ -13,9 +15,9 @@
 ## Current Facts and Constraints
 
 - Pricing is available. `src/lib/pricing/index.js` resolves current models including `gpt-5.5`, `gpt-5.2`, `gpt-5.4`, `gpt-5.3-codex`, `claude-opus-4-7`, `claude-sonnet-4-6`, and suffix/fuzzy model names.
-- Exact aggregate cost already works because `queue.jsonl` rows include token-type buckets: `input_tokens`, `output_tokens`, `cached_input_tokens`, `cache_creation_input_tokens`, `reasoning_output_tokens`.
+- Exact aggregate cost already works because queue rows include token-type buckets, and canonical DB-backed usage now stores those same token-type bucket facts in `vibedeck_session_buckets`.
 - `vibedeck_sessions` currently stores `provider`, `repo_root`, `branch`, `model`, `total_tokens`, and `total_cost_usd`, but not token-type buckets.
-- Because sessions only have `total_tokens`, project/worktree/branch model costs from session DB are estimates unless a future migration stores token-type buckets per session or per branch window.
+- Session rows remain denormalized summaries. Exact or estimated cost quality now comes from canonical per-session bucket facts, then rolls up into project/worktree/branch/session responses.
 - `project.queue.jsonl` has project token buckets, but does not reliably include `model`, so it cannot alone produce a model breakdown.
 - For this phase, do not merge `/usage` and `/branches`. `/usage` Project Usage gets project/provider/model cost breakdowns. `/branches` stays separate and keeps branch/worktree breakdowns.
 - Skip Claude `/limits` for this phase. That is OAuth/rate-limit behavior, not the cost mapping flow.
@@ -1459,14 +1461,13 @@ Stop the server with `Ctrl+C`.
 
 ## Caveats To Communicate In UI/Docs If Asked
 
-- Project/worktree/branch costs are estimates when they come from `vibedeck_sessions.total_tokens`.
-- Exact cost requires token-type buckets. That is already available in aggregate `queue.jsonl`, but not yet stored per session/branch window.
-- The estimate is still useful and stable because pricing lookup is reliable and models are present in session rows.
-- A future data-quality phase can add token-type columns to `vibedeck_sessions` or create per-session token buckets to make project/worktree/branch cost exact.
+- Project/worktree/branch costs are exact when canonical bucket facts exist and the provider/model pricing resolves cleanly.
+- Responses may still be marked estimated when VibeDeck falls back to legacy totals, unknown models, or incomplete provider token detail.
+- Queue-derived compatibility paths must not override fresher canonical DB facts.
+- Session rows can stay denormalized; the durable audit surface is `vibedeck_session_events` plus `vibedeck_session_buckets`.
 
 ## Self-Review
 
 - Spec coverage: project usage gets model/provider/token/cost breakdowns; live workbench gets estimated costs; branch/worktree costs stop relying on stale zero values; `/usage` and `/branches` stay separate.
 - Placeholder scan: no task asks agents to “handle later” or “add tests” without explicit assertions.
 - Type consistency: backend uses `estimated_total_cost_usd`, `cost_estimated`, and `cost_quality`; branch rows keep existing `total_cost_usd` and add flags; UI reads those exact fields.
-

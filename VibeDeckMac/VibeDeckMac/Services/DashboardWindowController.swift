@@ -5,9 +5,9 @@ import WebKit
 @MainActor
 final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
 
-    /// 与 `dashboard` 里 `AppLayout` 主内容区 `lg:pr-3 lg:pb-3`（12pt）一致，用于主卡圆角与窗口圆角同心近似。
+
     private enum DashboardChromeMetrics {
-        /// 系统未公开窗口外圆角；取 28pt 使「28 − 12pt 留白 = 16px」与原先 `rounded-2xl` 一致（同心圆角近似）。
+
         static let approxWindowOuterCornerRadius: CGFloat = 28
         static let mainGutterPoints: CGFloat = 12
         static var mainCardCornerRadiusPixels: Int {
@@ -17,17 +17,17 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
 
     static let shared = DashboardWindowController()
 
-    /// 供 `NSAlert` 等以 sheet 附着，避免 `runModal` 浮层被仪表盘或其它窗口压在下面。
+
     var windowForSheet: NSWindow? { window }
 
     private var window: NSWindow?
-    /// `theme === "system"` 时为 true：窗口 `appearance` 置 nil，随系统切换；否则固定亮/暗。
+
     private var chromeFollowsSystem = false
     private var effectiveAppearanceObservation: NSKeyValueObservation?
     private var webView: WKWebView?
     private var loadingOverlay: NSView?
     private var loadingHostingController: NSHostingController<AnyView>?
-    /// 加载失败重试计数
+
     private var retryCount = 0
     private let maxRetries = 5
 
@@ -41,7 +41,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
     // MARK: - Public
 
     func showWindow() {
-        // 关闭 menu bar popover
+
         for window in NSApp.windows where window.className.contains("Popover") {
             window.close()
         }
@@ -123,7 +123,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             dragBar.topAnchor.constraint(equalTo: container.topAnchor),
             dragBar.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             dragBar.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            // 必须与 dashboard `AppLayout` 顶部 `h-7`（28pt）拖拽条对齐；设过高会盖住 sidebar 顶部的 Sign in 按钮，mouseDown 被 performDrag 吃掉。
+
             dragBar.heightAnchor.constraint(equalToConstant: 28),
             overlay.topAnchor.constraint(equalTo: container.topAnchor),
             overlay.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -139,7 +139,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             defer: false
         )
         window.minSize = NSSize(width: 800, height: 600)
-        window.title = "TokenTracker"
+        window.title = "VibeDeck"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         let toolbar = NSToolbar(identifier: "DashboardToolbar")
@@ -159,8 +159,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         // Wire bridge so SettingsPage can read/write menu-bar prefs
         NativeBridge.shared.webView = webView
 
-        // 始终注册 NSApp.effectiveAppearance 观察，前端模块级缓存即可一直保持最新，
-        // 避免「light → system」切换时还要等异步 round-trip 才知道当前系统亮暗。
+
+
         registerEffectiveAppearanceObserverIfNeeded()
 
         // Load dashboard
@@ -181,7 +181,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
     }
 
     /// Match dashboard light/dark so native glass / `NSVisualEffectView` + window chrome follow the web theme.
-    /// - `theme`: `"system"` | `"light"` | `"dark"`（与 `localStorage` 中 `tokentracker-theme` 一致）。
+
     func applyChromeAppearance(theme: String, resolvedIsDark: Bool) {
         switch theme {
         case "system":
@@ -198,8 +198,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
             window?.appearance = NSAppearance(named: resolvedIsDark ? .darkAqua : .aqua)
         }
         registerEffectiveAppearanceObserverIfNeeded()
-        // 切到 system 时立即把当前系统外观推给前端（KVO 只在外观变化时触发，
-        // 用户从 light/dark 切回 system 但系统外观未变 → KVO 不会响应）。
+
+
         if chromeFollowsSystem {
             DispatchQueue.main.async { [weak self] in
                 self?.pushCurrentSystemAppearanceToWeb()
@@ -207,20 +207,20 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         }
     }
 
-    /// 把当前系统外观推给前端。无论 chromeFollowsSystem 状态如何都推送，
-    /// 让前端模块级缓存（`getCachedNativeSystemDark`）始终保持最新。
+
+
     func pushCurrentSystemAppearanceToWeb() {
         let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         pushSystemAppearanceToWeb(isDark: isDark)
     }
 
-    /// 始终注册一次 KVO（不与 chromeFollowsSystem 绑定）：
-    /// - 用户在手动 light/dark 时改变系统外观，前端缓存仍然能更新；
-    /// - 切回 system 时前端立即拥有正确的系统外观值，无需等异步 round-trip。
+
+
+
     private func registerEffectiveAppearanceObserverIfNeeded() {
         guard effectiveAppearanceObservation == nil else { return }
-        // `NSApp.effectiveAppearance` 在 NSApp.appearance 为 nil 时跟随系统；
-        // AppKit 文档建议对它做 KVO 监听亮暗变化。
+
+
         effectiveAppearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             DispatchQueue.main.async {
                 self?.pushCurrentSystemAppearanceToWeb()
@@ -243,7 +243,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         let js = """
         (function(){
           try {
-            var t = localStorage.getItem('tokentracker-theme') || 'system';
+            var t = localStorage.getItem('vibedeck-theme') || localStorage.getItem('vibedeck-theme') || 'system';
             var d = document.documentElement.classList.contains('dark');
             return JSON.stringify({ theme: t, isDark: d });
           } catch (e) {
@@ -262,7 +262,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         }
     }
 
-    /// 主内容白卡圆角：与窗口可视圆角同心近似（外圆角 − 与窗口边的留白），写入 `--tt-main-card-radius`。
+
     private func injectMainCardCornerRadius() {
         let px = DashboardChromeMetrics.mainCardCornerRadiusPixels
         let js = "document.documentElement.style.setProperty('--tt-main-card-radius', '\(px)px');"
@@ -276,7 +276,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         overlay.wantsLayer = true
         overlay.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
-        // 基底约 60×64pt，1.2× 放大 ≈ 72×76.8
+
         let hosting = NSHostingController(
             rootView: AnyView(
                 ClawdCompanionView.LoadingMascotView()
@@ -375,22 +375,22 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         }
     }
 
-    /// Called when `tokentracker://auth/done` deep link is received after browser login.
+    /// Called when `vibedeck://auth/done` deep link is received after browser login.
     func handleAuthDone() {
         showWindow()
-        // Reload dashboard so InsForge SDK picks up session from server-side cookie relay
+        // Reload dashboard so native auth state is picked up after the server-side relay.
         if let url = URL(string: Constants.serverBaseURL + "?app=1") {
             webView?.load(URLRequest(url: url))
         }
     }
 
-    /// Called when browser relays OAuth code back via `tokentracker://auth/callback?insforge_code=xxx`.
+    /// Called when browser relays OAuth code back via `vibedeck://auth/callback?code=xxx`.
     /// Loads the callback page in the WebView so the SDK can exchange the code using the
     /// PKCE verifier that's already in WebView's sessionStorage.
     func handleAuthCallback(code: String) {
         showWindow()
         let encoded = code.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? code
-        let callbackUrl = Constants.serverBaseURL + "/auth/callback?insforge_code=\(encoded)"
+        let callbackUrl = Constants.serverBaseURL + "/auth/callback?code=\(encoded)"
         if let url = URL(string: callbackUrl) {
             webView?.load(URLRequest(url: url))
         }
@@ -447,7 +447,7 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         retryCount = 0
-        // 禁用文本选中 + 为透明标题栏留出顶部间距
+
         let css = """
             * { -webkit-user-select: none !important; } \
             input, textarea { -webkit-user-select: text !important; } \
@@ -466,8 +466,8 @@ final class DashboardWindowController: NSObject, NSWindowDelegate, WKNavigationD
         webView.evaluateJavaScript(waitForPaint) { [weak self] _, _ in
             DispatchQueue.main.async {
                 self?.syncChromeAppearanceFromWebView()
-                // 页面就绪后立即把当前系统外观推到模块级缓存，确保后续切到 system 时
-                // 前端无需等异步 round-trip 即可读取正确值。
+
+
                 self?.pushCurrentSystemAppearanceToWeb()
                 self?.injectMainCardCornerRadius()
                 self?.dismissLoadingOverlay()

@@ -156,7 +156,7 @@ describe("refreshCodexTokens", () => {
 
 describe("persistRefreshedAuth", () => {
   it("atomically writes refreshed tokens preserving non-token fields", async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-codex-refresh-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-codex-refresh-"));
     try {
       const authPath = path.join(tmp, "auth.json");
       const original = {

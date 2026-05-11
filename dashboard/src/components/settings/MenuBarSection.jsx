@@ -72,7 +72,7 @@ export function NativeAppFooter() {
   if (!available || !settings?.version) return null;
   return (
     <div className="mt-6 flex items-center justify-center gap-2 text-[11px] text-oai-gray-500 dark:text-oai-gray-500">
-      <span>TokenTrackerBar v{settings.version}</span>
+      <span>VibeDeckMac v{settings.version}</span>
       <span aria-hidden>·</span>
       <button
         type="button"

@@ -191,7 +191,7 @@ test("opencode config exports plugin constants", () => {
   assert.equal(typeof PLUGIN_MARKER, "string");
   assert.ok(PLUGIN_MARKER.length > 0);
   assert.equal(DEFAULT_EVENT, "session.updated");
-  assert.equal(DEFAULT_PLUGIN_NAME, "tokentracker.js");
+  assert.equal(DEFAULT_PLUGIN_NAME, "vibedeck.js");
 });
 
 test("init then uninstall removes notify when none existed", async () => {
@@ -701,9 +701,9 @@ test("init then uninstall manages Opencode plugin without removing other plugins
     process.stdout.write = () => true;
     await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const pluginPath = path.join(pluginDir, "tokentracker.js");
+    const pluginPath = path.join(pluginDir, "vibedeck.js");
     const installed = await fs.readFile(pluginPath, "utf8");
-    assert.match(installed, /TOKENTRACKER_PLUGIN/);
+    assert.match(installed, /VIBEDECK_PLUGIN/);
 
     await cmdUninstall([]);
 
@@ -745,9 +745,9 @@ test("init installs Opencode plugin when config dir is missing", async () => {
     process.stdout.write = () => true;
     await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
-    const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, "plugin", "tokentracker.js");
+    const pluginPath = path.join(process.env.OPENCODE_CONFIG_DIR, "plugin", "vibedeck.js");
     const installed = await fs.readFile(pluginPath, "utf8");
-    assert.match(installed, /TOKENTRACKER_PLUGIN/);
+    assert.match(installed, /VIBEDECK_PLUGIN/);
   } finally {
     process.stdout.write = prevWrite;
     if (prevHome === undefined) delete process.env.HOME;

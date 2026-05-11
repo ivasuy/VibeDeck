@@ -210,8 +210,12 @@ function assertStartUpdateEnd(events, provider) {
 test('SessionEvent extraction: Claude Code', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-claude-'));
   try {
-    const claudePath = path.join(tmp, 'agent-claude.jsonl');
+    const projectRoot = path.join(tmp, 'repo');
+    const encodedProjectRoot = `-${projectRoot.split(path.sep).filter(Boolean).join('-')}`;
+    const claudePath = path.join(tmp, '.claude', 'projects', encodedProjectRoot, 'agent-claude.jsonl');
     const queuePath = path.join(tmp, 'queue.jsonl');
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.mkdir(path.dirname(claudePath), { recursive: true });
     await fs.writeFile(
       claudePath,
       [
@@ -231,6 +235,15 @@ test('SessionEvent extraction: Claude Code', async () => {
 
     assertStartUpdateEnd(events, 'claude');
     assert.equal(events[0].session_id, claudePath);
+    assert.equal(events[0].cwd, projectRoot);
+    assert.equal(events[1].kind, 'update');
+    assert.equal(events[1].cwd, projectRoot);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].cached_input_tokens, 0);
+    assert.equal(events[1].cache_creation_input_tokens, 0);
+    assert.equal(events[1].output_tokens, 2);
+    assert.equal(events[1].reasoning_output_tokens, 0);
+    assert.equal(events[1].conversation_count, 0);
 
     const events2 = [];
     await parseClaudeIncremental({

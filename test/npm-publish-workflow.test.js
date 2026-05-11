@@ -111,4 +111,12 @@ test("package.json files array includes dashboard/dist", () => {
     pkg.files.includes("dashboard/dist/"),
     "published package must include dashboard/dist/"
   );
+  assert.ok(
+    pkg.files.includes("README.md"),
+    "published package must include README.md"
+  );
+  assert.ok(
+    !pkg.files.includes("LICENSE"),
+    "published package should not reference deleted LICENSE file"
+  );
 });

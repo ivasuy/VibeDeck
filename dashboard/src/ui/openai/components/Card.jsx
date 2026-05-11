@@ -1,7 +1,6 @@
 import React from "react";
 
 /**
- * Card - 简化版卡片组件
  */
 export function Card({
   children,
@@ -9,13 +8,14 @@ export function Card({
   subtitle,
   className = "",
   bodyClassName = "",
+  hover = false,
 }) {
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 transition-colors duration-200 ${className}`}>
+    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass transition-all duration-200 ${hover ? "hover:shadow-glass-glow hover:border-oai-gray-300 dark:hover:border-white/10 hover:-translate-y-0.5" : ""} ${className}`}>
       {(title || subtitle) && (
-        <div className="px-5 py-4 border-b border-oai-gray-200 dark:border-oai-gray-800 transition-colors duration-200">
+        <div className="px-5 py-4 border-b border-[var(--glass-border)] transition-colors duration-200">
           {title && (
-            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide transition-colors duration-200">{title}</h3>
+            <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide font-mono transition-colors duration-200">{title}</h3>
           )}
           {subtitle && (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-300 mt-1 transition-colors duration-200">{subtitle}</p>

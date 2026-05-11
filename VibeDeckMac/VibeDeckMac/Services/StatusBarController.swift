@@ -116,7 +116,7 @@ final class StatusBarController: NSObject {
 
     private static weak var instance: StatusBarController?
 
-    /// 在显示 `NSAlert` / sheet 前调用：收起菜单栏 Popover，否则其 `NSPanel` 常会盖住更新提示。
+
     static func prepareForSystemAlert() {
         instance?.closePopoverForModalAlert()
     }
@@ -267,9 +267,9 @@ final class StatusBarController: NSObject {
         guard let button = statusItem.button else { return }
         let displayItems = buildMenuBarDisplayValues()
 
-        // popover 显示期间冻结 statusItem.length：4 条数据 publisher 与 MenuBarAnimator 帧动画都会
-        // 触发本方法，length 反复重设会让 status item 宽度抖动并把 popover 锚点拖着整体平移。
-        // popover 关闭后由 didCloseNotification 监听器再调一次本方法把宽度对齐到最新值。
+
+
+
         let canResizeStatusItem = !popover.isShown
 
         if showStats && !displayItems.isEmpty {
@@ -453,7 +453,7 @@ final class StatusBarController: NSObject {
         popover.contentViewController = NSHostingController(rootView: rootView)
         popover.behavior = .transient
 
-        // popover 关闭后把 statusItem.length 对齐到最新合成图宽度（显示期间被冻结）。
+
         NotificationCenter.default.addObserver(
             forName: NSPopover.didCloseNotification,
             object: popover,
@@ -547,7 +547,7 @@ final class StatusBarController: NSObject {
 
         // About
         let version = UpdateChecker.shared.currentVersion()
-        let aboutItem = NSMenuItem(title: "TokenTrackerBar v\(version)", action: #selector(openAbout), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "VibeDeckMac v\(version)", action: #selector(openAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
 
@@ -618,13 +618,13 @@ final class StatusBarController: NSObject {
     }
 
     @objc private func openGitHub() {
-        if let url = URL(string: "https://github.com/mm7894215/TokenTracker") {
+        if let url = URL(string: "https://github.com/ivasuy/VibeDeck") {
             NSWorkspace.shared.open(url)
         }
     }
 
     @objc private func openAbout() {
-        if let url = URL(string: "https://github.com/mm7894215/TokenTracker") {
+        if let url = URL(string: "https://github.com/ivasuy/VibeDeck") {
             NSWorkspace.shared.open(url)
         }
     }

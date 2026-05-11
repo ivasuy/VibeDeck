@@ -42,14 +42,14 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
 
   if (loading) {
     return (
-      <div className={cn("flex h-full min-h-0 max-h-full items-center overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 p-5 text-sm text-oai-gray-500 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90 dark:text-oai-gray-400", className)}>
+      <div className={cn("flex h-full min-h-0 max-h-full items-center overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass p-5 text-sm text-oai-gray-500 dark:text-oai-gray-400", className)}>
         Loading checkpoint file...
       </div>
     );
   }
   if (error) {
     return (
-      <div className={cn("flex h-full min-h-0 max-h-full items-center overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 p-5 text-sm text-red-700 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90 dark:text-red-300", className)}>
+      <div className={cn("flex h-full min-h-0 max-h-full items-center overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass p-5 text-sm text-red-700 dark:text-red-300", className)}>
         Unable to load checkpoint: {error}
       </div>
     );
@@ -63,7 +63,7 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
   }
 
   return (
-    <section className={cn("grid h-full min-h-0 max-h-full grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90", className)}>
+    <section className={cn("grid h-full min-h-0 max-h-full grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass", className)}>
       <header className="flex min-h-0 items-start justify-between gap-3 border-b border-oai-gray-200 px-4 py-2.5 dark:border-oai-gray-800">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">

@@ -3,7 +3,7 @@ import { cn } from "../../lib/cn";
 import { copy } from "../../lib/copy";
 
 export const CONFIDENCE_CLASS = {
-  high: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  high: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   medium: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
   low: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
   unattributed: "bg-red-500/10 text-red-700 dark:text-red-300",

@@ -97,7 +97,7 @@ function addUtcDays(date, days) {
 
 function isProductionHost(hostname) {
   if (!hostname) return false;
-  return hostname === "www.tokentracker.cc" || hostname === "tokentracker.cc";
+  return hostname === "github.com";
 }
 
 function isForceInstallEnabled() {
@@ -225,12 +225,12 @@ export function DashboardPage({
     linkCodeRefreshToken,
   ]);
 
-  // 本地模式判断
+
   const isLocalMode = typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
   useEffect(() => {
-    // 本地模式：跳过登录检查，直接获取 userStatus
+
     if (!isLocalMode && (!signedIn || mockEnabled || publicMode)) {
       setUserStatus(null);
       return;
@@ -248,7 +248,7 @@ export function DashboardPage({
         resolvedToken = null;
       }
       if (!active) return;
-      // 本地模式允许空 token
+
       if (!resolvedToken && !isLocalMode) {
         setUserStatus(null);
         return;
@@ -550,12 +550,12 @@ export function DashboardPage({
         : [];
       return trimLeadingZeroMonths(rows);
     }
-    // 对于 week/month/all/today 等，优先使用 visibleDaily
-    // 如果数据为空或全是 missing，回退到最近30天的 daily 数据
+
+
     const rows = visibleDaily;
     const hasActualData = rows.some((row) => !row?.missing && !row?.future);
     if (!hasActualData && daily.length > 0) {
-      // 取最近30天有数据的记录
+
       return daily
         .filter((row) => !row?.future)
         .slice(-30)
@@ -593,7 +593,7 @@ export function DashboardPage({
     return paginateRows(sortedDetails, detailsPage, DETAILS_PAGE_SIZE);
   }, [detailsPage, period, sortedDetails]);
 
-  // Daily Breakdown 始终显示最近30天的日数据
+
   const dailyBreakdownRows = useMemo(() => {
     return dailyBreakdownDaily
       .filter((row) => !row?.future && row?.day)
@@ -674,7 +674,7 @@ export function DashboardPage({
   }
 
   const activeDays = useMemo(() => {
-    // 本地模式下跳过登录检查
+
     if (!signedIn && !mockEnabled && !publicMode && !isLocalMode) return 0;
     const serverActive = Number(heatmap?.active_days);
     if (Number.isFinite(serverActive)) return serverActive;
@@ -1183,13 +1183,13 @@ export function DashboardPage({
     return [parts[0], parts.slice(1).join("{{cmd}}")];
   }, [dailyEmptyTemplate]);
 
-  // Header 和 Footer 已简化，不显示登录/GitHub等
+
   const headerStatus = null;
   const headerRight = null;
   const footerLeftContent = null;
 
   const showExpiredGate = sessionSoftExpired && !publicMode;
-  // 使用上面定义的 isLocalMode
+
   const requireAuthGate = !signedIn && !mockEnabled && !sessionSoftExpired && !isLocalMode;
   const showAuthGate = requireAuthGate && !publicMode;
 

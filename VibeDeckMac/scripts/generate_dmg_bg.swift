@@ -5,7 +5,7 @@ import CoreGraphics
 import Foundation
 
 // ==========================================================
-// DMG Background — TokenTracker
+// DMG Background — VibeDeck
 // Inspired by Sketch/Linear DMG: clean, refined, professional
 //
 // Coordinate system:

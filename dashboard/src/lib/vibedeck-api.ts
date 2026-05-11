@@ -54,6 +54,11 @@ export type SyncStatus = {
   session_count?: number;
   open_session_count?: number;
   sync_enabled?: boolean;
+  canonical_db_updated_at?: string | null;
+  canonical_event_count?: number;
+  canonical_bucket_count?: number;
+  session_rows_missing_cost?: number;
+  unattributed_session_count?: number;
 };
 
 function origin() {

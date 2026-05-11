@@ -4,7 +4,7 @@ import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-
 /**
  * Dashboard / marketing header: single row — icon + Star + count (matches Shell header).
  */
-export function HeaderGithubStar({ repo = "mm7894215/TokenTracker" }) {
+export function HeaderGithubStar({ repo = "ivasuy/VibeDeck" }) {
   const [stars, setStars] = useState(null);
 
   useEffect(() => {

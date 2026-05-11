@@ -1,13 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 
 /**
- * AnimatedContainer - 为子元素添加 stagger 入场动画
  *
  * @param {Object} props
- * @param {React.ReactNode} props.children - 子元素
- * @param {string} [props.className] - 额外的 CSS 类名
- * @param {number} [props.staggerDelay=100] - 每个子元素之间的延迟(ms)
- * @param {number} [props.initialDelay=0] - 初始延迟(ms)
  */
 export function AnimatedContainer({
   children,
@@ -48,13 +43,8 @@ export function AnimatedContainer({
 }
 
 /**
- * AnimatedCard - 单个卡片的入场动画包装
  *
  * @param {Object} props
- * @param {React.ReactNode} props.children - 子元素
- * @param {string} [props.className] - 额外的 CSS 类名
- * @param {number} [props.delay=0] - 延迟(ms)
- * @param {'fade-up'|'fade-in'|'scale'} [props.animation='fade-up'] - 动画类型
  */
 export function AnimatedCard({
   children,
@@ -91,13 +81,8 @@ export function AnimatedCard({
 }
 
 /**
- * CountUpNumber - 数字计数动画组件
  *
  * @param {Object} props
- * @param {number|string} props.value - 要显示的数字
- * @param {string} [props.className] - 额外的 CSS 类名
- * @param {number} [props.duration=1000] - 动画持续时间(ms)
- * @param {string} [props.format='compact'] - 格式: 'compact' | 'full' | 'currency'
  */
 export function CountUpNumber({
   value,
@@ -110,14 +95,14 @@ export function CountUpNumber({
   const valueRef = useRef(value);
 
   useEffect(() => {
-    // 解析数字
+
     const numericValue = parseFloat(String(value).replace(/[^\d.-]/g, ""));
     if (!Number.isFinite(numericValue) || numericValue === 0) {
       setDisplayValue(String(value));
       return;
     }
 
-    // 如果值没变且已经动画过，不重复动画
+
     if (valueRef.current === value && hasAnimated) {
       setDisplayValue(String(value));
       return;
@@ -125,7 +110,7 @@ export function CountUpNumber({
 
     valueRef.current = value;
 
-    // 简化的计数动画
+
     const startTime = Date.now();
     const startValue = 0;
     const endValue = numericValue;
@@ -140,7 +125,7 @@ export function CountUpNumber({
         startValue + (endValue - startValue) * easeProgress
       );
 
-      // 格式化显示
+
       let formatted;
       if (format === "compact") {
         formatted = formatCompact(currentValue);
@@ -166,7 +151,7 @@ export function CountUpNumber({
   return <span className={className}>{displayValue}</span>;
 }
 
-// 辅助函数：格式化大数字为紧凑形式
+
 function formatCompact(num) {
   if (num >= 1_000_000_000) {
     return (num / 1_000_000_000).toFixed(1).replace(/\.0$/, "") + "B";
@@ -181,11 +166,8 @@ function formatCompact(num) {
 }
 
 /**
- * PulseIndicator - 脉冲指示器动画
  *
  * @param {Object} props
- * @param {string} [props.color='bg-oai-brand'] - 颜色类
- * @param {string} [props.size='w-2 h-2'] - 大小类
  */
 export function PulseIndicator({
   color = "bg-oai-brand",
@@ -204,10 +186,8 @@ export function PulseIndicator({
 }
 
 /**
- * ShimmerLoader - 骨架屏加载动画
  *
  * @param {Object} props
- * @param {string} [props.className] - 额外的 CSS 类名
  */
 export function ShimmerLoader({ className = "" }) {
   return (

@@ -25,7 +25,7 @@ export function useProjectUsageSummary({
 
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    // 本地模式允许空 token
+
     if (!resolvedToken && !mockEnabled && !isLocalMode) {
       setEntries([]);
       setError(null);
@@ -57,7 +57,7 @@ export function useProjectUsageSummary({
   }, [accessToken, baseUrl, from, limit, mockEnabled, sort, source, timeZone, to, tzOffsetMinutes, isLocalMode]);
 
   useEffect(() => {
-    // 本地模式跳过 token 检查
+
     if (!tokenReady && !mockEnabled && !isLocalMode) {
       setEntries([]);
       setError(null);

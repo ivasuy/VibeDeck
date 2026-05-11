@@ -6,8 +6,8 @@ final class UpdateChecker {
 
     static let shared = UpdateChecker()
 
-    private let repo = "mm7894215/TokenTracker"
-    private let releaseURL: String = "https://github.com/mm7894215/TokenTracker/releases/latest"
+    private let repo = "ivasuy/VibeDeck"
+    private let releaseURL: String = "https://github.com/ivasuy/VibeDeck/releases/latest"
 
     /// Observable status for menu item display
     private(set) var statusText: String? = nil {
@@ -246,7 +246,7 @@ final class UpdateChecker {
 
         // Download into the app's own data directory rather than ~/Downloads/.
         // Downloads is TCC-protected on macOS, so writing there triggers a
-        // "TokenTrackerBar wants to access files in your Downloads folder"
+        // "VibeDeckMac wants to access files in your Downloads folder"
         // prompt every time silent auto-update fires — particularly noisy
         // for ad-hoc-signed builds where TCC grants don't persist across
         // re-installs. Application Support is owned by the user and not
@@ -256,7 +256,7 @@ final class UpdateChecker {
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        ))?.appendingPathComponent("TokenTrackerBar/updates", isDirectory: true)
+        ))?.appendingPathComponent("VibeDeckMac/updates", isDirectory: true)
             ?? FileManager.default.temporaryDirectory
         if !FileManager.default.fileExists(atPath: supportDir.path) {
             try? FileManager.default.createDirectory(at: supportDir, withIntermediateDirectories: true)
@@ -442,7 +442,7 @@ final class UpdateChecker {
         }
     }
 
-    /// 更新提示必须压过菜单栏 Popover（NSPanel）和仪表盘；仅用 sheet 仍可能被 Popover 挡住，故统一 `runModal` 并把模态窗提到高层级。
+
     private func presentAlert(_ alert: NSAlert, completion: @escaping (NSApplication.ModalResponse) -> Void) {
         NSApp.setActivationPolicy(.regular)
         StatusBarController.prepareForSystemAlert()

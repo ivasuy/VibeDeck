@@ -1299,7 +1299,7 @@ function antigravityUnleashBody() {
         hasAnthropicModelAccess: "true",
         ide: "antigravity",
         ideVersion: "unknown",
-        installationId: "tokentracker",
+        installationId: "vibedeck",
         language: "UNSPECIFIED",
         os: "macos",
         requestedModelId: "MODEL_UNSPECIFIED",

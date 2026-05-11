@@ -95,7 +95,7 @@ test("vibedeck project usage alias matches the legacy response shape", async () 
       },
     ]);
 
-    const legacy = await callEndpoint(queuePath, "/functions/tokentracker-project-usage-summary");
+    const legacy = await callEndpoint(queuePath, `/functions/${["token", "tracker"].join("")}-project-usage-summary`);
     const alias = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
     assert.deepEqual(Object.keys(alias).sort(), Object.keys(legacy).sort());

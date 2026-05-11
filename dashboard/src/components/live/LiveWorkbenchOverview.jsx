@@ -118,7 +118,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
               counterStyle={{ gap: 0 }}
             />
           </div>
-          <div className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+          <div className="mt-2 text-sm font-medium text-oai-brand dark:text-oai-brand-300">
             <Counter
               value={activeCost}
               displayValue={costDisplay}
@@ -142,7 +142,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
         {confidenceRows.map((row) => {
           const pct = total > 0 ? (row.count / total) * 100 : 0;
           const colors = {
-            high: "bg-emerald-500",
+            high: "bg-indigo-500",
             medium: "bg-amber-500",
             low: "bg-indigo-500",
             unattributed: "bg-red-500",

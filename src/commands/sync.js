@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const fssync = require("node:fs");
 const cp = require("node:child_process");
 const readline = require("node:readline");
+const { DatabaseSync } = require("node:sqlite");
 
 const { ensureDir, readJson, writeJson, openLock } = require("../lib/fs");
 const {
@@ -90,6 +91,16 @@ async function cmdSync(argv) {
 
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
+    if (opts.rebuildVibedeckDb) {
+      await resetVibedeckSyncState({
+        dbPath,
+        queuePath,
+        queueStatePath,
+        projectQueuePath,
+        projectQueueStatePath,
+        cursors,
+      });
+    }
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
     const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -674,6 +685,7 @@ function parseArgs(argv) {
     fromRetry: false,
     fromOpenclaw: false,
     drain: false,
+    rebuildVibedeckDb: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -682,9 +694,66 @@ function parseArgs(argv) {
     else if (a === "--from-retry") out.fromRetry = true;
     else if (a === "--from-openclaw") out.fromOpenclaw = true;
     else if (a === "--drain") out.drain = true;
+    else if (a === "--rebuild-vibedeck-db") out.rebuildVibedeckDb = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
+}
+
+function clearCanonicalVibedeckTables(dbPath) {
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        DELETE FROM vibedeck_session_branch_windows;
+        DELETE FROM vibedeck_session_buckets;
+        DELETE FROM vibedeck_session_events;
+        DELETE FROM vibedeck_sessions;
+      `);
+      db.exec('COMMIT');
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw err;
+    }
+  } finally {
+    db.close();
+  }
+}
+
+function resetSyncCursors(cursors) {
+  if (!cursors || typeof cursors !== 'object') return;
+  const preservedMigrations =
+    cursors.migrations && typeof cursors.migrations === 'object' ? { ...cursors.migrations } : {};
+  for (const key of Object.keys(cursors)) {
+    delete cursors[key];
+  }
+  Object.assign(cursors, {
+    version: 1,
+    files: {},
+    updatedAt: null,
+    migrations: preservedMigrations,
+  });
+}
+
+async function resetVibedeckSyncState({
+  dbPath,
+  queuePath,
+  queueStatePath,
+  projectQueuePath,
+  projectQueueStatePath,
+  cursors,
+} = {}) {
+  clearCanonicalVibedeckTables(dbPath);
+  resetSyncCursors(cursors);
+  await Promise.all([
+    fs.writeFile(queuePath, '', 'utf8'),
+    fs.writeFile(projectQueuePath, '', 'utf8'),
+    fs.writeFile(queueStatePath, JSON.stringify({ offset: 0 }), 'utf8'),
+    fs.writeFile(projectQueueStatePath, JSON.stringify({ offset: 0 }), 'utf8'),
+  ]);
 }
 
 function createSessionEventProcessor(processor) {
@@ -746,6 +815,7 @@ module.exports = {
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   reincludeClaudeMemObserverFiles,
+  resetVibedeckSyncState,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,
   CLAUDE_MEM_OBSERVER_REINCLUDE_KEY,

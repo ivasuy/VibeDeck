@@ -83,27 +83,27 @@ export function StatsPanel({
   return (
     <Card className={`h-full ${className}`}>
         {/* Rolling Stats */}
-        <div className="grid grid-cols-4 gap-2">
-          <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
-            <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="flex min-w-0 flex-col items-center justify-center px-3 py-3.5 bg-[var(--glass-bg)] backdrop-blur-sm border border-[var(--glass-border)] rounded-lg">
+            <span className="text-xs sm:text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums truncate max-w-full">
               {formatValue(rolling?.last_7d?.totals?.billable_total_tokens)}
             </span>
             <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 whitespace-nowrap">7d</span>
           </div>
-          <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
-            <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
+          <div className="flex min-w-0 flex-col items-center justify-center px-3 py-3.5 bg-[var(--glass-bg)] backdrop-blur-sm border border-[var(--glass-border)] rounded-lg">
+            <span className="text-xs sm:text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums truncate max-w-full">
               {formatValue(rolling?.last_30d?.totals?.billable_total_tokens)}
             </span>
             <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 whitespace-nowrap">30d</span>
           </div>
-          <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
-            <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
+          <div className="flex min-w-0 flex-col items-center justify-center px-3 py-3.5 bg-[var(--glass-bg)] backdrop-blur-sm border border-[var(--glass-border)] rounded-lg">
+            <span className="text-xs sm:text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums truncate max-w-full">
               {formatValue(rolling?.last_30d?.avg_per_active_day)}
             </span>
             <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 whitespace-nowrap">avg</span>
           </div>
-          <div className="flex flex-col items-center justify-center px-2 py-2 bg-oai-gray-50 dark:bg-oai-gray-800 rounded-lg">
-            <span className="text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums">
+          <div className="flex min-w-0 flex-col items-center justify-center px-3 py-3.5 bg-[var(--glass-bg)] backdrop-blur-sm border border-[var(--glass-border)] rounded-lg">
+            <span className="text-xs sm:text-sm font-semibold text-oai-black dark:text-oai-white tabular-nums truncate max-w-full">
               {formatValue(periodConversations)}
             </span>
             <span className="text-[10px] text-oai-gray-400 dark:text-oai-gray-400 mt-0.5 whitespace-nowrap">{periodConversationLabel}</span>
@@ -112,7 +112,7 @@ export function StatsPanel({
 
         {/* Top Models */}
         {displayModels.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-oai-gray-100 dark:border-oai-gray-800">
+          <div className="mt-5 pt-4 border-t border-oai-gray-100 dark:border-oai-gray-800">
             {displayModels.map((row, index) => {
               const name = row?.name ? String(row.name) : placeholder;
               const percent = row?.percent ? String(row.percent) : "";

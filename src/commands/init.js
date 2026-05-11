@@ -56,6 +56,7 @@ const {
   BOLD,
   DIM,
   CYAN,
+  MAGENTA,
   RESET,
   color,
   isInteractive,
@@ -67,22 +68,17 @@ const { detectEntire } = require("../lib/entire-bridge");
 const execa = require("execa");
 
 const ASCII_LOGO = [
-  "████████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗",
-  "╚══██╔══╝██╔═══██╗██║ ██╔╝██╔════╝████╗  ██║",
-  "   ██║   ██║   ██║█████╔╝ █████╗  ██╔██╗ ██║",
-  "   ██║   ██║   ██║██╔═██╗ ██╔══╝  ██║╚██╗██║",
-  "   ██║   ╚██████╔╝██║  ██╗███████╗██║ ╚████║",
-  "   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝",
-  "      ████████╗██████╗  █████╗  ██████╗██╗  ██╗███████╗██████╗",
-  "      ╚══██╔══╝██╔══██╗██╔══██╗██╔════╝██║ ██╔╝██╔════╝██╔══██╗",
-  "         ██║   ██████╔╝███████║██║     █████╔╝ █████╗  ██████╔╝",
-  "         ██║   ██╔══██╗██╔══██║██║     ██╔═██╗ ██╔══╝  ██╔══██╗",
-  "         ██║   ██║  ██║██║  ██║╚██████╗██║  ██╗███████╗██║  ██║",
-  "         ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝",
+  "  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░",
+  "  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░",
+  "   ░▒▓█▓▒▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░",
+  "   ░▒▓█▓▒▒▓█▓▒░░▒▓█▓▒░▒▓███████▓▒░░▒▓██████▓▒░ ░▒▓█▓▒░░▒▓█▓▒░▒▓██████▓▒░░▒▓█▓▒░      ░▒▓███████▓▒░",
+  "    ░▒▓█▓▓█▓▒░ ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░",
+  "    ░▒▓█▓▓█▓▒░ ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░     ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░",
+  "     ░▒▓██▓▒░  ░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░",
 ].join("\n");
 
 const DIVIDER = "----------------------------------------------";
-const DEFAULT_DASHBOARD_URL = "https://www.tokentracker.cc";
+const DEFAULT_DASHBOARD_URL = "http://localhost:7690";
 
 async function cmdInit(argv) {
   const opts = parseArgs(argv);
@@ -200,7 +196,7 @@ async function cmdInit(argv) {
   renderLocalSuccess();
 
   try {
-    spawnInitSync({ trackerBinPath, packageName: "tokentracker" });
+    spawnInitSync({ trackerBinPath, packageName: "vibedeck" });
   } catch (err) {
     const msg = err && err.message ? err.message : "unknown error";
     process.stderr.write(`Initial sync spawn failed: ${msg}\n`);
@@ -217,7 +213,7 @@ async function maybeOfferEntireLogin({ opts }) {
   );
 
   if (opts.skipEntireLogin || !isInteractive() || opts.yes) {
-    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries / cloud sync.\n\n");
+    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries.\n\n");
     return;
   }
 
@@ -230,7 +226,7 @@ async function maybeOfferEntireLogin({ opts }) {
     .trim()
     .toLowerCase();
   if (!normalizedChoice.startsWith("yes")) {
-    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries / cloud sync.\n\n");
+    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries.\n\n");
     return;
   }
 
@@ -248,7 +244,7 @@ async function maybeOfferEntireLogin({ opts }) {
 function renderWelcome() {
   process.stdout.write(
     [
-      ASCII_LOGO,
+      color(ASCII_LOGO, MAGENTA),
       "",
       `${BOLD}Welcome to VibeDeck${RESET}`,
       DIVIDER,
@@ -279,7 +275,7 @@ function renderLocalSuccess() {
       // this is the only place a CLI user naturally sees the project's
       // GitHub URL — and they're at peak satisfaction. No prompts in
       // status/doctor/sync/etc, which run in scripts and would be noisy.
-      `  ${color("⭐ Liking it? Star us at https://github.com/mm7894215/VibeDeck", DIM)}`,
+      `  ${color("Liking it? Star us at https://github.com/ivasuy/VibeDeck", DIM)}`,
       "",
     ].join("\n"),
   );
@@ -497,7 +493,7 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
   }
 
   // Kimi: passive reader — no hook installation needed.
-  // TokenTracker reads ~/.kimi/sessions/**/wire.jsonl directly.
+  // VibeDeck reads ~/.kimi/sessions/**/wire.jsonl directly.
   {
     const kimiHome = process.env.KIMI_HOME || path.join(home, ".kimi");
     const kimiSessions = path.join(kimiHome, "sessions");
@@ -508,7 +504,7 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
   }
 
   // oh-my-pi: passive reader — no hook installation needed.
-  // TokenTracker reads ~/.omp/agent/sessions/**/*.jsonl directly.
+  // VibeDeck reads ~/.omp/agent/sessions/**/*.jsonl directly.
   {
     const ompSessions = path.join(resolveOmpAgentDir(process.env), "sessions");
     if (fssync.existsSync(ompSessions)) {
@@ -517,7 +513,7 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
   }
 
   // pi (@mariozechner/pi-coding-agent): passive reader — no hook installation needed.
-  // TokenTracker reads ~/.pi/agent/sessions/**/*.jsonl directly. Skip when its
+  // VibeDeck reads ~/.pi/agent/sessions/**/*.jsonl directly. Skip when its
   // agent dir collides with omp's so the summary matches what sync will scan.
   if (!piAgentDirCollidesWithOmp(process.env)) {
     const piSessions = path.join(resolvePiAgentDir(process.env), "sessions");
@@ -527,7 +523,7 @@ async function applyIntegrationSetup({ home, trackerDir, notifyPath, notifyOrigi
   }
 
   // Craft Agents: passive reader — no hook installation needed.
-  // TokenTracker reads ~/.craft-agent/workspaces/<id>/sessions/**/session.jsonl
+  // VibeDeck reads ~/.craft-agent/workspaces/<id>/sessions/**/session.jsonl
   // (and any user-relocated workspace listed in ~/.craft-agent/config.json).
   {
     const craftConfigDir = process.env.CRAFT_CONFIG_DIR || path.join(home, ".craft-agent");

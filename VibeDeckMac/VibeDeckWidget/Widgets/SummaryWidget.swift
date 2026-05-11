@@ -8,7 +8,7 @@ import WidgetKit
 // fixed, focused job (no period/metric switcher).
 
 struct SummaryWidget: Widget {
-    let kind: String = "TokenTrackerSummaryWidget"
+    let kind: String = "VibeDeckSummaryWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in

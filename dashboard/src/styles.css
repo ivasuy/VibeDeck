@@ -13,69 +13,75 @@
   --oai-black: #0a0a0a;
   --oai-white: #fafafa;
 
-  /* VibeDeck identity tokens */
-  --vd-accent: #0f766e;
-  --vd-accent-strong: #115e59;
-  --vd-live: #10b981;
+  /* VibeDeck identity tokens — desaturated indigo-slate */
+  --vd-accent: #5b5fc7;
+  --vd-accent-strong: #4f46a8;
+  --vd-live: #6d72c9;
   --vd-branch: #6366f1;
   --vd-warning: #d97706;
   --vd-danger: #dc2626;
 
-  /* Colors - Warm-tinted Neutrals (subtle green tint for cohesion) */
-  --oai-gray-50: oklch(98% 0.005 145);
-  --oai-gray-100: oklch(96% 0.01 145);
-  --oai-gray-200: oklch(90% 0.015 145);
-  --oai-gray-300: oklch(83% 0.02 145);
-  --oai-gray-400: oklch(70% 0.025 145);
-  --oai-gray-500: oklch(55% 0.03 145);
-  --oai-gray-600: oklch(45% 0.025 145);
-  --oai-gray-700: oklch(35% 0.02 145);
-  --oai-gray-800: oklch(25% 0.015 145);
-  --oai-gray-900: oklch(18% 0.01 145);
-  --oai-gray-950: oklch(12% 0.005 145);
+  /* Colors - Cool neutrals with faint blue-violet undertone */
+  --oai-gray-50: oklch(98% 0.004 264);
+  --oai-gray-100: oklch(96% 0.006 264);
+  --oai-gray-200: oklch(90% 0.008 264);
+  --oai-gray-300: oklch(83% 0.01 264);
+  --oai-gray-400: oklch(70% 0.012 264);
+  --oai-gray-500: oklch(55% 0.014 264);
+  --oai-gray-600: oklch(45% 0.012 264);
+  --oai-gray-700: oklch(35% 0.01 264);
+  --oai-gray-800: oklch(25% 0.008 264);
+  --oai-gray-900: oklch(18% 0.006 264);
+  --oai-gray-950: oklch(12% 0.004 264);
 
-  /* Brand Color - Muted Forest Green (适合白色背景)
-     使用更柔和的深绿色，而非刺眼的荧光绿
-  */
-  --brand-primary: #059669;
-  --brand-primary-dark: #047857;
-  --brand-primary-light: #10b981;
-  --brand-50: #ecfdf5;
-  --brand-100: #d1fae5;
-  --brand-200: #a7f3d0;
-  --brand-300: #6ee7b7;
-  --brand-400: #34d399;
-  --brand-500: #10b981;
-  --brand-600: #059669;
-  --brand-700: #047857;
-  --brand-800: #065f46;
-  --brand-900: #064e3b;
-  --brand-950: #022c22;
+  /* Indigo-slate brand palette */
+  --brand-primary: #5b5fc7;
+  --brand-primary-dark: #4f46a8;
+  --brand-primary-light: #818cf8;
+  --brand-50: #f5f5ff;
+  --brand-100: #ededff;
+  --brand-200: #d4d4ff;
+  --brand-300: #a5b4fc;
+  --brand-400: #818cf8;
+  --brand-500: #6366f1;
+  --brand-600: #5b5fc7;
+  --brand-700: #4f46a8;
+  --brand-800: #3b3686;
+  --brand-900: #312e6a;
+  --brand-950: #1e1b4b;
 
-  /* Supporting accent - Emerald (30%) */
-  --forest: #10b981;
-  --forest-dark: #059669;
-  --forest-light: #34d399;
+  /* Supporting accent — muted indigo (30%) */
+  --forest: #6366f1;
+  --forest-dark: #5b5fc7;
+  --forest-light: #818cf8;
 
   /* Secondary accents - Amber for contrast (10%) */
   --amber: #f59e0b;
   --amber-dark: #d97706;
   --amber-light: #fbbf24;
 
-  /* Legacy blue mapping - now uses brand green */
-  --oai-blue: #059669;
-  --oai-blue-dark: #047857;
-  --oai-blue-light: #10b981;
+  /* Legacy blue mapping */
+  --oai-blue: #5b5fc7;
+  --oai-blue-dark: #4f46a8;
+  --oai-blue-light: #6d72c9;
 
   /* Colors - Semantic */
-  --oai-success: #10b981;
+  --oai-success: #22c55e;
   --oai-warning: #f59e0b;
   --oai-error: #ef4444;
-  --oai-info: #059669;
+  --oai-info: #5b5fc7;
 
   /* Typography - Font Families */
-  --oai-font-sans: -apple-system, blinkmacsystemfont, "Segoe UI", roboto, oxygen, ubuntu, sans-serif;
-  --oai-font-mono: "SF Mono", sfmono-regular, ui-monospace, menlo, monaco, consolas, monospace;
+  --oai-font-sans: "Plus Jakarta Sans", -apple-system, blinkmacsystemfont, "Segoe UI", sans-serif;
+  --oai-font-mono: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, menlo, consolas, monospace;
+  --oai-font-display: "Outfit", "Plus Jakarta Sans", var(--oai-font-sans);
+
+  /* Glass tokens — near-neutral with faint violet cast */
+  --glass-bg: rgba(250, 250, 255, 0.7);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-blur: 16px;
+  --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
+  --glass-glow: 0 0 0 1px rgba(91, 95, 199, 0.1);
 
   /* Typography - Font Sizes */
   --text-hero: 48px;
@@ -122,46 +128,53 @@
   --oai-white: #0a0a0a;
 
   /* VibeDeck identity tokens */
-  --vd-accent: #2dd4bf;
-  --vd-accent-strong: #5eead4;
-  --vd-live: #34d399;
-  --vd-branch: #818cf8;
+  --vd-accent: #9ca3c2;
+  --vd-accent-strong: #a5b4fc;
+  --vd-live: #818cf8;
+  --vd-branch: #a5b4fc;
   --vd-warning: #fbbf24;
   --vd-danger: #f87171;
 
-  /* Colors - Warm-tinted Neutrals (hue 145 matches brand green for cohesion) */
-  --oai-gray-50: oklch(20% 0.002 145);
-  --oai-gray-100: oklch(24% 0.003 145);
-  --oai-gray-200: oklch(30% 0.004 145);
-  --oai-gray-300: oklch(40% 0.005 145);
-  --oai-gray-400: oklch(55% 0.006 145);
-  --oai-gray-500: oklch(65% 0.005 145);
-  --oai-gray-600: oklch(75% 0.004 145);
-  --oai-gray-700: oklch(85% 0.003 145);
-  --oai-gray-800: oklch(92% 0.002 145);
-  --oai-gray-900: oklch(96% 0.001 145);
-  --oai-gray-950: oklch(98% 0.001 145);
+  /* Colors - cool darks with faint violet undertone */
+  --oai-gray-50: oklch(20% 0.003 264);
+  --oai-gray-100: oklch(24% 0.004 264);
+  --oai-gray-200: oklch(30% 0.005 264);
+  --oai-gray-300: oklch(40% 0.006 264);
+  --oai-gray-400: oklch(55% 0.005 264);
+  --oai-gray-500: oklch(65% 0.004 264);
+  --oai-gray-600: oklch(75% 0.003 264);
+  --oai-gray-700: oklch(85% 0.002 264);
+  --oai-gray-800: oklch(92% 0.001 264);
+  --oai-gray-900: oklch(96% 0.001 264);
+  --oai-gray-950: oklch(98% 0.001 264);
 
-  /* Brand colors remain the same but may need adjustment for dark bg */
-  --brand-primary: #10b981;
-  --brand-primary-dark: #059669;
-  --brand-primary-light: #34d399;
+  /* Brand colors — lighter for dark surfaces */
+  --brand-primary: #818cf8;
+  --brand-primary-dark: #6366f1;
+  --brand-primary-light: #a5b4fc;
 
-  /* Supporting accents remain the same */
-  --forest: #34d399;
-  --forest-dark: #10b981;
-  --forest-light: #6ee7b7;
+  /* Supporting accents */
+  --forest: #818cf8;
+  --forest-dark: #6366f1;
+  --forest-light: #a5b4fc;
 
   /* Legacy blue mapping */
-  --oai-blue: #10b981;
-  --oai-blue-dark: #059669;
-  --oai-blue-light: #34d399;
+  --oai-blue: #818cf8;
+  --oai-blue-dark: #6366f1;
+  --oai-blue-light: #a5b4fc;
 
   /* Semantic colors */
-  --oai-success: #34d399;
+  --oai-success: #4ade80;
   --oai-warning: #fbbf24;
   --oai-error: #f87171;
-  --oai-info: #10b981;
+  --oai-info: #818cf8;
+
+  /* Dark glass tokens — near-neutral */
+  --glass-bg: rgba(20, 20, 28, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+  --glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 12px 32px rgba(0, 0, 0, 0.15);
+  --glass-glow: 0 0 0 1px rgba(129, 140, 248, 0.1);
 }
 
 html,
@@ -189,7 +202,7 @@ body {
   --tw-ring-offset-shadow: 0 0 #0000 !important;
 }
 
-/* TokenTrackerBar WKWebView: `native-app` on <html> (inline head script + Swift); NSVisualEffectView under transparent WKWebView. */
+/* VibeDeckMac WKWebView: `native-app` on <html>; NSVisualEffectView sits below the transparent WKWebView. */
 html.native-app,
 html.native-app.dark {
   background: transparent !important;
@@ -204,7 +217,6 @@ html.native-app #root {
   min-height: 100%;
 }
 
-/* Mac App：主内容卡圆角由 Swift 注入 --tt-main-card-radius（与窗口留白同心近似），见 DashboardChromeMetrics */
 html.native-app {
   --tt-main-card-radius: 1rem;
 }
@@ -218,12 +230,15 @@ html.native-app .tt-native-main-card {
      OpenAI Design System Components - Light Mode
      ======================================== */
 
-  /* Panel - Main container style */
+  /* Panel - Main container style (frosted glass) */
   .oai-panel {
-    background: var(--oai-white);
-    border: 1px solid var(--oai-gray-200);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
+    box-shadow: var(--glass-shadow);
   }
 
   .oai-panel--strong {
@@ -231,17 +246,21 @@ html.native-app .tt-native-main-card {
     border-color: var(--oai-gray-300);
   }
 
-  /* Card - Standard card style */
+  /* Card - Standard card style (frosted glass) */
   .oai-card {
-    background: var(--oai-white);
-    border: 1px solid var(--oai-gray-200);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
-    transition: border-color 150ms ease;
+    box-shadow: var(--glass-shadow);
+    transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
   }
 
   .oai-card:hover {
     border-color: var(--oai-gray-300);
+    box-shadow: var(--glass-shadow), var(--glass-glow);
   }
 
   .oai-card--accent {
@@ -352,27 +371,34 @@ html.native-app .tt-native-main-card {
      ======================================== */
 
   :root.dark .oai-panel {
-    background: linear-gradient(180deg, oklch(22% 0.003 145) 0%, oklch(20% 0.002 145) 100%);
-    border-color: var(--oai-gray-800);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
 
   :root.dark .oai-panel--strong {
-    background: linear-gradient(180deg, oklch(28% 0.004 145) 0%, oklch(24% 0.003 145) 100%);
-    border-color: var(--oai-gray-700);
+    background: rgba(20, 20, 28, 0.75);
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   :root.dark .oai-card {
-    background: linear-gradient(180deg, oklch(22% 0.003 145) 0%, oklch(20% 0.002 145) 100%);
-    border-color: var(--oai-gray-800);
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-color: var(--glass-border);
+    box-shadow: var(--glass-shadow);
   }
 
   :root.dark .oai-card:hover {
-    border-color: var(--oai-gray-700);
+    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: var(--glass-shadow), var(--glass-glow);
   }
 
   :root.dark .oai-card--accent {
-    background: linear-gradient(180deg, oklch(28% 0.004 145) 0%, oklch(24% 0.003 145) 100%);
-    border-color: var(--oai-gray-700);
+    background: rgba(20, 20, 28, 0.75);
+    border-color: rgba(255, 255, 255, 0.08);
   }
 
   :root.dark .oai-button-primary {

@@ -98,6 +98,16 @@ async function connectSse(url) {
   return { req, res };
 }
 
+async function waitForEvent(events, predicate, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = events.find(predicate);
+    if (found) return found;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error('timed out waiting for SSE event');
+}
+
 test('serve pipeline emits SSE session events for new rollout', { timeout: 30_000 }, async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-serve-pipe-'));
   const home = root;
@@ -130,6 +140,7 @@ test('serve pipeline emits SSE session events for new rollout', { timeout: 30_00
       buf = parsed.rest;
       for (const e of parsed.events) got.push(e);
     });
+    await waitForEvent(got, (event) => event.type === 'snapshot', 10_000);
 
     const dayDir = path.join(home, '.codex', 'sessions', '2026', '05', '09');
     await fs.mkdir(dayDir, { recursive: true });
@@ -147,19 +158,13 @@ test('serve pipeline emits SSE session events for new rollout', { timeout: 30_00
     ];
     await fs.writeFile(rolloutPath, lines.join('\n') + '\n', 'utf8');
 
-    const deadline = Date.now() + 3000;
-    while (Date.now() < deadline) {
-      const update = got.find((e) => e.type === 'session:update' && typeof e.session_id === 'string');
-      if (update) {
-        assert.equal(update.provider, 'codex');
-        assert.ok(update.total_tokens > 0);
-        assert.ok(typeof update.confidence === 'string');
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 25));
-    }
-
-    assert.ok(got.some((e) => e.type === 'session:update' && e.provider === 'codex'));
+    const update = await waitForEvent(
+      got,
+      (e) => e.type === 'session:update' && e.provider === 'codex' && typeof e.session_id === 'string',
+      10_000,
+    );
+    assert.ok(update.total_tokens > 0);
+    assert.ok(typeof update.confidence === 'string');
     sse.req.destroy();
     sse.res.destroy();
   } finally {

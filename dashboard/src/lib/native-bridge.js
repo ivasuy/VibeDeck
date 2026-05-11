@@ -1,12 +1,12 @@
 /**
- * Bridge helpers for talking to the macOS TokenTrackerBar host via WKWebView's
+ * Bridge helpers for talking to the macOS VibeDeckMac host via WKWebView's
  * `window.webkit.messageHandlers.nativeBridge`. The native side dispatches a
  * `native:settings` CustomEvent on `window` whenever state changes.
  *
  * Safe no-ops in browser/cloud mode.
  */
 
-const NATIVE_APP_KEY = "tokentracker_native_app";
+const NATIVE_APP_KEY = "vibedeck_native_app";
 
 // Module-level cache for native system appearance.
 // An always-on listener (installed at module load) keeps this fresh,
@@ -59,7 +59,7 @@ export function isNativeApp() {
   }
 }
 
-/** True when running inside TokenTrackerBar WKWebView (bridge is always present). */
+/** True when running inside VibeDeckMac WKWebView (bridge is always present). */
 export function isNativeEmbed() {
   if (typeof window === "undefined") return false;
   return Boolean(window.webkit?.messageHandlers?.nativeBridge);
@@ -81,7 +81,7 @@ function post(message) {
     handler.postMessage(message);
     return true;
   } catch (err) {
-    console.warn("[tokentracker] nativeBridge post failed:", err);
+    console.warn("[vibedeck] nativeBridge post failed:", err);
     return false;
   }
 }
@@ -103,8 +103,6 @@ export function requestNativeSystemAppearance() {
 }
 
 /**
- * macOS Dashboard 窗口：与 Web 主题同步 NSWindow.appearance。
- * `theme === "system"` 时原生侧将窗口 appearance 置为跟随系统；系统切换时再由原生推送 `native:systemAppearanceChanged`（WKWebView 内 matchMedia 常不刷新）。
  * @param {"light" | "dark"} resolvedTheme
  * @param {"light" | "dark" | "system"} theme
  */

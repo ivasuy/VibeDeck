@@ -89,7 +89,7 @@ test("local sync rejects requests without the local auth token", async () => {
     const handled = await handler(
       req,
       res,
-      new URL("http://127.0.0.1/functions/tokentracker-local-sync"),
+      new URL("http://127.0.0.1/functions/vibedeck-local-sync"),
     );
 
     assert.equal(handled, true);
@@ -103,4 +103,3 @@ test("local sync rejects requests without the local auth token", async () => {
     restore();
   }
 });
-

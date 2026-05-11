@@ -40,6 +40,7 @@ function validateEvent(e) {
     assertNullableNonNegativeInteger('cache_creation_input_tokens', e.cache_creation_input_tokens);
     assertNullableNonNegativeInteger('output_tokens', e.output_tokens);
     assertNullableNonNegativeInteger('reasoning_output_tokens', e.reasoning_output_tokens);
+    assertNullableNonNegativeInteger('conversation_count', e.conversation_count);
   }
   if (e.kind === 'end') {
     assertIsoString('SessionEvent.ended_at', e.ended_at);
@@ -74,6 +75,7 @@ function makeUpdate({
   cache_creation_input_tokens = null,
   output_tokens = null,
   reasoning_output_tokens = null,
+  conversation_count = null,
 }) {
   const e = {
     kind: 'update',
@@ -88,6 +90,7 @@ function makeUpdate({
     cache_creation_input_tokens,
     output_tokens,
     reasoning_output_tokens,
+    conversation_count,
   };
   return validateEvent(e);
 }

@@ -17,7 +17,7 @@ const { probeOpenclawHookState } = require("./openclaw-hook");
 const { probeOpenclawSessionPluginState } = require("./openclaw-session-plugin");
 const { resolveTrackerPaths } = require("./tracker-paths");
 // TASK-011: Kiro CLI DB path inlined here to avoid pulling the ~4000-line
-// rollout module on every `tokentracker status` / `diagnostics` call.
+// rollout module on every `vibedeck status` / `diagnostics` call.
 // rollout.js still exports resolveKiroCliDbPath for external callers.
 function resolveKiroCliDbPathInline(env, home) {
   if (env.KIRO_CLI_DB_PATH) return env.KIRO_CLI_DB_PATH;
@@ -146,7 +146,7 @@ async function collectTrackerDiagnostics({
       cli_approximation:
         "Kiro CLI does not persist explicit token counts (billing is credit-based on Bedrock). Tokens are approximated at 4 chars/token from user prompt chars and assistant response chars. Source rows that came through this path have model='kiro-cli-agent' when the underlying model is unknown (auto-routing); known Bedrock ARNs canonicalize to their short name (e.g. claude-sonnet-4).",
       merge_policy:
-        "Kiro IDE and Kiro CLI both emit source='kiro' in queue.jsonl so token, cost, heatmap, and leaderboard aggregations merge transparently. Use this block to distinguish sub-path contributions.",
+        "Kiro IDE and Kiro CLI both emit source='kiro' in queue.jsonl so token, cost, and heatmap aggregations merge transparently. Use this block to distinguish sub-path contributions.",
     },
     config: {
       base_url: typeof config?.baseUrl === "string" ? config.baseUrl : null,

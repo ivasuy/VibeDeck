@@ -28,7 +28,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   window.history.pushState({}, "", "/");
   if (typeof window.localStorage?.removeItem === "function") {
-    window.localStorage.removeItem("tokentracker_native_app");
+    window.localStorage.removeItem("vibedeck_native_app");
   }
   delete window.webkit;
 });

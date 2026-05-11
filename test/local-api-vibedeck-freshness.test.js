@@ -84,6 +84,24 @@ test("vibedeck sync status reports parse freshness, queue mtimes, and session co
           'feature/live', 'B', 'medium', NULL,
           'claude-sonnet-4-6', 200, 0.2, '2026-05-10T08:00:00.000Z', '2026-05-10T08:30:00.000Z'
         );
+
+        INSERT INTO vibedeck_session_events (
+          provider, session_id, event_key, kind,
+          observed_at, created_at
+        ) VALUES
+        (
+          'codex', 's1', 'evt-1', 'update',
+          '2026-05-10T09:10:00.000Z', '2026-05-10T09:10:00.000Z'
+        );
+
+        INSERT INTO vibedeck_session_buckets (
+          provider, session_id, bucket_provider, bucket_model, bucket_hour_start,
+          proportion, total_tokens, total_cost_usd, cost_estimated, cost_quality
+        ) VALUES
+        (
+          'codex', 's1', 'codex', 'gpt-5.2', '2026-05-10T09:00:00.000Z',
+          1.0, 100, 0.1, 0, 'exact'
+        );
       `);
     } finally {
       db.close();
@@ -102,6 +120,11 @@ test("vibedeck sync status reports parse freshness, queue mtimes, and session co
       session_count: 2,
       open_session_count: 1,
       sync_enabled: false,
+      canonical_db_updated_at: "2026-05-10T09:00:00.000Z",
+      canonical_event_count: 1,
+      canonical_bucket_count: 1,
+      session_rows_missing_cost: 0,
+      unattributed_session_count: 0,
     });
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
@@ -122,6 +145,11 @@ test("vibedeck sync status tolerates missing files and database", async () => {
       session_count: 0,
       open_session_count: 0,
       sync_enabled: true,
+      canonical_db_updated_at: null,
+      canonical_event_count: 0,
+      canonical_bucket_count: 0,
+      session_rows_missing_cost: 0,
+      unattributed_session_count: 0,
     });
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });

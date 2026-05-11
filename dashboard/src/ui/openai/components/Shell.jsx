@@ -9,20 +9,19 @@ function BrandLogo() {
     <Link to="/landing" className="flex items-center gap-2.5 no-underline hover:opacity-80 transition-opacity">
       <img
         src="/app-icon.png"
-        alt="Token Tracker"
+        alt="VibeDeck"
         width={28}
         height={28}
         className="rounded-md"
       />
       <span className="text-base font-semibold text-oai-black dark:text-oai-white leading-tight">
-        Token Tracker
+        VibeDeck
       </span>
     </Link>
   );
 }
 
 /**
- * Shell - OpenAI 风格的外壳布局组件
  *
  * Modes:
  *   - default: full-screen wrapper with optional header/footer (used by standalone web pages and screenshot mode)

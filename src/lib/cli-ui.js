@@ -9,7 +9,9 @@ const YELLOW = "\x1b[33m";
 const BLUE = "\x1b[34m";
 const UNDERLINE = "\x1b[4m";
 
-const SPINNER_FRAMES = ["|", "/", "-", "\\"];
+const MAGENTA = "\x1b[35m";
+
+const SPINNER_FRAMES = ["░", "▒", "▓", "█", "▓", "▒"];
 
 function isInteractive() {
   return Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -167,6 +169,7 @@ module.exports = {
   GREEN,
   YELLOW,
   BLUE,
+  MAGENTA,
   RESET,
   color,
   underline,

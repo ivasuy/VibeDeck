@@ -13,7 +13,7 @@ const {
 } = require("../src/commands/sync");
 
 async function makeTempDir() {
-  return await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-mig-"));
+  return await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-mig-"));
 }
 
 describe("migrateCursorUnknownBuckets", () => {

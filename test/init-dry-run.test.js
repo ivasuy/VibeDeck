@@ -45,7 +45,7 @@ test("dry-run preview reports opencode install when config is missing", async ()
 
     const pluginPath = path.join(
       resolveOpencodePluginDir({ configDir: process.env.OPENCODE_CONFIG_DIR }),
-      "vibeusage-tracker.js",
+      "vibedeck.js",
     );
     await assert.rejects(fs.stat(pluginPath), /ENOENT/);
   } finally {

@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-05-10T11:28:44.451Z",
+  "generatedAt": "2026-05-11T13:23:10.964Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 159,
-    "rawText": 72
+    "colors": 153,
+    "rawText": 117
   },
   "files": {
     "dashboard/src/App.jsx": {
@@ -26,23 +26,43 @@
       ]
     },
     "dashboard/src/components/branches/BranchUsageTable.jsx": {
-      "colors": 0,
-      "rawText": 1,
+      "colors": 3,
+      "rawText": 3,
       "rawTextTokens": [
-        "0 ? ("
+        "0 ? (",
+        "1; return (",
+        "View"
+      ]
+    },
+    "dashboard/src/components/entire/CheckpointFileInspector.jsx": {
+      "colors": 4,
+      "rawText": 7,
+      "rawTextTokens": [
+        ") : file.kind === \"hash\" ? (",
+        ") : file.kind === \"json\" ? (",
+        ") : file.kind === \"jsonl\" ? (",
+        ") : tab === \"parsed\" ? (",
+        "Copy",
+        "Loading checkpoint file...",
+        "Select a checkpoint file."
       ]
     },
     "dashboard/src/components/entire/CheckpointList.jsx": {
-      "colors": 0,
-      "rawText": 7,
+      "colors": 1,
+      "rawText": 5,
       "rawTextTokens": [
         ") : !checkpoints?.available || files.length === 0 ? (",
         ") : !repo ? (",
-        ") : !selectedPath ? (",
-        ") : detailError ? (",
         ") : error ? (",
-        ") : viewMode === \"raw\" ? (",
-        "0 ? ("
+        "0 ? (",
+        "Checkpoint files"
+      ]
+    },
+    "dashboard/src/components/entire/CheckpointNavigator.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Checkpoint files"
       ]
     },
     "dashboard/src/components/entire/EntireStatusCard.jsx": {
@@ -56,23 +76,77 @@
     },
     "dashboard/src/components/entire/RepoPathSelector.jsx": {
       "colors": 0,
-      "rawText": 2,
+      "rawText": 1,
       "rawTextTokens": [
         "0 ? ("
       ]
     },
     "dashboard/src/components/live/AttributionHealthCard.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 4,
       "rawTextTokens": [
-        ") : error ? ("
+        ") : error && liveStats.total === 0 ? (",
+        "0 && stats?.total != null ? (",
+        "0 ? Math.round((count / total) * 100) : 0; return (",
+        "0 ? liveStats : stats; const total = toCount(displayStats?.total); return ("
+      ]
+    },
+    "dashboard/src/components/live/LiveBranchSignalMap.jsx": {
+      "colors": 1,
+      "rawText": 8,
+      "rawTextTokens": [
+        "Branch routing",
+        "Confidence and freshness across active branch routes.",
+        "Real routes require both repository and branch attribution.",
+        "Route coverage",
+        "Routed",
+        "Routing coverage",
+        "Signals are live sessions grouped into branch routes. Density shows active sessions per route.",
+        "Unrouted"
+      ]
+    },
+    "dashboard/src/components/live/LiveProviderLimitsGrid.jsx": {
+      "colors": 0,
+      "rawText": 7,
+      "rawTextTokens": [
+        ") : error ? (",
+        "0 && rounded === 0 ? \"",
+        "0 ? (",
+        "1000000000000 ? numericValue : numericValue * 1000) : Date.parse(String(value)); if (!Number.isFinite(ts)) return null; const diffMs = ts - Date.now(); if (diffMs",
+        "Active",
+        "Loading provider limit windows...",
+        "Provider limits"
       ]
     },
     "dashboard/src/components/live/LiveSessionList.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 4,
       "rawTextTokens": [
-        ") : hint ? ("
+        ") : hint ? (",
+        "Active workstreams",
+        "View breakdown",
+        "activateWorkstream(workstream, onSelectSession); return ("
+      ]
+    },
+    "dashboard/src/components/live/LiveWorkbenchOverview.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        "0; return (",
+        "Live control center",
+        "active cost"
+      ]
+    },
+    "dashboard/src/components/live/LiveWorkstreamDrawer.jsx": {
+      "colors": 0,
+      "rawText": 6,
+      "rawTextTokens": [
+        "0 ? null : workstream.total_cost_usd; return (",
+        "Cost",
+        "No session detail available.",
+        "Primary session",
+        "Tokens",
+        "Workstream breakdown"
       ]
     },
     "dashboard/src/components/settings/AccountSection.jsx": {
@@ -91,9 +165,10 @@
     },
     "dashboard/src/pages/BranchesPage.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 2,
       "rawTextTokens": [
-        ") : loading ? ("
+        ") : loading ? (",
+        "0 ? Math.min(branchPage, pageCount - 1) : 0; const pagedRows = filteredRows.slice( boundedPage * BRANCHES_PAGE_SIZE, boundedPage * BRANCHES_PAGE_SIZE + BRANCHES_PAGE_SIZE, ); const emptyMessage = repos.length === 0 ? copy(\"branches.empty.no_repo_rows\") : totalCount === 0 ? copy(\"branches.project.empty\") : copy(\"branches.empty\"); return ("
       ]
     },
     "dashboard/src/pages/DashboardPage.jsx": {
@@ -101,13 +176,34 @@
       "rawText": 0,
       "rawTextTokens": []
     },
+    "dashboard/src/pages/EntirePage.jsx": {
+      "colors": 1,
+      "rawText": 4,
+      "rawTextTokens": [
+        "Actions",
+        "Checkpoint id",
+        "Configure",
+        "Controls"
+      ]
+    },
+    "dashboard/src/pages/LivePage.jsx": {
+      "colors": 0,
+      "rawText": 4,
+      "rawTextTokens": [
+        ") : error ? (",
+        "Entire",
+        "Repo",
+        "Select a live session to correct branch attribution."
+      ]
+    },
     "dashboard/src/pages/SkillsPage.jsx": {
       "colors": 2,
-      "rawText": 4,
+      "rawText": 5,
       "rawTextTokens": [
         ") : null; contentNode = (",
         "); const browseLoadingNode = (",
         "0 ? (",
+        "browseItems.slice(boundedBrowsePage * SKILLS_PAGE_SIZE, (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE), [boundedBrowsePage, browseItems], ); const loadingNode = (",
         "t.id === id)?.label || id) .join(\", \") : copy(\"skills.action.choose_targets\"); return ("
       ]
     },
@@ -158,22 +254,6 @@
       "rawText": 0,
       "rawTextTokens": []
     },
-    "dashboard/src/ui/foundation/__tests__/LocaleProvider.test.jsx": {
-      "colors": 0,
-      "rawText": 2,
-      "rawTextTokens": [
-        "en",
-        "zh"
-      ]
-    },
-    "dashboard/src/ui/marketing/MarketingLanding.jsx": {
-      "colors": 16,
-      "rawText": 2,
-      "rawTextTokens": [
-        "&rarr;",
-        "Token Tracker"
-      ]
-    },
     "dashboard/src/ui/marketing/components/LaserFlow.jsx": {
       "colors": 1,
       "rawText": 0,
@@ -205,8 +285,10 @@
     },
     "dashboard/src/ui/matrix-a/components/DataDetails.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 3,
       "rawTextTokens": [
+        "); if (!href) return content; return (",
+        "0 ? Math.max(6, Math.round((tokens / maxTokens) * 100)) : 0; const modelName = String(model?.model || \"unknown\"); return (",
         "1 ? ("
       ]
     },
@@ -335,7 +417,7 @@
       "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部 return ("
+        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; return ("
       ]
     },
     "dashboard/src/ui/openai/components/ConfirmModal.jsx": {
@@ -361,7 +443,7 @@
       "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
-        "Token Tracker"
+        "VibeDeck"
       ]
     },
     "dashboard/src/ui/openai/components/Sidebar.jsx": {

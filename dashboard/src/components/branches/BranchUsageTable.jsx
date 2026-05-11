@@ -107,7 +107,7 @@ function PaginationControls({ page, pageCount, pageSize, totalRows, onPageChange
 
   return (
     <div className="flex shrink-0 flex-col gap-2 border-t border-oai-gray-200/70 px-0 py-0 text-sm text-oai-gray-500 dark:border-oai-gray-800/70 dark:text-oai-gray-400">
-      <div className="grid gap-1 px-4 py-2">
+      <div className="grid gap-2 px-5 py-3">
         {showPagination ? (
           <span className="shrink-0 text-xs tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
             {start}-{end} of {totalRows}
@@ -116,7 +116,7 @@ function PaginationControls({ page, pageCount, pageSize, totalRows, onPageChange
         <span className="leading-5">{copy("branches.confidence.note")}</span>
       </div>
       {showPagination ? (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-oai-gray-200/70 px-4 py-2 dark:border-oai-gray-800/70">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-oai-gray-200/70 px-5 py-3 dark:border-oai-gray-800/70">
           <Button
             type="button"
             variant="secondary"
@@ -157,17 +157,17 @@ export function BranchUsageTable({
 }) {
   return (
     <Card className={`flex min-h-0 overflow-hidden shadow-sm ${className}`} bodyClassName="!p-0 flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full min-w-[1120px] table-fixed border-collapse">
+      <div className="relative min-h-0 flex-1 overflow-auto [mask-image:linear-gradient(to_right,transparent_0,black_8px,black_calc(100%-8px),transparent_100%)]">
+        <table className="w-full min-w-[920px] table-fixed border-collapse">
           <thead className="sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
-            <tr className="border-b border-oai-gray-200 bg-oai-gray-100 text-left text-[11px] uppercase tracking-wide text-oai-gray-500 dark:border-oai-gray-800 dark:bg-[#242424] dark:text-oai-gray-400">
-              <th className="w-[32%] px-4 py-3 font-semibold">{copy("branches.table.branch")}</th>
-              <th className="w-[12%] px-4 py-3 text-right font-semibold">{copy("branches.table.tokens")}</th>
-              <th className="w-[10%] px-4 py-3 text-right font-semibold">{copy("branches.table.cost")}</th>
-              <th className="w-[13%] px-4 py-3 font-semibold">{copy("branches.table.top_model")}</th>
-              <th className="w-[13%] px-4 py-3 font-semibold">{copy("branches.table.last_seen")}</th>
-              <th className="w-[15%] px-4 py-3 font-semibold">{copy("branches.table.confidence_mix")}</th>
-              <th className="w-[5%] px-4 py-3 text-right font-semibold">{copy("branches.table.sessions")}</th>
+            <tr className="border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm text-left text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+              <th className="w-[28%] px-5 py-4 font-semibold">{copy("branches.table.branch")}</th>
+              <th className="w-[12%] px-5 py-4 text-right font-semibold">{copy("branches.table.tokens")}</th>
+              <th className="w-[10%] px-5 py-4 text-right font-semibold">{copy("branches.table.cost")}</th>
+              <th className="w-[13%] px-5 py-4 font-semibold">{copy("branches.table.top_model")}</th>
+              <th className="w-[13%] px-5 py-4 font-semibold">{copy("branches.table.last_seen")}</th>
+              <th className="w-[12%] px-5 py-4 font-semibold">{copy("branches.table.confidence_mix")}</th>
+              <th className="w-[12%] px-5 py-4 text-right font-semibold">{copy("branches.table.sessions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -187,7 +187,7 @@ export function BranchUsageTable({
                     key={`${String(row?.repo_root || "")}:${String(row?.branch || "")}`}
                     className="border-b border-oai-gray-200/70 text-sm transition-colors last:border-b-0 hover:bg-oai-black/[0.018] dark:border-oai-gray-800/70 dark:hover:bg-white/[0.03]"
                   >
-                    <td className="px-4 py-3 align-middle text-oai-black dark:text-white">
+                    <td className="px-5 py-4 align-middle text-oai-black dark:text-white">
                       <span
                         className="inline-flex max-w-full items-center whitespace-normal break-words rounded-md bg-oai-black/[0.045] px-2.5 py-1 font-medium leading-5 dark:bg-white/[0.07]"
                         title={String(row?.branch || "—")}
@@ -195,13 +195,13 @@ export function BranchUsageTable({
                         {String(row?.branch || "—")}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right align-middle tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
+                    <td className="px-5 py-4 text-right align-middle tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
                       {toDisplayNumber(row?.total_tokens ?? 0)}
                     </td>
-                    <td className="px-4 py-3 text-right align-middle tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
+                    <td className="px-5 py-4 text-right align-middle tabular-nums text-oai-gray-700 dark:text-oai-gray-200">
                       {formatBranchCostLabel(row)}
                     </td>
-                    <td className="px-4 py-3 align-middle text-oai-gray-700 dark:text-oai-gray-200">
+                    <td className="px-5 py-4 align-middle text-oai-gray-700 dark:text-oai-gray-200">
                       {topModel ? (
                         <div className="min-w-0">
                           <div className="truncate text-sm text-oai-black dark:text-white">{topModel.label}</div>
@@ -210,13 +210,13 @@ export function BranchUsageTable({
                         "—"
                       )}
                     </td>
-                    <td className="px-4 py-3 align-middle text-oai-gray-700 dark:text-oai-gray-200">
+                    <td className="px-5 py-4 align-middle text-oai-gray-700 dark:text-oai-gray-200">
                       {formatTimestamp(row?.last_seen_at)}
                     </td>
-                    <td className="px-4 py-3 align-middle">
+                    <td className="px-5 py-4 align-middle">
                       <ConfidenceMix confidence={row?.confidence} />
                     </td>
-                    <td className="px-4 py-3 align-middle text-oai-gray-700 dark:text-oai-gray-200">
+                    <td className="px-5 py-4 align-middle text-oai-gray-700 dark:text-oai-gray-200">
                       <div className="flex items-center justify-end gap-2">
                         <span className="min-w-5 text-center tabular-nums">{toDisplayNumber(sessionCount)}</span>
                         {sessionCount > 0 ? (

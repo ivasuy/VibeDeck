@@ -92,17 +92,17 @@ export function DashboardView(props) {
     setDetailsPage,
   } = props;
 
-  // Header 和 Footer 已简化
+
   const header = null;
   const footer = null;
 
-  // 入场瀑布：右列主卡先到，左列依序跟进
+
   const STEP = 0.06;
   const D_USAGE_OVERVIEW = 0.05;
   const D_LEFT_BASE = 0.11;
   let leftIdx = 0;
   const nextLeft = () => D_LEFT_BASE + STEP * leftIdx++;
-  const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; // 留给右列底部
+  const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5;
 
   return (
     <>
@@ -120,8 +120,8 @@ export function DashboardView(props) {
                 {syncFreshnessWarning}
               </div>
             ) : null}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-4 flex flex-col gap-4 min-w-0 order-2 lg:order-1">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-6">
+              <div className="xl:col-span-4 flex flex-col gap-6 min-w-0 overflow-hidden order-2 lg:order-1">
                 {screenshotMode ? (
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex flex-col gap-1">
@@ -160,8 +160,8 @@ export function DashboardView(props) {
 
                 {shouldShowInstall ? (
                   <FadeIn delay={nextLeft()}>
-                    <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-3">
-                      <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 mb-1.5">{installPrompt}</div>
+                    <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5">
+                      <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 mb-3">{installPrompt}</div>
                       <motion.button
                         onClick={handleCopyInstall}
                         whileHover={{ scale: 1.01 }}
@@ -222,7 +222,7 @@ export function DashboardView(props) {
                 ) : null}
               </div>
 
-              <div className="lg:col-span-8 flex flex-col gap-4 min-w-0 order-1 lg:order-2">
+              <div className="xl:col-span-8 flex flex-col gap-6 min-w-0 overflow-hidden order-1 lg:order-2">
                 <FadeIn delay={D_USAGE_OVERVIEW}>
                   <UsageOverview
                     period={period}

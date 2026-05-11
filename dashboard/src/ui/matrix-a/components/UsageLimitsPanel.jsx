@@ -30,7 +30,7 @@ function formatDurationSeconds(value) {
 function barColor(pct) {
   if (pct >= 90) return "bg-red-500";
   if (pct >= 70) return "bg-amber-500";
-  return "bg-emerald-500";
+  return "bg-indigo-500";
 }
 
 function LimitBar({ label, pct, reset }) {

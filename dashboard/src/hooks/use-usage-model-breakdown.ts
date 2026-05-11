@@ -26,7 +26,7 @@ export function useUsageModelBreakdown({
     if (!cacheKey) return null;
     const host = safeHost(baseUrl) || "default";
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-    return `tokentracker.modelBreakdown.${cacheKey}.${host}.${from}.${to}.${tzKey}`;
+    return `vibedeck.modelBreakdown.${cacheKey}.${host}.${from}.${to}.${tzKey}`;
   }, [baseUrl, cacheKey, from, timeZone, to, tzOffsetMinutes]);
 
   const readCache = useCallback(() => {

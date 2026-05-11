@@ -35,7 +35,7 @@ export function PulseRing({
   children,
   className = "",
   active = false,
-  color = "#10b981",
+  color = "#6366f1",
 }) {
   const shouldReduceMotion = useReducedMotion();
 

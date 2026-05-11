@@ -3,7 +3,7 @@ import os
 
 enum DateHelpers {
 
-    private static let logger = Logger(subsystem: "com.tokentracker.bar", category: "DateHelpers")
+    private static let logger = Logger(subsystem: "com.vibedeck.bar", category: "DateHelpers")
 
 	private static let localCalendar: Calendar = {
 		var cal = Calendar(identifier: .gregorian)

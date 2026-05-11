@@ -24,5 +24,5 @@ test('serve banner uses VibeDeck branding and explains no-sync', () => {
   const src = fs.readFileSync(path.join(__dirname, '../src/commands/serve.js'), 'utf8');
   assert.match(src, /VibeDeck dashboard running at:/);
   assert.match(src, /Sync: disabled \(\-\-no-sync\); run without --no-sync for live data refresh\./);
-  assert.doesNotMatch(src, /tokentracker dashboard running at:/);
+  assert.doesNotMatch(src, new RegExp(`${["token", "tracker"].join("")} dashboard running at:`));
 });

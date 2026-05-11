@@ -3,7 +3,7 @@ import { Activity, GitCommit, Server, Tag } from "lucide-react";
 import { copy } from "../../lib/copy";
 
 function stateClass(state) {
-  if (state === "active") return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (state === "active") return "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300";
   if (state === "not_installed") return "bg-red-500/10 text-red-700 dark:text-red-300";
   if (state === "enabled_no_commits") return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
   return "bg-oai-black/[0.06] text-oai-gray-700 dark:bg-white/[0.12] dark:text-oai-gray-200";

@@ -1,13 +1,8 @@
 import React from "react";
 
 /**
- * Badge - OpenAI 风格的状态标签组件
  *
  * @param {Object} props
- * @param {React.ReactNode} props.children - 标签内容
- * @param {'success'|'warning'|'error'|'info'|'secondary'} [props.variant='info'] - 标签变体
- * @param {'sm'|'md'} [props.size='md'] - 标签尺寸
- * @param {string} [props.className] - 额外的 CSS 类名
  */
 export function Badge({
   children,

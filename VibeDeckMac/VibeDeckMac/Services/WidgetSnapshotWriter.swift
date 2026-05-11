@@ -13,7 +13,7 @@ import os
 @MainActor
 enum WidgetSnapshotWriter {
 
-    private static let logger = Logger(subsystem: "com.tokentracker.bar", category: "WidgetSnapshotWriter")
+    private static let logger = Logger(subsystem: "com.vibedeck.bar", category: "WidgetSnapshotWriter")
 
     /// Immutable snapshot of the fields we read off `DashboardViewModel`.
     /// Captured synchronously on the main actor BEFORE we suspend on any
@@ -53,7 +53,7 @@ enum WidgetSnapshotWriter {
         )
 
         // STEP 2 — the dashboard's `rollingSummary` does NOT include cost
-        // (the /tokentracker-usage-summary endpoint omits it from
+        // (the /vibedeck-usage-summary endpoint omits it from
         // `rolling.*`). Fire two extra parallel summary calls scoped to
         // 7-day and 30-day ranges so the widget can show real cost numbers.
         async let last7dCost = fetchRangeCost(daysBack: 6)
@@ -213,7 +213,7 @@ enum WidgetSnapshotWriter {
         guard let limits else { return [] }
         var out: [LimitProvider] = []
 
-        // Claude — `utilization` from /tokentracker-usage-limits is a 0–100
+        // Claude — `utilization` from /vibedeck-usage-limits is a 0–100
         // percentage, not a 0–1 fraction. Divide by 100 to match the
         // LimitProvider contract (and what every other provider here does).
         if limits.claude.configured {

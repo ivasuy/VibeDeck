@@ -12,6 +12,8 @@ const m004 = require('./migrations/004-skills-and-head-history');
 const m005 = require('./migrations/005-attribution-overrides');
 const m006 = require('./migrations/006-session-token-buckets');
 const m007 = require('./migrations/007-known-repo-suppression');
+const m008 = require('./migrations/008-session-event-ledger');
+const m009 = require('./migrations/009-session-bucket-facts');
 
 let registered = false;
 function registerAll() {
@@ -23,6 +25,8 @@ function registerAll() {
   registerMigration(m005);
   registerMigration(m006);
   registerMigration(m007);
+  registerMigration(m008);
+  registerMigration(m009);
   registered = true;
 }
 

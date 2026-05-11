@@ -34,7 +34,7 @@ final class ServerManager: ObservableObject {
             status = .running
             startHealthCheckLoop()
             return
-        } else if let binaryPath = findTokenTrackerBinary() {
+        } else if let binaryPath = findVibeDeckBinary() {
             // Fall back to system-installed CLI
             launchServer(at: binaryPath)
         } else {
@@ -96,7 +96,7 @@ final class ServerManager: ObservableObject {
             .appendingPathComponent("EmbeddedServer/node")
             .path
         let entryPath = resourceURL
-            .appendingPathComponent("EmbeddedServer/tokentracker/bin/tracker.js")
+            .appendingPathComponent("EmbeddedServer/vibedeck/bin/tracker.js")
             .path
 
         let fm = FileManager.default
@@ -110,18 +110,18 @@ final class ServerManager: ObservableObject {
 
     // MARK: - Find Binary
 
-    private func findTokenTrackerBinary() -> String? {
-        // 1. Check if `tokentracker` is in PATH using shell
-        if let path = shellWhich("tokentracker") {
+    private func findVibeDeckBinary() -> String? {
+        // 1. Check if `vibedeck` is in PATH using shell
+        if let path = shellWhich("vibedeck") {
             return path
         }
 
         // 2. Common global npm binary locations
         let candidates = [
-            "/opt/homebrew/bin/tokentracker",
-            "/usr/local/bin/tokentracker",
-            "\(NSHomeDirectory())/.npm-global/bin/tokentracker",
-            "\(NSHomeDirectory())/n/bin/tokentracker",
+            "/opt/homebrew/bin/vibedeck",
+            "/usr/local/bin/vibedeck",
+            "\(NSHomeDirectory())/.npm-global/bin/vibedeck",
+            "\(NSHomeDirectory())/n/bin/vibedeck",
         ]
         for candidate in candidates {
             if FileManager.default.isExecutableFile(atPath: candidate) {
@@ -131,7 +131,7 @@ final class ServerManager: ObservableObject {
 
         // 3. Try to resolve via `npm bin -g`
         if let npmGlobalBin = shellOutput("/bin/zsh", args: ["-lc", "npm bin -g 2>/dev/null"]) {
-            let path = npmGlobalBin.trimmingCharacters(in: .whitespacesAndNewlines) + "/tokentracker"
+            let path = npmGlobalBin.trimmingCharacters(in: .whitespacesAndNewlines) + "/vibedeck"
             if FileManager.default.isExecutableFile(atPath: path) {
                 return path
             }

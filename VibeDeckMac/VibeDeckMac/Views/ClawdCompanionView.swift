@@ -168,7 +168,7 @@ struct ClawdCompanionView: View {
         }
     }
 
-    /// 超级思考动画用于仪表盘 WebView 加载层（与 `workingUltrathink` 一致：震颤/火花等）。
+
     struct LoadingMascotView: View {
         private let px: CGFloat = 4.0
 
@@ -841,13 +841,13 @@ struct ClawdCompanionView: View {
 
     /// All the fun states to show temporarily on tap
     private static let tapAnimations: [ClawdState] = [
-        .workingUltrathink,  // 超级思考 (震颤+火花+彩虹)
-        .workingTyping,      // 打字 (抖动+数据粒子)
-        .disconnected,       // 找东西 (问号/感叹号)
-        .idleLook,           // 四处张望
-        .idleDoze,           // 打瞌睡
-        .sleeping,           // 睡觉 (Zzz)
-        .error,              // 错误 (趴下+冒烟)
+        .workingUltrathink,
+        .workingTyping,
+        .disconnected,
+        .idleLook,
+        .idleDoze,
+        .sleeping,
+        .error,
     ]
 
     @State private var tapAnimIndex = 0

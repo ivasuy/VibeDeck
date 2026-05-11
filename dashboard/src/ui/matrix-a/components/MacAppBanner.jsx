@@ -4,10 +4,10 @@ import { ClawdAnimated } from "../../foundation/ClawdAnimated.jsx";
 import { useClawdState } from "../../../hooks/useClawdState.js";
 
 const DISMISS_KEY = "macAppBannerDismissed";
-const RELEASE_URL = "https://github.com/mm7894215/TokenTracker/releases/latest";
+const RELEASE_URL = "https://github.com/ivasuy/VibeDeck/releases/latest";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1) */
-const NATIVE_APP_KEY = "tokentracker_native_app";
+const NATIVE_APP_KEY = "vibedeck_native_app";
 const isNativeApp = (() => {
   try {
     if (new URLSearchParams(window.location.search).get("app") === "1") {
@@ -70,7 +70,7 @@ export function MacAppBanner({ todayTokens = 0, isSyncing = false, enterDelay = 
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: enterDelay, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4"
+      className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-4"
     >
         <div className="flex items-center gap-3">
           <div className="flex-shrink-0">

@@ -43,11 +43,12 @@ function parseAnimatedCounterValue(displayValue) {
 
 // Provider color mapping for visual distinction
 const PROVIDER_COLORS = {
-  CODEX: "#10b981",     // emerald-500
+  CODEX: "#6366f1",     // indigo-500
   CLAUDE: "#8b5cf6",    // violet-500
   OPENCODE: "#f59e0b",  // amber-500
   GEMINI: "#3b82f6",    // blue-500
   KIMI: "#a78bfa",      // violet-400
+  CURSOR: "#64748b",    // slate-500
 };
 
 function getProviderColor(label, index) {
@@ -132,7 +133,7 @@ export function UsageOverview({
     <Card className={className}>
         {/* Header: Period Tabs + Refresh */}
         <div className="flex items-center justify-between gap-3 mb-6">
-          <div role="tablist" aria-label={copy("usage.overview.tablist_aria")} className="flex gap-1">
+          <div role="tablist" aria-label={copy("usage.overview.tablist_aria")} className="flex flex-wrap gap-1">
             {tabs.map((p) => {
               const isActive = period === p.key;
               const tabClass = `text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
@@ -218,7 +219,7 @@ export function UsageOverview({
         {/* Main Stats */}
         <div className="text-center mb-8">
           <div className="text-xs text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wider mb-3">{summaryLabel}</div>
-          <div className="text-6xl md:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums">
+          <div className="text-5xl md:text-6xl xl:text-7xl font-bold text-oai-black dark:text-oai-white tracking-tight tabular-nums overflow-hidden">
             {showAnimatedSummary ? (
               <Counter
                 value={summaryCounterValue}
@@ -317,9 +318,9 @@ export function UsageOverview({
                         : "border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 mb-1">
+                    <div className="flex items-center gap-1.5 mb-1 min-w-0">
                       <ProviderIcon provider={provider.label} size={15} color={color} className="text-oai-gray-700 dark:text-oai-gray-300 shrink-0" />
-                      <span className="text-sm font-medium text-oai-black dark:text-oai-white">{provider.label}</span>
+                      <span className="text-sm font-medium text-oai-black dark:text-oai-white truncate">{provider.label}</span>
                     </div>
                     <div className="text-lg font-semibold text-oai-black dark:text-oai-white tabular-nums">
                       {provider.totalPercent}%

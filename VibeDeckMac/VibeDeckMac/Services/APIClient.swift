@@ -9,6 +9,10 @@ actor APIClient {
     private let baseURL = Constants.serverBaseURL
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let localAuthHeader = "x-vibedeck-local-auth"
+    private var localAuthHeaderLegacy: String {
+        localAuthHeader.replacingOccurrences(of: "vibedeck", with: "vibedeck")
+    }
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -24,68 +28,74 @@ actor APIClient {
     // MARK: - Public API
 
 	func fetchSummary(from: String, to: String) async throws -> UsageSummaryResponse {
-		try await fetch("/functions/tokentracker-usage-summary", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-summary", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchDaily(from: String, to: String) async throws -> DailyUsageResponse {
-		try await fetch("/functions/tokentracker-usage-daily", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-daily", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchHeatmap(weeks: Int = 52) async throws -> HeatmapResponse {
-		try await fetch("/functions/tokentracker-usage-heatmap", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-heatmap", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "weeks", value: String(weeks))
 		]))
 	}
 
 	func fetchModelBreakdown(from: String, to: String) async throws -> ModelBreakdownResponse {
-		try await fetch("/functions/tokentracker-usage-model-breakdown", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-model-breakdown", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchProjectUsage(from: String, to: String) async throws -> ProjectUsageResponse {
-		try await fetch("/functions/tokentracker-project-usage-summary", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-project-usage-summary", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchMonthly(from: String, to: String) async throws -> MonthlyUsageResponse {
-		try await fetch("/functions/tokentracker-usage-monthly", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-monthly", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "from", value: from),
 			URLQueryItem(name: "to", value: to)
 		]))
 	}
 
 	func fetchHourly(day: String) async throws -> HourlyUsageResponse {
-		try await fetch("/functions/tokentracker-usage-hourly", queryItems: withTimeZoneQueryItems([
+		try await fetch("/functions/vibedeck-usage-hourly", queryItems: withTimeZoneQueryItems([
 			URLQueryItem(name: "day", value: day)
 		]))
 	}
 
     func fetchUsageLimits() async throws -> UsageLimitsResponse {
-        try await fetch("/functions/tokentracker-usage-limits")
+        try await fetch("/functions/vibedeck-usage-limits")
     }
 
     func triggerSync() async throws -> SyncResponse {
-        try await post("/functions/tokentracker-local-sync")
+        try await post("/functions/vibedeck-local-sync")
     }
 
     func checkServerHealth() async -> Bool {
         do {
-            guard let url = URL(string: baseURL + "/functions/tokentracker-user-status") else {
-                return false
+            let paths = legacyAwarePaths(for: "/functions/vibedeck-user-status")
+            for path in paths {
+                guard let url = URL(string: baseURL + path) else { continue }
+                do {
+                    let (_, response) = try await session.data(from: url)
+                    guard let httpResponse = response as? HTTPURLResponse else { continue }
+                    if httpResponse.statusCode == 200 { return true }
+                } catch {
+                    continue
+                }
             }
-            let (_, response) = try await session.data(from: url)
-            guard let httpResponse = response as? HTTPURLResponse else { return false }
-            return httpResponse.statusCode == 200
+            return false
         } catch {
             return false
         }
@@ -94,18 +104,33 @@ actor APIClient {
     // MARK: - Private Helpers
 
     private func fetch<T: Decodable>(_ path: String, queryItems: [URLQueryItem] = []) async throws -> T {
-        guard var components = URLComponents(string: baseURL + path) else {
-            throw APIError.invalidURL
+        let candidatePaths = legacyAwarePaths(for: path);
+        for (index, candidatePath) in candidatePaths.enumerated() {
+            guard var components = URLComponents(string: baseURL + candidatePath) else {
+                throw APIError.invalidURL
+            }
+            if !queryItems.isEmpty {
+                components.queryItems = queryItems
+            }
+            guard let url = components.url else {
+                throw APIError.invalidURL
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET";
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            if (200...299).contains(httpResponse.statusCode) {
+                return try decoder.decode(T.self, from: data)
+            }
+            if httpResponse.statusCode == 404 && index < candidatePaths.count - 1 {
+                continue
+            }
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
         }
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems
-        }
-        guard let url = components.url else {
-            throw APIError.invalidURL
-        }
-        let (data, response) = try await session.data(from: url)
-        try validateResponse(response)
-        return try decoder.decode(T.self, from: data)
+        throw APIError.httpError(statusCode: 404)
     }
 
 	private func withTimeZoneQueryItems(_ items: [URLQueryItem]) -> [URLQueryItem] {
@@ -116,19 +141,47 @@ actor APIClient {
 	}
 
     private func post<T: Decodable>(_ path: String) async throws -> T {
-        guard let url = URL(string: baseURL + path) else {
-            throw APIError.invalidURL
+        let candidatePaths = legacyAwarePaths(for: path);
+        let token = try await fetchLocalAuthToken()
+        var lastNetworkError: Error?
+        for (index, candidatePath) in candidatePaths.enumerated() {
+            do {
+                guard var components = URLComponents(string: baseURL + candidatePath) else {
+                    throw APIError.invalidURL
+                }
+                guard let url = components.url else {
+                    throw APIError.invalidURL
+                }
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue(token, forHTTPHeaderField: localAuthHeader)
+                request.setValue(token, forHTTPHeaderField: localAuthHeaderLegacy)
+                request.httpBody = Data("{}".utf8)
+                let (data, response) = try await session.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw APIError.invalidResponse
+                }
+                if (200...299).contains(httpResponse.statusCode) {
+                    return try decoder.decode(T.self, from: data)
+                }
+                if httpResponse.statusCode == 404 && index < candidatePaths.count - 1 {
+                    continue
+                }
+                throw APIError.httpError(statusCode: httpResponse.statusCode)
+            } catch {
+                lastNetworkError = error
+                if let apiError = error as? APIError, case .httpError(let statusCode) = apiError, statusCode == 404 && index < candidatePaths.count - 1 {
+                    continue
+                }
+                throw error
+            }
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if path == "/functions/tokentracker-local-sync" {
-            request.setValue(try await fetchLocalAuthToken(), forHTTPHeaderField: "x-tokentracker-local-auth")
+        if let apiError = lastNetworkError as? APIError, case .httpError(let statusCode) = apiError {
+            throw APIError.httpError(statusCode: statusCode)
         }
-        request.httpBody = Data("{}".utf8)
-        let (data, response) = try await session.data(for: request)
-        try validateResponse(response)
-        return try decoder.decode(T.self, from: data)
+        throw lastNetworkError ?? APIError.httpError(statusCode: 404)
     }
 
     private func fetchLocalAuthToken() async throws -> String {
@@ -144,13 +197,12 @@ actor APIClient {
         return payload.token
     }
 
-    private func validateResponse(_ response: URLResponse) throws {
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw APIError.invalidResponse
+    private func legacyAwarePaths(for primaryPath: String) -> [String] {
+        let legacyPath = primaryPath.replacingOccurrences(of: "/functions/vibedeck-", with: "/functions/vibedeck-")
+        if legacyPath == primaryPath {
+            return [primaryPath]
         }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw APIError.httpError(statusCode: httpResponse.statusCode)
-        }
+        return [primaryPath, legacyPath]
     }
 }
 

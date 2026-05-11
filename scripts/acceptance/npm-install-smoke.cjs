@@ -15,7 +15,12 @@ function fail(message) {
   process.exit(1);
 }
 
-const pack = run("npm", ["pack", "--dry-run", "--json"]);
+const pack = run("npm", ["pack", "--dry-run", "--json"], {
+  env: {
+    ...process.env,
+    npm_config_cache: process.env.npm_config_cache || "/private/tmp/vibedeck-npm-cache",
+  },
+});
 if (pack.status !== 0) {
   fail(`npm pack --dry-run failed:\n${pack.stderr || pack.stdout}`);
 }
@@ -42,13 +47,13 @@ if (missing.length > 0) {
 
 process.stdout.write("npm pack --dry-run ok: required files present.\n");
 
-if (process.env.TOKENTRACKER_RUN_NPX === "1") {
-  const npx = run("npx", ["--yes", "tokentracker-cli", "--help"], { stdio: "inherit" });
+if (process.env.VIBEDECK_RUN_NPX === "1" || process.env.TOKENTRACKER_RUN_NPX === "1") {
+  const npx = run("npx", ["--yes", "vibedeck-cli", "--help"], { stdio: "inherit" });
   if (npx.status !== 0) {
-    fail("npx tokentracker-cli --help failed. Ensure the package is published publicly.");
+    fail("npx vibedeck-cli --help failed. Ensure the package is published publicly.");
   }
 } else {
   process.stdout.write(
-    "To verify after publish: TOKENTRACKER_RUN_NPX=1 node scripts/acceptance/npm-install-smoke.cjs\n",
+    "To verify after publish: VIBEDECK_RUN_NPX=1 node scripts/acceptance/npm-install-smoke.cjs\n",
   );
 }

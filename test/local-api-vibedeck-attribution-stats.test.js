@@ -102,6 +102,25 @@ test("GET /functions/vibedeck-attribution-stats returns { high, medium, low, una
         endedAt: null,
         confidence: "high",
       });
+      db.exec(`
+        INSERT INTO vibedeck_session_events (
+          provider, session_id, event_key, kind,
+          observed_at, created_at
+        ) VALUES
+        (
+          'codex', 's1', 'evt-1', 'update',
+          '2026-05-09T00:05:00.000Z', '2026-05-09T00:05:00.000Z'
+        );
+
+        INSERT INTO vibedeck_session_buckets (
+          provider, session_id, bucket_provider, bucket_model, bucket_hour_start,
+          proportion, total_tokens, total_cost_usd, cost_estimated, cost_quality
+        ) VALUES
+        (
+          'codex', 's1', 'codex', 'gpt-5.2', '2026-05-09T00:00:00.000Z',
+          1.0, 1, 0.0, 1, 'estimated'
+        );
+      `);
     } finally {
       db.close();
     }
@@ -126,9 +145,13 @@ test("GET /functions/vibedeck-attribution-stats returns { high, medium, low, una
       low: 1,
       unattributed: 1,
       total: 5,
+      canonical_db_updated_at: "2026-05-09T00:00:00.000Z",
+      canonical_event_count: 1,
+      canonical_bucket_count: 1,
+      session_rows_missing_cost: 0,
+      unattributed_session_count: 5,
     });
   } finally {
     await fs.rm(tmpRoot, { recursive: true, force: true });
   }
 });
-

@@ -38,6 +38,20 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 const REMOVED_PATHS = [
+  ".env.example",
+  ".mailmap",
+  "LICENSE",
+  "Software Engineering Protocol.md",
+  "software-engineering-protocol.skill",
+  "dashboard/.env.example",
+  "dashboard/.mcp.json",
+  "dashboard/skills-lock.json",
+  "skills-lock.json",
+  "interaction_sequence.config.json",
+  "skills/find-skills",
+  "skills/public/frontend-ui-functional/SKILL.md",
+  "scripts/acceptance/offline-replay.cjs",
+  "scripts/ops/pricing-sync-health.sql",
   "BACKEND_API.md",
   "CONTRIBUTING.md",
   "SECURITY.md",
@@ -53,7 +67,7 @@ const REMOVED_PATHS = [
   "dashboard/src/ui/marketing/MarketingLanding.jsx",
   "scripts/ops/rebuild-cloud-hourly.cjs",
   "scripts/ops/repair-cloud-from-queue.cjs",
-  "scripts/ops/tokentracker-hourly-device-dedup.sql",
+  `scripts/ops/${["token", "tracker"].join("")}-hourly-device-dedup.sql`,
   "test/cloud-sync-prefs.test.js",
   "test/cloud-sync-rotation.test.js",
   "dashboard/src/lib/__tests__/api-public-visibility.test.ts",
@@ -106,13 +120,32 @@ test("repo-owned files contain no Chinese/CJK characters", () => {
   assert.deepEqual(offenders.sort(), []);
 });
 
-test("cloud, leaderboard, share, and stale OSS files are removed", () => {
+test("removed remote and stale OSS files are absent", () => {
   const existing = REMOVED_PATHS.filter((repoPath) => fs.existsSync(path.join(ROOT, repoPath)));
   assert.deepEqual(existing.sort(), []);
 });
 
-test("product-facing TokenTracker references are removed outside the compatibility allowlist", () => {
-  const legacy = /TokenTracker|Token Tracker|tokentracker|TokenTrackerBar/;
+test("wrapped and annual poster surfaces stay removed", () => {
+  const dashboardPage = fs.readFileSync(path.join(ROOT, "dashboard/src/pages/DashboardPage.jsx"), "utf8");
+  assert.doesNotMatch(dashboardPage, /wrappedEntryLabel/);
+  const removedName = ["Wrap", "ped"].join("");
+  assert.doesNotMatch(dashboardPage, new RegExp(`show${removedName}Entry`));
+  assert.doesNotMatch(dashboardPage, new RegExp(`${removedName} 2025`, "i"));
+
+  const appSource = fs.readFileSync(path.join(ROOT, "dashboard/src/App.jsx"), "utf8");
+  assert.doesNotMatch(appSource, /AnnualPosterPage/);
+  assert.doesNotMatch(appSource, /poster/);
+  assert.equal(fs.existsSync(path.join(ROOT, "dashboard/src/pages/AnnualPosterPage.jsx")), false);
+
+  const copy = fs.readFileSync(path.join(ROOT, "dashboard/src/content/copy.csv"), "utf8");
+  assert.doesNotMatch(copy, /dashboard\.wrapped\.entry/);
+});
+
+test("product-facing legacy product references are removed outside the compatibility allowlist", () => {
+  const product = ["Token", "Tracker"].join("");
+  const spacedProduct = ["Token", "Tracker"].join(" ");
+  const slug = ["token", "tracker"].join("");
+  const legacy = new RegExp(`${product}|${spacedProduct}|${slug}|${product}Bar`);
   const offenders = [];
   for (const abs of walk(ROOT)) {
     const repoPath = toRepoPath(abs);

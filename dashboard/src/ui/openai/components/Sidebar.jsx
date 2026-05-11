@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Activity,
   BarChart3,
@@ -22,12 +23,13 @@ import { useTheme } from "../../../hooks/useTheme.js";
 import { useLocale } from "../../../hooks/useLocale.js";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
 import { isNativeApp, isNativeEmbed } from "../../../lib/native-bridge.js";
+import { SlidePanel } from "../../foundation/SlidePanel.jsx";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
+const LG_BREAKPOINT = 1024;
+const XL_BREAKPOINT = 1280;
 
 function getNavGroups() {
-  // copy() must be called at render time so locale switches apply.
-  // Validator regex picks up these literal calls.
   return [
     {
       id: "work",
@@ -60,7 +62,10 @@ function getNavGroups() {
 function readCollapsed() {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "1";
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored !== null) return stored === "1";
+    if (window.innerWidth >= LG_BREAKPOINT && window.innerWidth < XL_BREAKPOINT) return true;
+    return false;
   } catch {
     return false;
   }
@@ -105,6 +110,7 @@ function isActive(pathname, to) {
 }
 
 function SidebarBrand({ collapsed = false }) {
+  const shouldReduceMotion = useReducedMotion();
   return (
     <Link
       to="/dashboard"
@@ -114,10 +120,21 @@ function SidebarBrand({ collapsed = false }) {
       )}
       aria-label={copy("brand.name")}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--vd-accent)] text-xs font-semibold text-white shadow-sm">
-        {copy("brand.name").charAt(0)}
-      </span>
-      {!collapsed && <span className="truncate text-sm font-semibold">{copy("brand.name")}</span>}
+      <img src="/icon.svg" alt="" className="h-7 w-7 shrink-0 rounded-lg" />
+      <AnimatePresence mode="wait">
+        {!collapsed && (
+          <motion.span
+            key="brand-text"
+            initial={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: "auto" }}
+            exit={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            className="truncate text-sm font-semibold font-display overflow-hidden whitespace-nowrap"
+          >
+            {copy("brand.name")}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </Link>
   );
 }
@@ -130,7 +147,7 @@ function NavGroupLabel({ label, collapsed, first }) {
   return (
     <div
       className={cn(
-        "px-3 pb-1 text-[10px] uppercase tracking-wider text-oai-gray-500 dark:text-oai-gray-500",
+        "px-3 pb-1 text-[10px] uppercase tracking-wider text-oai-gray-500 dark:text-oai-gray-500 font-mono",
         first ? "pt-2" : "pt-4",
       )}
     >
@@ -141,6 +158,7 @@ function NavGroupLabel({ label, collapsed, first }) {
 
 function NavItem({ item, collapsed, active, onClick }) {
   const Icon = item.icon;
+  const shouldReduceMotion = useReducedMotion();
   return (
     <Link
       to={item.to}
@@ -148,24 +166,46 @@ function NavItem({ item, collapsed, active, onClick }) {
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors",
+        "relative flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors duration-150",
         collapsed && "justify-center px-0 py-2",
         active
-          ? "bg-oai-gray-200/70 text-oai-black font-medium dark:bg-oai-gray-800 dark:text-white"
+          ? "text-oai-black font-medium dark:text-white"
           : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
       )}
     >
+      {active && (
+        <motion.div
+          layoutId="nav-active-indicator"
+          className="absolute inset-0 rounded-md bg-oai-gray-200/70 dark:bg-oai-gray-800"
+          transition={shouldReduceMotion ? { duration: 0 } : {
+            type: "spring",
+            stiffness: 500,
+            damping: 35,
+          }}
+          style={{ zIndex: -1 }}
+        />
+      )}
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         <Icon className="h-[15px] w-[15px]" aria-hidden />
       </span>
-      {!collapsed && <span className="truncate">{item.label}</span>}
+      <AnimatePresence mode="wait">
+        {!collapsed && (
+          <motion.span
+            key="nav-label"
+            initial={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: "auto" }}
+            exit={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
+            transition={{ duration: 0.15 }}
+            className="truncate overflow-hidden whitespace-nowrap"
+          >
+            {item.label}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </Link>
   );
 }
 
-/**
- * Tertiary icon button — uniform 40×40 (meets WCAG 2.5.5 close enough; AAA prefers 44).
- */
 function IconButton({ as = "button", title, onClick, href, children, className: extraClassName, ...rest }) {
   const className = cn(
     "flex h-10 w-10 items-center justify-center rounded-lg text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
@@ -185,11 +225,7 @@ function IconButton({ as = "button", title, onClick, href, children, className: 
   );
 }
 
-/**
- * Refined GitHub Star pill — Linear "Free plan" style: bordered, tight, with text + count.
- * `glassChrome`: Mac 侧栏毛玻璃上：gray-500 描边 — 亮色 /20 更淡，暗色 dark:/30 保持可见。
- */
-function StarPill({ repo = "mm7894215/TokenTracker", glassChrome = false }) {
+function StarPill({ repo = "ivasuy/VibeDeck", glassChrome = false }) {
   const [stars, setStars] = useState(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -223,7 +259,7 @@ function StarPill({ repo = "mm7894215/TokenTracker", glassChrome = false }) {
       </svg>
       <span>{copy("nav.star")}</span>
       {stars !== null && (
-        <span className="text-[10px] text-oai-gray-500 dark:text-oai-gray-500 tabular-nums">
+        <span className="text-[10px] text-oai-gray-500 dark:text-oai-gray-500 tabular-nums font-mono">
           {stars}
         </span>
       )}
@@ -231,10 +267,6 @@ function StarPill({ repo = "mm7894215/TokenTracker", glassChrome = false }) {
   );
 }
 
-/**
- * Compact theme pill — opens a popover with Light / Dark / System options.
- * Matches StarPill's h-7 height; popover opens upward (bottom-left anchored).
- */
 const THEME_OPTIONS = [
   { value: "light", labelKey: "settings.appearance.theme.light", Icon: Sun },
   { value: "dark", labelKey: "settings.appearance.theme.dark", Icon: Moon },
@@ -245,6 +277,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
   const ActiveIcon = resolvedTheme === "dark" ? Moon : Sun;
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
@@ -278,58 +311,52 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
       >
         <ActiveIcon className="h-3.5 w-3.5" aria-hidden />
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 shadow-lg"
-        >
-          {THEME_OPTIONS.map(({ value, labelKey, Icon }) => {
-            const active = theme === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="menuitem"
-                onClick={() => { onSetTheme(value); setOpen(false); }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
-                  active
-                    ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                    : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white",
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                <span>{copy(labelKey)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={shouldReduceMotion ? {} : { opacity: 0, scale: 0.95, y: 4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={shouldReduceMotion ? {} : { opacity: 0, scale: 0.95, y: 4 }}
+            transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+            className="absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass"
+          >
+            {THEME_OPTIONS.map(({ value, labelKey, Icon }) => {
+              const active = theme === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { onSetTheme(value); setOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
+                    active
+                      ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                      : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  <span>{copy(labelKey)}</span>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-/**
- * SidebarBody — shared markup used by both desktop sticky Sidebar and mobile Drawer.
- *
- * @param {boolean} collapsed - desktop collapsed state (always false in mobile drawer)
- * @param {() => void} onToggleCollapsed - toggle handler (only shown on desktop)
- * @param {() => void} onItemClick - called after a nav item is clicked (used by drawer to close)
- * @param {boolean} showCloseButton - show X close button instead of collapse toggle (mobile)
- * @param {() => void} onClose - close handler for mobile drawer
- */
 function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButton = false, onClose, glassChrome = false }) {
   const location = useLocation();
   const pathname = location?.pathname || "/";
   const { theme, resolvedTheme, setTheme } = useTheme();
-  // Re-compute copy() via getNavGroups when locale changes, otherwise the
-  // labels stay stale after a language switch.
   const { resolvedLocale } = useLocale();
   const navGroups = useMemo(() => getNavGroups(), [resolvedLocale]);
 
   return (
     <>
-      {/* Top: identity only — full-width, aligned with nav items (px-2) */}
       <div className={cn("px-2 pt-2 pb-2", collapsed && "flex justify-center")}>
         {showCloseButton ? (
           <div className="flex items-center gap-2">
@@ -351,7 +378,6 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         )}
       </div>
 
-      {/* Nav */}
       <nav
         aria-label={copy("nav.nav_label")}
         className="flex-1 px-2 pb-2 flex flex-col overflow-y-auto"
@@ -374,7 +400,6 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         ))}
       </nav>
 
-      {/* Bottom: tiny utility row — theme (left) + star & collapse (right), aligned with nav px-2 */}
       <div
         className={cn(
           "flex items-center px-2 py-3",
@@ -384,7 +409,6 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         <ThemePill theme={theme} resolvedTheme={resolvedTheme} onSetTheme={setTheme} glassChrome={glassChrome} />
         <div className="flex items-center gap-1.5">
           {!collapsed && <StarPill glassChrome={glassChrome} />}
-          {/* TEMP: collapse button hidden — restore when ready
           {!showCloseButton && (
             <button
               type="button"
@@ -400,89 +424,57 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
               )}
             </button>
           )}
-          */}
         </div>
       </div>
     </>
   );
 }
 
-/**
- * Desktop Sidebar — visible only on lg+. Fills its parent's height (which is
- * already bounded by AppLayout's fixed-viewport flex container).
- */
 export function Sidebar({ collapsed, onToggleCollapsed }) {
   const nativeGlass = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isNativeEmbed() || isNativeApp();
   }, []);
+  const shouldReduceMotion = useReducedMotion();
 
   return (
-    <aside
+    <motion.aside
       aria-label={copy("nav.aside_label")}
-      className={cn(
-        "hidden lg:flex flex-col shrink-0 h-full min-h-0 transition-[width] duration-200",
-        collapsed ? "w-[72px]" : "w-[220px]",
-      )}
+      animate={{ width: collapsed ? 72 : 220 }}
+      transition={shouldReduceMotion ? { duration: 0 } : {
+        type: "spring",
+        stiffness: 400,
+        damping: 34,
+      }}
+      className="hidden lg:flex flex-col shrink-0 h-full min-h-0"
     >
       <SidebarBody collapsed={collapsed} onToggleCollapsed={onToggleCollapsed} glassChrome={nativeGlass} />
-    </aside>
+    </motion.aside>
   );
 }
 
-/**
- * Mobile drawer — slides in from the left, full-height overlay.
- */
 function MobileDrawer({ open, onClose }) {
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  // Lock body scroll when open
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
-
-  if (!open) return null;
   return (
-    <div className="lg:hidden fixed inset-0 z-[80] flex">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden
+    <SlidePanel
+      open={open}
+      onClose={onClose}
+      side="left"
+      width="w-[260px] max-w-[80vw]"
+      className="bg-[var(--glass-bg)] backdrop-blur-[24px] border-r border-[var(--glass-border)] shadow-2xl"
+    >
+      <SidebarBody
+        collapsed={false}
+        showCloseButton
+        onClose={onClose}
+        onItemClick={onClose}
       />
-      <aside
-        aria-label={copy("nav.aside_label")}
-        className="relative w-[260px] max-w-[80vw] flex flex-col bg-oai-white dark:bg-oai-gray-900 border-r border-oai-gray-200 dark:border-oai-gray-800 shadow-2xl"
-      >
-        <SidebarBody
-          collapsed={false}
-          showCloseButton
-          onClose={onClose}
-          onItemClick={onClose}
-        />
-      </aside>
-    </div>
+    </SlidePanel>
   );
 }
 
-/**
- * Mobile top bar — shows hamburger + brand on screens < lg.
- */
 function MobileTopBar({ onOpenDrawer }) {
   return (
-    <div className="lg:hidden flex items-center justify-between gap-2 px-3 h-14 border-b border-oai-gray-200 dark:border-oai-gray-800">
+    <div className="lg:hidden flex items-center justify-between gap-2 px-3 h-14 border-b border-[var(--glass-border)]">
       <IconButton title={copy("nav.menu")} onClick={onOpenDrawer}>
         <Menu className="h-5 w-5" aria-hidden />
       </IconButton>
@@ -491,10 +483,8 @@ function MobileTopBar({ onOpenDrawer }) {
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
         aria-label={copy("brand.name")}
       >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--vd-accent)] text-[11px] font-semibold text-white">
-          {copy("brand.name").charAt(0)}
-        </span>
-        <span className="text-sm font-semibold text-oai-black dark:text-oai-white">
+        <img src="/icon.svg" alt="" className="h-6 w-6 shrink-0 rounded-lg" />
+        <span className="text-sm font-semibold font-display text-oai-black dark:text-oai-white">
           {copy("brand.name")}
         </span>
       </Link>
@@ -503,13 +493,6 @@ function MobileTopBar({ onOpenDrawer }) {
   );
 }
 
-/**
- * AppLayout — outer wash + sidebar + rounded content card on the right.
- *
- * Desktop (lg+): sticky sidebar on the left, rounded content card on the right.
- * Mobile (< lg): full-width content card with a top bar (hamburger + brand);
- *                tapping hamburger opens a slide-in drawer with the same nav.
- */
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
   const location = useLocation();
@@ -519,7 +502,6 @@ export function AppLayout({ children }) {
   const normalizedPath = (location?.pathname || "/").replace(/\/+$/, "") || "/";
   const fixedWorkbench = normalizedPath === "/entire";
 
-  /** macOS WKWebView：底层由 NSVisualEffectView 提供模糊，Web 根布局透明，侧栏浮在背景上；浏览器仍用灰色底。 */
   const nativeEmbed = useMemo(() => {
     if (typeof window === "undefined") return false;
     return isNativeEmbed() || isNativeApp();
@@ -528,7 +510,7 @@ export function AppLayout({ children }) {
   return (
     <div
       className={cn(
-        "fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-sans overflow-hidden",
+        "fixed inset-0 flex flex-col text-oai-black dark:text-oai-white font-oai overflow-hidden",
         nativeEmbed ? "bg-transparent" : "bg-oai-gray-100 dark:bg-oai-gray-950",
       )}
     >
@@ -542,14 +524,12 @@ export function AppLayout({ children }) {
       <div className="flex-1 min-h-0 flex">
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggle} />
         <MobileDrawer open={drawerOpen} onClose={closeDrawer} />
-        {/* lg：与侧栏内容区对齐 — 侧栏底部按钮区为 px-2 py-3；主卡右侧/底侧用 pr-3 pb-3 与 py-3 视觉一致，避免仅靠 p-2 显得贴边 */}
-        {/* Mac App：`lg:pr-3 lg:pb-3` (12pt) 须与 Swift `DashboardChromeMetrics.mainGutterPoints` 一致，主卡圆角由 `--tt-main-card-radius` 注入 */}
         <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
           <div
             className={cn(
-              "flex-1 min-h-0 flex flex-col bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-800 overflow-hidden",
+              "flex-1 min-h-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] overflow-hidden",
               nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
-              !nativeEmbed && "shadow-sm",
+              !nativeEmbed && "shadow-glass",
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />

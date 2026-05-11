@@ -48,14 +48,14 @@ export function useTrendData({
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
     if (mode === "hourly") {
       const dayKey = to || from || "day";
-      return `tokentracker.trend.${cacheKey}.${host}.hourly.${dayKey}.${tzKey}`;
+      return `vibedeck.trend.${cacheKey}.${host}.hourly.${dayKey}.${tzKey}`;
     }
     if (mode === "monthly") {
       const toKey = to || "today";
-      return `tokentracker.trend.${cacheKey}.${host}.monthly.${months}.${toKey}.${tzKey}`;
+      return `vibedeck.trend.${cacheKey}.${host}.monthly.${months}.${toKey}.${tzKey}`;
     }
     const rangeKey = `${from || ""}.${to || ""}`;
-    return `tokentracker.trend.${cacheKey}.${host}.daily.${rangeKey}.${tzKey}`;
+    return `vibedeck.trend.${cacheKey}.${host}.daily.${rangeKey}.${tzKey}`;
   })();
 
   const readCache = useCallback(() => {

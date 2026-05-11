@@ -81,7 +81,7 @@ function TrendBar({ value, displayValue, scale, index, row, totalBars }) {
             minHeight: value > 0 ? "4px" : "2px",
             opacity: isMissing || isFuture ? 0.2 : 1,
             borderRadius: `${borderRadius} ${borderRadius} 0 0`,
-            background: value > 0 ? "#10b981" : "var(--oai-gray-100)",
+            background: value > 0 ? "var(--vd-accent)" : "var(--oai-gray-100)",
           }}
           title={`${value.toLocaleString()}`}
         />
@@ -114,7 +114,7 @@ export function TrendMonitor({
   const scale = getTrendMonitorScale(seriesValues);
 
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
+    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
       <div className="mb-3">
         <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("trend.monitor.label")}

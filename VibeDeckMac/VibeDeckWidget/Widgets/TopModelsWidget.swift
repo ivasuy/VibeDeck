@@ -5,7 +5,7 @@ import WidgetKit
 // rank position, color dot, and bar length carry the hierarchy.
 
 struct TopModelsWidget: Widget {
-    let kind: String = "TokenTrackerTopModelsWidget"
+    let kind: String = "VibeDeckTopModelsWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in

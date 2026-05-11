@@ -4,8 +4,7 @@ const fs = require("node:fs/promises");
 const { readJson } = require("./fs");
 
 /**
- * 跨 AI CLI 自动激活检测
- * 在 tokentracker 各种命令执行时顺带检测并完成配置
+ * Auto-detect installed AI CLIs and complete missing VibeDeck hook setup.
  */
 
 const AI_CLIS = [
@@ -47,11 +46,11 @@ const AI_CLIS = [
 ];
 
 /**
- * 检测所有 AI CLI 并自动配置未完成的
+ * Detect every supported AI CLI and optionally configure missing hooks.
  * @param {Object} options
- * @param {string} options.home - home目录
- * @param {boolean} options.silent - 是否静默模式
- * @param {boolean} options.autoConfigure - 是否自动配置（否则仅提示）
+ * @param {string} options.home - home directory
+ * @param {boolean} options.silent - suppress console output
+ * @param {boolean} options.autoConfigure - configure automatically when true
  */
 async function checkAndActivate({ home = os.homedir(), silent = true, autoConfigure = true } = {}) {
   const results = [];
@@ -64,7 +63,6 @@ async function checkAndActivate({ home = os.homedir(), silent = true, autoConfig
       const isConfigured = await cli.checkConfigured({ home });
       if (isConfigured) continue;
       
-      // 发现已安装但未配置的 CLI
       if (autoConfigure) {
         const success = await cli.configure({ home, silent });
         results.push({
@@ -74,7 +72,7 @@ async function checkAndActivate({ home = os.homedir(), silent = true, autoConfig
         });
         
         if (!silent && success) {
-          console.log(`✅ 已自动配置 ${cli.displayName} 集成`);
+          console.log(`Configured ${cli.displayName} integration`);
         }
       } else {
         results.push({
@@ -84,13 +82,12 @@ async function checkAndActivate({ home = os.homedir(), silent = true, autoConfig
         });
         
         if (!silent) {
-          console.log(`⏳ 检测到 ${cli.displayName} 未配置，运行 'tokentracker init' 以配置`);
+          console.log(`${cli.displayName} is not configured. Run 'vibedeck init' to configure it.`);
         }
       }
     } catch (err) {
-      // 静默忽略错误，不影响主流程
       if (!silent) {
-        console.error(`检查 ${cli.displayName} 失败:`, err.message);
+        console.error(`Failed to check ${cli.displayName}:`, err.message);
       }
     }
   }
@@ -98,7 +95,7 @@ async function checkAndActivate({ home = os.homedir(), silent = true, autoConfig
   return results;
 }
 
-// ===== Codex 检测与配置 =====
+// ===== Codex detection and setup =====
 
 async function checkCodexInstalled({ home }) {
   const configPath = path.join(home, ".codex", "config.toml");
@@ -114,8 +111,7 @@ async function checkCodexConfigured({ home }) {
   const configPath = path.join(home, ".codex", "config.toml");
   try {
     const content = await fs.readFile(configPath, "utf8");
-    // 检查是否已配置 notify
-    return content.includes("tokentracker") || content.includes("notify");
+    return content.includes("vibedeck") || content.includes("notify");
   } catch {
     return false;
   }
@@ -123,7 +119,6 @@ async function checkCodexConfigured({ home }) {
 
 async function configureCodex({ home, silent }) {
   try {
-    // 使用现有的 codex-config 模块
     const { upsertCodexNotify } = require("./codex-config");
     const notifyCmd = path.join(home, ".vibedeck", "bin", "notify.cjs");
     const codexConfigPath = path.join(home, ".codex", "config.toml");
@@ -136,12 +131,12 @@ async function configureCodex({ home, silent }) {
     });
     return true;
   } catch (err) {
-    if (!silent) console.error("配置 Codex 失败:", err.message);
+    if (!silent) console.error("Failed to configure Codex:", err.message);
     return false;
   }
 }
 
-// ===== Claude Code 检测与配置 =====
+// ===== Claude Code detection and setup =====
 
 async function checkClaudeCodeInstalled({ home }) {
   const settingsPath = path.join(home, ".claude", "settings.json");
@@ -157,10 +152,9 @@ async function checkClaudeCodeConfigured({ home }) {
   const settingsPath = path.join(home, ".claude", "settings.json");
   try {
     const settings = await readJson(settingsPath);
-    // 检查是否已有 tokentracker 相关的 hook
     const hooks = settings?.hooks?.SessionStart || [];
     return hooks.some(h =>
-      h.hooks?.some(hook => hook.command?.includes("tokentracker"))
+      h.hooks?.some(hook => hook.command?.includes("vibedeck"))
     );
   } catch {
     return false;
@@ -172,14 +166,12 @@ async function configureClaudeCode({ home, silent }) {
     const settingsPath = path.join(home, ".claude", "settings.json");
     const settings = (await readJson(settingsPath)) || {};
     
-    // 添加 SessionStart hook
     if (!settings.hooks) settings.hooks = {};
     if (!settings.hooks.SessionStart) settings.hooks.SessionStart = [];
     
-    // 检查是否已存在
     const exists = settings.hooks.SessionStart.some(h => 
       h.matcher === "startup" &&
-      h.hooks?.some(hook => hook.command?.includes("tokentracker activate-if-needed"))
+      h.hooks?.some(hook => hook.command?.includes("vibedeck activate-if-needed"))
     );
     
     if (!exists) {
@@ -187,7 +179,7 @@ async function configureClaudeCode({ home, silent }) {
         matcher: "startup",
         hooks: [{
           type: "command",
-          command: "tokentracker activate-if-needed --silent 2>/dev/null || true"
+          command: "vibedeck activate-if-needed --silent 2>/dev/null || true"
         }]
       });
       
@@ -195,12 +187,12 @@ async function configureClaudeCode({ home, silent }) {
     }
     return true;
   } catch (err) {
-    if (!silent) console.error("配置 Claude Code 失败:", err.message);
+    if (!silent) console.error("Failed to configure Claude Code:", err.message);
     return false;
   }
 }
 
-// ===== OpenCode 检测与配置 =====
+// ===== OpenCode detection and setup =====
 
 async function checkOpencodeInstalled({ home }) {
   const configPath = path.join(home, ".config", "opencode", "opencode.json");
@@ -216,7 +208,7 @@ async function checkOpencodeConfigured({ home }) {
   const pluginDir = path.join(home, ".config", "opencode", "plugins");
   try {
     const files = await fs.readdir(pluginDir);
-    return files.some(f => f.includes("tokentracker"));
+    return files.some(f => f.includes("vibedeck"));
   } catch {
     return false;
   }
@@ -227,11 +219,11 @@ async function configureOpencode({ home, silent }) {
     const pluginDir = path.join(home, ".config", "opencode", "plugins");
     await fs.mkdir(pluginDir, { recursive: true });
     
-    const pluginPath = path.join(pluginDir, "tokentracker-activation.js");
-    const pluginCode = `export const TokentrackerActivation = async ({ $ }) => {
+    const pluginPath = path.join(pluginDir, "vibedeck-activation.js");
+    const pluginCode = `export const VibeDeckActivation = async ({ $ }) => {
   return {
     "session.created": async () => {
-      await $'tokentracker activate-if-needed --silent'.quiet().nothrow();
+      await $'vibedeck activate-if-needed --silent'.quiet().nothrow();
     }
   };
 };`;
@@ -239,12 +231,12 @@ async function configureOpencode({ home, silent }) {
     await fs.writeFile(pluginPath, pluginCode, "utf8");
     return true;
   } catch (err) {
-    if (!silent) console.error("配置 OpenCode 失败:", err.message);
+    if (!silent) console.error("Failed to configure OpenCode:", err.message);
     return false;
   }
 }
 
-// ===== Every Code 检测与配置 =====
+// ===== Every Code detection and setup =====
 
 async function checkEveryCodeInstalled({ home }) {
   const configPath = path.join(home, ".code", "config.toml");
@@ -260,7 +252,7 @@ async function checkEveryCodeConfigured({ home }) {
   const configPath = path.join(home, ".code", "config.toml");
   try {
     const content = await fs.readFile(configPath, "utf8");
-    return content.includes("tokentracker");
+    return content.includes("vibedeck");
   } catch {
     return false;
   }
@@ -268,7 +260,6 @@ async function checkEveryCodeConfigured({ home }) {
 
 async function configureEveryCode({ home, silent }) {
   try {
-    // Every Code 配置类似 Codex
     const configPath = path.join(home, ".code", "config.toml");
     let content = "";
     try {
@@ -280,13 +271,13 @@ async function configureEveryCode({ home, silent }) {
     const notifyCmd = path.join(home, ".vibedeck", "bin", "notify.cjs");
     const notifyLine = `notify = ["/usr/bin/env", "node", "${notifyCmd}"]`;
 
-    if (!content.includes("tokentracker")) {
-      content = content.trim() + "\n\n# tokentracker integration\n" + notifyLine + "\n";
+    if (!content.includes("vibedeck")) {
+      content = content.trim() + "\n\n# vibedeck integration\n" + notifyLine + "\n";
       await fs.writeFile(configPath, content, "utf8");
     }
     return true;
   } catch (err) {
-    if (!silent) console.error("配置 Every Code 失败:", err.message);
+    if (!silent) console.error("Failed to configure Every Code:", err.message);
     return false;
   }
 }
@@ -296,7 +287,7 @@ module.exports = {
   AI_CLIS,
 };
 
-// ===== OpenClaw 检测与配置 =====
+// ===== OpenClaw detection and setup =====
 
 async function checkOpenclawInstalled({ home }) {
   const configPath = path.join(home, ".openclaw", "openclaw.json");
@@ -335,7 +326,7 @@ async function configureOpenclaw({ home, silent }) {
     
     return result?.configured === true;
   } catch (err) {
-    if (!silent) console.error("配置 OpenClaw 失败:", err.message);
+    if (!silent) console.error("Failed to configure OpenClaw:", err.message);
     return false;
   }
 }

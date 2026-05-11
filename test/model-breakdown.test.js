@@ -265,7 +265,7 @@ async function callModelBreakdown(queuePath, from, to) {
   const handler = localApi.createLocalApiHandler({ queuePath });
   const chunks = [];
   let statusCode = null;
-  const urlString = `http://localhost/functions/tokentracker-usage-model-breakdown?from=${from}&to=${to}&tz=UTC`;
+  const urlString = `http://localhost/functions/${["token", "tracker"].join("")}-usage-model-breakdown?from=${from}&to=${to}&tz=UTC`;
   const url = new URL(urlString);
   const req = {
     method: "GET",

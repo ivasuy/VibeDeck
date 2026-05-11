@@ -20,7 +20,7 @@ const {
 
 describe("extractGeminiOauthClientCredentials", () => {
   it("finds OAuth constants from bundled Gemini CLI chunk files", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-gemini-bundle-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-gemini-bundle-"));
     try {
       const root = path.join(tmp, "lib", "node_modules", "@google", "gemini-cli");
       const bundleDir = path.join(root, "bundle");
@@ -54,7 +54,7 @@ describe("extractGeminiOauthClientCredentials", () => {
   });
 
   it("falls back to nvm-installed Gemini when launchd PATH cannot find gemini", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-gemini-nvm-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-gemini-nvm-"));
     try {
       const home = path.join(tmp, "home");
       const root = path.join(home, ".nvm", "versions", "node", "v22.21.1");
@@ -105,7 +105,7 @@ function makeFakeCodexJwt(planType) {
 describe("getUsageLimits", () => {
   it("classifies a 5h session window into primary regardless of slot position", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-classify-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-codex-classify-"));
     try {
       const codexHome = path.join(tmp, ".codex");
       fs.mkdirSync(codexHome, { recursive: true });
@@ -172,7 +172,7 @@ describe("getUsageLimits", () => {
 
   it("renders free-tier weekly-only response into the secondary (7d) lane", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-free-weekly-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-codex-free-weekly-"));
     try {
       const codexHome = path.join(tmp, ".codex");
       fs.mkdirSync(codexHome, { recursive: true });
@@ -232,7 +232,7 @@ describe("getUsageLimits", () => {
 
   it("proactively refreshes a stale Codex token and persists the new one before calling wham", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-refresh-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-codex-refresh-"));
     try {
       const codexHome = path.join(tmp, ".codex");
       fs.mkdirSync(codexHome, { recursive: true });
@@ -313,7 +313,7 @@ describe("getUsageLimits", () => {
 
   it("surfaces a reauth-required error when the refresh token itself is expired", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-reauth-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-codex-reauth-"));
     try {
       const codexHome = path.join(tmp, ".codex");
       fs.mkdirSync(codexHome, { recursive: true });
@@ -361,7 +361,7 @@ describe("getUsageLimits", () => {
 
   it("treats wham 403 (free / unauthorized) as no-data instead of a hard error", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-codex-403-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-codex-403-"));
     try {
       const codexHome = path.join(tmp, ".codex");
       fs.mkdirSync(codexHome, { recursive: true });
@@ -400,7 +400,7 @@ describe("getUsageLimits", () => {
 
   it("does not block the whole response when Claude usage hangs", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-timeout-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-timeout-"));
     try {
       const started = Date.now();
       const result = await getUsageLimits({
@@ -435,7 +435,7 @@ describe("getUsageLimits", () => {
 
   it("does not wait for Claude 429 retry delays on limits page refresh", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-429-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-429-"));
     try {
       let calls = 0;
       const result = await getUsageLimits({
@@ -475,7 +475,7 @@ describe("getUsageLimits", () => {
 
   it("returns a setup-required Gemini state when OAuth credentials are missing", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-gemini-setup-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-gemini-setup-"));
     try {
       const geminiHome = path.join(tmp, ".gemini");
       fs.mkdirSync(geminiHome, { recursive: true });
@@ -512,7 +512,7 @@ describe("getUsageLimits", () => {
 
   it("does not block the whole response when Kimi usage hangs", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-timeout-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-kimi-timeout-"));
     try {
       const kimiHome = path.join(tmp, ".kimi");
       fs.mkdirSync(path.join(kimiHome, "credentials"), { recursive: true });
@@ -550,7 +550,7 @@ describe("getUsageLimits", () => {
 
   it("refreshes expired Kimi credentials before fetching usage limits", async () => {
     resetUsageLimitsCache();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-limits-kimi-refresh-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-limits-kimi-refresh-"));
     try {
       const kimiHome = path.join(tmp, ".kimi");
       const credsPath = path.join(kimiHome, "credentials", "kimi-code.json");
@@ -626,7 +626,7 @@ describe("getUsageLimits", () => {
 
 describe("loadKimiCredentials", () => {
   it("returns null when Kimi credentials are absent", () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tokentracker-kimi-missing-"));
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vibedeck-kimi-missing-"));
     try {
       assert.equal(loadKimiCredentials({ home: tmp }), null);
     } finally {

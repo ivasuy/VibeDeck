@@ -170,7 +170,7 @@ test("POST /functions/vibedeck-skills/uninstall accepts local dashboard auth fro
     { id: "skill-id" },
     {
       origin: LOOPBACK_ORIGIN,
-      "x-tokentracker-local-auth": localAuthToken,
+      "x-vibedeck-local-auth": localAuthToken,
     },
   );
 
@@ -186,7 +186,7 @@ test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth wit
     { id: "skill-id" },
     {
       origin: NON_LOOPBACK_ORIGIN,
-      "x-tokentracker-local-auth": localAuthToken,
+      "x-vibedeck-local-auth": localAuthToken,
     },
   );
 
@@ -201,7 +201,7 @@ test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth wit
     "/functions/vibedeck-skills/uninstall",
     { id: "skill-id" },
     {
-      "x-tokentracker-local-auth": localAuthToken,
+      "x-vibedeck-local-auth": localAuthToken,
     },
   );
 
@@ -256,7 +256,7 @@ for (const routeCase of localMutationCases) {
       routeCase.body,
       {
         origin: LOOPBACK_ORIGIN,
-        "x-tokentracker-local-auth": localAuthToken,
+        "x-vibedeck-local-auth": localAuthToken,
       },
     );
 
@@ -270,7 +270,7 @@ for (const routeCase of localMutationCases) {
       routeCase.pathname,
       routeCase.body,
       {
-        "x-tokentracker-local-auth": localAuthToken,
+        "x-vibedeck-local-auth": localAuthToken,
       },
     );
 
@@ -285,7 +285,7 @@ for (const routeCase of localMutationCases) {
       routeCase.body,
       {
         origin: NON_LOOPBACK_ORIGIN,
-        "x-tokentracker-local-auth": localAuthToken,
+        "x-vibedeck-local-auth": localAuthToken,
       },
     );
 

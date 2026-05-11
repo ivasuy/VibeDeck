@@ -154,7 +154,7 @@ function auditRows(inputRows) {
 
 function main() {
   const queuePath =
-    process.argv[2] || path.join(os.homedir(), ".tokentracker", "tracker", "queue.jsonl");
+    process.argv[2] || path.join(os.homedir(), ".vibedeck", "tracker", "queue.jsonl");
   const { rows, malformed } = readJsonlRows(queuePath);
   const result = auditRows(rows);
   result.queue_path = queuePath;

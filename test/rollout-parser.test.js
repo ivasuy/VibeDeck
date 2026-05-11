@@ -1337,7 +1337,7 @@ test("parseOpencodeIncremental preserves legacy file totals when opencode index 
 });
 
 test("parseRolloutIncremental subtracts cached_input_tokens from Codex input_tokens to match our schema", async () => {
-  // Regression guard for the ~6-7x leaderboard cost inflation caused by
+  // Regression guard for the ~6-7x cost inflation caused by
   // treating Codex's inclusive-of-cached `input_tokens` as pure non-cached
   // input. Anchors the numbers against a realistic cache-heavy session
   // (95% cache hit) like the ones flagged in production.

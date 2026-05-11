@@ -55,7 +55,7 @@ test("usage-summary normalizes legacy Codex rows whose input still includes cach
 
     const body = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC",
+      "/functions/vibedeck-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC",
     );
 
     assert.equal(body.totals.total_tokens, 1010);
@@ -94,7 +94,7 @@ test("usage-model-breakdown applies the same legacy Codex normalization before p
 
     const body = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC",
+      "/functions/vibedeck-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC",
     );
 
     assert.ok(Array.isArray(body.sources));

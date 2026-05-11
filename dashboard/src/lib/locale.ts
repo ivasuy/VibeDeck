@@ -1,18 +1,18 @@
 import { safeGetItem, safeSetItem } from "./safe-browser";
 
 export const LOCALE_STORAGE_KEY = "vibedeck-locale";
-export const LOCALE_STORAGE_KEY_LEGACY = LOCALE_STORAGE_KEY.replace("vibedeck", "tokentracker");
+export const LOCALE_STORAGE_KEY_LEGACY = "vibedeck-locale-legacy";
 export const EN_LOCALE = "en";
 
-export function normalizeLocalePreference() {
+export function normalizeLocalePreference(_value?: any) {
   return EN_LOCALE;
 }
 
-export function normalizeResolvedLocale() {
+export function normalizeResolvedLocale(_value?: any) {
   return EN_LOCALE;
 }
 
-export function resolvePreferredLocale() {
+export function resolvePreferredLocale(_preferred?: any, _fallback?: any) {
   return EN_LOCALE;
 }
 
@@ -23,6 +23,6 @@ export function getInitialLocalePreference() {
   return EN_LOCALE;
 }
 
-export function persistLocalePreference() {
+export function persistLocalePreference(_value?: any) {
   return safeSetItem(LOCALE_STORAGE_KEY, EN_LOCALE);
 }

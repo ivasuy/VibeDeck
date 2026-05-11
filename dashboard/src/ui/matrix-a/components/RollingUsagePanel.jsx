@@ -37,7 +37,7 @@ export const RollingUsagePanel = React.memo(function RollingUsagePanel({
   ];
 
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
+    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
       <div className="mb-3">
         <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("dashboard.rolling.title")}

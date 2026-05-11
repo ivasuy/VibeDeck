@@ -79,3 +79,5 @@ Legacy local route aliases may remain for old dashboard/native builds, but do no
 - Product-facing docs, UI, package metadata, and native labels should say VibeDeck.
 - Use compatibility names only in migration paths, old route aliases, installed hook fallbacks, or tests that explicitly verify those compatibility paths.
 - Keep edits scoped. This repo often has concurrent dirty work, so stage explicit files only.
+
+@CODEX.md

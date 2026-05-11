@@ -3,8 +3,6 @@ import { copy } from "../../lib/copy";
 import { DecodingText } from "./DecodingText.jsx";
 
 /**
- * Landing Page 专用的 AsciiBox 变体
- * (原 Landing.jsx 中的 AsciiBox，为了不与 dashboard 的 AsciiBox 冲突，命名为 SignalBox)
  */
 export const SignalBox = ({
   title = copy("signalbox.title_default"),

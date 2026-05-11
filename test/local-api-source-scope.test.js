@@ -68,7 +68,7 @@ test("usage-summary defaults to all scope and includes account-level Cursor usag
 
     const defaultScope = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC",
+      "/functions/vibedeck-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC",
     );
     assert.equal(defaultScope.scope, "all");
     assert.equal(defaultScope.totals.total_tokens, 1020);
@@ -76,7 +76,7 @@ test("usage-summary defaults to all scope and includes account-level Cursor usag
 
     const personal = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC&scope=personal",
+      "/functions/vibedeck-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC&scope=personal",
     );
     assert.equal(personal.scope, "personal");
     assert.equal(personal.totals.total_tokens, 120);
@@ -86,7 +86,7 @@ test("usage-summary defaults to all scope and includes account-level Cursor usag
 
     const all = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC&scope=all",
+      "/functions/vibedeck-usage-summary?from=2026-04-20&to=2026-04-20&tz=UTC&scope=all",
     );
     assert.equal(all.scope, "all");
     assert.equal(all.totals.total_tokens, 1020);
@@ -129,7 +129,7 @@ test("usage-model-breakdown defaults to all scope and can explicitly exclude acc
 
     const defaultScope = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC",
+      "/functions/vibedeck-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC",
     );
     assert.equal(defaultScope.scope, "all");
     assert.deepEqual(defaultScope.excluded_sources, []);
@@ -137,7 +137,7 @@ test("usage-model-breakdown defaults to all scope and can explicitly exclude acc
 
     const personal = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC&scope=personal",
+      "/functions/vibedeck-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC&scope=personal",
     );
     assert.equal(personal.scope, "personal");
     assert.deepEqual(personal.sources.map((entry) => entry.source), ["codex"]);
@@ -147,7 +147,7 @@ test("usage-model-breakdown defaults to all scope and can explicitly exclude acc
 
     const all = await callEndpoint(
       queuePath,
-      "/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC&scope=all",
+      "/functions/vibedeck-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC&scope=all",
     );
     const cursor = all.sources.find((entry) => entry.source === "cursor");
     assert.ok(cursor, "scope=all should include Cursor");

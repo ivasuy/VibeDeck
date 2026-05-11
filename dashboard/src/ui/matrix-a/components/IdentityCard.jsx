@@ -48,7 +48,7 @@ export function IdentityCard({
   const subscriptionItems = buildSubscriptionItems(subscriptions);
 
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
+    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
       {(title || subtitle) && (
         <div className="mb-3">
           {title && (

@@ -168,7 +168,7 @@ final class NativeBridge {
                 self?.pushSettings()
             }
         case "openAbout":
-            if let url = URL(string: "https://github.com/mm7894215/TokenTracker") {
+            if let url = URL(string: "https://github.com/ivasuy/VibeDeck") {
                 NSWorkspace.shared.open(url)
             }
         case "openWidgetGallery":
@@ -176,7 +176,7 @@ final class NativeBridge {
             // directly — neither NSWorkspace URL schemes nor AppKit expose
             // the widget picker. The most honest + reliable response is a
             // native alert that explains the two-step flow (right-click
-            // desktop → Edit Widgets → search TokenTracker).
+            // desktop → Edit Widgets → search VibeDeck).
             DispatchQueue.main.async {
                 let alert = NSAlert()
                 alert.messageText = Strings.addWidgetsTitle
@@ -239,7 +239,7 @@ final class NativeBridge {
             return
         }
         let rawName = (payload["filename"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            ?? "tokentracker-share-\(Int(Date().timeIntervalSince1970)).png"
+            ?? "vibedeck-share-\(Int(Date().timeIntervalSince1970)).png"
         let filename = sanitizeFilename(rawName)
 
         guard let commaIdx = dataUrl.firstIndex(of: ",") else {
@@ -281,7 +281,7 @@ final class NativeBridge {
         let invalidChars = CharacterSet(charactersIn: "/\\:*?\"<>|")
         let cleaned = raw.components(separatedBy: invalidChars).joined()
         let trimmed = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "tokentracker-share.png" : trimmed
+        return trimmed.isEmpty ? "vibedeck-share.png" : trimmed
     }
 
     private func uniqueFileURL(base: URL) -> URL {

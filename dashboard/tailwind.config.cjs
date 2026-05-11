@@ -8,21 +8,23 @@ module.exports = {
     extend: {
       fontFamily: {
         oai: [
-          "'OpenAI Sans'",
+          "'Plus Jakarta Sans'",
           "-apple-system",
           "BlinkMacSystemFont",
           "'Segoe UI'",
-          "Roboto",
-          "Oxygen",
-          "Ubuntu",
           "sans-serif",
         ],
+        display: [
+          "'Outfit'",
+          "'Plus Jakarta Sans'",
+          "var(--oai-font-sans)",
+        ],
         mono: [
+          "'JetBrains Mono'",
+          "'Fira Code'",
           "'SF Mono'",
-          "SFMono-Regular",
           "ui-monospace",
           "Menlo",
-          "Monaco",
           "Consolas",
           "monospace",
         ],
@@ -132,29 +134,29 @@ module.exports = {
             900: "#171717",
             950: "#0a0a0a",
           },
-          // Brand Color - Muted Forest Green (适合白色背景)
+
           brand: {
-            DEFAULT: "#059669",
-            dark: "#047857",
-            light: "#10b981",
-            50: "#ecfdf5",
-            100: "#d1fae5",
-            200: "#a7f3d0",
-            300: "#6ee7b7",
-            400: "#34d399",
-            500: "#10b981",
-            600: "#059669",
-            700: "#047857",
-            800: "#065f46",
-            900: "#064e3b",
-            950: "#022c22",
+            DEFAULT: "#5b5fc7",
+            dark: "#4f46a8",
+            light: "#818cf8",
+            50: "#f5f5ff",
+            100: "#ededff",
+            200: "#d4d4ff",
+            300: "#a5b4fc",
+            400: "#818cf8",
+            500: "#6366f1",
+            600: "#5b5fc7",
+            700: "#4f46a8",
+            800: "#3b3686",
+            900: "#312e6a",
+            950: "#1e1b4b",
           },
-          // Supporting accent - Emerald (30%)
+          // Supporting accent — muted indigo (30%)
           forest: {
-            DEFAULT: "#10b981",
-            dark: "#059669",
-            light: "#34d399",
-            50: "#ecfdf5",
+            DEFAULT: "#6366f1",
+            dark: "#5b5fc7",
+            light: "#818cf8",
+            50: "#f5f5ff",
           },
           // Secondary accents (10%)
           amber: {
@@ -164,16 +166,16 @@ module.exports = {
             50: "#fffbeb",
           },
           // Semantic colors
-          success: "#10b981",
+          success: "#22c55e",
           warning: "#f59e0b",
           error: "#ef4444",
-          info: "#059669",
-          // Legacy blue - mapped to brand green for consistency
+          info: "#5b5fc7",
+          // Legacy blue
           blue: {
-            DEFAULT: "#059669",
-            dark: "#047857",
-            light: "#10b981",
-            50: "#ecfdf5",
+            DEFAULT: "#5b5fc7",
+            dark: "#4f46a8",
+            light: "#6d72c9",
+            50: "#f5f5ff",
           },
         },
       },
@@ -207,6 +209,11 @@ module.exports = {
         "oai": "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)",
         "oai-md": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)",
         "oai-lg": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)",
+        "glass": "var(--glass-shadow)",
+        "glass-glow": "var(--glass-shadow), var(--glass-glow)",
+      },
+      backdropBlur: {
+        glass: "var(--glass-blur)",
       },
       borderRadius: {
         sm: "4px",

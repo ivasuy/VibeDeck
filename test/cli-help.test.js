@@ -3,7 +3,7 @@ const { test } = require("node:test");
 
 const { run } = require("../src/cli");
 
-test("help output uses TokenTracker identifiers", async () => {
+test("help output uses VibeDeck identifiers", async () => {
   const prevWrite = process.stdout.write;
   let out = "";
 

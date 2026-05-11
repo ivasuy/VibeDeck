@@ -151,7 +151,7 @@ async function fetchJson(url) {
     const response = await fetch(url, {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "tokentracker-skills",
+        "User-Agent": "vibedeck-skills",
       },
       signal: controller.signal,
     });
@@ -170,7 +170,7 @@ async function fetchText(url) {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetch(url, {
-      headers: { Accept: "text/plain", "User-Agent": "tokentracker-skills" },
+      headers: { Accept: "text/plain", "User-Agent": "vibedeck-skills" },
       signal: controller.signal,
     });
     if (response.status === 429 || response.status === 403) {

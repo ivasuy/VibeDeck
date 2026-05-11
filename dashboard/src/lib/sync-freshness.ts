@@ -19,11 +19,14 @@ export function getSyncFreshnessWarning(status: SyncStatus | null | undefined) {
   if (status.sync_enabled === false) {
     return "Local sync is disabled. Live data may be stale.";
   }
-  const lastParseAt = typeof status.last_parse_at === "string" ? status.last_parse_at : "";
-  if (!lastParseAt) return null;
-  const parsed = Date.parse(lastParseAt);
+  const freshnessSource =
+    (typeof status.last_parse_at === "string" && status.last_parse_at) ||
+    (typeof status.canonical_db_updated_at === "string" && status.canonical_db_updated_at) ||
+    "";
+  if (!freshnessSource) return null;
+  const parsed = Date.parse(freshnessSource);
   if (!Number.isFinite(parsed)) return null;
   const ageMs = Date.now() - parsed;
   if (ageMs <= STALE_PARSE_MS) return null;
-  return `Local sync looks stale. Last parse was ${formatAgeMs(ageMs)} ago.`;
+  return `Local sync looks stale. Last canonical update was ${formatAgeMs(ageMs)} ago.`;
 }

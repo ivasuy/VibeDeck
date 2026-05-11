@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { isScreenshotModeEnabled } from "../../lib/screenshot-mode.js";
 
 /**
- * 稳定版解码文字 (Ultra-Stable)
  */
 function usePrefersReducedMotion() {
   return useMemo(() => {

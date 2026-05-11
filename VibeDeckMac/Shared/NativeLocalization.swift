@@ -2,7 +2,7 @@ import Foundation
 
 public enum NativeLocalization {
     public static let preferenceKey = "vibedeck-locale"
-    public static let legacyPreferenceKey = "tokentracker-locale"
+    public static let legacyPreferenceKey = "vibedeck-locale"
     public static let englishLocale = "en"
 
     private static var sharedDefaults: UserDefaults? {

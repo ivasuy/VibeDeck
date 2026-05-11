@@ -33,7 +33,7 @@ export function useUsageData({
     const host = safeHost(baseUrl) || "default";
     const dailyKey = includeDaily ? "daily" : "summary";
     const tzKey = getTimeZoneCacheKey({ timeZone, offsetMinutes: tzOffsetMinutes });
-    return `tokentracker.usage.${cacheKey}.${host}.${from}.${to}.${dailyKey}.${tzKey}`;
+    return `vibedeck.usage.${cacheKey}.${host}.${from}.${to}.${dailyKey}.${tzKey}`;
   })();
 
   const readCache = useCallback(() => {
@@ -75,7 +75,7 @@ export function useUsageData({
 
   const refresh = useCallback(async () => {
     const resolvedToken = await resolveAuthAccessToken(accessToken);
-    // 本地模式允许空 token
+
     if (!resolvedToken && !mockEnabled && !isLocalMode) return;
     setLoading(true);
     setError(null);

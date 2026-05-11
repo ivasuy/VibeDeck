@@ -85,8 +85,6 @@ export async function resolveAuthAccessToken(auth) {
 }
 
 /**
- * InsForge 等云端接口：localhost 上 `isAccessTokenReady` 可能已为 true，但 `getAccessToken()`
- * 首帧尚未就绪。短重试避免无 Authorization 的 401。
  */
 export async function resolveAuthAccessTokenWithRetry(auth, options = {}) {
   const maxAttempts = Math.max(1, Math.min(12, Math.floor(Number(options.maxAttempts) || 8)));
@@ -102,7 +100,7 @@ export async function resolveAuthAccessTokenWithRetry(auth, options = {}) {
 }
 
 export function isAccessTokenReady(token) {
-  // 本地开发模式不需要真实 token
+
   if (typeof window !== "undefined" &&
       (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
     return true;

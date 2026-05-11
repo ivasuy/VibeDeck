@@ -32,8 +32,8 @@ const MODEL_BRAND_COLORS = {
   "gemini-pro": "#22d3ee",
   "gemini-ultra": "#0891b2",
 
-  // Codex - Emerald green
-  "codex": "#059669",
+  // Codex - Indigo
+  "codex": "#6366f1",
 
   // Cursor - Amber/Gold family
   "cursor": "#f59e0b",
@@ -46,7 +46,7 @@ const MODEL_BRAND_COLORS = {
     "#3b82f6", // Blue
     "#7c3aed", // Violet
     "#0891b2", // Cyan
-    "#059669", // Emerald
+    "#6366f1", // Indigo
     "#f59e0b", // Amber
     "#ef4444", // Red
     "#ec4899", // Pink

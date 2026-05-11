@@ -17,10 +17,10 @@ test("native strings are English-only", () => {
 });
 
 test("native update flags stay unchanged during cleanup", () => {
-  const app = read("VibeDeckMac/VibeDeckMac/TokenTrackerBarApp.swift");
+  const app = read("VibeDeckMac/VibeDeckMac/VibeDeckMacApp.swift");
   const plist = read("VibeDeckMac/VibeDeckMac/Info.plist");
   const project = read("VibeDeckMac/project.yml");
-  assert.doesNotMatch(app, /TokenTrackerEnableSilentAutoUpdate|isSilentAutoUpdateEnabled/);
-  assert.doesNotMatch(plist, /TokenTrackerEnableSilentAutoUpdate/);
-  assert.doesNotMatch(project, /TokenTrackerEnableSilentAutoUpdate/);
+  assert.doesNotMatch(app, /VibeDeckEnableSilentAutoUpdate|isSilentAutoUpdateEnabled/);
+  assert.doesNotMatch(plist, /VibeDeckEnableSilentAutoUpdate/);
+  assert.doesNotMatch(project, /VibeDeckEnableSilentAutoUpdate/);
 });

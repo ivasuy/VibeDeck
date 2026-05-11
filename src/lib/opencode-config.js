@@ -4,8 +4,8 @@ const fs = require("node:fs/promises");
 
 const { ensureDir } = require("./fs");
 
-const DEFAULT_PLUGIN_NAME = "tokentracker.js";
-const PLUGIN_MARKER = "TOKENTRACKER_PLUGIN";
+const DEFAULT_PLUGIN_NAME = "vibedeck.js";
+const PLUGIN_MARKER = "VIBEDECK_PLUGIN";
 const DEFAULT_EVENT = "session.updated";
 
 function resolveOpencodeConfigDir({ home = os.homedir(), env = process.env } = {}) {
@@ -26,7 +26,7 @@ function buildOpencodePlugin({ notifyPath }) {
   return (
     `// ${PLUGIN_MARKER}\n` +
     `const notifyPath = ${JSON.stringify(safeNotifyPath)};\n` +
-    `export const TokenTrackerPlugin = async ({ $ }) => {\n` +
+    `export const VibeDeckPlugin = async ({ $ }) => {\n` +
     `  return {\n` +
     `    event: async ({ event }) => {\n` +
     `      if (!event || event.type !== ${JSON.stringify(DEFAULT_EVENT)}) return;\n` +

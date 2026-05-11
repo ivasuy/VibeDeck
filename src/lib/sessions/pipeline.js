@@ -9,6 +9,8 @@ const { resolveBranchForSession } = require('./resolve-branch');
 const { splitSessionByBranchTransitions } = require('./branch-windows');
 const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
+const { insertSessionEvent } = require('./event-ledger');
+const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -281,14 +283,13 @@ async function processSessionEvent(dbPath, event) {
     }
   }
 
-  upsertSessionFromEvents(dbPath, [event]);
-
   // 1) Repo attribution (best-effort).
   {
     const db = new DatabaseSync(dbPath);
     try {
       db.exec('BEGIN');
       try {
+        upsertSessionFromEvents(dbPath, [event], { db });
         if (keepOpenForCheckpoint || reopenOrphanedSession) {
           updateSessionEndedState(db, {
             provider: event.provider,
@@ -329,7 +330,7 @@ async function processSessionEvent(dbPath, event) {
   }
   if (!session) return;
 
-  if (!shouldResolveBranch({
+  const needsBranchResolution = shouldResolveBranch({
     existing: existingBeforeUpsert,
     session,
     repo,
@@ -337,35 +338,49 @@ async function processSessionEvent(dbPath, event) {
     keepOpenForCheckpoint,
     reopenOrphanedSession,
     preserveExistingTerminalEnd,
-  })) {
-    if (preserveExistingTerminalEnd) return;
-    emitSessionEvent({ event, latest: session, keepOpenForCheckpoint, reopenOrphanedSession });
-    return;
-  }
-
-  const branchRes = await resolveBranchForSession({
-    provider: session.provider,
-    session_id: session.session_id,
-    repo_root: session.repo_root,
-    started_at: session.started_at,
-    ended_at: session.ended_at,
-    dbPath,
   });
+  const branchRes = needsBranchResolution
+    ? await resolveBranchForSession({
+        provider: session.provider,
+        session_id: session.session_id,
+        repo_root: session.repo_root,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        dbPath,
+      })
+    : null;
 
   {
     const db = new DatabaseSync(dbPath);
     try {
       db.exec('BEGIN');
       try {
-        updateBranchResolution(db, {
-          provider: session.provider,
-          session_id: session.session_id,
-          branch: branchRes.branch,
-          tier: branchRes.tier,
-          confidence: branchRes.confidence,
-        });
+        if (branchRes) {
+          updateBranchResolution(db, {
+            provider: session.provider,
+            session_id: session.session_id,
+            branch: branchRes.branch,
+            tier: branchRes.tier,
+            confidence: branchRes.confidence,
+          });
+        }
 
-        const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
+        let latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
+        if (latest) {
+          const inserted = insertSessionEvent(db, event, {
+            repo_root: latest.repo_root,
+            repo_common_dir: latest.repo_common_dir,
+            parent_repo: latest.parent_repo,
+            branch: latest.branch,
+            branch_resolution_tier: latest.branch_resolution_tier,
+            confidence: latest.confidence,
+          });
+          if (inserted) {
+            upsertBucketFact(db, latest, event);
+          }
+          recomputeSessionLedger(db, latest);
+          latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
+        }
         if (latest && latest.ended_at) {
           const transitions = listTransitions(db, {
             worktree_root: latest.repo_root,
@@ -378,7 +393,7 @@ async function processSessionEvent(dbPath, event) {
               ended_at: latest.ended_at,
               total_tokens: latest.total_tokens,
               total_cost_usd: latest.total_cost_usd,
-              branch: branchRes.branch,
+              branch: latest.branch,
             },
             transitions,
           });

@@ -24,6 +24,7 @@ function normalizeUpdates(updates) {
         'cache_creation_input_tokens',
         'output_tokens',
         'reasoning_output_tokens',
+        'conversation_count',
       ]) {
         if (u[key] == null) continue;
         if (!Number.isInteger(u[key]) || u[key] < 0) return null;
@@ -68,6 +69,7 @@ function extractSessionEvents({
         cache_creation_input_tokens: u.cache_creation_input_tokens ?? null,
         output_tokens: u.output_tokens ?? null,
         reasoning_output_tokens: u.reasoning_output_tokens ?? null,
+        conversation_count: u.conversation_count ?? null,
       }),
     );
   }

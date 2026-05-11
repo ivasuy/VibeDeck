@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { copy } from "../../../lib/copy.ts";
 
 const DISMISS_KEY = "widgetOnboardingDismissed";
-const NATIVE_APP_KEY = "tokentracker_native_app";
+const NATIVE_APP_KEY = "vibedeck_native_app";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1). */
 const isNativeApp = (() => {
@@ -19,7 +19,7 @@ const isNativeApp = (() => {
 })();
 
 /**
- * Promotes the macOS desktop widgets bundled with TokenTrackerBar 0.5.38+.
+ * Promotes the macOS desktop widgets bundled with VibeDeckMac 0.5.38+.
  * Only renders inside the native app — widgets are macOS-only.
  * Dismissible; remembers the choice via localStorage.
  */
@@ -52,7 +52,7 @@ export function WidgetOnboardingCard({ enterDelay = 0 }) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8, transition: { duration: 0.2, ease: [0.4, 0, 0.2, 1] } }}
           transition={{ duration: 0.35, delay: enterDelay, ease: [0.16, 1, 0.3, 1] }}
-          className="relative rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-4"
+          className="relative rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-4"
         >
           <button
             type="button"

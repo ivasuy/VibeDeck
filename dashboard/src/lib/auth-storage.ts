@@ -1,7 +1,7 @@
-const STORAGE_KEY = "tokentracker.dashboard.auth.v1";
-const SESSION_EXPIRED_KEY = "tokentracker.dashboard.session_expired.v1";
-const SESSION_SOFT_EXPIRED_KEY = "tokentracker.dashboard.session_soft_expired.v1";
-const AUTH_EVENT_NAME = "tokentracker:auth-storage";
+const STORAGE_KEY = "vibedeck.dashboard.auth.v1";
+const SESSION_EXPIRED_KEY = "vibedeck.dashboard.session_expired.v1";
+const SESSION_SOFT_EXPIRED_KEY = "vibedeck.dashboard.session_soft_expired.v1";
+const AUTH_EVENT_NAME = "vibedeck:auth-storage";
 
 function emitAuthStorageChange() {
   if (typeof window === "undefined" || !window.dispatchEvent) return;

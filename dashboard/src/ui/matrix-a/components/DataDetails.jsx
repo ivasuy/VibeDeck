@@ -169,7 +169,7 @@ function ProjectUsageCard({ entry, copy }) {
                             </div>
                             <div className="h-0.5 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
                               <div
-                                className="h-full rounded-full bg-emerald-600 dark:bg-emerald-500"
+                                className="h-full rounded-full bg-oai-brand dark:bg-oai-brand-400"
                                 style={{ width: `${width}%` }}
                               />
                             </div>
@@ -377,7 +377,6 @@ export function DataDetails({
           </div>
           )}
 
-          {/* Pagination - 使用 design system typography，Daily Breakdown 不需要分页 */}
           {activeTab !== "daily" && DETAILS_PAGED_PERIODS.has(period) && detailsPageCount > 1 ? (
             <div className="mt-3 flex items-center justify-between oai-text-caption">
               <button

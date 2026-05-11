@@ -10,7 +10,7 @@ const {
 
 async function main() {
   const repoRoot = path.resolve(__dirname, "..", "..");
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-accept-"));
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-accept-"));
   const homeDir = tmpRoot;
   const codexHome = path.join(tmpRoot, ".codex");
   const opencodeConfigDir = path.join(tmpRoot, ".config", "opencode");
@@ -31,7 +31,7 @@ async function main() {
   const init = spawnSync(
     process.execPath,
     [
-      path.join(repoRoot, "bin", "tracker.js"),
+      path.join(repoRoot, "bin", "vibedeck.js"),
       "init",
       "--yes",
       "--no-auth",
@@ -66,7 +66,7 @@ async function main() {
 
   const uninstall = spawnSync(
     process.execPath,
-    [path.join(repoRoot, "bin", "tracker.js"), "uninstall"],
+    [path.join(repoRoot, "bin", "vibedeck.js"), "uninstall"],
     {
       env,
       stdio: "inherit",

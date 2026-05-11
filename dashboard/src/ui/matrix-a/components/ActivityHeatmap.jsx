@@ -19,19 +19,19 @@ const VISIBLE_DAY_LABEL_INDEXES = {
 };
 
 const HEATMAP_COLORS_LIGHT = [
-  "#ebedf0", // level 0 - inactive, GitHub-style neutral
-  "#a7f3d0", // level 1
-  "#6ee7b7", // level 2
-  "#34d399", // level 3
-  "#10b981", // level 4
+  "#e8e8ef", // level 0 - neutral lavender-grey
+  "#c7c9e8", // level 1 - light indigo wash
+  "#a5b4fc", // level 2 - indigo-300
+  "#818cf8", // level 3 - indigo-400
+  "#5b5fc7", // level 4 - brand primary
 ];
 
 const HEATMAP_COLORS_DARK = [
-  "#30363d", // level 0 - inactive, GitHub-style neutral
-  "#065f46", // level 1
-  "#059669", // level 2
-  "#10b981", // level 3
-  "#34d399", // level 4 - brightest
+  "#1e1b2e", // level 0 - deep indigo-black
+  "#2d2a4a", // level 1 - dark indigo
+  "#4f46a8", // level 2 - indigo-700
+  "#6366f1", // level 3 - indigo-500
+  "#a5b4fc", // level 4 - indigo-300 brightest
 ];
 
 const MONTH_LABELS = [
@@ -198,7 +198,7 @@ export function ActivityHeatmap({
   const gridCols = LABEL_WIDTH + weeks.length * CELL_SIZE + Math.max(0, weeks.length - 1) * CELL_GAP;
 
   return (
-    <div className="rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5">
+    <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5">
       {/* Header */}
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
@@ -239,7 +239,7 @@ export function ActivityHeatmap({
           >
             {/* Day labels */}
             <div
-              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-400 sticky left-0 bg-white dark:bg-oai-gray-900 pr-1"
+              className="grid text-[10px] text-oai-gray-400 dark:text-oai-gray-400 sticky left-0 bg-[var(--glass-bg)] pr-1"
               style={{ gridTemplateRows: `repeat(7, ${CELL_SIZE}px)`, rowGap: CELL_GAP }}
             >
               {dayLabels.map(({ day, label, visible }) => (

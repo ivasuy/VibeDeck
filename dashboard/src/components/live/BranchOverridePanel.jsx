@@ -132,7 +132,7 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
           disabled={isBusy}
         />
         {error ? <p className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
-        {success ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{success}</p> : null}
+        {success ? <p className="text-sm text-indigo-700 dark:text-indigo-300">{success}</p> : null}
         <div className="flex flex-wrap items-center justify-start gap-2 pb-0">
           <Button
             type="button"

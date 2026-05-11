@@ -41,7 +41,7 @@ export function AttributionHealthCard({ stats, sessions = [], loading = false, e
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.attribution.title")}</h2>
         <span
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 dark:text-emerald-300"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 dark:text-indigo-300"
           aria-hidden
         >
           <HeartPulse className="h-4 w-4 animate-pulse" />

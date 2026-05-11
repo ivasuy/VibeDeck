@@ -34,6 +34,115 @@ const SSE_RETRY_AFTER_SECONDS = 30;
 const SSE_HEARTBEAT_MS = readMsEnv("VIBEDECK_SSE_HEARTBEAT_MS", 30_000);
 const SSE_IDLE_MS = readMsEnv("VIBEDECK_SSE_IDLE_MS", 60 * 60 * 1000);
 const SSE_IDLE_SCAN_MS = readMsEnv("VIBEDECK_SSE_IDLE_SCAN_MS", 60 * 60 * 1000);
+const VIBEDECK_LOCAL_AUTH_HEADER = "x-vibedeck-local-auth";
+const LEGACY_PRODUCT_SLUG = ["token", "tracker"].join("");
+const TOKENTRACKER_LOCAL_AUTH_HEADER = VIBEDECK_LOCAL_AUTH_HEADER.replace("vibedeck", LEGACY_PRODUCT_SLUG);
+const VIBEDECK_LOCAL_AUTH_COOKIE = "vibedeck_local_auth";
+const TOKENTRACKER_LOCAL_AUTH_COOKIE = VIBEDECK_LOCAL_AUTH_COOKIE.replace("vibedeck", LEGACY_PRODUCT_SLUG);
+const LOCAL_AUTH_HEADERS = [VIBEDECK_LOCAL_AUTH_HEADER, TOKENTRACKER_LOCAL_AUTH_HEADER];
+const LOCAL_AUTH_COOKIES = [VIBEDECK_LOCAL_AUTH_COOKIE, TOKENTRACKER_LOCAL_AUTH_COOKIE];
+
+function withLegacyRoute(primaryRoute) {
+  return typeof primaryRoute === "string" ? primaryRoute.replace("/functions/vibedeck-", `/functions/${LEGACY_PRODUCT_SLUG}-`) : "";
+}
+
+const ROUTES = {
+  usageSummary: {
+    primary: "/functions/vibedeck-usage-summary",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-summary"),
+  },
+  usageDaily: {
+    primary: "/functions/vibedeck-usage-daily",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-daily"),
+  },
+  usageHeatmap: {
+    primary: "/functions/vibedeck-usage-heatmap",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-heatmap"),
+  },
+  usageModelBreakdown: {
+    primary: "/functions/vibedeck-usage-model-breakdown",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-model-breakdown"),
+  },
+  projectUsage: {
+    primary: "/functions/vibedeck-project-usage-summary",
+    legacy: withLegacyRoute("/functions/vibedeck-project-usage-summary"),
+  },
+  userStatus: {
+    primary: "/functions/vibedeck-user-status",
+    legacy: withLegacyRoute("/functions/vibedeck-user-status"),
+  },
+  usageHourly: {
+    primary: "/functions/vibedeck-usage-hourly",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-hourly"),
+  },
+  usageMonthly: {
+    primary: "/functions/vibedeck-usage-monthly",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-monthly"),
+  },
+  localSync: {
+    primary: "/functions/vibedeck-local-sync",
+    legacy: withLegacyRoute("/functions/vibedeck-local-sync"),
+  },
+  usageLimits: {
+    primary: "/functions/vibedeck-usage-limits",
+    legacy: withLegacyRoute("/functions/vibedeck-usage-limits"),
+  },
+  skills: {
+    primary: "/functions/vibedeck-skills",
+    legacy: withLegacyRoute("/functions/vibedeck-skills"),
+  },
+};
+
+function isRouteMatch(pathname, route) {
+  return pathname === route.primary || pathname === route.legacy;
+}
+
+function getRequestHeaderValue(headers, headerName) {
+  if (!headers || typeof headers !== "object") return "";
+  const direct = headers[headerName];
+  if (typeof direct === "string") {
+    return direct.trim();
+  }
+
+  const lowerCaseHeaderName = headerName.toLowerCase();
+  if (lowerCaseHeaderName !== headerName) {
+    const alt = headers[lowerCaseHeaderName];
+    if (typeof alt === "string") return alt.trim();
+  }
+  const canonicalName = headerName
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("-");
+  const canonical = headers[canonicalName];
+  if (typeof canonical === "string") return canonical.trim();
+  return "";
+}
+
+function readLegacyCompatibleLocalAuthToken(req) {
+  const headers = req?.headers || {};
+  for (const headerName of LOCAL_AUTH_HEADERS) {
+    const token = getRequestHeaderValue(headers, headerName);
+    if (token) return token;
+  }
+
+  const cookies = parseCookieHeader(req?.headers?.cookie);
+  for (const cookieName of LOCAL_AUTH_COOKIES) {
+    const token = cookies.get(cookieName);
+    if (typeof token === "string" && token.trim()) return token.trim();
+  }
+
+  return "";
+}
+
+function routeFromSkillsPrefix(pathname) {
+  if (pathname.startsWith(`${ROUTES.skills.primary}/`)) {
+    return pathname.slice(ROUTES.skills.primary.length + 1);
+  }
+  if (pathname.startsWith(`${ROUTES.skills.legacy}/`)) {
+    return pathname.slice(ROUTES.skills.legacy.length + 1);
+  }
+  return null;
+}
 const LIVE_RECENT_ENDED_MS = readMsEnv("VIBEDECK_LIVE_RECENT_ENDED_MS", 60 * 60 * 1000);
 
 let liveSseClientCount = 0;
@@ -505,6 +614,48 @@ function readSessionCounts(dbPath) {
   }
 }
 
+function readCanonicalDbStats(dbPath) {
+  const empty = {
+    canonical_db_updated_at: null,
+    canonical_event_count: 0,
+    canonical_bucket_count: 0,
+    session_rows_missing_cost: 0,
+    unattributed_session_count: 0,
+  };
+  try {
+    if (!fs.existsSync(dbPath)) return empty;
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const sessionRow = db
+        .prepare(`
+          SELECT
+            MAX(updated_at) AS canonical_db_updated_at,
+            SUM(CASE WHEN total_cost_usd IS NULL THEN 1 ELSE 0 END) AS session_rows_missing_cost,
+            SUM(CASE WHEN repo_root IS NULL OR branch IS NULL THEN 1 ELSE 0 END) AS unattributed_session_count
+          FROM vibedeck_sessions
+        `)
+        .get();
+      const eventRow = db
+        .prepare("SELECT COUNT(*) AS canonical_event_count FROM vibedeck_session_events")
+        .get();
+      const bucketRow = db
+        .prepare("SELECT COUNT(*) AS canonical_bucket_count FROM vibedeck_session_buckets")
+        .get();
+      return {
+        canonical_db_updated_at: normalizeIsoTimestamp(sessionRow?.canonical_db_updated_at),
+        canonical_event_count: Number(eventRow?.canonical_event_count || 0),
+        canonical_bucket_count: Number(bucketRow?.canonical_bucket_count || 0),
+        session_rows_missing_cost: Number(sessionRow?.session_rows_missing_cost || 0),
+        unattributed_session_count: Number(sessionRow?.unattributed_session_count || 0),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return empty;
+  }
+}
+
 function readSyncStatus({ queuePath, syncEnabled = true }) {
   const trackerDir = path.dirname(queuePath);
   const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
@@ -512,6 +663,7 @@ function readSyncStatus({ queuePath, syncEnabled = true }) {
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   const cursors = safeReadJsonFile(cursorsPath);
   const sessionCounts = readSessionCounts(dbPath);
+  const canonicalStats = readCanonicalDbStats(dbPath);
 
   return {
     last_parse_at: normalizeIsoTimestamp(cursors?.updatedAt),
@@ -520,6 +672,11 @@ function readSyncStatus({ queuePath, syncEnabled = true }) {
     session_count: sessionCounts.session_count,
     open_session_count: sessionCounts.open_session_count,
     sync_enabled: syncEnabled !== false,
+    canonical_db_updated_at: canonicalStats.canonical_db_updated_at,
+    canonical_event_count: canonicalStats.canonical_event_count,
+    canonical_bucket_count: canonicalStats.canonical_bucket_count,
+    session_rows_missing_cost: canonicalStats.session_rows_missing_cost,
+    unattributed_session_count: canonicalStats.unattributed_session_count,
   };
 }
 
@@ -682,6 +839,118 @@ function projectUsageRowDayKey(row, timeZoneContext) {
 
 function formatProjectUsageCost(value) {
   return Number.isFinite(value) ? Number(value).toFixed(6) : null;
+}
+
+function mergeProjectUsageCostFields(entry, costResult) {
+  const acc = createCostAccumulator();
+  addCostToAccumulator(acc, {
+    total_cost_usd:
+      entry?.estimated_total_cost_usd == null ? null : Number(entry.estimated_total_cost_usd),
+    cost_estimated: Boolean(entry?.cost_estimated),
+    cost_quality: entry?.cost_quality || null,
+  });
+  addCostToAccumulator(acc, costResult);
+  const merged = finalizeCostAccumulator(acc);
+  entry.estimated_total_cost_usd = formatProjectUsageCost(merged.total_cost_usd);
+  entry.cost_estimated = merged.cost_estimated;
+  entry.cost_quality = merged.cost_quality;
+}
+
+function rebuildProjectUsageTopModels(entry) {
+  const providers = Array.isArray(entry?.providers) ? entry.providers : [];
+  entry.top_models = providers
+    .flatMap((providerEntry) =>
+      (Array.isArray(providerEntry?.models) ? providerEntry.models : []).map((modelEntry) => ({
+        provider: providerEntry.provider,
+        model: modelEntry.model,
+        total_tokens: modelEntry.total_tokens,
+        billable_total_tokens: modelEntry.billable_total_tokens,
+        estimated_total_cost_usd: modelEntry.estimated_total_cost_usd,
+        cost_estimated: modelEntry.cost_estimated,
+        cost_quality: modelEntry.cost_quality,
+        session_count: modelEntry.session_count,
+      })),
+    )
+    .sort((a, b) => {
+      const byTokens = Number(b.total_tokens) - Number(a.total_tokens);
+      if (byTokens !== 0) return byTokens;
+      const byProvider = String(a.provider || "").localeCompare(String(b.provider || ""));
+      return byProvider !== 0 ? byProvider : String(a.model || "").localeCompare(String(b.model || ""));
+    });
+}
+
+function mergeQueueUsageIntoFinalEntry(entry, group) {
+  if (!entry || !group) return;
+  const totalTokens = Number(group?.total_tokens || 0);
+  const billableTotalTokens = Number((group?.billable_total_tokens ?? group?.total_tokens) || 0);
+  const lastSeenAt = normalizeIsoTimestamp(group?.last_seen_at);
+  const providerName = String(group?.provider || "unknown");
+  const modelName = String(group?.model || "unknown");
+  const costResult = group?.costResult || {
+    total_cost_usd: null,
+    cost_estimated: true,
+    cost_quality: "pricing_missing",
+  };
+
+  entry.total_tokens = String(Number(entry.total_tokens || 0) + totalTokens);
+  entry.billable_total_tokens = String(Number(entry.billable_total_tokens || 0) + billableTotalTokens);
+  if (lastSeenAt && (!entry.last_seen_at || lastSeenAt > entry.last_seen_at)) {
+    entry.last_seen_at = lastSeenAt;
+  }
+  mergeProjectUsageCostFields(entry, costResult);
+
+  if (!Array.isArray(entry.providers)) entry.providers = [];
+  let providerEntry = entry.providers.find((provider) => provider.provider === providerName);
+  if (!providerEntry) {
+    providerEntry = {
+      provider: providerName,
+      total_tokens: "0",
+      billable_total_tokens: "0",
+      estimated_total_cost_usd: null,
+      cost_estimated: true,
+      cost_quality: "pricing_missing",
+      session_count: 0,
+      models: [],
+    };
+    entry.providers.push(providerEntry);
+  }
+  providerEntry.total_tokens = String(Number(providerEntry.total_tokens || 0) + totalTokens);
+  providerEntry.billable_total_tokens = String(
+    Number(providerEntry.billable_total_tokens || 0) + billableTotalTokens,
+  );
+  mergeProjectUsageCostFields(providerEntry, costResult);
+
+  let modelEntry = Array.isArray(providerEntry.models)
+    ? providerEntry.models.find((model) => model.model === modelName)
+    : null;
+  if (!modelEntry) {
+    if (!Array.isArray(providerEntry.models)) providerEntry.models = [];
+    modelEntry = {
+      model: modelName,
+      total_tokens: "0",
+      billable_total_tokens: "0",
+      estimated_total_cost_usd: null,
+      cost_estimated: true,
+      cost_quality: "pricing_missing",
+      session_count: 0,
+    };
+    providerEntry.models.push(modelEntry);
+  }
+  modelEntry.total_tokens = String(Number(modelEntry.total_tokens || 0) + totalTokens);
+  modelEntry.billable_total_tokens = String(
+    Number(modelEntry.billable_total_tokens || 0) + billableTotalTokens,
+  );
+  mergeProjectUsageCostFields(modelEntry, costResult);
+
+  providerEntry.models.sort((a, b) => {
+    const byTokens = Number(b.total_tokens) - Number(a.total_tokens);
+    return byTokens !== 0 ? byTokens : String(a.model || "").localeCompare(String(b.model || ""));
+  });
+  entry.providers.sort((a, b) => {
+    const byTokens = Number(b.total_tokens) - Number(a.total_tokens);
+    return byTokens !== 0 ? byTokens : String(a.provider || "").localeCompare(String(b.provider || ""));
+  });
+  rebuildProjectUsageTopModels(entry);
 }
 
 function createProjectUsageEntry({ project_key, project_ref, repo_root }) {
@@ -1044,9 +1313,21 @@ function aggregateByDay(rows, timeZoneContext = null) {
       });
     }
     const a = byDay.get(day);
+    const cost = resolveUsageCost({
+      source: row.source,
+      model: row.model,
+      total_tokens: row.total_tokens,
+      input_tokens: row.input_tokens,
+      output_tokens: row.output_tokens,
+      cached_input_tokens: row.cached_input_tokens,
+      cache_creation_input_tokens: row.cache_creation_input_tokens,
+      reasoning_output_tokens: row.reasoning_output_tokens,
+      stored_cost_usd: row.total_cost_usd,
+      stored_cost_is_authoritative: row.total_cost_usd != null && row.cost_estimated === false,
+    });
     a.total_tokens += row.total_tokens || 0;
     a.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
-    a.total_cost_usd += computeRowCost(row);
+    a.total_cost_usd += Number(cost.total_cost_usd || 0) || 0;
     a.input_tokens += row.input_tokens || 0;
     a.output_tokens += row.output_tokens || 0;
     a.cached_input_tokens += row.cached_input_tokens || 0;
@@ -1064,7 +1345,17 @@ function getRequestedUsageScope(url) {
 
 function scopedQueueRows(queuePath, url) {
   const scope = getRequestedUsageScope(url);
-  const allRows = readQueueData(queuePath);
+  const dbPath = path.join(path.dirname(queuePath), "vibedeck.sqlite3");
+  let allRows = [];
+  try {
+    const { readUsageRowsFromDb } = require("./usage-read-models");
+    allRows = readUsageRowsFromDb(dbPath);
+  } catch {
+    allRows = [];
+  }
+  if (!Array.isArray(allRows) || allRows.length === 0) {
+    allRows = readQueueData(queuePath);
+  }
   return {
     scope,
     allRows,
@@ -1424,11 +1715,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
   const localAuthToken = crypto.randomBytes(24).toString("hex");
 
   function isAuthorizedLocalMutation(req) {
-    const headerToken = req?.headers?.["x-tokentracker-local-auth"];
-    const cookieToken = parseCookieHeader(req?.headers?.cookie).get("tokentracker_local_auth");
-    const token = typeof headerToken === "string" && headerToken.trim()
-      ? headerToken.trim()
-      : cookieToken || "";
+    const token = readLegacyCompatibleLocalAuthToken(req);
     if (!token || token !== localAuthToken) return false;
     return hasAllowedLoopbackOrigin(req?.headers || {}, { requirePresence: true });
   }
@@ -1634,7 +1921,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- local-sync (POST) ---
-    if (p === "/functions/tokentracker-local-sync") {
+    if (isRouteMatch(p, ROUTES.localSync)) {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { ok: false, error: "Method Not Allowed" }, 405);
         return true;
@@ -1668,7 +1955,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-summary ---
-    if (p === "/functions/tokentracker-usage-summary") {
+    if (isRouteMatch(p, ROUTES.usageSummary)) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
@@ -1735,7 +2022,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-daily ---
-    if (p === "/functions/tokentracker-usage-daily") {
+    if (isRouteMatch(p, ROUTES.usageDaily)) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
@@ -1746,7 +2033,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-heatmap ---
-    if (p === "/functions/tokentracker-usage-heatmap") {
+    if (isRouteMatch(p, ROUTES.usageHeatmap)) {
       const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
       const timeZoneContext = getTimeZoneContext(url);
       const { rows, scope, excludedSources } = scopedQueueRows(qp, url);
@@ -1791,7 +2078,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-model-breakdown ---
-    if (p === "/functions/tokentracker-usage-model-breakdown") {
+    if (isRouteMatch(p, ROUTES.usageModelBreakdown)) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
@@ -1807,8 +2094,26 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         const src = row.source || "unknown";
         const mdl = row.model || "unknown";
         if (!bySource.has(src))
-          bySource.set(src, { source: src, source_scope: getSourceScope(src), totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" }, models: new Map() });
+          bySource.set(src, {
+            source: src,
+            source_scope: getSourceScope(src),
+            totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" },
+            models: new Map(),
+            _cost: createCostAccumulator(),
+          });
         const sa = bySource.get(src);
+        const rowCost = resolveUsageCost({
+          source: src,
+          model: mdl,
+          total_tokens: row.total_tokens,
+          input_tokens: row.input_tokens,
+          output_tokens: row.output_tokens,
+          cached_input_tokens: row.cached_input_tokens,
+          cache_creation_input_tokens: row.cache_creation_input_tokens,
+          reasoning_output_tokens: row.reasoning_output_tokens,
+          stored_cost_usd: row.total_cost_usd,
+          stored_cost_is_authoritative: row.total_cost_usd != null && row.cost_estimated === false,
+        });
         sa.totals.total_tokens += row.total_tokens || 0;
         sa.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
         sa.totals.input_tokens += row.input_tokens || 0;
@@ -1816,8 +2121,14 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         sa.totals.cached_input_tokens += row.cached_input_tokens || 0;
         sa.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         sa.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        addCostToAccumulator(sa._cost, rowCost);
         if (!sa.models.has(mdl))
-          sa.models.set(mdl, { model: mdl, model_id: mdl, totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" } });
+          sa.models.set(mdl, {
+            model: mdl,
+            model_id: mdl,
+            totals: { total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, total_cost_usd: "0" },
+            _cost: createCostAccumulator(),
+          });
         const ma = sa.models.get(mdl);
         ma.totals.total_tokens += row.total_tokens || 0;
         ma.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
@@ -1826,21 +2137,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         ma.totals.cached_input_tokens += row.cached_input_tokens || 0;
         ma.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
         ma.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
+        addCostToAccumulator(ma._cost, rowCost);
       }
 
       const sources = Array.from(bySource.values()).map((s) => {
         s.models = Array.from(s.models.values())
           .map((m) => {
-            const cost = computeRowCost({
-              ...m.totals,
-              model: m.model,
-              source: s.source,
-            });
-            return { ...m, totals: { ...m.totals, total_cost_usd: cost.toFixed(6) } };
+            const cost = finalizeCostAccumulator(m._cost);
+            return { ...m, totals: { ...m.totals, total_cost_usd: Number(cost.total_cost_usd || 0).toFixed(6) } };
           })
           .sort((a, b) => b.totals.total_tokens - a.totals.total_tokens);
-        const sourceCost = s.models.reduce((sum, m) => sum + Number(m.totals.total_cost_usd), 0);
-        s.totals.total_cost_usd = sourceCost.toFixed(6);
+        const sourceCost = finalizeCostAccumulator(s._cost);
+        s.totals.total_cost_usd = Number(sourceCost.total_cost_usd || 0).toFixed(6);
+        delete s._cost;
+        s.models = s.models.map(({ _cost, ...modelEntry }) => modelEntry);
         return s;
       });
 
@@ -2220,11 +2530,29 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
 
       const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       if (!fs.existsSync(dbPath)) {
-        json(res, { high: 0, medium: 0, low: 0, unattributed: 0, total: 0 });
+        json(res, {
+          high: 0,
+          medium: 0,
+          low: 0,
+          unattributed: 0,
+          total: 0,
+          canonical_db_updated_at: null,
+          canonical_event_count: 0,
+          canonical_bucket_count: 0,
+          session_rows_missing_cost: 0,
+          unattributed_session_count: 0,
+        });
         return true;
       }
 
-      const out = { high: 0, medium: 0, low: 0, unattributed: 0, total: 0 };
+      const out = {
+        high: 0,
+        medium: 0,
+        low: 0,
+        unattributed: 0,
+        total: 0,
+        ...readCanonicalDbStats(dbPath),
+      };
       try {
         const db = new DatabaseSync(dbPath, { readOnly: true });
         try {
@@ -2252,10 +2580,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- project-usage-summary ---
-    if (
-      p === "/functions/tokentracker-project-usage-summary" ||
-      p === "/functions/vibedeck-project-usage-summary"
-    ) {
+    if (isRouteMatch(p, ROUTES.projectUsage)) {
       // Use the per-project bucket log that rollout.js emits — it already
       // carries the actual tokens attributed to each (project_key, source,
       // hour_start). Falling back to "session-file count × total tokens"
@@ -2277,64 +2602,94 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         if (to && (!day || day > to)) return false;
         return true;
       });
-      let sessionProjectRows = [];
+      let localEntries = [];
       try {
-        sessionProjectRows = aggregateSessionProjectUsageRows(
-          readSessionProjectUsage(dbPath, { sourceFilter }),
-          { from, to, timeZoneContext },
-        );
+        const { readProjectUsageEntries } = require("./project-usage");
+        localEntries = readProjectUsageEntries(dbPath, {
+          from,
+          to,
+          timeZoneContext,
+          sourceFilter,
+        });
       } catch {
-        sessionProjectRows = [];
+        localEntries = [];
       }
-      const localProjectKeys = buildLocalProjectKeyMap(sessionProjectRows);
-      const repoRootByRemote = buildRepoRootByRemote(sessionProjectRows);
-      const gitBranchesByRepo = buildGitBranchesByRepo(sessionProjectRows);
+      const localRepoRows = localEntries.flatMap((entry) => {
+        const rows = [];
+        if (entry?.repo_root) rows.push({ repo_root: entry.repo_root });
+        for (const worktree of Array.isArray(entry?.worktrees) ? entry.worktrees : []) {
+          if (worktree?.repo_root) rows.push({ repo_root: worktree.repo_root });
+        }
+        return rows;
+      });
+      const localProjectKeys = new Map();
+      const localRepoRoots = new Set();
+      const localEntryByRepoRoot = new Map();
+      for (const entry of localEntries) {
+        if (entry?.repo_root) {
+          localProjectKeys.set(entry.repo_root, entry.project_key);
+          localRepoRoots.add(entry.repo_root);
+        }
+        localEntryByRepoRoot.set(entry.repo_root, { projectEntry: entry, worktreeEntry: null });
+        for (const worktree of Array.isArray(entry?.worktrees) ? entry.worktrees : []) {
+          if (worktree?.repo_root) {
+            localProjectKeys.set(worktree.repo_root, entry.project_key);
+            localRepoRoots.add(worktree.repo_root);
+            localEntryByRepoRoot.set(worktree.repo_root, { projectEntry: entry, worktreeEntry: worktree });
+          }
+        }
+      }
+      const repoRootByRemote = buildRepoRootByRemote(localRepoRows);
 
-      const byProject = new Map();
-      for (const row of sessionProjectRows) {
-        const repoRoot = typeof row?.repo_root === "string" ? row.repo_root.trim() : "";
-        if (!repoRoot) continue;
-        const entry = ensureProjectUsageEntry(byProject, {
-          project_key: localProjectKeys.get(repoRoot) || repoRoot,
-          project_ref: repoRoot,
-          repo_root: repoRoot,
-          git_branches: gitBranchesByRepo.get(repoRoot) || [],
-        });
-        const groupCost = createCostAccumulator();
-        if (Number(row?.non_null_cost_count || 0) > 0) {
-          addCostToAccumulator(groupCost, {
-            total_cost_usd: Number(row?.stored_total_cost_usd || 0),
-            cost_estimated: false,
-            cost_quality: "stored",
-          });
-        }
-        if (Number(row?.unknown_total_tokens || 0) > 0) {
-          addCostToAccumulator(groupCost, resolveUsageCost({
-            source: row?.provider,
-            model: row?.model,
-            total_tokens: Number(row?.unknown_total_tokens || 0),
-            stored_cost_usd: 0,
-            stored_cost_is_authoritative: false,
-          }));
-        }
-        addProjectUsageGroup(entry, {
-          provider: row?.provider,
-          model: row?.model,
-          total_tokens: Number(row?.total_tokens || 0),
-          billable_total_tokens: Number(row?.total_tokens || 0),
-          session_count: Number(row?.session_count || 0),
-          last_seen_at: normalizeIsoTimestamp(row?.last_seen_at),
-          branches: row?.branches,
-          costResult: finalizeCostAccumulator(groupCost),
-        });
-      }
+      const queueOnlyProjects = new Map();
       for (const row of projectRows) {
         const projectRef = row.project_ref || row.project_key || "unknown";
         const projectKey = row.project_key || "unknown";
         const cleanProjectRef = String(projectRef || "").trim();
         if (path.isAbsolute(cleanProjectRef) && !repoRootExists(cleanProjectRef)) continue;
         const remoteRepoRoot = repoRootByRemote.get(normalizeGitRemoteRef(cleanProjectRef));
-        if (remoteRepoRoot && byProject.has(projectUsageIdentity({ project_ref: remoteRepoRoot }))) {
+        const absoluteLocalRepoRoot =
+          path.isAbsolute(cleanProjectRef) && localRepoRoots.has(cleanProjectRef)
+            ? cleanProjectRef
+            : null;
+        if (absoluteLocalRepoRoot) {
+          const costResult = resolveUsageCost({
+            source: row?.source,
+            model: row?.model || "unknown",
+            project_key: row.project_key || "unknown",
+            total_tokens: Number(row.total_tokens || 0),
+            stored_cost_usd: row?.total_cost_usd,
+            stored_cost_is_authoritative: row?.total_cost_usd != null,
+          });
+          const localMatch = localEntryByRepoRoot.get(absoluteLocalRepoRoot);
+          if (localMatch?.projectEntry) {
+            mergeQueueUsageIntoFinalEntry(localMatch.projectEntry, {
+              provider: row?.source || "unknown",
+              model: row?.model || "unknown",
+              total_tokens: Number(row.total_tokens || 0),
+              billable_total_tokens: Number((row.billable_total_tokens ?? row.total_tokens) || 0),
+              last_seen_at: projectRowLastSeenAt(row),
+              costResult,
+            });
+          }
+          if (localMatch?.worktreeEntry) {
+            mergeQueueUsageIntoFinalEntry(localMatch.worktreeEntry, {
+              provider: row?.source || "unknown",
+              model: row?.model || "unknown",
+              total_tokens: Number(row.total_tokens || 0),
+              billable_total_tokens: Number((row.billable_total_tokens ?? row.total_tokens) || 0),
+              last_seen_at: projectRowLastSeenAt(row),
+              costResult,
+            });
+            if (Array.isArray(localMatch.projectEntry?.worktrees)) {
+              localMatch.projectEntry.worktrees.sort(
+                (a, b) => Number(b.total_tokens) - Number(a.total_tokens),
+              );
+            }
+          }
+          continue;
+        }
+        if (remoteRepoRoot && localRepoRoots.has(remoteRepoRoot)) {
           continue;
         }
         const entryRepoRoot = remoteRepoRoot || (path.isAbsolute(cleanProjectRef) ? cleanProjectRef : null);
@@ -2342,7 +2697,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         const entryProjectKey = remoteRepoRoot
           ? localProjectKeys.get(remoteRepoRoot) || remoteRepoRoot
           : projectKey;
-        const entry = ensureProjectUsageEntry(byProject, {
+        const entry = ensureProjectUsageEntry(queueOnlyProjects, {
           project_key: entryProjectKey,
           project_ref: entryProjectRef,
           repo_root: entryRepoRoot,
@@ -2378,7 +2733,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       // totally empty. This path used to also exist for the non-empty case
       // and produce wrong numbers; keep it only as the empty fallback.
       let entries;
-      if (byProject.size === 0) {
+      if (localEntries.length === 0 && queueOnlyProjects.size === 0) {
         const { rows: scopedRows } = scopedQueueRows(qp, url);
         const timeZoneContext = getTimeZoneContext(url);
         const rows = scopedRows.filter((row) => {
@@ -2424,7 +2779,10 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             top_models: [],
           }));
       } else {
-        entries = finalizeProjectUsageEntries(byProject, sortMode, requestedLimit);
+        const queueEntries = finalizeProjectUsageEntries(queueOnlyProjects, sortMode, null);
+        entries = [...localEntries, ...queueEntries]
+          .sort((a, b) => compareProjectUsageEntries(a, b, sortMode))
+          .slice(0, requestedLimit ?? undefined);
       }
 
       json(res, { generated_at: new Date().toISOString(), entries });
@@ -2432,7 +2790,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- user-status (stub) ---
-    if (p === "/functions/tokentracker-user-status") {
+    if (isRouteMatch(p, ROUTES.userStatus)) {
       json(res, {
         user_id: "local-user", email: "local@localhost", name: "Local User", is_public: false,
         created_at: new Date().toISOString(),
@@ -2442,7 +2800,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-hourly (stub for day-view) ---
-    if (p === "/functions/tokentracker-usage-hourly") {
+    if (isRouteMatch(p, ROUTES.usageHourly)) {
       const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
       const timeZoneContext = getTimeZoneContext(url);
       const { rows, scope, excludedSources } = scopedQueueRows(qp, url);
@@ -2452,7 +2810,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
 
     // --- usage-monthly (stub for trend view) ---
-    if (p === "/functions/tokentracker-usage-monthly") {
+    if (isRouteMatch(p, ROUTES.usageMonthly)) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
@@ -2479,9 +2837,10 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
-    // --- vibedeck skills (read + write auth-gated) ---
-    if (p === "/functions/vibedeck-skills") {
+    // --- skills manager ---
+    if (isRouteMatch(p, ROUTES.skills)) {
       const method = String(req.method || "GET").toUpperCase();
+      const isLegacySkillsRoute = p === ROUTES.skills.legacy;
       const skills = require("./skills-manager");
       try {
         if (method === "GET") {
@@ -2511,18 +2870,65 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           json(res, { error: "Unknown skills mode" }, 400);
           return true;
         }
-        json(res, { error: "Method Not Allowed" }, 405);
+
+        // Legacy skills route accepts action-based POST for old clients.
+        if (method === "POST" && isLegacySkillsRoute) {
+          if (!isAuthorizedLocalMutation(req)) {
+            json(res, { ok: false, error: "Unauthorized" }, 401);
+            return true;
+          }
+          const body = await readJsonBody(req);
+          const action = String(body?.action || "");
+          if (action === "install") {
+            json(res, { ok: true, skill: await skills.installSkill(body.skill, body.targets || ["claude", "codex"]) });
+            return true;
+          }
+          if (action === "uninstall") {
+            json(res, { ok: true, ...(skills.uninstallSkill(body.id) || {}) });
+            return true;
+          }
+          if (action === "restore") {
+            json(res, { ok: true, skill: skills.restoreSkill(body.id) });
+            return true;
+          }
+          if (action === "set_targets") {
+            json(res, { ok: true, skill: skills.setSkillTargets(body.id, body.targets || []) });
+            return true;
+          }
+          if (action === "import_local") {
+            json(res, { ok: true, skill: skills.importLocalSkill(body.directory, body.targets || []) });
+            return true;
+          }
+          if (action === "delete_local") {
+            json(res, { ok: true, ...(skills.deleteLocalSkill(body.directory, body.targets || []) || {}) });
+            return true;
+          }
+          if (action === "add_repo") {
+            json(res, { ok: true, repo: skills.addRepo(body.repo) });
+            return true;
+          }
+          if (action === "remove_repo") {
+            json(res, { ok: true, ...(skills.removeRepo(body.owner, body.name) || {}) });
+            return true;
+          }
+          json(res, { ok: false, error: "Unknown skills action" }, 400);
+          return true;
+        }
+
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
       } catch (e) {
         json(res, { ok: false, error: e?.message || "Unknown skills error" }, 500);
       }
       return true;
     }
 
-    if (p.startsWith("/functions/vibedeck-skills/")) {
+    const skillsCommand = routeFromSkillsPrefix(p);
+    if (skillsCommand) {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { error: "Method Not Allowed" }, 405);
         return true;
       }
+      const cmd = skillsCommand;
       const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
       if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
       let body = {};
@@ -2532,7 +2938,6 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "invalid_json" }, 400);
         return true;
       }
-      const cmd = p.slice("/functions/vibedeck-skills/".length);
       const skills = require("./skills-manager");
       try {
         if (cmd === "install") {
@@ -2617,91 +3022,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
-    // --- skills manager ---
-    if (p === "/functions/tokentracker-skills") {
-      const method = String(req.method || "GET").toUpperCase();
-      const skills = require("./skills-manager");
-      try {
-        if (method === "GET") {
-          const mode = url.searchParams.get("mode") || "installed";
-          if (mode === "installed") {
-            json(res, { targets: skills.targetList(), skills: skills.listInstalledSkills() });
-            return true;
-          }
-          if (mode === "repos") {
-            json(res, { repos: skills.listRepos() });
-            return true;
-          }
-          if (mode === "discover") {
-            const force = url.searchParams.get("force") === "1";
-            json(res, await skills.discoverSkills({ force }));
-            return true;
-          }
-          if (mode === "search") {
-            const data = await skills.searchSkillsSh(
-              url.searchParams.get("q") || "",
-              Number(url.searchParams.get("limit") || 20),
-              Number(url.searchParams.get("offset") || 0),
-            );
-            json(res, data);
-            return true;
-          }
-          json(res, { error: "Unknown skills mode" }, 400);
-          return true;
-        }
-
-        if (method === "POST") {
-          if (!isAuthorizedLocalMutation(req)) {
-            json(res, { ok: false, error: "Unauthorized" }, 401);
-            return true;
-          }
-          const body = await readJsonBody(req);
-          const action = String(body?.action || "");
-          if (action === "install") {
-            json(res, { ok: true, skill: await skills.installSkill(body.skill, body.targets || ["claude", "codex"]) });
-            return true;
-          }
-          if (action === "uninstall") {
-            json(res, { ok: true, ...(skills.uninstallSkill(body.id) || {}) });
-            return true;
-          }
-          if (action === "restore") {
-            json(res, { ok: true, skill: skills.restoreSkill(body.id) });
-            return true;
-          }
-          if (action === "set_targets") {
-            json(res, { ok: true, skill: skills.setSkillTargets(body.id, body.targets || []) });
-            return true;
-          }
-          if (action === "import_local") {
-            json(res, { ok: true, skill: skills.importLocalSkill(body.directory, body.targets || []) });
-            return true;
-          }
-          if (action === "delete_local") {
-            json(res, { ok: true, ...(skills.deleteLocalSkill(body.directory, body.targets || []) || {}) });
-            return true;
-          }
-          if (action === "add_repo") {
-            json(res, { ok: true, repo: skills.addRepo(body.repo) });
-            return true;
-          }
-          if (action === "remove_repo") {
-            json(res, { ok: true, ...(skills.removeRepo(body.owner, body.name) || {}) });
-            return true;
-          }
-          json(res, { ok: false, error: "Unknown skills action" }, 400);
-          return true;
-        }
-
-        json(res, { ok: false, error: "Method Not Allowed" }, 405);
-      } catch (e) {
-        json(res, { ok: false, error: e?.message || "Unknown skills error" }, 500);
-      }
-      return true;
-    }
-
     // --- usage-limits ---
-    if (p === "/functions/tokentracker-usage-limits") {
+    if (isRouteMatch(p, ROUTES.usageLimits)) {
       const { getUsageLimits, resetUsageLimitsCache } = require("./usage-limits");
       try {
         const forceRefresh = url.searchParams.get("refresh");

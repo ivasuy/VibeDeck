@@ -1,9 +1,9 @@
 import { safeGetItem, safeSetItem } from "./safe-browser";
 
-const VERSION_CACHE_KEY = "tokentracker.latest_tracker_version";
-const VERSION_CACHE_AT_KEY = "tokentracker.latest_tracker_version_at";
+const VERSION_CACHE_KEY = "vibedeck.latest_tracker_version";
+const VERSION_CACHE_AT_KEY = "vibedeck.latest_tracker_version_at";
 const VERSION_TTL_MS = 6 * 60 * 60 * 1000;
-const REGISTRY_URL = "https://registry.npmjs.org/tokentracker-cli/latest";
+const REGISTRY_URL = "https://registry.npmjs.org/vibedeck-cli/latest";
 
 function isValidVersion(value: any) {
   return typeof value === "string" && /^\d+\.\d+\.\d+/.test(value);

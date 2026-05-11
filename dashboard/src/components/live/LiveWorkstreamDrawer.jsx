@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "../../ui/openai/components";
+import { SlidePanel } from "../../ui/foundation";
 import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
@@ -79,7 +80,7 @@ function SessionRow({ session, primary = false, selected = false, onSelectSessio
             {String(session?.provider || "unknown")}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
-            <StatusIcon className={cn("h-3.5 w-3.5", active ? "text-emerald-500" : "text-amber-500")} aria-hidden />
+            <StatusIcon className={cn("h-3.5 w-3.5", active ? "text-indigo-500" : "text-amber-500")} aria-hidden />
             {active ? "active" : "stale"}
           </div>
         </div>
@@ -135,21 +136,26 @@ function SessionRow({ session, primary = false, selected = false, onSelectSessio
 }
 
 export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, onSelectSession, onClose }) {
-  if (!workstream) return null;
   const titleId = "live-workstream-breakdown-title";
-  const repoRoot = String(workstream.repo_root || workstream.cwd || "");
-  const primaryKey = liveSessionKey(workstream.primary_session);
-  const cost = Number(workstream?.cost_unknown_count || 0) > 0 ? null : workstream.total_cost_usd;
+  const repoRoot = String(workstream?.repo_root || workstream?.cwd || "");
+  const primaryKey = workstream ? liveSessionKey(workstream.primary_session) : null;
+  const cost = workstream && Number(workstream?.cost_unknown_count || 0) > 0 ? null : workstream?.total_cost_usd;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
-      <div
+    <SlidePanel
+      open={!!workstream}
+      onClose={onClose}
+      side="right"
+      width="w-full max-w-5xl"
+      className="border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
+    >
+      {workstream && <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="h-full w-full max-w-5xl border-l border-oai-gray-200 bg-white shadow-xl dark:border-oai-gray-800 dark:bg-oai-gray-900"
+        className="flex h-full flex-col"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-oai-gray-200 px-5 py-4 dark:border-oai-gray-800">
+        <div className="flex items-start justify-between gap-4 border-b border-oai-gray-200 dark:border-oai-gray-800 px-5 py-4">
           <div className="min-w-0">
             <h2 id={titleId} className="text-sm font-semibold text-oai-black dark:text-white">
               Workstream breakdown
@@ -172,7 +178,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
           </Button>
         </div>
 
-        <div className="h-[calc(100%-81px)] overflow-auto p-5">
+        <div className="flex-1 overflow-auto p-5">
           <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <Metric icon={GitBranch} label="Branches" value={workstream.branches.join(", ") || "—"} />
             <Metric icon={Activity} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
@@ -194,7 +200,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                   </div>
                   <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
                     <span className="inline-flex items-center gap-1">
-                      <CirclePlay className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
+                      <CirclePlay className="h-3.5 w-3.5 text-indigo-500" aria-hidden />
                       {toDisplayNumber(group.active_session_count)} active
                     </span>
                     <span className="inline-flex items-center gap-1">
@@ -225,7 +231,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
             </div>
           ) : null}
         </div>
-      </div>
-    </div>
+      </div>}
+    </SlidePanel>
   );
 }

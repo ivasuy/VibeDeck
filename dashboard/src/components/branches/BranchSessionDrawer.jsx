@@ -1,6 +1,7 @@
 import React from "react";
 import { CalendarClock, CircleDollarSign, Cpu, Layers3, Server, Tag, X } from "lucide-react";
 import { Button } from "../../ui/openai/components";
+import { SlidePanel } from "../../ui/foundation";
 import { copy } from "../../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "../live/ConfidenceBadge";
@@ -47,21 +48,26 @@ function SessionMetric({ icon: Icon, label, value }) {
 }
 
 export function BranchSessionDrawer({ row = null, onClose }) {
-  if (!row) return null;
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
   const models = Array.isArray(row?.models) ? row.models : [];
   const hasModels = models.length !== 0;
   const titleId = "branch-session-drawer-title";
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-[1px]">
+    <SlidePanel
+      open={!!row}
+      onClose={onClose}
+      side="right"
+      width="w-full max-w-5xl"
+      className="border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
+    >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="h-full w-full max-w-5xl border-l border-oai-gray-200 bg-white shadow-xl dark:border-oai-gray-800 dark:bg-oai-gray-900"
+        className="flex h-full flex-col"
       >
-        <div className="flex items-center justify-between gap-4 border-b border-oai-gray-200 px-5 py-4 dark:border-oai-gray-800">
+        <div className="flex items-center justify-between gap-4 border-b border-oai-gray-200 dark:border-oai-gray-800 px-5 py-4">
           <div className="min-w-0">
             <h2 id={titleId} className="text-sm font-semibold text-oai-black dark:text-white">
               {copy("branches.drawer.title")}
@@ -84,7 +90,7 @@ export function BranchSessionDrawer({ row = null, onClose }) {
           </Button>
         </div>
 
-        <div className="h-[calc(100%-73px)] overflow-auto p-5">
+        <div className="flex-1 overflow-auto p-5">
           {hasModels ? (
             <div className="mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
@@ -173,6 +179,6 @@ export function BranchSessionDrawer({ row = null, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </SlidePanel>
   );
 }

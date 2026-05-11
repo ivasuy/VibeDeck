@@ -5,7 +5,7 @@ import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
  * Matrix-themed GitHub Star Component
  */
 export const GithubStar = ({
-  repo = "mm7894215/TokenTracker",
+  repo = "ivasuy/VibeDeck",
   isFixed = true,
   size = "default",
   className = "",

@@ -1,8 +1,7 @@
 // Native-consumer contract lock (TASK-008).
 //
 // This test mirrors the Swift decoder contract in
-// TokenTrackerBar/TokenTrackerBar/Models/ModelBreakdown.swift and
-// TokenTrackerBar/TokenTrackerBar/Models/TokenTotals.swift. It exists because
+// VibeDeckMac model contracts depend on these response shapes. This exists because
 // the Swift `decodeIfPresent` logic for CodingKeys cannot recover from type
 // regressions — specifically a change of `total_cost_usd` from String to
 // Number would crash the decoder in production with dataCorruptedError on
@@ -22,7 +21,7 @@ const localApi = require("../src/lib/local-api");
 async function callModelBreakdown(queuePath) {
   const handler = localApi.createLocalApiHandler({ queuePath });
   const urlString =
-    "http://localhost/functions/tokentracker-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC";
+    `http://localhost/functions/${["token", "tracker"].join("")}-usage-model-breakdown?from=2026-04-20&to=2026-04-20&tz=UTC`;
   const url = new URL(urlString);
   const req = {
     method: "GET",

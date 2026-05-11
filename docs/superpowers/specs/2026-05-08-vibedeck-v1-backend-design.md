@@ -188,7 +188,7 @@ Agent CLIs run
                    Dashboard / macOS app
 ```
 
-The bucket pipeline is preserved exactly. SessionEvents flow in parallel and reference the existing buckets by `(provider, model, time_window)`. Token math is never recomputed.
+The aggregate bucket pipeline is preserved for compatibility exports, but the canonical VibeDeck read path now comes from `vibedeck_session_events`, `vibedeck_session_buckets`, and `vibedeck_sessions` inside `vibedeck.sqlite3`. `queue.jsonl` and `project.queue.jsonl` remain rebuildable compatibility outputs, not the authoritative source of project/worktree/session truth.
 
 ---
 
@@ -621,6 +621,9 @@ CREATE TABLE vibedeck_sessions (
     model TEXT,                        -- last-seen model in session; nullable
     total_tokens INTEGER,              -- denormalized cache; recompute from buckets
     total_cost_usd REAL,               -- denormalized cache; recompute from buckets
+    last_observed_at TEXT,
+    cost_estimated INTEGER NOT NULL DEFAULT 1,
+    cost_quality TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (provider, session_id)
@@ -630,7 +633,40 @@ CREATE INDEX idx_vibedeck_sessions_repo_branch ON vibedeck_sessions(repo_root, b
 CREATE INDEX idx_vibedeck_sessions_started ON vibedeck_sessions(started_at);
 CREATE INDEX idx_vibedeck_sessions_live ON vibedeck_sessions(ended_at) WHERE ended_at IS NULL;
 
--- Links session to existing tokentracker bucket rows
+-- Canonical per-session event ledger
+CREATE TABLE vibedeck_session_events (
+    provider TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    event_key TEXT NOT NULL,
+    kind TEXT NOT NULL,                -- 'start' | 'update' | 'end'
+    observed_at TEXT NOT NULL,
+    started_at TEXT,
+    ended_at TEXT,
+    end_reason TEXT,
+    cwd TEXT,
+    repo_root TEXT,
+    repo_common_dir TEXT,
+    parent_repo TEXT,
+    branch TEXT,
+    branch_resolution_tier TEXT,
+    confidence TEXT,
+    model TEXT,
+    delta_tokens INTEGER,
+    input_tokens INTEGER,
+    cached_input_tokens INTEGER,
+    cache_creation_input_tokens INTEGER,
+    output_tokens INTEGER,
+    reasoning_output_tokens INTEGER,
+    conversation_count INTEGER,
+    total_tokens INTEGER,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (provider, session_id, event_key)
+);
+
+CREATE INDEX idx_vibedeck_session_events_activity
+  ON vibedeck_session_events(provider, session_id, observed_at);
+
+-- Canonical per-session bucket facts
 CREATE TABLE vibedeck_session_buckets (
     provider TEXT NOT NULL,
     session_id TEXT NOT NULL,
@@ -638,6 +674,17 @@ CREATE TABLE vibedeck_session_buckets (
     bucket_model TEXT NOT NULL,
     bucket_hour_start TEXT NOT NULL,   -- existing TokenTracker bucket key
     proportion REAL NOT NULL DEFAULT 1.0, -- pro-rata if multiple sessions share bucket time
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    reasoning_output_tokens INTEGER NOT NULL DEFAULT 0,
+    conversation_count INTEGER NOT NULL DEFAULT 0,
+    total_tokens INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd REAL,
+    cost_estimated INTEGER NOT NULL DEFAULT 1,
+    cost_quality TEXT,
+    last_observed_at TEXT,
     PRIMARY KEY (provider, session_id, bucket_provider, bucket_model, bucket_hour_start),
     FOREIGN KEY (provider, session_id)
         REFERENCES vibedeck_sessions(provider, session_id) ON DELETE CASCADE
@@ -973,6 +1020,7 @@ The spec is implemented across **four backend plans + one UI session**. Plan 1 i
 **Implementation deviations from spec (accepted):**
 
 - DB filename is `vibedeck.sqlite3` (more specific than the spec's earlier `db.sqlite`); spec is the outlier — code is consistent across `serve.js` and `entire-bridge.js`. Treat `vibedeck.sqlite3` as canonical.
+- Canonical usage truth now lives in `vibedeck_session_events` + `vibedeck_session_buckets` + `vibedeck_sessions`; `queue.jsonl` and `project.queue.jsonl` are compatibility exports and rebuild inputs, not authoritative state.
 - `schema_version` table uses `updated_at` instead of spec's `applied_at` — Plan 3 will rename to `applied_at` for semantic clarity (no users on disk yet, safe rename).
 - `node:sqlite` (built-in, requires Node ≥22.5) instead of `better-sqlite3` — preserves "no native deps" philosophy.
 - `execa@5.1.1` added to deps (was assumed-existing but absent in fork).

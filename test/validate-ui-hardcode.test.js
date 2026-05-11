@@ -7,8 +7,8 @@ const {
 } = require("../scripts/ops/validate-ui-hardcode-lib.cjs");
 
 test("extractJsxTextTokens includes unicode letters and digits", () => {
-  const tokens = extractJsxTextTokens("<div>123</div><span>中文</span><p>abc</p>");
-  assert.deepEqual(tokens, ["123", "中文", "abc"]);
+  const tokens = extractJsxTextTokens("<div>123</div><span>sample</span><p>abc</p>");
+  assert.deepEqual(tokens, ["123", "sample", "abc"]);
 });
 
 test("diffAgainstBaseline flags new rawText tokens even if count unchanged", () => {

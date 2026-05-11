@@ -112,7 +112,7 @@ export function LiveBranchSignalMap({ sessions = [] }) {
           <div
             className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
             style={{
-              background: `conic-gradient(rgb(16 163 127) ${model.routePct}%, rgba(255,255,255,0.08) 0)`,
+              background: `conic-gradient(rgb(99 102 241) ${model.routePct}%, rgba(255,255,255,0.08) 0)`,
             }}
             aria-hidden
           >

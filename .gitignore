@@ -39,13 +39,6 @@ index.scip
 CLAUDE.md
 AGENTS.md
 
-# TokenTrackerBar build artifacts
-TokenTrackerBar/EmbeddedServer/
-TokenTrackerBar/build/
-TokenTrackerBar/TokenTrackerBar.xcodeproj/
-TokenTrackerBar/icon_composer/
-TokenTrackerBar/DerivedData/
-TokenTrackerBar/*.xcarchive
 
 # AI / IDE tooling
 .agent

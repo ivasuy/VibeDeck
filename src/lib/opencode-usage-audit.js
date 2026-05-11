@@ -34,7 +34,7 @@ async function buildLocalHourlyTotals({ storageDir, source = "opencode" }) {
   const messageFiles = await listOpencodeMessageFiles(storageDir);
   const queuePath = path.join(
     os.tmpdir(),
-    `tokentracker-opencode-audit-${process.pid}-${Date.now()}.jsonl`,
+    `vibedeck-opencode-audit-${process.pid}-${Date.now()}.jsonl`,
   );
   const cursors = { version: 1, files: {}, hourly: null, opencode: null };
 

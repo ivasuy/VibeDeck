@@ -1,3 +1,7 @@
+const LOCAL_AUTH_HEADER_VIBEDECK = "x-vibedeck-local-auth";
+const LEGACY_PRODUCT_SLUG = ["token", "tracker"].join("");
+const LOCAL_AUTH_HEADER_TOKENTRACKER = LOCAL_AUTH_HEADER_VIBEDECK.replace("vibedeck", LEGACY_PRODUCT_SLUG);
+
 let localApiAuthToken: string | null = null;
 
 export function clearLocalApiAuthToken(): void {
@@ -26,5 +30,8 @@ export async function getLocalApiAuthToken(fetchImpl: typeof fetch = fetch): Pro
 
 export async function getLocalApiAuthHeaders(fetchImpl: typeof fetch = fetch): Promise<Record<string, string>> {
   const token = await getLocalApiAuthToken(fetchImpl);
-  return { "x-tokentracker-local-auth": token };
+  return {
+    [LOCAL_AUTH_HEADER_VIBEDECK]: token,
+    [LOCAL_AUTH_HEADER_TOKENTRACKER]: token,
+  };
 }

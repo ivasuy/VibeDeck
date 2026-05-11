@@ -4,7 +4,7 @@ const fs = require("node:fs/promises");
 const fssync = require("node:fs");
 const cp = require("node:child_process");
 
-const OPENCLAW_HOOK_NAME = "tokentracker-openclaw-sync";
+const OPENCLAW_HOOK_NAME = "vibedeck-openclaw-sync";
 const OPENCLAW_HOOK_DIRNAME = "openclaw-hook";
 
 function resolveOpenclawHookPaths({ home = os.homedir(), trackerDir, env = process.env } = {}) {
@@ -271,14 +271,14 @@ function runOpenclawCli(args, env = process.env) {
 function buildHookMarkdown() {
   return `---
 name: ${OPENCLAW_HOOK_NAME}
-description: "Trigger tokentracker sync when OpenClaw sessions roll over"
+description: "Trigger vibedeck sync when OpenClaw sessions roll over"
 metadata:
   { "openclaw": { "emoji": "📈", "events": ["command:new", "command:reset", "command:stop"], "requires": { "bins": ["node"] } } }
 ---
 
 # VibeDeck OpenClaw Sync Hook
 
-Triggers non-blocking 'tokentracker sync --auto --from-openclaw' runs when OpenClaw command events indicate session rollover/reset/stop.
+Triggers non-blocking 'vibedeck sync --auto --from-openclaw' runs when OpenClaw command events indicate session rollover/reset/stop.
 `;
 }
 

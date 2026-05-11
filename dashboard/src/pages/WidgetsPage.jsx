@@ -17,7 +17,7 @@ import { FadeIn, StaggerContainer, StaggerItem } from "../ui/foundation/FadeIn.j
  *
  * Hardcoded strings ("TODAY", "203.2M", "claude-opus-4-6", etc.)
  * intentionally bypass copy.csv — they mirror the literal Swift string
- * constants in TokenTrackerWidget/Widgets/*.swift which ship English-only
+ * constants in Widget/Widgets/*.swift which ship English-only
  * in the native app. Keeping them inline makes the preview read as a
  * faithful screenshot.
  */
@@ -27,7 +27,7 @@ const WIDGET_H = 124;
 const ROUNDED_FONT = "ui-rounded, -apple-system, system-ui";
 
 // Model accent palette — mirrors WidgetTheme.modelDot in
-// TokenTrackerBar/TokenTrackerWidget/Views/WidgetTheme.swift
+// VibeDeckMac/Widget/Views/WidgetTheme.swift
 const MODEL_COLORS = ["#5A8CF2", "#9973E6", "#4DB8A6", "#E68C59"];
 
 // Source accent palette — mirrors WidgetTheme.sourceColor (SwiftUI system
@@ -446,7 +446,7 @@ function MenuBarDisplayCard() {
   const animatedIcon = settings?.animatedIcon !== false;
 
   return (
-    <article className="rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-6">
+    <article className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 transition-colors duration-200 sm:p-6">
       <MenuBarPreview slotConfigs={slotConfigs} showStats={showStats} />
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -533,7 +533,7 @@ function HeaderCta() {
   if (platform === "mac-web") {
     return (
       <a
-        href="https://github.com/mm7894215/TokenTracker/releases/latest"
+        href="https://github.com/ivasuy/VibeDeck/releases/latest"
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white no-underline transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"

@@ -4,7 +4,7 @@ set -euo pipefail
 # ──────────────────────────────────────────────
 # bundle-node.sh
 # Downloads Node.js binary and bundles
-# tokentracker source into EmbeddedServer/
+# vibedeck source into EmbeddedServer/
 #
 # Usage:
 #   ./bundle-node.sh              # universal (arm64 + x64)
@@ -81,11 +81,11 @@ echo "✅ Node.js binary ready ($TARGET_ARCH)"
 file "$EMBED_DIR/node"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# 2. Bundle tokentracker source
+# 2. Bundle vibedeck source
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo "📂 Copying tokentracker source..."
+echo "📂 Copying vibedeck source..."
 
-TT_DIR="$EMBED_DIR/tokentracker"
+TT_DIR="$EMBED_DIR/vibedeck"
 mkdir -p "$TT_DIR/bin"
 
 cp "$REPO_ROOT/bin/tracker.js" "$TT_DIR/bin/"

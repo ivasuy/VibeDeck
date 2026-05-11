@@ -6,7 +6,7 @@ import WidgetKit
 // the top. Reset countdown sits beside the bar where space allows.
 
 struct UsageLimitsWidget: Widget {
-    let kind: String = "TokenTrackerLimitsWidget"
+    let kind: String = "VibeDeckLimitsWidget"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in

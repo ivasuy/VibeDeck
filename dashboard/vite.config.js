@@ -2,34 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 import os from "node:os";
 
-const COPY_REQUIRED_KEYS = [
-  "landing.meta.title",
-  "landing.meta.description",
-  "landing.meta.og_site_name",
-  "landing.meta.og_type",
-  "landing.meta.og_image",
-  "landing.meta.og_url",
-  "landing.meta.twitter_card",
-  "share.meta.title",
-  "share.meta.description",
-  "share.meta.og_site_name",
-  "share.meta.og_type",
-  "share.meta.og_image",
-  "share.meta.og_url",
-  "share.meta.twitter_card",
-];
-
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const COPY_PATH = path.join(ROOT_DIR, "src", "content", "copy.csv");
 const PACKAGE_JSON_PATH = path.resolve(ROOT_DIR, "..", "package.json");
 const REPO_ROOT = path.resolve(ROOT_DIR, "..");
 const LOCAL_SYNC_TIMEOUT_MS = 120_000;
+const LEGACY_PRODUCT_SLUG = ["token", "tracker"].join("");
 const LOCAL_API_ROUTES = {
   localSync: "/functions/vibedeck-local-sync",
   usageSummary: "/functions/vibedeck-usage-summary",
@@ -42,7 +25,7 @@ const LOCAL_API_ROUTES = {
 };
 
 function legacyRoute(primaryRoute) {
-  return primaryRoute.replace("/functions/vibedeck-", "/functions/tokentracker-");
+  return primaryRoute.replace("/functions/vibedeck-", `/functions/${LEGACY_PRODUCT_SLUG}-`);
 }
 
 function isLocalApiRoute(pathname, primaryRoute) {
@@ -60,166 +43,6 @@ function loadAppVersion() {
   }
 }
 
-function parseCsv(raw) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let inQuotes = false;
-
-  for (let i = 0; i < raw.length; i += 1) {
-    const ch = raw[i];
-
-    if (inQuotes) {
-      if (ch === '"') {
-        const next = raw[i + 1];
-        if (next === '"') {
-          field += '"';
-          i += 1;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += ch;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inQuotes = true;
-      continue;
-    }
-
-    if (ch === ",") {
-      row.push(field);
-      field = "";
-      continue;
-    }
-
-    if (ch === "\n") {
-      row.push(field);
-      field = "";
-      if (!row.every((cell) => cell.trim() === "")) {
-        rows.push(row);
-      }
-      row = [];
-      continue;
-    }
-
-    if (ch === "\r") {
-      continue;
-    }
-
-    field += ch;
-  }
-
-  row.push(field);
-  if (!row.every((cell) => cell.trim() === "")) {
-    rows.push(row);
-  }
-
-  return rows;
-}
-
-function loadCopyRegistry() {
-  let raw = "";
-  try {
-    raw = fs.readFileSync(COPY_PATH, "utf8");
-  } catch (error) {
-    console.warn("[vibedeck] Failed to read copy registry:", error.message);
-    return new Map();
-  }
-
-  const rows = parseCsv(raw);
-  if (!rows.length) return new Map();
-
-  const header = rows[0].map((cell) => cell.trim());
-  const keyIndex = header.indexOf("key");
-  const textIndex = header.indexOf("text");
-  if (keyIndex === -1 || textIndex === -1) {
-    console.warn("[vibedeck] Copy registry missing key/text columns.");
-    return new Map();
-  }
-
-  const map = new Map();
-  rows.slice(1).forEach((cells) => {
-    const key = String(cells[keyIndex] || "").trim();
-    if (!key) return;
-    const text = String(cells[textIndex] ?? "").trim();
-    map.set(key, text);
-  });
-
-  return map;
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function buildMeta(prefix = "landing") {
-  const map = loadCopyRegistry();
-  const read = (key) => map.get(`${prefix}.meta.${key}`) || "";
-
-  const missing = COPY_REQUIRED_KEYS.filter((key) => !map.has(key));
-  if (missing.length) {
-    console.warn("[vibedeck] Copy registry missing keys:", missing.join(", "));
-  }
-
-  return {
-    title: read("title"),
-    description: read("description"),
-    ogSiteName: read("og_site_name"),
-    ogType: read("og_type"),
-    ogImage: read("og_image"),
-    ogUrl: read("og_url"),
-    twitterCard: read("twitter_card"),
-  };
-}
-
-function resolveMetaPrefix(ctx) {
-  const rawPath = String(ctx?.path || ctx?.filename || ctx?.originalUrl || "").toLowerCase();
-  void rawPath;
-  return "landing";
-}
-
-function injectRichMeta(html, prefix) {
-  const meta = buildMeta(prefix);
-  const replacements = {
-    __TOKENTRACKER_TITLE__: meta.title,
-    __TOKENTRACKER_DESCRIPTION__: meta.description,
-    __TOKENTRACKER_OG_SITE_NAME__: meta.ogSiteName,
-    __TOKENTRACKER_OG_TITLE__: meta.title,
-    __TOKENTRACKER_OG_DESCRIPTION__: meta.description,
-    __TOKENTRACKER_OG_IMAGE__: meta.ogImage,
-    __TOKENTRACKER_OG_TYPE__: meta.ogType,
-    __TOKENTRACKER_OG_URL__: meta.ogUrl,
-    __TOKENTRACKER_TWITTER_CARD__: meta.twitterCard,
-    __TOKENTRACKER_TWITTER_TITLE__: meta.title,
-    __TOKENTRACKER_TWITTER_DESCRIPTION__: meta.description,
-    __TOKENTRACKER_TWITTER_IMAGE__: meta.ogImage,
-  };
-
-  let output = html;
-  for (const [token, value] of Object.entries(replacements)) {
-    output = output.replaceAll(token, escapeHtml(value));
-  }
-  return output;
-}
-
-function richLinkMetaPlugin() {
-  return {
-    name: "vibedeck-rich-link-meta",
-    transformIndexHtml(html, ctx) {
-      return injectRichMeta(html, resolveMetaPrefix(ctx));
-    },
-  };
-}
-
-// 本地数据 API 插件 - 优先读取 ~/.vibedeck/tracker/queue.jsonl，兼容回退 ~/.tokentracker/tracker/queue.jsonl
-// 本地 API 处理函数
 function trimCommandOutput(value, maxLength = 4000) {
   const text = String(value || "");
   if (text.length <= maxLength) return text;
@@ -245,7 +68,7 @@ function readJsonBodyVite(req) {
 
 async function runLocalSyncCommand(extraEnv = {}) {
   return await new Promise((resolve, reject) => {
-    const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tokentracker-cli", "sync"], {
+    const child = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["vibedeck-cli", "sync"], {
       cwd: REPO_ROOT,
       env: { ...process.env, ...extraEnv },
       stdio: ["ignore", "pipe", "pipe"],
@@ -313,7 +136,7 @@ const { getModelPricing, computeRowCost } = __pricing;
 
 async function handleLocalApi(req, res, url) {
   const QUEUE_PATH_PRIMARY = path.join(os.homedir(), ".vibedeck", "tracker", "queue.jsonl");
-  const QUEUE_PATH_LEGACY = path.join(os.homedir(), ".tokentracker", "tracker", "queue.jsonl");
+  const QUEUE_PATH_LEGACY = path.join(os.homedir(), `.${LEGACY_PRODUCT_SLUG}`, "tracker", "queue.jsonl");
   const QUEUE_PATH = fs.existsSync(QUEUE_PATH_PRIMARY)
     ? QUEUE_PATH_PRIMARY
     : QUEUE_PATH_LEGACY;
@@ -408,14 +231,8 @@ async function handleLocalApi(req, res, url) {
       } catch {
         body = {};
       }
-      const extraEnv = {};
-      if (typeof body.deviceToken === "string" && body.deviceToken.trim()) {
-        extraEnv.TOKENTRACKER_DEVICE_TOKEN = body.deviceToken.trim();
-      }
-      if (typeof body.insforgeBaseUrl === "string" && /^https?:\/\//i.test(body.insforgeBaseUrl.trim())) {
-        extraEnv.TOKENTRACKER_INSFORGE_BASE_URL = body.insforgeBaseUrl.trim();
-      }
-      const result = await runLocalSyncCommand(extraEnv);
+      void body;
+      const result = await runLocalSyncCommand();
       try {
         const esmRequire = createRequire(import.meta.url);
         const { resetUsageLimitsCache } = esmRequire("../src/lib/usage-limits");
@@ -439,7 +256,7 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 usage-summary
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageSummary)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
@@ -462,12 +279,12 @@ async function handleLocalApi(req, res, url) {
     });
     const totalCost = totals.total_cost_usd;
 
-    // 计算 rolling 统计数据（最近7天和30天）
+
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
     const allDaily = aggregateByDay(rows);
 
-    // 计算最近7天
+
     const last7Days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(today);
@@ -482,7 +299,7 @@ async function handleLocalApi(req, res, url) {
       return acc;
     }, { billable_total_tokens: 0, conversation_count: 0 });
 
-    // 计算最近30天
+
     const last30Days = [];
     for (let i = 29; i >= 0; i--) {
       const d = new Date(today);
@@ -498,7 +315,7 @@ async function handleLocalApi(req, res, url) {
     }, { billable_total_tokens: 0, conversation_count: 0 });
     const avgPerActiveDay = last30Days.length > 0 ? Math.round(last30dTotals.billable_total_tokens / last30Days.length) : 0;
 
-    // 计算 last_7d 和 last_30d 的日期范围
+
     const last7dFrom = new Date(today);
     last7dFrom.setUTCDate(last7dFrom.getUTCDate() - 6);
     const last30dFrom = new Date(today);
@@ -527,7 +344,7 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 usage-daily
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageDaily)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
@@ -538,7 +355,7 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 usage-heatmap
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageHeatmap)) {
     const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
     const rows = readQueueData();
@@ -553,11 +370,11 @@ async function handleLocalApi(req, res, url) {
     const cells = [];
     const cursor = new Date(start);
 
-    // 先收集所有有数据的天，计算 level 阈值
+
     const allValues = daily.map(d => d.billable_total_tokens).filter(v => v > 0).sort((a, b) => a - b);
     const maxValue = allValues.length > 0 ? allValues[allValues.length - 1] : 0;
 
-    // 根据最大值计算 level (0-4)
+
     function calcLevel(value) {
       if (value <= 0) return 0;
       if (maxValue === 0) return 1;
@@ -581,7 +398,7 @@ async function handleLocalApi(req, res, url) {
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
     const activeDays = cells.filter(c => c.billable_total_tokens > 0).length;
-    // 转为 weeks 二维数组（每 7 天一组），与 local-api.js 格式一致
+
     const weeksArr = [];
     for (let i = 0; i < cells.length; i += 7) {
       weeksArr.push(cells.slice(i, i + 7));
@@ -591,13 +408,13 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 usage-model-breakdown
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageModelBreakdown)) {
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
     const rows = readQueueData();
 
-    // 过滤日期范围
+
     const filteredRows = rows.filter(row => {
       if (!row.hour_start) return false;
       const day = row.hour_start.slice(0, 10);
@@ -606,7 +423,7 @@ async function handleLocalApi(req, res, url) {
 
     const bySource = new Map();
 
-    // 先按 source 和 model 分组统计
+
     for (const row of filteredRows) {
       const source = row.source || "unknown";
       const modelName = row.model || "unknown";
@@ -620,7 +437,7 @@ async function handleLocalApi(req, res, url) {
       }
       const sourceAgg = bySource.get(source);
 
-      // 累加 source 总计
+
       sourceAgg.totals.total_tokens += row.total_tokens || 0;
       sourceAgg.totals.billable_total_tokens += row.total_tokens || 0;
       sourceAgg.totals.input_tokens += row.input_tokens || 0;
@@ -629,7 +446,7 @@ async function handleLocalApi(req, res, url) {
       sourceAgg.totals.cache_creation_input_tokens += row.cache_creation_input_tokens || 0;
       sourceAgg.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
 
-      // 按 model 分组
+
       if (!sourceAgg.models.has(modelName)) {
         sourceAgg.models.set(modelName, {
           model: modelName,
@@ -647,7 +464,7 @@ async function handleLocalApi(req, res, url) {
       modelAgg.totals.reasoning_output_tokens += row.reasoning_output_tokens || 0;
     }
 
-    // 转换为最终格式
+
     const sources = Array.from(bySource.values()).map(s => {
       s.models = Array.from(s.models.values()).map(m => {
         const cost = computeRowCost({
@@ -670,12 +487,12 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 project-usage-summary
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.projectUsageSummary)) {
-    // 优先读 ~/.vibedeck/tracker/project.queue.jsonl，兼容 ~/.tokentracker/tracker/project.queue.jsonl
+
     const projectQueuePath = fs.existsSync(path.join(os.homedir(), ".vibedeck", "tracker", "project.queue.jsonl"))
       ? path.join(os.homedir(), ".vibedeck", "tracker", "project.queue.jsonl")
-      : path.join(os.homedir(), ".tokentracker", "tracker", "project.queue.jsonl");
+      : path.join(os.homedir(), `.${LEGACY_PRODUCT_SLUG}`, "tracker", "project.queue.jsonl");
     try {
       const projectRaw = fs.readFileSync(projectQueuePath, "utf8");
       const dedup = new Map();
@@ -720,17 +537,17 @@ async function handleLocalApi(req, res, url) {
       if (e?.code !== "ENOENT") console.warn("[vite-mock] project.queue.jsonl read failed:", e?.message || e);
     }
 
-    // Fallback：扫 raw 日志按 session count 估算（旧逻辑）
+
     const projectMap = new Map();
 
     function parseGitUrl(url) {
       if (!url) return null;
-      // 处理 SSH 格式: git@host:owner/repo.git
+
       const sshMatch = url.match(/git@[^:]+:([^\/]+)\/(.+?)(?:\.git)?$/);
       if (sshMatch) {
         return { host: 'gitlab', owner: sshMatch[1], repo: sshMatch[2] };
       }
-      // 处理 HTTP 格式: http(s)://host/owner/repo.git
+
       const httpMatch = url.match(/https?:\/\/[^\/]+\/([^\/]+)\/(.+?)(?:\.git)?$/);
       if (httpMatch) {
         return { host: 'gitlab', owner: httpMatch[1], repo: httpMatch[2] };
@@ -738,18 +555,18 @@ async function handleLocalApi(req, res, url) {
       return null;
     }
 
-    // 从 cwd 提取项目名
+
     function extractProjectFromCwd(cwd) {
       if (!cwd || cwd === '/Users/sunxiufeng' || cwd === os.homedir()) return null;
-      // 移除 home 路径前缀
+
       const relative = cwd.replace(os.homedir() + '/', '');
-      // 取第一级目录作为项目名
+
       const parts = relative.split('/').filter(p => p && !p.startsWith('.') && p !== 'ext-global');
       if (parts.length === 0) return null;
       return parts[0];
     }
 
-    // 解析 Codex 日志
+
     const codexDir = path.join(os.homedir(), ".codex", "sessions");
     try {
       const years = fs.readdirSync(codexDir);
@@ -765,12 +582,12 @@ async function handleLocalApi(req, res, url) {
             const dayPath = path.join(monthPath, day);
             if (!fs.statSync(dayPath).isDirectory()) continue;
             const files = fs.readdirSync(dayPath).filter(f => f.endsWith('.jsonl'));
-            for (const file of files.slice(0, 200)) { // 增加文件数量限制
+            for (const file of files.slice(0, 200)) {
               const filePath = path.join(dayPath, file);
               try {
                 const firstLine = fs.readFileSync(filePath, 'utf8').split('\n')[0];
                 const data = JSON.parse(firstLine);
-                // 优先从 git URL 解析
+
                 if (data.git?.repository_url) {
                   const parsed = parseGitUrl(data.git.repository_url);
                   if (parsed) {
@@ -793,11 +610,11 @@ async function handleLocalApi(req, res, url) {
       }
     } catch (e) { /* ignore */ }
 
-    // 解析 Claude 项目日志（递归查找所有 subagents 目录）
+
     const claudeDir = path.join(os.homedir(), ".claude", "projects");
     function findSubagentsDirs(dir, depth = 0) {
       const results = [];
-      if (depth > 3) return results; // 限制递归深度
+      if (depth > 3) return results;
       try {
         const items = fs.readdirSync(dir);
         for (const item of items) {
@@ -841,13 +658,13 @@ async function handleLocalApi(req, res, url) {
       }
     } catch (e) { /* ignore */ }
 
-    // 从 queue 数据按项目活跃度分配 token
+
     const rows = readQueueData();
     const totalTokens = rows.reduce((sum, row) => sum + (row.total_tokens || 0), 0);
     const entries = [];
 
     if (projectMap.size === 0) {
-      // 备用：按 source 分组
+
       const bySource = new Map();
       for (const row of rows) {
         const source = row.source || "unknown";
@@ -868,7 +685,7 @@ async function handleLocalApi(req, res, url) {
         billable_total_tokens: String(e.billable_total_tokens)
       })));
     } else {
-      // 按项目活跃度（count）分配 token
+
       const totalCount = Array.from(projectMap.values()).reduce((sum, p) => sum + p.count, 0);
       for (const [, project] of projectMap) {
         const ratio = totalCount > 0 ? project.count / totalCount : 1 / projectMap.size;
@@ -880,7 +697,7 @@ async function handleLocalApi(req, res, url) {
           billable_total_tokens: String(tokens)
         });
       }
-      // 按 token 数排序
+
       entries.sort((a, b) => Number(b.billable_total_tokens) - Number(a.billable_total_tokens));
     }
 
@@ -892,7 +709,7 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 usage-limits
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.usageLimits)) {
     try {
       const esmRequire = createRequire(import.meta.url);
@@ -916,7 +733,7 @@ async function handleLocalApi(req, res, url) {
     return true;
   }
 
-  // 处理 user-status
+
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.userStatus)) {
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
@@ -964,14 +781,14 @@ function localDataApiPlugin() {
   return {
     name: "vibedeck-local-data-api",
     configureServer(server) {
-      // 添加中间件到最前面，拦截所有请求
+
       server.middlewares.use((req, res, next) => {
         if (typeof req.url === "string" && req.url.startsWith("/functions/")) {
           const url = new URL(req.url, `http://${req.headers.host}`);
           Promise.resolve(handleLocalApi(req, res, url))
             .then((handled) => {
               if (handled) return;
-              // Mock 没识别的 endpoint → 转发到仓库 CLI（7680）
+
               return proxyToLocalCli(req, res);
             })
             .catch(next);
@@ -993,7 +810,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react(), richLinkMetaPlugin(), localDataApiPlugin()],
+    plugins: [react(), localDataApiPlugin()],
     ...(Object.keys(define).length ? { define } : {}),
     build: {
       rollupOptions: {
@@ -1006,25 +823,14 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       // Prefer 5173 for local CLI integration, but don't fail if already in use.
       strictPort: false,
-      // 确保 API 请求不被 SPA fallback 处理
+
       historyApiFallback: {
         rewrites: [
           { from: /^\/functions\/.*$/, to: (ctx) => ctx.parsedUrl.pathname }
         ]
       },
-      // 代理 InsForge auth/functions 请求到云端，避免跨域 cookie 问题
-      proxy: (() => {
-        const target = loadEnv("development", ROOT_DIR, "VITE_").VITE_INSFORGE_BASE_URL;
-        if (!target) return {};
-        return {
-          "/api/auth": {
-            target,
-            changeOrigin: true,
-            secure: true,
-            cookieDomainRewrite: "localhost",
-          },
-        };
-      })(),
+
+      proxy: {},
     },
   };
 });

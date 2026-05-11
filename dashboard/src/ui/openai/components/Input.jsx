@@ -1,17 +1,8 @@
 import React from "react";
 
 /**
- * Input - OpenAI 风格的输入框组件
  *
  * @param {Object} props
- * @param {string} [props.value] - 输入值
- * @param {function} [props.onChange] - 值变化事件处理函数
- * @param {string} [props.placeholder] - 占位符文本
- * @param {boolean} [props.disabled=false] - 是否禁用
- * @param {string} [props.type='text'] - 输入类型
- * @param {string} [props.label] - 标签文本
- * @param {string} [props.error] - 错误信息
- * @param {string} [props.className] - 额外的 CSS 类名
  */
 export function Input({
   value,

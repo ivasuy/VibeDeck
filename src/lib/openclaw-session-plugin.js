@@ -307,7 +307,7 @@ function runOpenclawCli(args, env = process.env) {
 function buildSessionPluginPackageJson() {
   return `${JSON.stringify(
     {
-      name: "@tokentracker/openclaw-session-sync",
+      name: "@vibedeck/openclaw-session-sync",
       version: "0.0.0",
       private: true,
       type: "module",
@@ -325,7 +325,7 @@ function buildSessionPluginMeta() {
     {
       id: OPENCLAW_SESSION_PLUGIN_ID,
       name: "VibeDeck OpenClaw Session Sync",
-      description: "Trigger tokentracker sync on OpenClaw agent/session lifecycle events.",
+      description: "Trigger vibedeck sync on OpenClaw agent/session lifecycle events.",
       configSchema: {
         type: "object",
         additionalProperties: false,

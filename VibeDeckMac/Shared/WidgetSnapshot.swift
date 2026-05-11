@@ -15,13 +15,13 @@ import Foundation
 public enum WidgetSharedConstants {
     /// Shared App Group identifier. Must be added to *both* targets'
     /// entitlements (`com.apple.security.application-groups`).
-    public static let appGroupIdentifier = "group.com.tokentracker.bar"
+    public static let appGroupIdentifier = "group.com.vibedeck.bar"
 
     /// Bundle identifier of the widget extension. Used by the host app to
     /// write snapshot files directly into the widget's sandbox container as
     /// a fallback path for ad-hoc / dev signed builds where the App Group
     /// container is not actually provisioned by the system.
-    public static let widgetBundleIdentifier = "com.tokentracker.bar.widget"
+    public static let widgetBundleIdentifier = "com.vibedeck.bar.widget"
 
     /// Filename of the snapshot inside the App Group container.
     public static let snapshotFilename = "widget-snapshot.json"
@@ -268,7 +268,7 @@ public enum WidgetSnapshotStore {
 
     /// Per-target Application Support fallback used when the App Group
     /// container is unavailable. The host (unsandboxed) resolves this to
-    /// `~/Library/Application Support/TokenTrackerBar/`; a sandboxed widget
+    /// `~/Library/Application Support/VibeDeckMac/`; a sandboxed widget
     /// extension resolves it inside its own container.
     public static func fallbackSnapshotURL() -> URL? {
         let fm = FileManager.default
@@ -278,7 +278,7 @@ public enum WidgetSnapshotStore {
             appropriateFor: nil,
             create: true
         ) else { return nil }
-        let dir = support.appendingPathComponent("TokenTrackerBar", isDirectory: true)
+        let dir = support.appendingPathComponent("VibeDeckMac", isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
@@ -302,7 +302,7 @@ public enum WidgetSnapshotStore {
         let dir = home
             .appendingPathComponent("Library/Containers", isDirectory: true)
             .appendingPathComponent(WidgetSharedConstants.widgetBundleIdentifier, isDirectory: true)
-            .appendingPathComponent("Data/Library/Application Support/TokenTrackerBar", isDirectory: true)
+            .appendingPathComponent("Data/Library/Application Support/VibeDeckMac", isDirectory: true)
         if !fm.fileExists(atPath: dir.path) {
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }

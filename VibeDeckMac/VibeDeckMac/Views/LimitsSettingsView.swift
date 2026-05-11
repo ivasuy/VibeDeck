@@ -105,7 +105,7 @@ struct LimitsSettingsView: View {
 
     private func bundledSVGIcon(named filename: String, color: String) -> NSImage? {
         guard let url = Bundle.main.resourceURL?
-            .appendingPathComponent("EmbeddedServer/tokentracker/dashboard/dist/brand-logos/\(filename)"),
+            .appendingPathComponent("EmbeddedServer/vibedeck/dashboard/dist/brand-logos/\(filename)"),
               var svg = try? String(contentsOf: url, encoding: .utf8) else {
             return nil
         }

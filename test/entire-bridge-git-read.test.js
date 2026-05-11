@@ -50,7 +50,14 @@ test("listCheckpoints reports branch present and lists files; readCheckpoint par
     assert.ok(listed.files.includes(filePath));
 
     const json = await readCheckpoint(repo.dir, filePath);
-    assert.deepEqual(json, { ok: true, n: 1 });
+    assert.equal(json.path, "checkpoints/synth.json");
+    assert.equal(json.file_name, "synth.json");
+    assert.equal(json.kind, "json");
+    assert.equal(json.parse_error, null);
+    assert.deepEqual(json.parsed, { ok: true, n: 1 });
+    assert.equal(json.raw, '{"ok":true,"n":1}');
+    assert.equal(json.line_count, 1);
+    assert.equal(json.size_bytes, 17);
   } finally {
     repo.cleanup();
   }
@@ -65,4 +72,3 @@ test("listCheckpoints reports branch_not_fetched when checkpoints branch is abse
     repo.cleanup();
   }
 });
-

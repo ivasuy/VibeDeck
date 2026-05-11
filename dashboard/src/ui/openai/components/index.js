@@ -1,7 +1,6 @@
 /**
  * OpenAI Design System - Components
  *
- * 简洁专业的 OpenAI 风格组件库
  */
 
 export { Button } from "./Button";

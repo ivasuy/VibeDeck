@@ -1,5 +1,5 @@
 import React from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 
 export function FadeIn({
   children,
@@ -8,17 +8,22 @@ export function FadeIn({
   y = 12,
   className = "",
   once = true,
+  show,
 }) {
   const shouldReduceMotion = useReducedMotion();
+  const hasToggle = typeof show === "boolean";
 
   if (shouldReduceMotion) {
+    if (hasToggle && !show) return null;
     return <div className={className}>{children}</div>;
   }
 
-  return (
+  const inner = (
     <motion.div
+      key="fade-in"
       initial={{ opacity: 0, y }}
       animate={{ opacity: 1, y: 0 }}
+      exit={hasToggle ? { opacity: 0, y: y / 2 } : undefined}
       transition={{
         duration,
         delay,
@@ -29,6 +34,12 @@ export function FadeIn({
       {children}
     </motion.div>
   );
+
+  if (hasToggle) {
+    return <AnimatePresence mode="wait">{show && inner}</AnimatePresence>;
+  }
+
+  return inner;
 }
 
 export function StaggerContainer({

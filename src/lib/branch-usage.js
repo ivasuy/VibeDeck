@@ -109,7 +109,6 @@ function queryBranchUsage(
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
     const requestedLimit = clampLimit(limit);
-    const scanLimit = Math.max(requestedLimit, 500);
     const rows = db
       .prepare(
         `
@@ -155,12 +154,10 @@ function queryBranchUsage(
         SELECT * FROM source_rows
         ${where}
         ORDER BY started_at DESC
-        LIMIT @limit
       `,
       )
-      .all({ ...params, limit: scanLimit })
-      .filter((row) => repoRootExists(row.repo_root))
-      .slice(0, requestedLimit);
+      .all(params)
+      .filter((row) => repoRootExists(row.repo_root));
 
     const repos = new Map();
     const totalsCost = createCostAccumulator();
@@ -283,7 +280,8 @@ function queryBranchUsage(
             };
             })
             .map(({ _cost, ...branchEntry }) => branchEntry)
-            .sort((a, b) => b.total_tokens - a.total_tokens),
+            .sort((a, b) => b.total_tokens - a.total_tokens)
+            .slice(0, requestedLimit),
         };
       }),
       totals,

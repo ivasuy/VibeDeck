@@ -6,3 +6,8 @@ export * from "./SignalBox.jsx";
 export * from "./DecodingText.jsx";
 export * from "./ScrambleText.jsx";
 export * from "./MatrixShell.jsx";
+export * from "./FadeIn.jsx";
+export * from "./HoverCard.jsx";
+export * from "./SpotlightCard.jsx";
+export * from "./SlidePanel.jsx";
+export * from "./PageTransition.jsx";

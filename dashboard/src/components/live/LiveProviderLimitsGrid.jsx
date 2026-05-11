@@ -149,11 +149,11 @@ function resolveProviderState(id, data) {
 function barColor(pct) {
   if (pct >= 90) return "bg-red-500";
   if (pct >= 70) return "bg-amber-500";
-  return "bg-emerald-500";
+  return "bg-indigo-500";
 }
 
 function statusClass(tone) {
-  if (tone === "ok") return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (tone === "ok") return "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300";
   if (tone === "warning") return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
   if (tone === "danger") return "bg-red-500/10 text-red-700 dark:text-red-300";
   return "bg-oai-black/[0.04] text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300";
@@ -201,7 +201,7 @@ function ProviderLimitRow({ provider }) {
             <span className="truncate">{state.label}</span>
           </span>
           {active ? (
-            <span className="inline-flex h-6 items-center rounded-md bg-emerald-500/10 px-2 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+            <span className="inline-flex h-6 items-center rounded-md bg-indigo-500/10 px-2 text-[11px] font-medium text-indigo-700 dark:text-indigo-300">
               Active
             </span>
           ) : null}

@@ -17,7 +17,7 @@ export function CheckpointNavigator({ files = [], selectedPath = "", onSelect })
   const groups = groupCheckpointFiles(files);
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm">
       <div className="shrink-0 border-b border-oai-gray-200 px-3 py-3 dark:border-oai-gray-800">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold text-oai-black dark:text-white">Checkpoint files</h3>

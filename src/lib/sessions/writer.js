@@ -2,6 +2,7 @@
 
 const { DatabaseSync } = require('node:sqlite');
 const { validateEvent } = require('./event');
+const { eventKey } = require('./event-ledger');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -65,12 +66,6 @@ function stableStringify(obj) {
   return JSON.stringify(out);
 }
 
-function eventKey(e) {
-  if (e.kind === 'start') return `start|${e.started_at}`;
-  if (e.kind === 'update') return `update|${e.observed_at}|${e.delta_tokens == null ? '' : e.delta_tokens}`;
-  return `end|${e.ended_at}|${e.total_tokens == null ? '' : e.total_tokens}|${e.end_reason == null ? '' : e.end_reason}`;
-}
-
 function normalizeCwd(v) {
   if (v == null) return null;
   if (typeof v !== 'string') return null;
@@ -105,7 +100,7 @@ function rowsEqual(existing, desired) {
   return true;
 }
 
-function upsertSessionFromEvents(dbPath, events) {
+function upsertSessionFromEvents(dbPath, events, options = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('upsertSessionFromEvents: dbPath must be a non-empty string');
   if (!Array.isArray(events) || events.length === 0) {
     throw new TypeError('upsertSessionFromEvents: events must be a non-empty array');
@@ -120,7 +115,8 @@ function upsertSessionFromEvents(dbPath, events) {
     }
   }
 
-  const db = new DatabaseSync(dbPath);
+  const db = options && options.db ? options.db : new DatabaseSync(dbPath);
+  const ownsDb = !(options && options.db);
   try {
     const existing =
       db.prepare('SELECT * FROM vibedeck_sessions WHERE provider = ? AND session_id = ?').get(provider, sessionId) ||
@@ -139,9 +135,13 @@ function upsertSessionFromEvents(dbPath, events) {
       throw new Error('upsertSessionFromEvents: no started_at available (need a start event or existing row)');
     }
 
-  const endTimes = validated.filter((e) => e.kind === 'end').map((e) => e.ended_at);
-  let endedAtFromEvents = null;
-  for (const t of endTimes) endedAtFromEvents = maxIso(endedAtFromEvents, t);
+    const endTimes = validated.filter((e) => e.kind === 'end').map((e) => e.ended_at);
+    let endedAtFromEvents = null;
+    for (const t of endTimes) endedAtFromEvents = maxIso(endedAtFromEvents, t);
+
+    const observedTimes = validated.filter((e) => e.kind === 'update').map((e) => e.observed_at);
+    let observedAtFromEvents = null;
+    for (const t of observedTimes) observedAtFromEvents = maxIso(observedAtFromEvents, t);
 
     const endReasons = validated
       .filter((e) => e.kind === 'end')
@@ -220,11 +220,14 @@ function upsertSessionFromEvents(dbPath, events) {
       cwd,
       model,
       total_tokens,
+      last_observed_at: maxIso(existing ? existing.last_observed_at : null, observedAtFromEvents),
       input_tokens,
       cached_input_tokens,
       cache_creation_input_tokens,
       output_tokens,
       reasoning_output_tokens,
+      cost_estimated: existing ? existing.cost_estimated : 1,
+      cost_quality: existing ? existing.cost_quality : null,
       branch_resolution_tier: existing ? existing.branch_resolution_tier : 'D',
       confidence: existing ? existing.confidence : 'unattributed',
       override_user,
@@ -245,18 +248,18 @@ function upsertSessionFromEvents(dbPath, events) {
         started_at, ended_at, end_reason,
         cwd, repo_root, repo_common_dir, parent_repo,
         branch, branch_resolution_tier, confidence, override_user,
-        model, total_tokens, total_cost_usd,
+        model, total_tokens, total_cost_usd, last_observed_at,
         input_tokens, cached_input_tokens, cache_creation_input_tokens,
-        output_tokens, reasoning_output_tokens,
+        output_tokens, reasoning_output_tokens, cost_estimated, cost_quality,
         created_at, updated_at
       ) VALUES (
         @provider, @session_id,
         @started_at, @ended_at, @end_reason,
         @cwd, @repo_root, @repo_common_dir, @parent_repo,
         @branch, @branch_resolution_tier, @confidence, @override_user,
-        @model, @total_tokens, @total_cost_usd,
+        @model, @total_tokens, @total_cost_usd, @last_observed_at,
         @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
-        @output_tokens, @reasoning_output_tokens,
+        @output_tokens, @reasoning_output_tokens, @cost_estimated, @cost_quality,
         @created_at, @updated_at
       )
       ON CONFLICT(provider, session_id) DO UPDATE SET
@@ -266,11 +269,14 @@ function upsertSessionFromEvents(dbPath, events) {
         cwd = excluded.cwd,
         model = excluded.model,
         total_tokens = excluded.total_tokens,
+        last_observed_at = excluded.last_observed_at,
         input_tokens = excluded.input_tokens,
         cached_input_tokens = excluded.cached_input_tokens,
         cache_creation_input_tokens = excluded.cache_creation_input_tokens,
         output_tokens = excluded.output_tokens,
         reasoning_output_tokens = excluded.reasoning_output_tokens,
+        cost_estimated = excluded.cost_estimated,
+        cost_quality = excluded.cost_quality,
         branch_resolution_tier = excluded.branch_resolution_tier,
         confidence = excluded.confidence,
         updated_at = excluded.updated_at
@@ -297,11 +303,14 @@ function upsertSessionFromEvents(dbPath, events) {
       output_tokens,
       reasoning_output_tokens,
       total_cost_usd: existing ? existing.total_cost_usd : null,
+      last_observed_at: desired.last_observed_at,
+      cost_estimated: desired.cost_estimated,
+      cost_quality: desired.cost_quality,
       created_at: existing ? existing.created_at : now,
       updated_at: now,
     });
   } finally {
-    db.close();
+    if (ownsDb) db.close();
   }
 }
 

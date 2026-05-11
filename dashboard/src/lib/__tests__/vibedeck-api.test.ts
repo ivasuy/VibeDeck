@@ -86,10 +86,10 @@ describe("vibedeck-api", () => {
 
     expect(fetchMock.mock.calls[1][0]).toBe("/functions/vibedeck-attribute");
     expect(fetchMock.mock.calls[1][1].method).toBe("POST");
-    expect(fetchMock.mock.calls[1][1].headers["x-tokentracker-local-auth"]).toBe("abc");
+    expect(fetchMock.mock.calls[1][1].headers["x-vibedeck-local-auth"]).toBe("abc");
     expect(fetchMock.mock.calls[2][0]).toBe("/functions/vibedeck-entire/status");
     expect(fetchMock.mock.calls[2][1].method).toBe("POST");
-    expect(fetchMock.mock.calls[2][1].headers["x-tokentracker-local-auth"]).toBe("abc");
+    expect(fetchMock.mock.calls[2][1].headers["x-vibedeck-local-auth"]).toBe("abc");
   });
 
   it("issues destructive confirm tokens", async () => {

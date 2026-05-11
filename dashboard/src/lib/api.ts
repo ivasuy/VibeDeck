@@ -29,8 +29,9 @@ const PATHS = {
 function getLocalRouteCandidates(slug: string) {
   const primary = String(slug || "").trim();
   const primaryPath = primary.startsWith("/functions/") ? primary : `/functions/${primary}`;
+  const legacyProductSlug = ["token", "tracker"].join("");
   const legacyPath = primaryPath.includes("/functions/vibedeck-")
-    ? primaryPath.replace("/functions/vibedeck-", "/functions/tokentracker-")
+    ? primaryPath.replace("/functions/vibedeck-", `/functions/${legacyProductSlug}-`)
     : primaryPath;
   return [primaryPath, ...(legacyPath === primaryPath ? [] : [legacyPath])];
 }

@@ -9,7 +9,7 @@ function flattenHookEntries(entries) {
 
 async function main() {
   const repoRoot = path.resolve(__dirname, "..", "..");
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "tokentracker-accept-"));
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-accept-"));
   const homeDir = tmpRoot;
   const codexHome = path.join(tmpRoot, ".codex");
   const geminiHome = path.join(tmpRoot, ".gemini");
@@ -43,7 +43,7 @@ async function main() {
   const init = spawnSync(
     process.execPath,
     [
-      path.join(repoRoot, "bin", "tracker.js"),
+      path.join(repoRoot, "bin", "vibedeck.js"),
       "init",
       "--yes",
       "--no-auth",
@@ -77,7 +77,7 @@ async function main() {
       Array.isArray(entry?.hooks) &&
       entry.hooks.some(
         (hook) =>
-          hook?.name === "tokentracker" &&
+          hook?.name === "vibedeck" &&
           typeof hook?.command === "string" &&
           hook.command.includes("notify.cjs") &&
           hook.command.includes("--source=gemini"),
@@ -94,7 +94,7 @@ async function main() {
 
   const uninstall = spawnSync(
     process.execPath,
-    [path.join(repoRoot, "bin", "tracker.js"), "uninstall"],
+    [path.join(repoRoot, "bin", "vibedeck.js"), "uninstall"],
     {
       env,
       stdio: "inherit",
@@ -108,13 +108,13 @@ async function main() {
   const restored = JSON.parse(restoredRaw);
   const restoredHooks = flattenHookEntries(restored?.hooks?.SessionEnd || []);
   const restoredExisting = restoredHooks.some((hook) => hook?.command === existingCommand);
-  const restoredTracker = restoredHooks.some((hook) => hook?.name === "tokentracker");
+  const restoredVibeDeck = restoredHooks.some((hook) => hook?.name === "vibedeck");
 
   if (!restoredExisting) {
     console.error("Expected existing Gemini hook to remain after uninstall.");
     process.exit(1);
   }
-  if (restoredTracker) {
+  if (restoredVibeDeck) {
     console.error("Expected tracker Gemini hook to be removed after uninstall.");
     process.exit(1);
   }

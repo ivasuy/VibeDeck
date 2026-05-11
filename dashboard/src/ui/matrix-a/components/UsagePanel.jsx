@@ -86,7 +86,7 @@ export const UsagePanel = React.memo(function UsagePanel({
           .filter(Boolean);
 
   return (
-    <div className={`rounded-xl border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 p-5 ${className}`}>
+    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
       {!hideHeader ? (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="flex flex-wrap gap-1">

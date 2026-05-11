@@ -36,7 +36,7 @@ const DEFAULT_TARGETS = ["claude", "codex"];
 const SKILLS_PAGE_SIZE = 10;
 const TARGET_ACTIVE_CLASSES = {
   claude: "bg-orange-500/10 ring-1 ring-orange-500/20 hover:bg-orange-500/20",
-  codex: "bg-emerald-500/10 ring-1 ring-emerald-500/20 hover:bg-emerald-500/20",
+  codex: "bg-indigo-500/10 ring-1 ring-indigo-500/20 hover:bg-indigo-500/20",
   gemini: "bg-sky-500/10 ring-1 ring-sky-500/20 hover:bg-sky-500/20",
   opencode: "bg-amber-500/10 ring-1 ring-amber-500/20 hover:bg-amber-500/20",
   hermes: "bg-indigo-500/10 ring-1 ring-indigo-500/20 hover:bg-indigo-500/20",
@@ -103,7 +103,7 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
   const titleAttr = sourceLabel ? `${skill.directory} · ${sourceLabel}` : skill.directory;
 
   return (
-    <div className="group grid gap-4 px-1 py-2.5 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+    <div className="group grid gap-4 px-2 py-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
       <div className="min-w-0" title={titleAttr}>
         <h2 className="truncate text-sm font-semibold text-oai-black dark:text-white">
           {skill.name || skill.directory}
@@ -143,7 +143,7 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
 function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 px-1 pb-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+      <div className="shrink-0 px-2 pb-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
         {copy("skills.my.count", { count: items.length })}
       </div>
       <div className="min-h-0 flex-1 overflow-auto divide-y divide-oai-gray-200/70 pr-1 dark:divide-oai-gray-800/70">
@@ -329,7 +329,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
                           />
                           <span className="flex-1 text-left">{target.label}</span>
                           {checked ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
+                            <Check className="h-3.5 w-3.5 text-indigo-500" aria-hidden />
                           ) : null}
                         </button>
                       );
@@ -912,7 +912,7 @@ export function SkillsPage() {
         </Button>
       }
     >
-      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-3 overflow-hidden">
+      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-5 overflow-hidden">
           <div className="flex shrink-0 gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
             {[
               ["my", copy("skills.tab.my")],

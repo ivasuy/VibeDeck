@@ -5,7 +5,7 @@ const signature = require('./signature');
 const { buildGeminiHookCommand } = require('../gemini-config');
 
 const DEFAULT_EVENT = 'SessionEnd';
-const DEFAULT_HOOK_NAME = 'tokentracker';
+const DEFAULT_HOOK_NAME = 'vibedeck';
 const DEFAULT_MATCHER = 'exit|clear|logout|prompt_input_exit|other';
 
 function normalizeObject(raw) {

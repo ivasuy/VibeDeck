@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: 20
 
-      # Verify version matches package.json AND TokenTrackerBar/project.yml.
+      # Verify version matches package.json AND VibeDeckMac/project.yml.
       # Skipping the project.yml check once shipped v0.5.77 as a DMG whose
       # Info.plist still advertised 0.5.76 — keep both in lockstep.
       - name: Verify version
@@ -44,7 +44,7 @@ jobs:
           # Every MARKETING_VERSION in project.yml (app + widget targets) must
           # equal the requested release version; otherwise the built .app
           # carries a CFBundleShortVersionString that disagrees with the tag.
-          PROJECT_YML="TokenTrackerBar/project.yml"
+          PROJECT_YML="VibeDeckMac/project.yml"
           # BSD sed on macOS runners does NOT understand \s — use [[:space:]].
           MISMATCHED=$(grep -E '^[[:space:]]*MARKETING_VERSION:' "$PROJECT_YML" \
             | sed -E 's/.*MARKETING_VERSION:[[:space:]]*"([^"]+)".*/\1/' \
@@ -59,39 +59,31 @@ jobs:
       - name: Install dashboard dependencies
         run: npm ci --prefix dashboard
 
-      # InsForge URL + anon key are public client-side values (shipped in every
-      # dashboard bundle). They MUST be present at build time or Vite inlines
-      # empty strings, which breaks the leaderboard page (no baseUrl → no fetch)
-      # and disables cloud OAuth (`isCloudInsforgeConfigured()` returns false).
-      # `dashboard/.env.local` is gitignored so CI cannot read it — inject here.
       - name: Build dashboard
-        env:
-          VITE_INSFORGE_BASE_URL: https://srctyff5.us-east.insforge.app
-          VITE_INSFORGE_ANON_KEY: ik_9f35735991b684f7cf57fa00bb4d0487
         run: npm run dashboard:build
 
-      # 2. Bundle EmbeddedServer (Node.js + tokentracker source)
+      # 2. Bundle EmbeddedServer (Node.js + VibeDeck source)
       - name: Bundle EmbeddedServer
-        run: bash TokenTrackerBar/scripts/bundle-node.sh
+        run: bash VibeDeckMac/scripts/bundle-node.sh
 
       # 3. Generate Xcode project
       - name: Install xcodegen
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        working-directory: TokenTrackerBar
+        working-directory: VibeDeckMac
         run: xcodegen generate
 
       - name: Patch pbxproj for icon
-        working-directory: TokenTrackerBar
+        working-directory: VibeDeckMac
         run: ruby scripts/patch-pbxproj-icon.rb
 
       # 4. Build app
-      - name: Build TokenTrackerBar
-        working-directory: TokenTrackerBar
+      - name: Build VibeDeckMac
+        working-directory: VibeDeckMac
         run: |
           xcodebuild \
-            -scheme TokenTrackerBar \
+            -scheme VibeDeckMac \
             -configuration Release \
             -derivedDataPath build/DerivedData \
             ARCHS="arm64 x86_64" \
@@ -103,7 +95,7 @@ jobs:
             clean build
 
           # Verify universal binary — fail loudly if Intel slice is missing
-          APP_BIN="$(find build/DerivedData/Build/Products/Release -name 'TokenTrackerBar' -path '*/MacOS/*' -maxdepth 5)"
+          APP_BIN="$(find build/DerivedData/Build/Products/Release -name 'VibeDeckMac' -path '*/MacOS/*' -maxdepth 5)"
           echo "Built binary: $APP_BIN"
           lipo -info "$APP_BIN"
           if ! lipo -info "$APP_BIN" 2>&1 | grep -q "x86_64"; then
@@ -123,16 +115,16 @@ jobs:
       #   2. The widget extension appex with its OWN entitlements
       #      (must include com.apple.security.app-sandbox or pkd will refuse
       #      to load it with "plug-ins must be sandboxed", and the widget
-      #      gallery will silently never list TokenTracker)
+      #      gallery will silently never list VibeDeck)
       #   3. The outer .app bundle with the host's entitlements, WITHOUT
       #      --deep (otherwise the host entitlements get recursively
       #      re-applied to the appex, stripping its app-sandbox key — the
       #      host is intentionally not sandboxed because it forks Node)
       - name: Ad-hoc sign app
-        working-directory: TokenTrackerBar
+        working-directory: VibeDeckMac
         run: |
-          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
-          APPEX_PATH="$APP_PATH/Contents/PlugIns/TokenTrackerWidget.appex"
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeckMac.app' -maxdepth 1)"
+          APPEX_PATH="$APP_PATH/Contents/PlugIns/VibeDeckWidget.appex"
           echo "Signing: $APP_PATH"
 
           # 1. Sign nested Mach-O binaries (inner-to-outer)
@@ -146,7 +138,7 @@ jobs:
           if [ -d "$APPEX_PATH" ]; then
             echo "Signing widget extension: $APPEX_PATH"
             codesign --force --timestamp=none \
-              --entitlements TokenTrackerWidget/TokenTrackerWidget.entitlements \
+              --entitlements VibeDeckWidget/VibeDeckWidget.entitlements \
               --sign - "$APPEX_PATH"
           else
             echo "::warning::Widget extension not found at $APPEX_PATH"
@@ -157,7 +149,7 @@ jobs:
           #    with the host's entitlements (which lack app-sandbox) and
           #    pkd would reject the widget at runtime.
           codesign --force --timestamp=none \
-            --entitlements TokenTrackerBar/TokenTrackerBar.entitlements \
+            --entitlements VibeDeckMac/VibeDeckMac.entitlements \
             --sign - "$APP_PATH"
 
           # Verify
@@ -171,7 +163,7 @@ jobs:
             echo "Verifying widget extension entitlements:"
             codesign -d --entitlements - "$APPEX_PATH" 2>&1 | tee /tmp/appex-ents.txt
             if ! grep -q "com.apple.security.app-sandbox" /tmp/appex-ents.txt; then
-              echo "::error::Widget extension is missing com.apple.security.app-sandbox after signing — pkd will refuse to load it and the widget gallery will not list TokenTracker"
+              echo "::error::Widget extension is missing com.apple.security.app-sandbox after signing — pkd will refuse to load it and the widget gallery will not list VibeDeck"
               exit 1
             fi
             echo "✓ Widget extension still has app-sandbox entitlement"
@@ -182,9 +174,9 @@ jobs:
         run: brew install create-dmg
 
       - name: Create DMG
-        working-directory: TokenTrackerBar
+        working-directory: VibeDeckMac
         run: |
-          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeckMac.app' -maxdepth 1)"
           echo "App path: $APP_PATH"
           bash scripts/create-dmg.sh "$APP_PATH"
 
@@ -194,25 +186,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "v${{ inputs.version }}" \
-            TokenTrackerBar/build/TokenTrackerBar.dmg \
+            VibeDeckMac/build/VibeDeckMac.dmg \
             --title "v${{ inputs.version }}" \
             --generate-notes
-
-      # 7. Notify homebrew-tokentracker tap to bump the Cask immediately.
-      # If HOMEBREW_DISPATCH_TOKEN is not set, this step silently no-ops and
-      # the tap's own hourly cron picks up the new release within ~1 hour.
-      - name: Dispatch homebrew tap update
-        env:
-          HOMEBREW_DISPATCH_TOKEN: ${{ secrets.HOMEBREW_DISPATCH_TOKEN }}
-          VERSION: ${{ inputs.version }}
-        run: |
-          if [ -z "${HOMEBREW_DISPATCH_TOKEN:-}" ]; then
-            echo "HOMEBREW_DISPATCH_TOKEN not set — tap will update via hourly cron."
-            exit 0
-          fi
-          curl -sSL -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $HOMEBREW_DISPATCH_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/mm7894215/homebrew-tokentracker/dispatches \
-            -d "{\"event_type\":\"tokentracker-release\",\"client_payload\":{\"source\":\"dmg\",\"version\":\"$VERSION\"}}"

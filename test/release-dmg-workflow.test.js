@@ -73,7 +73,7 @@ test("workflow builds with xcodebuild Release config", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("xcodebuild"));
   assert.ok(content.includes("-configuration Release"));
-  assert.ok(content.includes("-scheme TokenTrackerBar"));
+  assert.ok(content.includes("-scheme VibeDeckMac"));
 });
 
 test("workflow creates DMG via create-dmg.sh", () => {
@@ -84,7 +84,7 @@ test("workflow creates DMG via create-dmg.sh", () => {
 test("workflow creates GitHub release with DMG asset", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("gh release create"));
-  assert.ok(content.includes("TokenTrackerBar.dmg"));
+  assert.ok(content.includes("VibeDeckMac.dmg"));
 });
 
 test("workflow has correct step order: dashboard → bundle → xcode → dmg → release", () => {
@@ -118,7 +118,7 @@ test("workflow has write permissions for release creation", () => {
 
 test("create-dmg.sh supports CI headless mode", () => {
   const dmgScript = fs.readFileSync(
-    path.join(__dirname, "..", "TokenTrackerBar", "scripts", "create-dmg.sh"),
+    path.join(__dirname, "..", "VibeDeckMac", "scripts", "create-dmg.sh"),
     "utf8"
   );
   assert.ok(

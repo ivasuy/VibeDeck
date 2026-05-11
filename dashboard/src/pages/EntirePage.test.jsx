@@ -99,6 +99,43 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/manual-repo" } });
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
-    expect(await screen.findByText("/Users/dev/manual-repo")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Load recent repo manual-repo" })).toBeTruthy();
+  });
+
+  it("renders readable deduped recent repo chips, caps visible chips, and loads from chip click", async () => {
+    getKnownRepos.mockResolvedValue({
+      repos: [
+        { repo_root: "/Users/dev/workspace/repo-01" },
+        { repo_root: "/Users/dev/workspace/repo-02" },
+        { repo_root: "/Users/dev/workspace/repo-03" },
+        { repo_root: "/Users/dev/workspace/repo-04" },
+        { repo_root: "/Users/dev/workspace/repo-05" },
+        { repo_root: "/Users/dev/workspace/repo-06" },
+        { repo_root: "/Users/dev/workspace/repo-07" },
+        { repo_root: "/Users/dev/workspace/repo-08" },
+        { repo_root: "/Users/dev/workspace/repo-09" },
+        { repo_root: "/Users/dev/workspace/repo-02" },
+      ],
+    });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({ available: true, files: [] });
+
+    render(<EntirePage />);
+
+    expect(await screen.findByRole("button", { name: "Load recent repo repo-01" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load recent repo repo-08" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load recent repo repo-09" })).toBeNull();
+    expect(screen.getByText("+1 more")).toBeTruthy();
+
+    const chip = screen.getByRole("button", { name: "Load recent repo repo-01" });
+    expect(chip).toHaveAttribute("title", "/Users/dev/workspace/repo-01");
+    expect(screen.getAllByText("workspace")).toHaveLength(8);
+
+    fireEvent.click(chip);
+
+    expect(await screen.findByDisplayValue("/Users/dev/workspace/repo-01")).toBeTruthy();
+    expect(getEntireStatus).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
+    expect(getCheckpoints).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
   });
 });

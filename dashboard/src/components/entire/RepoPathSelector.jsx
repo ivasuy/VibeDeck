@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
+import { repoChipParts } from "./checkpoint-file-utils";
 
 function normalizePath(value) {
   return String(value || "").trim();
@@ -33,6 +34,9 @@ export function RepoPathSelector({
     }
     return next;
   }, [suggestions]);
+
+  const visibleSuggestions = uniqueSuggestions.slice(0, 8);
+  const hiddenSuggestionCount = Math.max(uniqueSuggestions.length - visibleSuggestions.length, 0);
 
   const submitPath = (candidate) => {
     const repo = normalizePath(candidate);
@@ -94,23 +98,39 @@ export function RepoPathSelector({
             {copy("entire.repo.suggestions.label")}
           </span>
           <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
-            {uniqueSuggestions.map((repo) => (
-              <button
-                key={repo}
-                type="button"
-                className={cn(
-                  "max-w-[360px] shrink-0 truncate rounded-md bg-oai-black/[0.04] px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-black/[0.08]",
-                  "dark:bg-white/[0.08] dark:text-oai-gray-200 dark:hover:bg-white/[0.12]",
-                )}
-                title={repo}
-                onClick={() => {
-                  onChange?.(repo);
-                  submitPath(repo);
-                }}
-              >
-                {repo}
-              </button>
-            ))}
+            {visibleSuggestions.map((repo) => {
+              const { name, context, fullPath } = repoChipParts(repo);
+              return (
+                <button
+                  key={repo}
+                  type="button"
+                  className={cn(
+                    "max-w-[220px] shrink-0 rounded-md bg-oai-black/[0.04] px-2 py-1 text-left hover:bg-oai-black/[0.08]",
+                    "dark:bg-white/[0.08] dark:hover:bg-white/[0.12]",
+                  )}
+                  title={fullPath}
+                  aria-label={`Load recent repo ${name}`}
+                  onClick={() => {
+                    onChange?.(repo);
+                    submitPath(repo);
+                  }}
+                >
+                  <span className="block truncate text-xs font-medium text-oai-gray-800 dark:text-oai-gray-100">
+                    {name}
+                  </span>
+                  {context ? (
+                    <span className="block truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                      {context}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+            {hiddenSuggestionCount > 0 ? (
+              <span className="shrink-0 self-center text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                +{hiddenSuggestionCount} more
+              </span>
+            ) : null}
           </div>
         </div>
       ) : null}

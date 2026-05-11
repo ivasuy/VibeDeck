@@ -67,7 +67,7 @@ func savePNG(_ image: NSImage, to path: String) {
 
 let outputDir = CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
-    : "TokenTrackerBar/TokenTrackerBar/Assets.xcassets/MenuBarIcon.imageset"
+    : "VibeDeckMac/VibeDeckMac/Assets.xcassets/MenuBarIcon.imageset"
 
 try? FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
 

@@ -10,7 +10,7 @@
 
 require 'securerandom'
 
-PBXPROJ = File.join(__dir__, '..', 'TokenTrackerBar.xcodeproj', 'project.pbxproj')
+PBXPROJ = File.join(__dir__, '..', 'VibeDeckMac.xcodeproj', 'project.pbxproj')
 
 def gen_id
   SecureRandom.hex(12).upcase
@@ -41,8 +41,8 @@ content.sub!('/* End PBXBuildFile section */') do |m|
   "#{build_file_line}#{m}"
 end
 
-# 3. Add to the inner TokenTrackerBar group's children
-# This group has `path = TokenTrackerBar;` and contains Assets.xcassets, Swift files, etc.
+# 3. Add to the inner VibeDeckMac group's children
+# This group has `path = VibeDeckMac;` and contains Assets.xcassets, Swift files, etc.
 # We insert after Assets.xcassets in that group
 content.sub!(%r{(6E651075DB834A2DD6917AAD /\* Assets\.xcassets \*/,)}) do
   "#{$1}\n\t\t\t\t#{file_ref_id} /* AppIcon.icon */,"

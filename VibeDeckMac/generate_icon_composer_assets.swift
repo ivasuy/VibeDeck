@@ -88,7 +88,7 @@ let boltSegments: [Segment] = [
 
 let outputDir = CommandLine.arguments.count > 1
     ? URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
-    : URL(fileURLWithPath: "TokenTrackerBar/icon_composer", isDirectory: true)
+    : URL(fileURLWithPath: "VibeDeckMac/icon_composer", isDirectory: true)
 
 try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
 
@@ -107,7 +107,7 @@ let boltSVG = """
 let readme = """
 # Icon Composer Source
 
-These files are the source layers for TokenTrackerBar's macOS 26 app icon workflow.
+These files are the source layers for VibeDeckMac's macOS 26 app icon workflow.
 
 Files:
 - `01-background.svg`: full-bleed square background. Do not add a rounded-rectangle mask here.
@@ -118,8 +118,8 @@ Recommended import flow:
 2. Create a new icon document.
 3. Drag `01-background.svg` and `02-bolt.svg` into the canvas in that order.
 4. Preview the macOS variant and tune material/specular settings as needed.
-5. Save the result as `TokenTrackerBar/TokenTrackerBar/AppIcon.icon`.
-6. Keep the target app icon name set to `AppIcon` and rebuild TokenTrackerBar.
+5. Save the result as `VibeDeckMac/VibeDeckMac/AppIcon.icon`.
+6. Keep the target app icon name set to `AppIcon` and rebuild VibeDeckMac.
 
 Apple guidance:
 - Keep exported source art flat and unmasked.

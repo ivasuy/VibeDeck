@@ -48,7 +48,7 @@ AI CLI Tools → hooks/notify.cjs trigger sync → rollout.js parses logs → qu
 
 **Dashboard (`dashboard/`)** — React 18 + Vite 7 + TypeScript + TailwindCSS. Built to `dashboard/dist/` and served by the CLI's `serve` command. In local mode (`localhost`), skips auth and reads data from local API endpoints. Deployed to Vercel at www.tokentracker.cc for cloud mode.
 
-**macOS App (`TokenTrackerBar/`)** — Native Swift 5.9 menu bar + widget app. Embeds a complete Node.js + tokentracker runtime (`EmbeddedServer/`, universal arm64+x64). Hosts the React dashboard via WKWebView and provides native UI panels (usage summary, heatmap, model breakdown, usage limits, Clawd companion). Ships a `TokenTrackerWidget` WidgetKit target. Built with XcodeGen.
+**macOS App (`VibeDeckMac/`)** — Native Swift 5.9 menu bar + widget app. Embeds a complete Node.js + tokentracker runtime (`EmbeddedServer/`, universal arm64+x64). Hosts the React dashboard via WKWebView and provides native UI panels (usage summary, heatmap, model breakdown, usage limits, Clawd companion). Ships a `VibeDeckWidget` WidgetKit target. Built with XcodeGen.
 
 **Cloud backend** — InsForge Edge Functions live in a separate repo and are documented in `BACKEND_API.md`. Handles cloud authentication, leaderboard, and data sync. Not needed for local-only usage.
 
@@ -128,22 +128,22 @@ AI CLI Tools → hooks/notify.cjs trigger sync → rollout.js parses logs → qu
 
 ### Key Source Files — macOS App
 
-- `TokenTrackerBar/TokenTrackerBarApp.swift` — Entry point. NSApplicationDelegateAdaptor manages StatusBarController, DashboardViewModel, ServerManager.
-- `TokenTrackerBar/Services/ServerManager.swift` — Embedded/system Node.js server lifecycle with health check polling.
-- `TokenTrackerBar/Services/StatusBarController.swift` — Menu bar popover UI + status icon animation.
-- `TokenTrackerBar/Services/DashboardWindowController.swift` — WKWebView hosting React dashboard.
-- `TokenTrackerBar/Services/NativeBridge.swift` — WKScriptMessageHandler bridging dashboard settings/actions to Swift.
-- `TokenTrackerBar/Services/APIClient.swift` — HTTP client against the embedded local server.
-- `TokenTrackerBar/Services/MenuBarAnimator.swift` — Status icon idle/activity animation.
-- `TokenTrackerBar/Services/LaunchAtLoginManager.swift` — `SMAppService.mainApp` wrapper with `@Published` state.
-- `TokenTrackerBar/Services/UpdateChecker.swift` — Polls npm registry for CLI updates.
-- `TokenTrackerBar/Services/WidgetSnapshotWriter.swift` — Writes App Group snapshots for the desktop widget.
-- `TokenTrackerBar/ViewModels/DashboardViewModel.swift` — All dashboard state. Auto-refresh every 5 minutes.
-- `TokenTrackerBar/Views/ClawdCompanionView.swift` — Animated pixel art companion with 9 states (DrawCtx + static draw methods).
-- `TokenTrackerBar/Views/UsageLimitsView.swift` — Native usage limits display.
-- `TokenTrackerBar/Views/UsageTrendChart.swift` / `TopModelsView.swift` / `SummaryCardsView.swift` / `ActivityHeatmapView.swift` — Native panel components. Charts module is hidden on macOS < 13 (the popover auto-shrinks).
-- `TokenTrackerBar/Models/LimitsSettingsStore.swift` — UserDefaults persistence for limit preferences.
-- `TokenTrackerBar/TokenTrackerWidget/` — Desktop widget target (WidgetKit) reading shared snapshots via App Group.
+- `VibeDeckMac/TokenTrackerBarApp.swift` — Entry point. NSApplicationDelegateAdaptor manages StatusBarController, DashboardViewModel, ServerManager.
+- `VibeDeckMac/Services/ServerManager.swift` — Embedded/system Node.js server lifecycle with health check polling.
+- `VibeDeckMac/Services/StatusBarController.swift` — Menu bar popover UI + status icon animation.
+- `VibeDeckMac/Services/DashboardWindowController.swift` — WKWebView hosting React dashboard.
+- `VibeDeckMac/Services/NativeBridge.swift` — WKScriptMessageHandler bridging dashboard settings/actions to Swift.
+- `VibeDeckMac/Services/APIClient.swift` — HTTP client against the embedded local server.
+- `VibeDeckMac/Services/MenuBarAnimator.swift` — Status icon idle/activity animation.
+- `VibeDeckMac/Services/LaunchAtLoginManager.swift` — `SMAppService.mainApp` wrapper with `@Published` state.
+- `VibeDeckMac/Services/UpdateChecker.swift` — Polls npm registry for CLI updates.
+- `VibeDeckMac/Services/WidgetSnapshotWriter.swift` — Writes App Group snapshots for the desktop widget.
+- `VibeDeckMac/ViewModels/DashboardViewModel.swift` — All dashboard state. Auto-refresh every 5 minutes.
+- `VibeDeckMac/Views/ClawdCompanionView.swift` — Animated pixel art companion with 9 states (DrawCtx + static draw methods).
+- `VibeDeckMac/Views/UsageLimitsView.swift` — Native usage limits display.
+- `VibeDeckMac/Views/UsageTrendChart.swift` / `TopModelsView.swift` / `SummaryCardsView.swift` / `ActivityHeatmapView.swift` — Native panel components. Charts module is hidden on macOS < 13 (the popover auto-shrinks).
+- `VibeDeckMac/Models/LimitsSettingsStore.swift` — UserDefaults persistence for limit preferences.
+- `VibeDeckMac/VibeDeckWidget/` — Desktop widget target (WidgetKit) reading shared snapshots via App Group.
 
 ### Local API Endpoints
 
@@ -217,9 +217,9 @@ Query params: `from`, `to` (YYYY-MM-DD), `tz` (timezone), `tz_offset_minutes`, `
 - Embedded Node.js server (universal arm64+x64 binary) — self-contained, no external Node dependency
 - WKWebView hosts React dashboard with script messaging for OAuth + settings bridge
 - Native panels: summary cards, heatmap, model breakdown, usage limits, Clawd companion (Charts panel hidden on macOS < 13)
-- WidgetKit target (`TokenTrackerWidget`) reads snapshots from App Group storage for desktop widgets
+- WidgetKit target (`VibeDeckWidget`) reads snapshots from App Group storage for desktop widgets
 - Auto-refresh every 5 minutes, server health check with exponential backoff
-- URL scheme: `tokentracker://` for OAuth callbacks
+- URL scheme: `vibedeck://` for OAuth callbacks
 
 ## Conventions
 
@@ -243,7 +243,7 @@ Three artifacts are published per release — npm package, macOS DMG, and Homebr
 
 ### Version Numbering
 
-- npm (`package.json`) and macOS App (`TokenTrackerBar/project.yml` → `MARKETING_VERSION`) use the same version
+- npm (`package.json`) and macOS App (`VibeDeckMac/project.yml` → `MARKETING_VERSION`) use the same version
 - Follow semver: bug fix increments patch
 
 ### Version Bump Rules
@@ -251,7 +251,7 @@ Three artifacts are published per release — npm package, macOS DMG, and Homebr
 When a feature or fix is significant enough to ship, **ask the user whether to bump the version**:
 
 - **Dashboard/CLI-only changes** (web UI, parser, API, hooks): bump `package.json` only → npm auto-publishes on push
-- **Changes that touch Swift / macOS App**: bump **both** `package.json` and `TokenTrackerBar/project.yml` `MARKETING_VERSION` → npm auto-publishes on push, then trigger DMG workflow
+- **Changes that touch Swift / macOS App**: bump **both** `package.json` and `VibeDeckMac/project.yml` `MARKETING_VERSION` → npm auto-publishes on push, then trigger DMG workflow
 
 ### CI/CD Pipelines (fully automated)
 
@@ -312,7 +312,7 @@ When the user says "release" or "发 release", execute these steps:
 
 Treat a release request as explicit approval to create the required release commit(s) and push them to the remote branch as part of the release workflow. Do not ask again for separate commit/push permission once the user has requested a release.
 
-1. Bump version in `package.json` (and `TokenTrackerBar/project.yml` if App changed)
+1. Bump version in `package.json` (and `VibeDeckMac/project.yml` if App changed)
 2. Commit and push to `main` → npm publishes automatically
 3. If App changed: run `gh workflow run "release DMG" -f version=X.Y.Z` → cloud builds DMG + creates GitHub Release
 4. **Homebrew tap updates on its own** — no manual step. Either the `repository_dispatch` fires instantly (if `HOMEBREW_DISPATCH_TOKEN` is set) or the tap's hourly cron picks it up within an hour. Do NOT manually edit the tap repo for routine releases.
@@ -322,13 +322,13 @@ No local build required. No manual GitHub Actions page visit needed.
 ### Local Build (optional, for testing)
 
 ```bash
-cd TokenTrackerBar
+cd VibeDeckMac
 npm run dashboard:build
 ./scripts/bundle-node.sh
 xcodegen generate
 ruby scripts/patch-pbxproj-icon.rb
-xcodebuild -scheme TokenTrackerBar -configuration Release clean build
-APP_PATH="$(find ~/Library/Developer/Xcode/DerivedData/TokenTrackerBar-*/Build/Products/Release -name 'TokenTrackerBar.app' -maxdepth 1)"
+xcodebuild -scheme VibeDeckMac -configuration Release clean build
+APP_PATH="$(find ~/Library/Developer/Xcode/DerivedData/VibeDeckMac-*/Build/Products/Release -name 'VibeDeckMac.app' -maxdepth 1)"
 bash scripts/create-dmg.sh "$APP_PATH"
 ```
 
@@ -366,11 +366,11 @@ Durable lessons from hard-won debugging sessions. Read before touching these are
 
 ### macOS app build & release
 
-**Icon Composer (`.icon`) format is Xcode 26+ only.** The `TokenTrackerBar/TokenTrackerBar/AppIcon.icon` folder is readable only by Xcode 26 on macOS Tahoe (26+). On the GitHub Actions `macos-15` runner (Xcode 16), the `patch-pbxproj-icon.rb` patch injects the `.icon` as a passive folder reference, but Xcode 16 silently copies it to `Resources/AppIcon.icon/` without compiling it to `.icns` or registering `CFBundleIconFile` — result: no app icon. **Fix already shipped:** `TokenTrackerBar/TokenTrackerBar/AppIcon.icns` is committed as a static fallback. xcodegen picks it up via the directory glob and `CFBundleIconFile: AppIcon` in `project.yml` wires it up for any Xcode version. If you update `AppIcon.icon`, manually regenerate `AppIcon.icns` (extract from a local Xcode 26 build's `Resources/`) and commit both.
+**Icon Composer (`.icon`) format is Xcode 26+ only.** The `VibeDeckMac/VibeDeckMac/AppIcon.icon` folder is readable only by Xcode 26 on macOS Tahoe (26+). On the GitHub Actions `macos-15` runner (Xcode 16), the `patch-pbxproj-icon.rb` patch injects the `.icon` as a passive folder reference, but Xcode 16 silently copies it to `Resources/AppIcon.icon/` without compiling it to `.icns` or registering `CFBundleIconFile` — result: no app icon. **Fix already shipped:** `VibeDeckMac/VibeDeckMac/AppIcon.icns` is committed as a static fallback. xcodegen picks it up via the directory glob and `CFBundleIconFile: AppIcon` in `project.yml` wires it up for any Xcode version. If you update `AppIcon.icon`, manually regenerate `AppIcon.icns` (extract from a local Xcode 26 build's `Resources/`) and commit both.
 
 **DMG installer background + icon layout on CI requires Homebrew `create-dmg`.** Our `scripts/create-dmg.sh` uses Finder/AppleScript for the local interactive path, but AppleScript on headless CI runners is unreliable — so the CI branch in the script delegates to the Homebrew `create-dmg` tool, which writes `.DS_Store` directly. The workflow installs it via `brew install create-dmg` before running the script. Don't re-introduce the "skip Finder customization on CI" shortcut — that produced bare DMGs with no background and no layout.
 
-**CI must ad-hoc sign the .app before DMG packaging.** The workflow builds with `CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO` which produces an entirely unsigned bundle. Combined with the `com.apple.quarantine` xattr macOS attaches to GitHub downloads, Gatekeeper rejects it with **"TokenTrackerBar is damaged and can't be opened"** — not fixable by the user without Terminal. The workflow now runs a dedicated `Ad-hoc sign app` step that signs inner Mach-O binaries first (`Resources/EmbeddedServer/node`) then ad-hoc signs the outer `.app` bundle with `--entitlements TokenTrackerBar/TokenTrackerBar.entitlements --sign -`. Result downgrades to "cannot verify developer" which users can bypass via **System Settings → Privacy & Security → Open Anyway**. The README documents both Gatekeeper paths (xattr workaround for "damaged", System Settings for "unverified"). **Never** remove the ad-hoc sign step without replacing it with proper Developer ID + notarization.
+**CI must ad-hoc sign the .app before DMG packaging.** The workflow builds with `CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO` which produces an entirely unsigned bundle. Combined with the `com.apple.quarantine` xattr macOS attaches to GitHub downloads, Gatekeeper rejects it with **"VibeDeckMac is damaged and can't be opened"** — not fixable by the user without Terminal. The workflow now runs a dedicated `Ad-hoc sign app` step that signs inner Mach-O binaries first (`Resources/EmbeddedServer/node`) then ad-hoc signs the outer `.app` bundle with `--entitlements VibeDeckMac/VibeDeckMac/VibeDeckMac.entitlements --sign -`. Result downgrades to "cannot verify developer" which users can bypass via **System Settings → Privacy & Security → Open Anyway**. The README documents both Gatekeeper paths (xattr workaround for "damaged", System Settings for "unverified"). **Never** remove the ad-hoc sign step without replacing it with proper Developer ID + notarization.
 
 ### Dashboard layout
 

@@ -218,12 +218,12 @@ npm test
 ### Building the macOS App
 
 ```bash
-cd TokenTrackerBar
+cd VibeDeckMac
 npm run dashboard:build              # Build the dashboard bundle
 ./scripts/bundle-node.sh             # Bundle Node.js + tokentracker source
 xcodegen generate                    # Generate the Xcode project
 ruby scripts/patch-pbxproj-icon.rb   # Patch in the Icon Composer asset
-xcodebuild -scheme TokenTrackerBar -configuration Release clean build
+xcodebuild -scheme VibeDeckMac -configuration Release clean build
 ./scripts/create-dmg.sh              # Package the .app into a DMG
 ```
 
@@ -306,14 +306,14 @@ This removes every hook TokenTracker installed across all detected AI tools, plu
 ### macOS App
 
 <details>
-<summary><b>"TokenTrackerBar can't be opened" — unidentified developer</b></summary>
+<summary><b>"VibeDeckMac can't be opened" — unidentified developer</b></summary>
 
 <br/>
 
-TokenTrackerBar is **ad-hoc signed** (not notarized with an Apple Developer ID — that requires a paid developer account). Gatekeeper blocks it on first launch.
+VibeDeckMac is **ad-hoc signed** (not notarized with an Apple Developer ID — that requires a paid developer account). Gatekeeper blocks it on first launch.
 
 1. Open **System Settings → Privacy & Security**
-2. Scroll to the **Security** section — you'll see *"TokenTrackerBar was blocked to protect your Mac."*
+2. Scroll to the **Security** section — you'll see *"VibeDeckMac was blocked to protect your Mac."*
 3. Click **Open Anyway**
 4. Confirm with **Open** in the follow-up dialog (you'll need to authenticate)
 
@@ -322,14 +322,14 @@ You only need to do this once. Older macOS alternative: right-click the app in F
 </details>
 
 <details>
-<summary><b>"TokenTrackerBar is damaged and can't be opened"</b></summary>
+<summary><b>"VibeDeckMac is damaged and can't be opened"</b></summary>
 
 <br/>
 
 This is Gatekeeper reacting to the `com.apple.quarantine` attribute macOS attaches to every downloaded file — not an actual problem. Clear it once with:
 
 ```bash
-xattr -cr /Applications/TokenTrackerBar.app
+xattr -cr /Applications/VibeDeckMac.app
 ```
 
 After that the app opens normally.
@@ -337,7 +337,7 @@ After that the app opens normally.
 </details>
 
 <details>
-<summary><b>"TokenTrackerBar wants to access data from other apps"</b></summary>
+<summary><b>"VibeDeckMac wants to access data from other apps"</b></summary>
 
 <br/>
 

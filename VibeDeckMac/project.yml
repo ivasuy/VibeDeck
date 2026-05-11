@@ -1,6 +1,6 @@
-name: TokenTrackerBar
+name: VibeDeckMac
 options:
-  bundleIdPrefix: com.tokentracker
+  bundleIdPrefix: com.vibedeck
   deploymentTarget:
     macOS: "12.0"
   xcodeVersion: "16.0"
@@ -12,21 +12,21 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "12.0"
 
 targets:
-  TokenTrackerBar:
+  VibeDeckMac:
     type: application
     platform: macOS
     sources:
-      - path: TokenTrackerBar
+      - path: VibeDeckMac
         excludes:
           - "EmbeddedServer/**"
           - "AppIcon.icon"
       - path: Shared
     dependencies:
-      - target: TokenTrackerWidget
+      - target: VibeDeckWidget
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tokentracker.bar
-        PRODUCT_NAME: TokenTrackerBar
+        PRODUCT_BUNDLE_IDENTIFIER: com.vibedeck.app
+        PRODUCT_NAME: VibeDeckMac
         INFOPLIST_VALUES: |
           LSUIElement = YES
         MARKETING_VERSION: "0.8.1"
@@ -37,19 +37,19 @@ targets:
         COPY_PHASE_STRIP: NO
         STRIP_INSTALLED_PRODUCT: NO
     info:
-      path: TokenTrackerBar/Info.plist
+      path: VibeDeckMac/Info.plist
       properties:
         LSUIElement: true
-        CFBundleDisplayName: TokenTracker
-        CFBundleName: TokenTrackerBar
+        CFBundleDisplayName: VibeDeck
+        CFBundleName: VibeDeckMac
         CFBundleIconFile: AppIcon
         CFBundleIconName: AppIcon
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleURLTypes:
-          - CFBundleURLName: com.tokentracker.bar.auth
+          - CFBundleURLName: com.vibedeck.bar.auth
             CFBundleURLSchemes:
-              - tokentracker
+              - vibedeck
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSAllowsArbitraryLoads: true
@@ -65,22 +65,22 @@ targets:
           exit 0
         name: "Copy EmbeddedServer to app bundle"
     entitlements:
-      path: TokenTrackerBar/TokenTrackerBar.entitlements
+      path: VibeDeckMac/VibeDeckMac.entitlements
       properties:
         com.apple.security.network.client: true
         com.apple.security.application-groups:
-          - group.com.tokentracker.bar
+          - group.com.vibedeck.bar
 
-  TokenTrackerWidget:
+  VibeDeckWidget:
     type: app-extension
     platform: macOS
     sources:
-      - path: TokenTrackerWidget
+      - path: VibeDeckWidget
       - path: Shared
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tokentracker.bar.widget
-        PRODUCT_NAME: TokenTrackerWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.vibedeck.widget
+        PRODUCT_NAME: VibeDeckWidget
         MARKETING_VERSION: "0.8.1"
         CURRENT_PROJECT_VERSION: "1"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -93,17 +93,17 @@ targets:
           - "@executable_path/../Frameworks"
           - "@executable_path/../../../../Frameworks"
     info:
-      path: TokenTrackerWidget/Info.plist
+      path: VibeDeckWidget/Info.plist
       properties:
-        CFBundleDisplayName: TokenTracker Widgets
+        CFBundleDisplayName: VibeDeck Widgets
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
-      path: TokenTrackerWidget/TokenTrackerWidget.entitlements
+      path: VibeDeckWidget/VibeDeckWidget.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.application-groups:
-          - group.com.tokentracker.bar
+          - group.com.vibedeck.bar

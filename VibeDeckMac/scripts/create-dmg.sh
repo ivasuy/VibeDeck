@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # =============================================================================
-# create-dmg.sh — Create a professional DMG installer for TokenTrackerBar
-# Usage: ./create-dmg.sh [path/to/TokenTrackerBar.app]
+# create-dmg.sh — Create a professional DMG installer for VibeDeckMac
+# Usage: ./create-dmg.sh [path/to/VibeDeckMac.app]
 # Set CI=true to skip Finder/AppleScript customization (headless mode)
 # =============================================================================
 
-APP_NAME="TokenTrackerBar"
-VOLUME_NAME="TokenTrackerBar"
+APP_NAME="VibeDeckMac"
+VOLUME_NAME="VibeDeckMac"
 DMG_FILENAME="${APP_NAME}.dmg"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -43,7 +43,7 @@ fi
 
 if [[ ! -d "$APP_PATH" ]]; then
     echo "Error: ${APP_NAME}.app not found at: $APP_PATH"
-    echo "Usage: $0 [path/to/TokenTrackerBar.app]"
+    echo "Usage: $0 [path/to/VibeDeckMac.app]"
     exit 1
 fi
 

@@ -20,7 +20,7 @@ function commandOutputText(payload) {
   return JSON.stringify(payload, null, 2);
 }
 
-export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
+export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className = "" }) {
   const [open, setOpen] = useState(false);
   const [argsText, setArgsText] = useState("");
   const [hydratedRepo, setHydratedRepo] = useState("");
@@ -66,7 +66,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
   };
 
   return (
-    <Card>
+    <Card className={className} bodyClassName="!p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.configure.title")}</h2>
         <Button type="button" size="sm" variant="secondary" onClick={() => setOpen((prev) => !prev)}>
@@ -74,7 +74,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
         </Button>
       </div>
 
-      <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.subtitle")}</p>
+      <p className="mt-1 text-sm leading-5 text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.subtitle")}</p>
 
       {open ? (
         <div className="mt-3 space-y-3">
@@ -100,7 +100,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
               <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
                 {copy("entire.configure.output")}
               </div>
-              <pre className="max-h-44 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
+              <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
                 <code>{output}</code>
               </pre>
             </div>

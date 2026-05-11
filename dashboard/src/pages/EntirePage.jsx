@@ -7,6 +7,7 @@ import { CheckpointList } from "../components/entire/CheckpointList";
 import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
 import { AdvancedConfigurePanel } from "../components/entire/AdvancedConfigurePanel";
 import { PageFrame } from "../components/PageFrame.jsx";
+import { cn } from "../lib/cn";
 
 export function EntirePage() {
   const [repoInput, setRepoInput] = useState("");
@@ -104,9 +105,10 @@ export function EntirePage() {
   }, [loadRepo, selectedRepo]);
 
   return (
-    <PageFrame title={copy("entire.title")} subtitle={copy("entire.subtitle")}>
-      <div className="grid gap-4">
+    <PageFrame title={copy("entire.title")} subtitle={copy("entire.subtitle")} compact maxWidth="max-w-[1760px]">
+      <div className="flex h-[calc(100dvh-124px)] min-h-0 flex-col gap-3 overflow-hidden">
         <RepoPathSelector
+          className="shrink-0"
           value={repoInput}
           onChange={setRepoInput}
           onSubmit={loadRepo}
@@ -115,22 +117,29 @@ export function EntirePage() {
           error={repoError}
         />
 
-        <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-          <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 gap-3 overflow-hidden",
+            selectedRepo ? "xl:grid-cols-[360px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]",
+          )}
+        >
+          <div className="flex min-h-0 flex-col gap-3 overflow-auto pr-1">
+            <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
+            {selectedRepo ? (
+              <>
+                <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+              </>
+            ) : null}
+          </div>
           <CheckpointList
+            className="min-h-[360px]"
             repo={selectedRepo}
             checkpoints={checkpointsData}
             loading={checkpointsLoading}
             error={checkpointsError}
           />
         </div>
-
-        {selectedRepo ? (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-            <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-          </div>
-        ) : null}
       </div>
     </PageFrame>
   );

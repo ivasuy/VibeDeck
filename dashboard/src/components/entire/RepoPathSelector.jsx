@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
+import { cn } from "../../lib/cn";
 
 function normalizePath(value) {
   return String(value || "").trim();
@@ -17,6 +18,7 @@ export function RepoPathSelector({
   suggestions = [],
   loading = false,
   error = "",
+  className = "",
 }) {
   const [localError, setLocalError] = useState("");
 
@@ -50,9 +52,13 @@ export function RepoPathSelector({
   const shownError = localError || error;
 
   return (
-    <Card>
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.repo.title")}</h2>
-      <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.repo.subtitle")}</p>
+    <Card className={className} bodyClassName="!p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.repo.title")}</h2>
+          <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.repo.subtitle")}</p>
+        </div>
+      </div>
 
       <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={handleSubmit}>
         <div className="min-w-[280px] flex-1">
@@ -83,24 +89,29 @@ export function RepoPathSelector({
       ) : null}
 
       {uniqueSuggestions.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+        <div className="mt-3 flex min-w-0 items-center gap-2 overflow-hidden">
+          <span className="shrink-0 text-xs text-oai-gray-500 dark:text-oai-gray-400">
             {copy("entire.repo.suggestions.label")}
           </span>
-          {uniqueSuggestions.map((repo) => (
-            <button
-              key={repo}
-              type="button"
-              className="max-w-full truncate rounded-md bg-oai-black/[0.04] px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-black/[0.08] dark:bg-white/[0.08] dark:text-oai-gray-200 dark:hover:bg-white/[0.12]"
-              title={repo}
-              onClick={() => {
-                onChange?.(repo);
-                submitPath(repo);
-              }}
-            >
-              {repo}
-            </button>
-          ))}
+          <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+            {uniqueSuggestions.map((repo) => (
+              <button
+                key={repo}
+                type="button"
+                className={cn(
+                  "max-w-[360px] shrink-0 truncate rounded-md bg-oai-black/[0.04] px-2 py-1 text-xs text-oai-gray-700 hover:bg-oai-black/[0.08]",
+                  "dark:bg-white/[0.08] dark:text-oai-gray-200 dark:hover:bg-white/[0.12]",
+                )}
+                title={repo}
+                onClick={() => {
+                  onChange?.(repo);
+                  submitPath(repo);
+                }}
+              >
+                {repo}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </Card>

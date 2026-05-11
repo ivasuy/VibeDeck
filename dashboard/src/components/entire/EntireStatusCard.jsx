@@ -36,12 +36,12 @@ function MetaRow({ label, value }) {
   );
 }
 
-export function EntireStatusCard({ status = null, loading = false, error = "" }) {
+export function EntireStatusCard({ status = null, loading = false, error = "", className = "" }) {
   const state = String(status?.state || "");
   const label = useMemo(() => statusLabel(state), [state]);
 
   return (
-    <Card>
+    <Card className={className} bodyClassName="!p-4">
       <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.status.title")}</h2>
 
       {loading ? (

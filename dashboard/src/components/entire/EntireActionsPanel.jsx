@@ -24,7 +24,7 @@ function commandOutputText(payload) {
   return JSON.stringify(payload, null, 2);
 }
 
-export function EntireActionsPanel({ repo = "", onActionSuccess }) {
+export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" }) {
   const [selectedAgents, setSelectedAgents] = useState([]);
   const [checkpointId, setCheckpointId] = useState("");
   const [cleanAll, setCleanAll] = useState(false);
@@ -131,16 +131,16 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
     );
 
   return (
-    <Card>
+    <Card className={className} bodyClassName="!p-4">
       <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.actions.title")}</h2>
-      <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.subtitle")}</p>
+      <p className="mt-1 text-sm leading-5 text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.subtitle")}</p>
 
       <div className="mt-3 space-y-3">
         <div>
           <div className="mb-1 text-xs uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
             {copy("entire.actions.enable.agents_label")}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
             {AGENTS.map((agent) => (
               <label
                 key={agent}
@@ -155,7 +155,7 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
               </label>
             ))}
           </div>
-          <p className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
             {copy("entire.actions.enable.agents_hint")}
           </p>
         </div>
@@ -215,7 +215,7 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
             <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
               {copy("entire.actions.output")}
             </div>
-            <pre className="max-h-44 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
+            <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
               <code>{output}</code>
             </pre>
           </div>

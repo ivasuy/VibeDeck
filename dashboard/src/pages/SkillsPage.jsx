@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button, Card, ConfirmModal, Input } from "../ui/openai/components";
 import { ProviderIcon } from "../ui/matrix-a/components/ProviderIcon.jsx";
+import { PageFrame } from "../components/PageFrame.jsx";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import {
@@ -102,7 +103,7 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
   const titleAttr = sourceLabel ? `${skill.directory} · ${sourceLabel}` : skill.directory;
 
   return (
-    <div className="group grid gap-4 px-1 py-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
+    <div className="group grid gap-4 px-1 py-2.5 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
       <div className="min-w-0" title={titleAttr}>
         <h2 className="truncate text-sm font-semibold text-oai-black dark:text-white">
           {skill.name || skill.directory}
@@ -141,11 +142,11 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
 
 function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
   return (
-    <div>
-      <div className="px-1 pb-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-1 pb-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
         {copy("skills.my.count", { count: items.length })}
       </div>
-      <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
+      <div className="min-h-0 flex-1 overflow-auto divide-y divide-oai-gray-200/70 pr-1 dark:divide-oai-gray-800/70">
         {items.map((skill) => (
           <SkillRow
             key={skill.id || skill.key}
@@ -168,7 +169,7 @@ function PaginationControls({ page, pageCount, total, onPageChange }) {
   const end = Math.min(total, (currentPage + 1) * SKILLS_PAGE_SIZE);
 
   return (
-    <div className="mt-5 flex flex-col gap-3 border-t border-oai-gray-200 pt-4 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mt-3 flex shrink-0 flex-col gap-2 border-t border-oai-gray-200 pt-3 text-xs text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400 sm:flex-row sm:items-center sm:justify-between">
       <div>
         {start}-{end} of {total}
       </div>
@@ -229,7 +230,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
   return (
     <Card
       className="h-full rounded-lg"
-      bodyClassName="flex h-full flex-col"
+      bodyClassName="flex h-full flex-col !p-4"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -262,12 +263,12 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
       </div>
 
       {skill.description ? (
-        <p className="mt-3 line-clamp-3 text-sm leading-6 text-oai-gray-600 dark:text-oai-gray-300">
+        <p className="mt-3 line-clamp-2 text-sm leading-6 text-oai-gray-600 dark:text-oai-gray-300">
           {skill.description}
         </p>
       ) : null}
 
-      <div className="mt-auto pt-5">
+      <div className="mt-auto pt-4">
         {installed ? (
           <div className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-oai-black/[0.04] text-sm font-medium text-oai-gray-700 ring-1 ring-inset ring-oai-black/[0.08] dark:bg-white/[0.05] dark:text-oai-gray-200 dark:ring-white/[0.08]">
             <Check className="h-3.5 w-3.5" aria-hidden />
@@ -346,7 +347,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
 
 function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove }) {
   return (
-    <div className="rounded-lg border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950">
+    <div className="rounded-lg border border-oai-gray-200 bg-white p-3 dark:border-oai-gray-800 dark:bg-oai-gray-950">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
           value={repoInput}
@@ -713,12 +714,12 @@ export function SkillsPage() {
   );
 
   const loadingNode = (
-    <div className="flex h-64 items-center justify-center">
+    <div className="flex min-h-0 flex-1 items-center justify-center">
       <Loader2 className="h-8 w-8 animate-spin text-oai-gray-400" aria-hidden />
     </div>
   );
   const browseLoadingNode = (
-    <div className="flex h-64 flex-col items-center justify-center gap-3 px-6 text-center">
+    <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 px-6 text-center">
       <Loader2 className="h-8 w-8 animate-spin text-oai-gray-400" aria-hidden />
       <p className="max-w-md text-xs text-oai-gray-500 dark:text-oai-gray-400">
         {copy("skills.browse.loading_hint")}
@@ -726,7 +727,7 @@ export function SkillsPage() {
     </div>
   );
   const emptyNode = (message, action = null) => (
-    <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+    <div className="flex min-h-[220px] flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-8 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
       <p>{message}</p>
       {action}
     </div>
@@ -737,7 +738,7 @@ export function SkillsPage() {
     contentNode = loadingNode;
   } else if (tab === "my") {
     contentNode = mySkills.length ? (
-      <>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {filteredMySkills.length ? (
           <>
             <MySkillsView
@@ -757,9 +758,9 @@ export function SkillsPage() {
         ) : (
           emptyNode(copy("skills.empty.search"))
         )}
-      </>
+      </div>
     ) : (
-      <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-10 text-center dark:border-oai-gray-800">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-oai-gray-200 px-4 py-8 text-center dark:border-oai-gray-800">
         {targets.length > 0 ? (
           <div className="relative h-11 w-80 overflow-hidden" aria-hidden>
             {/* Blurred icons — masked to mid-edge transition zones (skips center) */}
@@ -827,7 +828,7 @@ export function SkillsPage() {
     let resultNode;
     if (noSources) {
       resultNode = (
-        <div className="rounded-lg border border-dashed border-oai-gray-200 p-6 text-center dark:border-oai-gray-800">
+        <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-oai-gray-200 p-6 text-center dark:border-oai-gray-800">
           <p className="text-sm text-oai-gray-600 dark:text-oai-gray-300">
             {copy("skills.browse.empty_sources")}
           </p>
@@ -837,13 +838,13 @@ export function SkillsPage() {
       resultNode = browseLoadingNode;
     } else if (isSkillsSh && query.trim().length < 2) {
       resultNode = (
-        <div className="rounded-lg border border-dashed border-oai-gray-200 px-4 py-6 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
+        <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-oai-gray-200 px-4 py-6 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
           {copy("skills.browse.hint_skillssh")}
         </div>
       );
     } else if (browseItems.length) {
       resultNode = (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pagedBrowseItems.map((skill) => (
             <div key={skill.id || skill.key} style={BROWSE_CARD_STYLE}>
               <BrowseCard
@@ -865,7 +866,7 @@ export function SkillsPage() {
     }
 
     const manageNode = noSources || manageOpen ? (
-      <div className="mb-5">
+      <div className="mb-3 shrink-0">
         <RepoManager
           repos={repos}
           repoInput={repoInput}
@@ -878,9 +879,9 @@ export function SkillsPage() {
     ) : null;
 
     contentNode = (
-      <>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {manageNode}
-        {resultNode}
+        <div className="min-h-0 flex-1 overflow-auto pr-1">{resultNode}</div>
         {browseItems.length ? (
           <PaginationControls
             page={boundedBrowsePage}
@@ -889,31 +890,30 @@ export function SkillsPage() {
             onPageChange={setBrowsePage}
           />
         ) : null}
-      </>
+      </div>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
-      <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="mb-6 flex items-end justify-between gap-4">
-            <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
-              {copy("skills.page.title")}
-            </h1>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={loading || browseLoading}
-            >
-              <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", (loading || browseLoading) && "animate-spin")} aria-hidden />
-              {copy("skills.action.refresh")}
-            </Button>
-          </div>
-
-          <div className="mb-5 flex gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
+    <PageFrame
+      title={copy("skills.page.title")}
+      compact
+      maxWidth="max-w-[1760px]"
+      actions={
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={loading || browseLoading}
+        >
+          <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", (loading || browseLoading) && "animate-spin")} aria-hidden />
+          {copy("skills.action.refresh")}
+        </Button>
+      }
+    >
+      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-3 overflow-hidden">
+          <div className="flex shrink-0 gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
             {[
               ["my", copy("skills.tab.my")],
               ["browse", copy("skills.tab.browse")],
@@ -936,13 +936,13 @@ export function SkillsPage() {
           </div>
 
           {error ? (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
+            <div className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-200">
               {error}
             </div>
           ) : null}
 
           {tab === "my" && !loading ? (
-            <div className="mb-5">
+            <div className="shrink-0">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-oai-gray-400" aria-hidden />
                 <Input
@@ -956,7 +956,7 @@ export function SkillsPage() {
           ) : null}
 
           {tab === "browse" ? (
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center">
               <div
                 role="tablist"
                 aria-label={copy("skills.source.label")}
@@ -1085,9 +1085,10 @@ export function SkillsPage() {
             </div>
           ) : null}
 
-          {contentNode}
-        </div>
-      </main>
+          <Card className="min-h-0 flex-1 overflow-hidden" bodyClassName="flex h-full min-h-0 flex-col">
+            {contentNode}
+          </Card>
+      </div>
 
       <ConfirmModal
         open={Boolean(pendingRemove)}
@@ -1125,6 +1126,6 @@ export function SkillsPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </PageFrame>
   );
 }

@@ -146,7 +146,7 @@ describe("BranchesPage", () => {
   it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
     render(<BranchesPage />);
 
-    expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
+    expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
@@ -172,7 +172,7 @@ describe("BranchesPage", () => {
   it("shows branch and session costs without estimated suffixes while keeping unknown costs as Unknown", async () => {
     render(<BranchesPage />);
 
-    expect(await screen.findByText("Branch cost intelligence")).toBeTruthy();
+    expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.getAllByText("$12.34").length).toBe(2);
     expect(screen.queryByText("$12.34 est.")).toBeNull();
 

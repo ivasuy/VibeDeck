@@ -74,9 +74,9 @@ function modelSummary(models) {
 function ConfidenceMix({ confidence }) {
   const mix = confidenceMix(confidence);
   return (
-    <div className="min-w-[270px]">
+    <div className="min-w-0">
       <span className="sr-only">{confidenceMixText(confidence)}</span>
-      <div className="flex items-center gap-2 text-[11px]" aria-hidden>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px]" aria-hidden>
         <span className="inline-flex items-center gap-1">
           <ConfidenceBadge confidence="high" className="h-5 px-1.5 text-[10px]" />
           <span className="text-oai-gray-600 dark:text-oai-gray-300">{mix.high}</span>
@@ -99,39 +99,47 @@ function ConfidenceMix({ confidence }) {
 }
 
 function PaginationControls({ page, pageCount, pageSize, totalRows, onPageChange }) {
-  if (!Number.isFinite(pageCount) || pageCount <= 1) return null;
-  const currentPage = Math.min(Math.max(0, page), pageCount - 1);
+  const safePageCount = Number.isFinite(pageCount) ? Math.max(0, pageCount) : 0;
+  const currentPage = safePageCount > 0 ? Math.min(Math.max(0, page), safePageCount - 1) : 0;
   const start = currentPage * pageSize + 1;
   const end = Math.min(totalRows, (currentPage + 1) * pageSize);
+  const showPagination = safePageCount > 1;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-oai-gray-200/70 px-4 py-3 text-xs text-oai-gray-500 dark:border-oai-gray-800/70 dark:text-oai-gray-400 sm:flex-row sm:items-center sm:justify-between">
-      <div className="tabular-nums">
-        {start}-{end} of {totalRows}
+    <div className="flex shrink-0 flex-col gap-2 border-t border-oai-gray-200/70 px-0 py-0 text-sm text-oai-gray-500 dark:border-oai-gray-800/70 dark:text-oai-gray-400">
+      <div className="grid gap-1 px-4 py-2">
+        {showPagination ? (
+          <span className="shrink-0 text-xs tabular-nums text-oai-gray-400 dark:text-oai-gray-500">
+            {start}-{end} of {totalRows}
+          </span>
+        ) : null}
+        <span className="leading-5">{copy("branches.confidence.note")}</span>
       </div>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={currentPage === 0}
-          onClick={() => onPageChange?.(currentPage - 1)}
-        >
-          {copy("details.pagination.prev")}
-        </Button>
-        <span className="min-w-16 text-center tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
-          {currentPage + 1} / {pageCount}
-        </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={currentPage + 1 >= pageCount}
-          onClick={() => onPageChange?.(currentPage + 1)}
-        >
-          {copy("details.pagination.next")}
-        </Button>
-      </div>
+      {showPagination ? (
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-oai-gray-200/70 px-4 py-2 dark:border-oai-gray-800/70">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={currentPage === 0}
+            onClick={() => onPageChange?.(currentPage - 1)}
+          >
+            {copy("details.pagination.prev")}
+          </Button>
+          <span className="min-w-16 text-center tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
+            {currentPage + 1} / {pageCount}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={currentPage + 1 >= pageCount}
+            onClick={() => onPageChange?.(currentPage + 1)}
+          >
+            {copy("details.pagination.next")}
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -145,20 +153,21 @@ export function BranchUsageTable({
   pageSize = 10,
   totalRows = rows.length,
   onPageChange,
+  className = "",
 }) {
   return (
-    <Card className="overflow-hidden shadow-sm" bodyClassName="p-0">
-      <div className="overflow-x-auto">
-        <table className="min-w-[1040px] w-full">
-          <thead>
-            <tr className="border-b border-oai-gray-200 bg-oai-black/[0.025] text-left text-[11px] uppercase tracking-wide text-oai-gray-500 dark:border-oai-gray-800 dark:bg-white/[0.035] dark:text-oai-gray-400">
-              <th className="w-[30%] px-4 py-3 font-semibold">{copy("branches.table.branch")}</th>
+    <Card className={`flex min-h-0 overflow-hidden shadow-sm ${className}`} bodyClassName="!p-0 flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full min-w-[1120px] table-fixed border-collapse">
+          <thead className="sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
+            <tr className="border-b border-oai-gray-200 bg-oai-gray-100 text-left text-[11px] uppercase tracking-wide text-oai-gray-500 dark:border-oai-gray-800 dark:bg-[#242424] dark:text-oai-gray-400">
+              <th className="w-[32%] px-4 py-3 font-semibold">{copy("branches.table.branch")}</th>
               <th className="w-[12%] px-4 py-3 text-right font-semibold">{copy("branches.table.tokens")}</th>
               <th className="w-[10%] px-4 py-3 text-right font-semibold">{copy("branches.table.cost")}</th>
-              <th className="w-[14%] px-4 py-3 font-semibold">{copy("branches.table.top_model")}</th>
-              <th className="w-[11%] px-4 py-3 font-semibold">{copy("branches.table.last_seen")}</th>
-              <th className="w-[17%] px-4 py-3 font-semibold">{copy("branches.table.confidence_mix")}</th>
-              <th className="w-[6%] px-4 py-3 text-right font-semibold">{copy("branches.table.sessions")}</th>
+              <th className="w-[13%] px-4 py-3 font-semibold">{copy("branches.table.top_model")}</th>
+              <th className="w-[13%] px-4 py-3 font-semibold">{copy("branches.table.last_seen")}</th>
+              <th className="w-[15%] px-4 py-3 font-semibold">{copy("branches.table.confidence_mix")}</th>
+              <th className="w-[5%] px-4 py-3 text-right font-semibold">{copy("branches.table.sessions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -180,7 +189,7 @@ export function BranchUsageTable({
                   >
                     <td className="px-4 py-3 align-middle text-oai-black dark:text-white">
                       <span
-                        className="inline-flex max-w-full items-center whitespace-normal break-words rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-2.5 py-1 font-medium leading-5 dark:border-oai-gray-800 dark:bg-white/[0.045]"
+                        className="inline-flex max-w-full items-center whitespace-normal break-words rounded-md bg-oai-black/[0.045] px-2.5 py-1 font-medium leading-5 dark:bg-white/[0.07]"
                         title={String(row?.branch || "—")}
                       >
                         {String(row?.branch || "—")}
@@ -194,7 +203,7 @@ export function BranchUsageTable({
                     </td>
                     <td className="px-4 py-3 align-middle text-oai-gray-700 dark:text-oai-gray-200">
                       {topModel ? (
-                        <div className="max-w-[220px] min-w-0">
+                        <div className="min-w-0">
                           <div className="truncate text-sm text-oai-black dark:text-white">{topModel.label}</div>
                         </div>
                       ) : (
@@ -229,9 +238,6 @@ export function BranchUsageTable({
             )}
           </tbody>
         </table>
-      </div>
-      <div className="border-t border-oai-gray-200/70 px-4 py-2 text-xs text-oai-gray-500 dark:border-oai-gray-800/70 dark:text-oai-gray-400">
-        {copy("branches.confidence.note")}
       </div>
       <PaginationControls
         page={page}

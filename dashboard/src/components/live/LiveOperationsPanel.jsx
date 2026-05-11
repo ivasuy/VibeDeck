@@ -13,7 +13,7 @@ export function LiveOperationsPanel({
   limitsError,
 }) {
   return (
-    <section className="flex h-[640px] min-h-0 flex-col overflow-hidden rounded-xl border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <section className="flex h-[calc(100dvh-326px)] min-h-[500px] max-h-[640px] flex-col overflow-hidden rounded-xl border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900">
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(360px,0.9fr)_minmax(0,1.1fr)]">
         <div className="min-h-0 border-b border-oai-gray-200 dark:border-oai-gray-800 lg:border-b-0 lg:border-r">
           <LiveProviderLimitsGrid

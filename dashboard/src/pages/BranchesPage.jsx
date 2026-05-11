@@ -88,14 +88,14 @@ function formatSummaryCostLabel(totals) {
 
 function SummaryMetric({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-md border border-oai-gray-200/70 bg-oai-black/[0.025] px-3 py-2.5 dark:border-oai-gray-800/70 dark:bg-white/[0.06]">
+    <div className="rounded-md border border-oai-gray-200/70 bg-oai-black/[0.025] px-3.5 py-3 dark:border-oai-gray-800/70 dark:bg-white/[0.06]">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
         <span className="inline-flex h-6 w-6 items-center justify-center text-oai-gray-500 dark:text-oai-gray-300">
           <Icon className="h-3.5 w-3.5" aria-hidden />
         </span>
         <span>{label}</span>
       </div>
-      <div className="mt-2 text-sm font-semibold tabular-nums text-oai-black dark:text-white">
+      <div className="mt-1.5 text-base font-semibold tabular-nums text-oai-black dark:text-white">
         {value}
       </div>
     </div>
@@ -210,10 +210,10 @@ export function BranchesPage() {
       : copy("branches.empty");
 
   return (
-    <PageFrame title={copy("branches.title")} subtitle={copy("branches.subtitle")}>
-      <div className="grid gap-4">
-        <Card>
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <PageFrame maxWidth="max-w-[1760px]" hideHeader>
+      <div className="grid min-h-0 gap-2 overflow-hidden">
+        <Card bodyClassName="p-5">
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <div className="w-full">
               <label
                 htmlFor="branches-project-select"
@@ -282,6 +282,7 @@ export function BranchesPage() {
           </Card>
         ) : (
           <BranchUsageTable
+            className="max-h-[calc(100dvh-248px)]"
             rows={pagedRows}
             onOpenSessions={setSelectedRow}
             emptyMessage={emptyMessage}

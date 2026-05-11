@@ -7,6 +7,7 @@ import {
   getCheckpoint,
   getCheckpoints,
   getEntireStatus,
+  getKnownRepos,
   getSyncStatus,
   postAttribute,
   postEntireCommand,
@@ -47,6 +48,15 @@ describe("vibedeck-api", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("/functions/vibedeck-branch-usage");
     expect(fetchMock.mock.calls[0][0]).toContain("repo=%2Frepo");
     expect(fetchMock.mock.calls[0][0]).toContain("include_sessions=1");
+  });
+
+  it("fetches known repos", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ repos: [] }) });
+
+    await getKnownRepos({ limit: 20 }, fetchMock as any);
+
+    expect(fetchMock.mock.calls[0][0]).toContain("/functions/vibedeck-known-repos");
+    expect(fetchMock.mock.calls[0][0]).toContain("limit=20");
   });
 
   it("fetches Entire status and checkpoints with repo parameters", async () => {

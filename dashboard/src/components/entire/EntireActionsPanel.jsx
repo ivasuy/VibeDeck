@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { confirmDestructive, postEntireCommand } from "../../lib/vibedeck-api";
+import { readEntirePrefs, writeEntirePrefs } from "./storage";
 
 const AGENTS = [
   "claude-code",
@@ -27,12 +28,38 @@ export function EntireActionsPanel({ repo = "", onActionSuccess }) {
   const [selectedAgents, setSelectedAgents] = useState([]);
   const [checkpointId, setCheckpointId] = useState("");
   const [cleanAll, setCleanAll] = useState(false);
+  const [hydratedRepo, setHydratedRepo] = useState("");
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
 
   const canEnable = useMemo(() => selectedAgents.length > 0, [selectedAgents]);
   const canRewind = useMemo(() => checkpointId.trim().length > 0, [checkpointId]);
+
+  useEffect(() => {
+    const cleanRepo = String(repo || "").trim();
+    if (!cleanRepo) {
+      setSelectedAgents([]);
+      setCheckpointId("");
+      setCleanAll(false);
+      setHydratedRepo("");
+      return;
+    }
+    const saved = readEntirePrefs("actions", cleanRepo);
+    const savedAgents = Array.isArray(saved?.selectedAgents)
+      ? saved.selectedAgents.filter((agent) => AGENTS.includes(agent))
+      : [];
+    setSelectedAgents(savedAgents);
+    setCheckpointId(typeof saved?.checkpointId === "string" ? saved.checkpointId : "");
+    setCleanAll(Boolean(saved?.cleanAll));
+    setHydratedRepo(cleanRepo);
+  }, [repo]);
+
+  useEffect(() => {
+    const cleanRepo = String(repo || "").trim();
+    if (!cleanRepo || hydratedRepo !== cleanRepo) return;
+    writeEntirePrefs("actions", cleanRepo, { selectedAgents, checkpointId, cleanAll });
+  }, [repo, hydratedRepo, selectedAgents, checkpointId, cleanAll]);
 
   const runAction = async (key, task, { reload = false } = {}) => {
     if (!repo) return;

@@ -11,12 +11,14 @@ const getEntireStatus = vi.fn();
 const getCheckpoints = vi.fn();
 const getCheckpoint = vi.fn();
 const getBranchUsage = vi.fn();
+const getKnownRepos = vi.fn();
 
 vi.mock("../lib/vibedeck-api", () => ({
   getEntireStatus: (...args) => getEntireStatus(...args),
   getCheckpoints: (...args) => getCheckpoints(...args),
   getCheckpoint: (...args) => getCheckpoint(...args),
   getBranchUsage: (...args) => getBranchUsage(...args),
+  getKnownRepos: (...args) => getKnownRepos(...args),
 }));
 
 beforeEach(() => {
@@ -24,6 +26,7 @@ beforeEach(() => {
   getCheckpoints.mockReset();
   getCheckpoint.mockReset();
   getBranchUsage.mockReset();
+  getKnownRepos.mockReset();
 });
 
 afterEach(() => {
@@ -32,6 +35,7 @@ afterEach(() => {
 
 describe("EntirePage", () => {
   it("renders repo path input and selector", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [] });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "not_enabled" });
     getCheckpoints.mockResolvedValue({ available: false, files: [] });
@@ -47,6 +51,7 @@ describe("EntirePage", () => {
     ["enabled_no_commits", "Enabled, waiting for checkpoints"],
     ["active", "Active"],
   ])("renders status label for %s", async (state, label) => {
+    getKnownRepos.mockResolvedValue({ repos: [] });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state });
     getCheckpoints.mockResolvedValue({ available: false, files: [] });
@@ -61,9 +66,10 @@ describe("EntirePage", () => {
   });
 
   it("renders checkpoint file names for selected repo", async () => {
-    getBranchUsage.mockResolvedValue({
+    getKnownRepos.mockResolvedValue({
       repos: [{ repo_root: "/Users/dev/repo", branches: [] }],
     });
+    getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });
     getCheckpoints.mockResolvedValue({
       available: true,

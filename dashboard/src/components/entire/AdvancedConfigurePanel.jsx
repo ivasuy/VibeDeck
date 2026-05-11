@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button, Card, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
+import { readEntirePrefs, writeEntirePrefs } from "./storage";
 
 function parseArgv(raw) {
   const text = String(raw || "").trim();
@@ -22,9 +23,30 @@ function commandOutputText(payload) {
 export function AdvancedConfigurePanel({ repo = "", onActionSuccess }) {
   const [open, setOpen] = useState(false);
   const [argsText, setArgsText] = useState("");
+  const [hydratedRepo, setHydratedRepo] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
+
+  useEffect(() => {
+    const cleanRepo = String(repo || "").trim();
+    if (!cleanRepo) {
+      setOpen(false);
+      setArgsText("");
+      setHydratedRepo("");
+      return;
+    }
+    const saved = readEntirePrefs("configure", cleanRepo);
+    setOpen(Boolean(saved?.open));
+    setArgsText(typeof saved?.argsText === "string" ? saved.argsText : "");
+    setHydratedRepo(cleanRepo);
+  }, [repo]);
+
+  useEffect(() => {
+    const cleanRepo = String(repo || "").trim();
+    if (!cleanRepo || hydratedRepo !== cleanRepo) return;
+    writeEntirePrefs("configure", cleanRepo, { open, argsText });
+  }, [repo, hydratedRepo, open, argsText]);
 
   const runConfigure = async () => {
     if (!repo || busy) return;

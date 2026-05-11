@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { copy } from "../lib/copy";
-import { getBranchUsage, getCheckpoints, getEntireStatus } from "../lib/vibedeck-api";
+import { getBranchUsage, getCheckpoints, getEntireStatus, getKnownRepos } from "../lib/vibedeck-api";
 import { RepoPathSelector } from "../components/entire/RepoPathSelector";
 import { EntireStatusCard } from "../components/entire/EntireStatusCard";
 import { CheckpointList } from "../components/entire/CheckpointList";
@@ -24,18 +24,24 @@ export function EntirePage() {
 
   useEffect(() => {
     let cancelled = false;
-    getBranchUsage({ limit: 20 })
+    const extractRepos = (payload) => (Array.isArray(payload?.repos)
+      ? payload.repos
+        .map((entry) => String(entry?.repo_root || "").trim())
+        .filter(Boolean)
+      : []);
+
+    getKnownRepos({ limit: 20 })
       .then((payload) => {
         if (cancelled) return;
-        const repos = Array.isArray(payload?.repos)
-          ? payload.repos
-            .map((entry) => String(entry?.repo_root || "").trim())
-            .filter(Boolean)
-          : [];
-        setRepoSuggestions(repos);
+        setRepoSuggestions(extractRepos(payload));
       })
-      .catch(() => {
-        if (!cancelled) setRepoSuggestions([]);
+      .catch(async () => {
+        try {
+          const payload = await getBranchUsage({ limit: 20 });
+          if (!cancelled) setRepoSuggestions(extractRepos(payload));
+        } catch {
+          if (!cancelled) setRepoSuggestions([]);
+        }
       });
     return () => {
       cancelled = true;

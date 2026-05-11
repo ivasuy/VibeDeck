@@ -83,8 +83,8 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
     fireEvent.click(await screen.findByRole("button", { name: "Load repo" }));
 
-    expect(await screen.findByText("checkpoints/2026-05-10.json")).toBeTruthy();
-    expect(screen.getByText("checkpoints/2026-05-09.json")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Open checkpoint file JSON checkpoints\/2026-05-10\.json/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Open checkpoint file JSON checkpoints\/2026-05-09\.json/i })).toBeTruthy();
   });
 
   it("adds a manually loaded repo to recent repos immediately", async () => {
@@ -137,5 +137,85 @@ describe("EntirePage", () => {
     expect(await screen.findByDisplayValue("/Users/dev/workspace/repo-01")).toBeTruthy();
     expect(getEntireStatus).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
     expect(getCheckpoints).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
+  });
+
+  it("opens text, hash, jsonl, and metadata checkpoint files without parse errors", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({
+      available: true,
+      files: [
+        "06/e2abdc1ec6/metadata.json",
+        "06/e2abdc1ec6/0/prompt.txt",
+        "06/e2abdc1ec6/0/full.jsonl",
+        "06/e2abdc1ec6/0/content_hash.txt",
+      ],
+    });
+    getCheckpoint.mockImplementation((_repo, filePath) => {
+      if (filePath.endsWith("metadata.json")) {
+        return Promise.resolve({
+          path: filePath,
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{\"branch\":\"publish-main\"}",
+          parsed: { branch: "publish-main", cli_version: "0.6.1" },
+          parse_error: null,
+          size_bytes: 25,
+          line_count: 1,
+        });
+      }
+      if (filePath.endsWith("prompt.txt")) {
+        return Promise.resolve({
+          path: filePath,
+          file_name: "prompt.txt",
+          kind: "text",
+          raw: "Quality review\nLine two",
+          parsed: null,
+          parse_error: null,
+          size_bytes: 23,
+          line_count: 2,
+        });
+      }
+      if (filePath.endsWith("full.jsonl")) {
+        return Promise.resolve({
+          path: filePath,
+          file_name: "full.jsonl",
+          kind: "jsonl",
+          raw: "{\"type\":\"start\"}\n{\"type\":\"end\"}",
+          parsed: { valid_lines: 2, invalid_lines: 0, preview: [{ line: 1, value: { type: "start" } }] },
+          parse_error: null,
+          size_bytes: 33,
+          line_count: 2,
+        });
+      }
+      return Promise.resolve({
+        path: filePath,
+        file_name: "content_hash.txt",
+        kind: "hash",
+        raw: "sha256:abc123",
+        parsed: { algorithm: "sha256", value: "abc123" },
+        parse_error: null,
+        size_bytes: 13,
+        line_count: 1,
+      });
+    });
+
+    render(<EntirePage />);
+    const input = await screen.findByPlaceholderText("/Users/you/project");
+    fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
+
+    expect(await screen.findByText("publish-main")).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file Prompt/i }));
+    expect(await screen.findByText(/Quality review/)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file JSONL/i }));
+    expect(await screen.findByText("2 valid lines")).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file Hash/i }));
+    expect(await screen.findByText("sha256")).toBeTruthy();
+    expect(screen.queryByText(/Unable to load checkpoint/)).toBeNull();
   });
 });

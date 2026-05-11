@@ -59,6 +59,11 @@ describe("LiveSessionList", () => {
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("$0.70")).toBeTruthy();
 
+    const workstreamCard = screen.getByRole("button", { name: /select VibeDeck workstream/i });
+    expect(workstreamCard.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(workstreamCard);
+    expect(onSelectSession).toHaveBeenCalledWith("codex:main-live");
+
     const breakdownButton = screen.getByRole("button", { name: /view breakdown for VibeDeck/i });
     fireEvent.click(breakdownButton);
 

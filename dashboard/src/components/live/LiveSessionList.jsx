@@ -68,6 +68,12 @@ function MetaItem({ label, value, icon: Icon }) {
   );
 }
 
+function activateWorkstream(workstream, onSelectSession) {
+  const primary = workstream?.primary_session || workstream?.sessions?.[0] || null;
+  const key = getSessionKey(primary);
+  if (key && typeof onSelectSession === "function") onSelectSession(key);
+}
+
 export function LiveSessionList({
   sessions = [],
   selectedKey = null,
@@ -132,14 +138,25 @@ export function LiveSessionList({
             const branchLabel = workstream.branches.join(", ");
             const relatedCount = Math.max(0, workstream.sessions.length - 1);
             const repoName = repoBasename(repoRoot);
+            const handleSelectWorkstream = () => activateWorkstream(workstream, onSelectSession);
             return (
               <StaggerItem key={workstream.id || primaryKey}>
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={selected}
+                  aria-label={`Select ${repoName} workstream`}
+                  onClick={handleSelectWorkstream}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    handleSelectWorkstream();
+                  }}
                   className={cn(
-                    "grid min-h-[132px] w-full gap-3 px-5 py-4 text-left transition-colors",
+                    "grid min-h-[132px] w-full cursor-pointer gap-3 border-l-2 px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
                     selected
-                      ? "bg-oai-black/[0.03] dark:bg-white/[0.06]"
-                      : "hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900/80",
+                      ? "border-oai-brand-500 bg-oai-brand-50/70 ring-1 ring-inset ring-oai-brand-500/20 dark:bg-oai-brand-500/10"
+                      : "border-transparent hover:border-oai-gray-300 hover:bg-oai-gray-50 dark:hover:border-oai-gray-700 dark:hover:bg-oai-gray-900/80",
                   )}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -187,7 +204,10 @@ export function LiveSessionList({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setOpenWorkstreamId(workstream.id)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOpenWorkstreamId(workstream.id);
+                      }}
                       className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-gray-300 hover:text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:text-oai-gray-200 dark:hover:border-oai-gray-700 dark:hover:text-white"
                       aria-label={`View breakdown for ${repoName}`}
                     >

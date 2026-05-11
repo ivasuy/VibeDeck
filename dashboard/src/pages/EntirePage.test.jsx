@@ -12,6 +12,7 @@ const getCheckpoints = vi.fn();
 const getCheckpoint = vi.fn();
 const getBranchUsage = vi.fn();
 const getKnownRepos = vi.fn();
+const hideKnownRepo = vi.fn();
 
 vi.mock("../lib/vibedeck-api", () => ({
   getEntireStatus: (...args) => getEntireStatus(...args),
@@ -19,6 +20,7 @@ vi.mock("../lib/vibedeck-api", () => ({
   getCheckpoint: (...args) => getCheckpoint(...args),
   getBranchUsage: (...args) => getBranchUsage(...args),
   getKnownRepos: (...args) => getKnownRepos(...args),
+  hideKnownRepo: (...args) => hideKnownRepo(...args),
 }));
 
 beforeEach(() => {
@@ -27,11 +29,19 @@ beforeEach(() => {
   getCheckpoint.mockReset();
   getBranchUsage.mockReset();
   getKnownRepos.mockReset();
+  hideKnownRepo.mockReset();
 });
 
 afterEach(() => {
   cleanup();
 });
+
+async function expandCheckpointGroup(namePattern) {
+  const groupButton = await screen.findByRole("button", { name: namePattern });
+  if (groupButton.getAttribute("aria-expanded") !== "true") {
+    fireEvent.click(groupButton);
+  }
+}
 
 describe("EntirePage", () => {
   it("renders repo path input and selector", async () => {
@@ -83,8 +93,10 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
     fireEvent.click(await screen.findByRole("button", { name: "Load repo" }));
 
-    expect(await screen.findByRole("button", { name: /Open checkpoint file JSON checkpoints\/2026-05-10\.json/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Open checkpoint file JSON checkpoints\/2026-05-09\.json/i })).toBeTruthy();
+    expect(await screen.findByText("Checkpoint files")).toBeTruthy();
+    await expandCheckpointGroup(/checkpoints/i);
+    expect(screen.getByText("2026-05-10.json")).toBeTruthy();
+    expect(screen.getByText("2026-05-09.json")).toBeTruthy();
   });
 
   it("adds a manually loaded repo to recent repos immediately", async () => {
@@ -92,6 +104,7 @@ describe("EntirePage", () => {
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });
     getCheckpoints.mockResolvedValue({ available: true, files: [] });
+    hideKnownRepo.mockResolvedValue({ ok: true });
 
     render(<EntirePage />);
 
@@ -102,44 +115,36 @@ describe("EntirePage", () => {
     expect(await screen.findByRole("button", { name: "Load recent repo manual-repo" })).toBeTruthy();
   });
 
-  it("renders readable deduped recent repo chips, caps visible chips, and loads from chip click", async () => {
+  it("renders recent repos in a side pane and supports removing a repo", async () => {
     getKnownRepos.mockResolvedValue({
       repos: [
         { repo_root: "/Users/dev/workspace/repo-01" },
-        { repo_root: "/Users/dev/workspace/repo-02" },
-        { repo_root: "/Users/dev/workspace/repo-03" },
-        { repo_root: "/Users/dev/workspace/repo-04" },
-        { repo_root: "/Users/dev/workspace/repo-05" },
-        { repo_root: "/Users/dev/workspace/repo-06" },
-        { repo_root: "/Users/dev/workspace/repo-07" },
-        { repo_root: "/Users/dev/workspace/repo-08" },
-        { repo_root: "/Users/dev/workspace/repo-09" },
         { repo_root: "/Users/dev/workspace/repo-02" },
       ],
     });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });
     getCheckpoints.mockResolvedValue({ available: true, files: [] });
+    hideKnownRepo.mockResolvedValue({ ok: true });
 
     render(<EntirePage />);
 
-    expect(await screen.findByRole("button", { name: "Load recent repo repo-01" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Load recent repo repo-08" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Load recent repo repo-09" })).toBeNull();
-    expect(screen.getByText("+1 more")).toBeTruthy();
+    expect(await screen.findByRole("complementary", { name: /Recent repos/i })).toBeTruthy();
+    const repoButton = screen.getByRole("button", { name: "Load recent repo repo-01" });
+    expect(repoButton.getAttribute("title")).toBe("/Users/dev/workspace/repo-01");
+    expect(screen.getAllByText("workspace").length).toBeGreaterThan(0);
 
-    const chip = screen.getByRole("button", { name: "Load recent repo repo-01" });
-    expect(chip).toHaveAttribute("title", "/Users/dev/workspace/repo-01");
-    expect(screen.getAllByText("workspace")).toHaveLength(8);
-
-    fireEvent.click(chip);
+    fireEvent.click(repoButton);
 
     expect(await screen.findByDisplayValue("/Users/dev/workspace/repo-01")).toBeTruthy();
     expect(getEntireStatus).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
     expect(getCheckpoints).toHaveBeenLastCalledWith("/Users/dev/workspace/repo-01");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove recent repo repo-02" }));
+    expect(hideKnownRepo).toHaveBeenCalledWith("/Users/dev/workspace/repo-02");
   });
 
-  it("opens text, hash, jsonl, and metadata checkpoint files without parse errors", async () => {
+  it("shows checkpoint files in a split browser without numeric path labels", async () => {
     getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });
@@ -206,20 +211,24 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
+    expect(await screen.findByText("Checkpoint files")).toBeTruthy();
+    expect(screen.queryByText(/^0$/)).toBeNull();
+    await expandCheckpointGroup(/06\/e2abdc1ec6/i);
+
     expect(await screen.findByText("publish-main")).toBeTruthy();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file Prompt/i }));
+    fireEvent.click(await screen.findByText("prompt.txt"));
     expect(await screen.findByText(/Quality review/)).toBeTruthy();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file JSONL/i }));
+    fireEvent.click(await screen.findByText("full.jsonl"));
     expect(await screen.findByText("2 valid lines")).toBeTruthy();
 
-    fireEvent.click(await screen.findByRole("button", { name: /Open checkpoint file Hash/i }));
+    fireEvent.click(await screen.findByText("content_hash.txt"));
     expect(await screen.findByText("sha256")).toBeTruthy();
     expect(screen.queryByText(/Unable to load checkpoint/)).toBeNull();
   });
 
-  it("uses a three panel checkpoint workbench after repo load", async () => {
+  it("renders a kibana-like board with fixed tiles for status, actions, configure, and checkpoints", async () => {
     getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active", version: "0.6.1" });
@@ -243,9 +252,13 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
-    expect(await screen.findByText("Checkpoint files")).toBeTruthy();
+    expect(screen.queryByText("Repository")).toBeNull();
     expect(screen.getByText("Entire status")).toBeTruthy();
+    expect(screen.getByText("Controls")).toBeTruthy();
     expect(screen.getByText("Actions")).toBeTruthy();
-    expect(screen.getByText("metadata.json")).toBeTruthy();
+    expect(screen.getByText("Configure")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Enable" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Run configure" })).toBeTruthy();
+    expect(screen.getByText("Checkpoint files")).toBeTruthy();
   });
 });

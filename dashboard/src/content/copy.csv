@@ -586,6 +586,7 @@ entire.checkpoints.detail.meta.fields,dashboard,EntirePage,CheckpointList,meta_f
 entire.checkpoints.detail.meta.none,dashboard,EntirePage,CheckpointList,meta_none,No metadata fields available.,,active
 entire.actions.title,dashboard,EntirePage,EntireActionsPanel,title,Actions,,active
 entire.actions.subtitle,dashboard,EntirePage,EntireActionsPanel,subtitle,Run Entire commands for the selected repository.,,active
+entire.actions.empty,dashboard,EntirePage,EntireActionsPanel,empty,Load a repository to run Entire commands.,,active
 entire.actions.enable.agents_label,dashboard,EntirePage,EntireActionsPanel,enable_agents_label,Agents for enable,,active
 entire.actions.enable.agents_hint,dashboard,EntirePage,EntireActionsPanel,enable_agents_hint,Choose one or more agents before enabling Entire.,,active
 entire.actions.enable,dashboard,EntirePage,EntireActionsPanel,enable_action,Enable,,active
@@ -604,6 +605,7 @@ entire.actions.output,dashboard,EntirePage,EntireActionsPanel,output,Command out
 entire.configure.title,dashboard,EntirePage,AdvancedConfigurePanel,title,Configure,,active
 entire.configure.disclosure,dashboard,EntirePage,AdvancedConfigurePanel,disclosure,Advanced raw configure,,active
 entire.configure.subtitle,dashboard,EntirePage,AdvancedConfigurePanel,subtitle,Use raw argv-style arguments for Entire configure.,,active
+entire.configure.empty,dashboard,EntirePage,AdvancedConfigurePanel,empty,Load a repository to configure Entire.,,active
 entire.configure.input.label,dashboard,EntirePage,AdvancedConfigurePanel,input_label,Configure args,,active
 entire.configure.input.placeholder,dashboard,EntirePage,AdvancedConfigurePanel,input_placeholder,--arg value --flag,,active
 entire.configure.action,dashboard,EntirePage,AdvancedConfigurePanel,action,Run configure,,active

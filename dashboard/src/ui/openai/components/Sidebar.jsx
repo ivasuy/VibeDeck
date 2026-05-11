@@ -512,9 +512,12 @@ function MobileTopBar({ onOpenDrawer }) {
  */
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
+  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const normalizedPath = (location?.pathname || "/").replace(/\/+$/, "") || "/";
+  const fixedWorkbench = normalizedPath === "/entire";
 
   /** macOS WKWebView：底层由 NSVisualEffectView 提供模糊，Web 根布局透明，侧栏浮在背景上；浏览器仍用灰色底。 */
   const nativeEmbed = useMemo(() => {
@@ -550,7 +553,7 @@ export function AppLayout({ children }) {
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
-            <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className={cn("flex-1 min-h-0", fixedWorkbench ? "overflow-hidden" : "overflow-y-auto")}>
               {children}
             </div>
           </div>

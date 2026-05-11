@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Card } from "../../ui/openai/components";
+import { Activity, GitCommit, Server, Tag } from "lucide-react";
 import { copy } from "../../lib/copy";
 
 function stateClass(state) {
@@ -25,11 +25,26 @@ function cachedStateLabel(state) {
   return state;
 }
 
-function MetaRow({ label, value }) {
+function MetaRow({ label, value, wrap = false, mono = false, icon: Icon = null }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-      <span>{label}</span>
-      <span className="max-w-[70%] truncate text-right font-medium text-oai-black dark:text-white" title={value}>
+    <div className={[
+      "rounded-md bg-oai-black/[0.03] px-3 py-3 text-[11px] text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300",
+      wrap ? "grid gap-2" : "flex items-center justify-between gap-2",
+    ].join(" ")}
+    >
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        {Icon ? <Icon className="h-3.5 w-3.5 shrink-0 text-oai-gray-400 dark:text-oai-gray-500" aria-hidden /> : null}
+        <span>{label}</span>
+      </span>
+      <span
+        className={[
+          wrap ? "max-w-full text-left" : "max-w-[72%] text-right",
+          "font-medium text-oai-black dark:text-white",
+          wrap ? "break-all whitespace-normal leading-5" : "truncate",
+          mono ? "font-mono text-[10px]" : "",
+        ].join(" ")}
+        title={value}
+      >
         {value}
       </span>
     </div>
@@ -41,44 +56,47 @@ export function EntireStatusCard({ status = null, loading = false, error = "", c
   const label = useMemo(() => statusLabel(state), [state]);
 
   return (
-    <Card className={className} bodyClassName="!p-4">
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.status.title")}</h2>
-
+    <div className={className}>
       {loading ? (
-        <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.loading")}</p>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.loading")}</p>
       ) : error ? (
-        <p className="mt-2 text-sm text-red-700 dark:text-red-300">
+        <p className="text-sm text-red-700 dark:text-red-300">
           {copy("entire.status.error", { error })}
         </p>
       ) : !status ? (
-        <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.empty")}</p>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.empty")}</p>
       ) : (
-        <div className="mt-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-3 py-3 dark:bg-white/[0.08]">
+            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+              <Activity className="h-3.5 w-3.5" aria-hidden />
               {copy("entire.status.state")}
             </span>
-            <span className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${stateClass(state)}`}>
+            <span className={`inline-flex h-5 items-center rounded-md px-2 text-[11px] font-medium ${stateClass(state)}`}>
               {label}
             </span>
           </div>
           {status?.version ? (
-            <MetaRow label={copy("entire.status.version")} value={String(status.version)} />
+            <MetaRow label={copy("entire.status.version")} value={String(status.version)} icon={Tag} />
           ) : null}
           {status?.checkpoint_branch_tip ? (
             <MetaRow
               label={copy("entire.status.tip")}
               value={String(status.checkpoint_branch_tip)}
+              wrap
+              mono
+              icon={GitCommit}
             />
           ) : null}
           {status?.cached_state ? (
             <MetaRow
               label={copy("entire.status.cached_state")}
               value={cachedStateLabel(String(status.cached_state))}
+              icon={Server}
             />
           ) : null}
         </div>
       )}
-    </Card>
+    </div>
   );
 }

@@ -108,6 +108,10 @@ export function getKnownRepos(params: { limit?: number } = {}, fetchImpl: FetchI
   return fetchImpl(query("vibedeck-known-repos", params), readOptions).then(jsonOrThrow);
 }
 
+export function hideKnownRepo(repo: string, fetchImpl: FetchImpl = fetch) {
+  return postVibeDeckJson("vibedeck-known-repos/hide", { repo }, fetchImpl);
+}
+
 export function getEntireStatus(repo: string, fetchImpl: FetchImpl = fetch) {
   return fetchImpl(query("vibedeck-entire-status", { repo, cached: "1" }), readOptions).then(jsonOrThrow);
 }

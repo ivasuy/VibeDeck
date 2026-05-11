@@ -47,6 +47,14 @@ async function loadRepo(repo = "/Users/dev/repo") {
   await screen.findByText("Active");
 }
 
+async function openActionsPanel() {
+  await screen.findByText("Actions");
+}
+
+async function openConfigurePanel() {
+  await screen.findByText("Configure");
+}
+
 beforeEach(() => {
   Object.defineProperty(window, "localStorage", {
     configurable: true,
@@ -77,6 +85,7 @@ describe("EntirePage write actions", () => {
   it("enables Entire with selected agents", async () => {
     render(<EntirePage />);
     await loadRepo();
+    await openActionsPanel();
 
     fireEvent.click(screen.getByLabelText("codex"));
     fireEvent.click(screen.getByLabelText("gemini"));
@@ -93,6 +102,7 @@ describe("EntirePage write actions", () => {
   it("disables Entire for selected repo", async () => {
     render(<EntirePage />);
     await loadRepo();
+    await openActionsPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Disable" }));
 
@@ -108,6 +118,7 @@ describe("EntirePage write actions", () => {
 
     render(<EntirePage />);
     await loadRepo();
+    await openActionsPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "Doctor" }));
     await waitFor(() => {
@@ -123,18 +134,17 @@ describe("EntirePage write actions", () => {
     expect(await screen.findByText("status: active")).toBeTruthy();
   });
 
-  it("keeps configure behind advanced disclosure", async () => {
+  it("renders configure controls in the fixed workspace tile", async () => {
     render(<EntirePage />);
     await loadRepo();
 
-    expect(screen.queryByRole("button", { name: "Run configure" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
     expect(await screen.findByRole("button", { name: "Run configure" })).toBeTruthy();
   });
 
   it("remembers action controls per repo", async () => {
     render(<EntirePage />);
     await loadRepo("/Users/dev/repo");
+    await openActionsPanel();
 
     fireEvent.click(screen.getByLabelText("codex"));
     fireEvent.change(screen.getByPlaceholderText("checkpoint-id"), { target: { value: "cp-001" } });
@@ -147,6 +157,7 @@ describe("EntirePage write actions", () => {
     cleanup();
     render(<EntirePage />);
     await loadRepo("/Users/dev/repo");
+    await openActionsPanel();
 
     expect(screen.getByLabelText("codex").checked).toBe(true);
     expect(screen.getByPlaceholderText("checkpoint-id").value).toBe("cp-001");
@@ -157,7 +168,7 @@ describe("EntirePage write actions", () => {
     render(<EntirePage />);
     await loadRepo("/Users/dev/repo");
 
-    fireEvent.click(screen.getByRole("button", { name: "Advanced raw configure" }));
+    await openConfigurePanel();
     fireEvent.change(await screen.findByPlaceholderText("--arg value --flag"), {
       target: { value: "--agent codex --mode careful" },
     });
@@ -169,6 +180,7 @@ describe("EntirePage write actions", () => {
     cleanup();
     render(<EntirePage />);
     await loadRepo("/Users/dev/repo");
+    await openConfigurePanel();
 
     expect(await screen.findByDisplayValue("--agent codex --mode careful")).toBeTruthy();
   });
@@ -183,6 +195,7 @@ describe("EntirePage write actions", () => {
 
     render(<EntirePage />);
     await loadRepo();
+    await openActionsPanel();
 
     fireEvent.change(screen.getByPlaceholderText("checkpoint-id"), { target: { value: "cp-001" } });
     fireEvent.click(screen.getByRole("button", { name: "Rewind" }));

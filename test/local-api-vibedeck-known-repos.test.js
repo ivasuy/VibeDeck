@@ -7,6 +7,7 @@ const { test } = require("node:test");
 const { DatabaseSync } = require("node:sqlite");
 
 const { ensureSchema } = require("../src/lib/db");
+const auth = require("../src/lib/local-auth");
 const { upsertEntireState } = require("../src/lib/db/repos");
 
 function createRequest({ method = "GET", headers = {}, body } = {}) {
@@ -182,6 +183,66 @@ test("vibedeck-known-repos hides repos that no longer exist on disk", async () =
     assert.equal(res.statusCode, 200);
     const payload = JSON.parse(res.body.toString("utf8"));
     assert.deepEqual(payload.repos.map((repo) => repo.repo_root), [existingRepo]);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test("POST /functions/vibedeck-known-repos/hide suppresses a repo from subsequent known repo responses", async () => {
+  const { root, queuePath, dbPath } = await createTracker();
+  const hideMeRepo = path.join(root, "hide-me");
+  const keepMeRepo = path.join(root, "keep-me");
+  try {
+    await fs.mkdir(hideMeRepo, { recursive: true });
+    await fs.mkdir(keepMeRepo, { recursive: true });
+    upsertEntireState(dbPath, {
+      repoRoot: hideMeRepo,
+      entire_state: "active",
+      entire_version: "0.6.1",
+    });
+    upsertEntireState(dbPath, {
+      repoRoot: keepMeRepo,
+      entire_state: "active",
+      entire_version: "0.6.1",
+    });
+
+    const vibedeckRoot = path.join(root, ".vibedeck");
+    const token = auth.ensureToken(path.join(vibedeckRoot, "auth.token"));
+
+    delete require.cache[require.resolve("../src/lib/local-api")];
+    const { createLocalApiHandler } = require("../src/lib/local-api");
+    const handler = createLocalApiHandler({ queuePath });
+
+    const hideReq = createRequest({
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ repo: hideMeRepo }),
+    });
+    const hideRes = createResponse();
+    const hideHandled = await handler(
+      hideReq,
+      hideRes,
+      new URL("http://127.0.0.1/functions/vibedeck-known-repos/hide"),
+    );
+
+    assert.equal(hideHandled, true);
+    assert.equal(hideRes.statusCode, 200);
+
+    const listReq = createRequest();
+    const listRes = createResponse();
+    const listHandled = await handler(
+      listReq,
+      listRes,
+      new URL("http://127.0.0.1/functions/vibedeck-known-repos"),
+    );
+
+    assert.equal(listHandled, true);
+    assert.equal(listRes.statusCode, 200);
+    const payload = JSON.parse(listRes.body.toString("utf8"));
+    assert.deepEqual(payload.repos.map((repo) => repo.repo_root), [keepMeRepo]);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Button, Card, Input } from "../../ui/openai/components";
+import { SlidersHorizontal } from "lucide-react";
+import { Button, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
 import { readEntirePrefs, writeEntirePrefs } from "./storage";
@@ -21,7 +22,6 @@ function commandOutputText(payload) {
 }
 
 export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className = "" }) {
-  const [open, setOpen] = useState(false);
   const [argsText, setArgsText] = useState("");
   const [hydratedRepo, setHydratedRepo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,13 +31,11 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
   useEffect(() => {
     const cleanRepo = String(repo || "").trim();
     if (!cleanRepo) {
-      setOpen(false);
       setArgsText("");
       setHydratedRepo("");
       return;
     }
     const saved = readEntirePrefs("configure", cleanRepo);
-    setOpen(Boolean(saved?.open));
     setArgsText(typeof saved?.argsText === "string" ? saved.argsText : "");
     setHydratedRepo(cleanRepo);
   }, [repo]);
@@ -45,8 +43,8 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
   useEffect(() => {
     const cleanRepo = String(repo || "").trim();
     if (!cleanRepo || hydratedRepo !== cleanRepo) return;
-    writeEntirePrefs("configure", cleanRepo, { open, argsText });
-  }, [repo, hydratedRepo, open, argsText]);
+    writeEntirePrefs("configure", cleanRepo, { argsText });
+  }, [repo, hydratedRepo, argsText]);
 
   const runConfigure = async () => {
     if (!repo || busy) return;
@@ -66,47 +64,38 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
   };
 
   return (
-    <Card className={className} bodyClassName="!p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.configure.title")}</h2>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setOpen((prev) => !prev)}>
-          {copy("entire.configure.disclosure")}
-        </Button>
-      </div>
-
-      <p className="mt-1 text-sm leading-5 text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.subtitle")}</p>
-
-      {open ? (
-        <div className="mt-3 space-y-3">
+    <div className={className}>
+      <div className="space-y-1.5">
+        <div className="grid gap-1.5">
           <Input
-            label={copy("entire.configure.input.label")}
             placeholder={copy("entire.configure.input.placeholder")}
             value={argsText}
             onChange={(event) => setArgsText(event.target.value)}
             disabled={busy}
           />
-          <Button type="button" size="sm" disabled={busy} onClick={runConfigure}>
+          <Button type="button" size="sm" className="w-full justify-center" disabled={busy} onClick={runConfigure}>
+            <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             {copy("entire.configure.action")}
           </Button>
-
-          {error ? (
-            <p className="text-sm text-red-700 dark:text-red-300">
-              {copy("entire.configure.error", { error })}
-            </p>
-          ) : null}
-
-          {output ? (
-            <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-2 dark:border-oai-gray-800 dark:bg-white/[0.08]">
-              <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-                {copy("entire.configure.output")}
-              </div>
-              <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
-                <code>{output}</code>
-              </pre>
-            </div>
-          ) : null}
         </div>
-      ) : null}
-    </Card>
+
+        {error ? (
+          <p className="text-sm text-red-700 dark:text-red-300">
+            {copy("entire.configure.error", { error })}
+          </p>
+        ) : null}
+
+        {output ? (
+          <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-1.5 dark:border-oai-gray-800 dark:bg-white/[0.08]">
+            <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+              {copy("entire.configure.output")}
+            </div>
+            <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
+              <code>{output}</code>
+            </pre>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

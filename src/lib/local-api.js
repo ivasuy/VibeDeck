@@ -222,6 +222,36 @@ function enrichLiveSessionCost(row) {
   };
 }
 
+function readLiveSessionsSnapshot(queuePath) {
+  const trackerDir = path.dirname(queuePath);
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  const generatedAt = new Date().toISOString();
+  let lastSyncAt = null;
+  try {
+    lastSyncAt = fs.statSync(queuePath).mtime.toISOString();
+  } catch {}
+
+  reapOrphanedSessions(dbPath);
+  const db = new DatabaseSync(dbPath);
+  try {
+    const recentEndedCutoff = new Date(Date.now() - LIVE_RECENT_ENDED_MS).toISOString();
+    const sessions = db
+      .prepare(`
+        SELECT * FROM vibedeck_sessions
+        WHERE ended_at IS NULL OR ended_at >= ?
+      `)
+      .all(recentEndedCutoff)
+      .map(enrichLiveSessionCost);
+    return {
+      sessions,
+      generated_at: generatedAt,
+      last_sync_at: lastSyncAt,
+    };
+  } finally {
+    db.close();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/
 //   - CURATED overrides (kiro-*, hy3-*, composer-*, kimi-for-coding, etc.)
@@ -1451,32 +1481,15 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
 
-      const trackerDir = path.dirname(qp);
-      const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
-      const generatedAt = new Date().toISOString();
-      let lastSyncAt = null;
+      let snapshot;
       try {
-        lastSyncAt = fs.statSync(qp).mtime.toISOString();
-      } catch {}
-
-      let sessions = [];
-      try {
-        reapOrphanedSessions(dbPath);
-        const db = new DatabaseSync(dbPath);
-        try {
-          const recentEndedCutoff = new Date(Date.now() - LIVE_RECENT_ENDED_MS).toISOString();
-          sessions = db.prepare(`
-            SELECT * FROM vibedeck_sessions
-            WHERE ended_at IS NULL OR ended_at >= ?
-          `).all(recentEndedCutoff)
-            .map(enrichLiveSessionCost);
-        } finally {
-          db.close();
-        }
+        snapshot = readLiveSessionsSnapshot(qp);
       } catch (e) {
         json(res, { error: "db_unavailable", message: e?.message || String(e) }, 500);
         return true;
       }
+
+      const { sessions, generated_at: generatedAt, last_sync_at: lastSyncAt } = snapshot;
 
       liveSseClientCount += 1;
       ensureSseIdleScanner();
@@ -1603,6 +1616,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       res.on("close", onClose);
       res.on("error", onClose);
 
+      return true;
+    }
+
+    // --- vibedeck-sessions-live-snapshot (GET) ---
+    if (p === "/functions/vibedeck-sessions-live-snapshot") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      try {
+        json(res, readLiveSessionsSnapshot(qp));
+      } catch (e) {
+        json(res, { error: "db_unavailable", message: e?.message || String(e) }, 500);
+      }
       return true;
     }
 
@@ -2121,6 +2148,43 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       const { listKnownRepos } = require("./db/repos");
       json(res, listKnownRepos(dbPath, { limit: url.searchParams.get("limit") }));
+      return true;
+    }
+
+    if (p === "/functions/vibedeck-known-repos/hide") {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const tokenPath = path.join(path.dirname(qp), "..", "auth.token");
+      if (!requireVibeDeckMutationAuth(req, res, tokenPath)) return true;
+
+      let body = {};
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        json(res, { error: "invalid_json" }, 400);
+        return true;
+      }
+
+      const repoRaw = typeof body?.repo === "string" ? body.repo.trim() : "";
+      if (!repoRaw) {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+
+      let repoRoot = null;
+      try {
+        repoRoot = fs.realpathSync(repoRaw);
+      } catch {
+        json(res, { error: "missing_repo" }, 400);
+        return true;
+      }
+
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const { hideKnownRepo } = require("./db/repos");
+      hideKnownRepo(dbPath, repoRoot);
+      json(res, { ok: true, repo_root: repoRoot });
       return true;
     }
 

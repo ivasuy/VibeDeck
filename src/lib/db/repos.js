@@ -3,6 +3,18 @@
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
+function repoRootAliases(repoRoot) {
+  const raw = typeof repoRoot === 'string' ? repoRoot.trim() : '';
+  if (!raw) return [];
+  const aliases = new Set([raw]);
+  try {
+    aliases.add(fs.realpathSync(raw));
+  } catch {
+    // ignore missing or non-resolvable paths; keep raw value
+  }
+  return Array.from(aliases);
+}
+
 function upsertEntireState(dbPath, { repoRoot, entire_state, entire_version }) {
   const db = new DatabaseSync(dbPath);
   try {
@@ -25,6 +37,34 @@ function getRepoState(dbPath, repoRoot) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     return db.prepare('SELECT * FROM vibedeck_repos WHERE repo_root = ?').get(repoRoot) || null;
+  } finally {
+    db.close();
+  }
+}
+
+function hideKnownRepo(dbPath, repoRoot) {
+  const db = new DatabaseSync(dbPath);
+  try {
+    const hiddenAt = new Date().toISOString();
+    const aliases = repoRootAliases(repoRoot);
+    const placeholders = aliases.map(() => '?').join(', ');
+    if (placeholders) {
+      db.prepare(
+        `
+        UPDATE vibedeck_repos
+        SET hidden_at = ?
+        WHERE repo_root IN (${placeholders})
+      `,
+      ).run(hiddenAt, ...aliases);
+    }
+    db.prepare(
+      `
+      INSERT INTO vibedeck_repos (repo_root, hidden_at)
+      VALUES (?, ?)
+      ON CONFLICT(repo_root) DO UPDATE SET
+        hidden_at = excluded.hidden_at
+    `,
+    ).run(aliases[0] || repoRoot, hiddenAt);
   } finally {
     db.close();
   }
@@ -57,17 +97,24 @@ function listKnownRepos(dbPath, { limit = 50 } = {}) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     const repos = new Map();
+    const hiddenRoots = new Set();
 
     const entireRows = db.prepare('SELECT * FROM vibedeck_repos').all();
     for (const row of entireRows) {
+      if (!row.hidden_at) continue;
+      for (const alias of repoRootAliases(row.repo_root)) hiddenRoots.add(alias);
+    }
+    for (const row of entireRows) {
       const repoRoot = typeof row.repo_root === 'string' ? row.repo_root.trim() : '';
       if (!repoRoot) continue;
+      if (repoRootAliases(repoRoot).some((alias) => hiddenRoots.has(alias))) continue;
       if (!repoPathExists(repoRoot)) continue;
       repos.set(repoRoot, {
         repo_root: repoRoot,
         entire_state: row.entire_state ?? null,
         entire_version: row.entire_version ?? null,
         entire_checked_at: row.entire_checked_at ?? null,
+        hidden_at: row.hidden_at ?? null,
         last_session_at: null,
         session_count: 0,
         open_session_count: 0,
@@ -93,12 +140,14 @@ function listKnownRepos(dbPath, { limit = 50 } = {}) {
     for (const row of sessionRows) {
       const repoRoot = typeof row.repo_root === 'string' ? row.repo_root.trim() : '';
       if (!repoRoot) continue;
+      if (repoRootAliases(repoRoot).some((alias) => hiddenRoots.has(alias))) continue;
       if (!repoPathExists(repoRoot)) continue;
       const existing = repos.get(repoRoot) || {
         repo_root: repoRoot,
         entire_state: null,
         entire_version: null,
         entire_checked_at: null,
+        hidden_at: null,
         last_session_at: null,
         session_count: 0,
         open_session_count: 0,
@@ -126,4 +175,4 @@ function listKnownRepos(dbPath, { limit = 50 } = {}) {
   }
 }
 
-module.exports = { upsertEntireState, getRepoState, listKnownRepos };
+module.exports = { upsertEntireState, getRepoState, hideKnownRepo, listKnownRepos };

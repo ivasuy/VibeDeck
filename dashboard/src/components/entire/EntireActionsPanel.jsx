@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Button, Card, Input } from "../../ui/openai/components";
+import { Activity, Power, PowerOff, Stethoscope } from "lucide-react";
+import { Button } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
-import { confirmDestructive, postEntireCommand } from "../../lib/vibedeck-api";
+import { postEntireCommand } from "../../lib/vibedeck-api";
 import { readEntirePrefs, writeEntirePrefs } from "./storage";
 
 const AGENTS = [
@@ -26,22 +27,17 @@ function commandOutputText(payload) {
 
 export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" }) {
   const [selectedAgents, setSelectedAgents] = useState([]);
-  const [checkpointId, setCheckpointId] = useState("");
-  const [cleanAll, setCleanAll] = useState(false);
   const [hydratedRepo, setHydratedRepo] = useState("");
   const [busyKey, setBusyKey] = useState("");
   const [error, setError] = useState("");
   const [output, setOutput] = useState("");
 
   const canEnable = useMemo(() => selectedAgents.length > 0, [selectedAgents]);
-  const canRewind = useMemo(() => checkpointId.trim().length > 0, [checkpointId]);
 
   useEffect(() => {
     const cleanRepo = String(repo || "").trim();
     if (!cleanRepo) {
       setSelectedAgents([]);
-      setCheckpointId("");
-      setCleanAll(false);
       setHydratedRepo("");
       return;
     }
@@ -50,16 +46,15 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
       ? saved.selectedAgents.filter((agent) => AGENTS.includes(agent))
       : [];
     setSelectedAgents(savedAgents);
-    setCheckpointId(typeof saved?.checkpointId === "string" ? saved.checkpointId : "");
-    setCleanAll(Boolean(saved?.cleanAll));
     setHydratedRepo(cleanRepo);
   }, [repo]);
 
   useEffect(() => {
     const cleanRepo = String(repo || "").trim();
     if (!cleanRepo || hydratedRepo !== cleanRepo) return;
-    writeEntirePrefs("actions", cleanRepo, { selectedAgents, checkpointId, cleanAll });
-  }, [repo, hydratedRepo, selectedAgents, checkpointId, cleanAll]);
+    const existing = readEntirePrefs("actions", cleanRepo) || {};
+    writeEntirePrefs("actions", cleanRepo, { ...existing, selectedAgents });
+  }, [repo, hydratedRepo, selectedAgents]);
 
   const runAction = async (key, task, { reload = false } = {}) => {
     if (!repo) return;
@@ -104,47 +99,15 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
   const runStatus = () =>
     runAction("status", () => postEntireCommand("status", { repo }));
 
-  const runRewind = async () => {
-    const id = checkpointId.trim();
-    if (!id) {
-      setError(copy("entire.actions.rewind.validation.required"));
-      return;
-    }
-    await runAction(
-      "rewind",
-      async () => {
-        const { token } = await confirmDestructive("rewindCheckpoint");
-        return postEntireCommand("rewind", { repo, checkpointId: id, confirm_token: token });
-      },
-      { reload: true },
-    );
-  };
-
-  const runClean = () =>
-    runAction(
-      "clean",
-      async () => {
-        const { token } = await confirmDestructive("cleanEntire");
-        return postEntireCommand("clean", { repo, all: cleanAll, confirm_token: token });
-      },
-      { reload: true },
-    );
-
   return (
-    <Card className={className} bodyClassName="!p-4">
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("entire.actions.title")}</h2>
-      <p className="mt-1 text-sm leading-5 text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.subtitle")}</p>
-
-      <div className="mt-3 space-y-3">
+    <div className={className}>
+      <div className="space-y-1.5">
         <div>
-          <div className="mb-1 text-xs uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("entire.actions.enable.agents_label")}
-          </div>
-          <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-1">
-            {AGENTS.map((agent) => (
+          <div className="grid gap-1 xl:grid-cols-3">
+            {AGENTS.slice(0, 6).map((agent) => (
               <label
                 key={agent}
-                className="flex h-8 items-center gap-2 rounded-md border border-oai-gray-200 px-2.5 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
+                className="flex h-7 items-center gap-2 rounded-md border border-oai-gray-200 px-2 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
               >
                 <input
                   type="checkbox"
@@ -155,53 +118,35 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
               </label>
             ))}
           </div>
-          <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
-            {copy("entire.actions.enable.agents_hint")}
-          </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" disabled={busyKey !== "" || !canEnable} onClick={runEnable}>
-            {copy("entire.actions.enable")}
-          </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={busyKey !== ""} onClick={runDisable}>
-            {copy("entire.actions.disable")}
-          </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={busyKey !== ""} onClick={runDoctor}>
-            {copy("entire.actions.doctor")}
-          </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={busyKey !== ""} onClick={runStatus}>
-            {copy("entire.actions.status")}
-          </Button>
-        </div>
-
-        <div className="rounded-md border border-oai-gray-200 p-3 dark:border-oai-gray-800">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <Input
-              label={copy("entire.actions.rewind.input_label")}
-              placeholder={copy("entire.actions.rewind.input_placeholder")}
-              value={checkpointId}
-              onChange={(event) => setCheckpointId(event.target.value)}
-              disabled={busyKey !== ""}
-            />
-            <Button type="button" size="sm" variant="secondary" disabled={busyKey !== "" || !canRewind} onClick={runRewind}>
-              {copy("entire.actions.rewind")}
-            </Button>
-          </div>
-          <label className="mt-3 flex items-center gap-2 text-xs text-oai-gray-600 dark:text-oai-gray-300">
+        <div className="grid gap-1 xl:grid-cols-[minmax(170px,0.88fr)_repeat(4,minmax(0,1fr))]">
+          <label
+            className="flex h-7 items-center gap-2 rounded-md border border-oai-gray-200 px-2 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
+          >
             <input
               type="checkbox"
-              checked={cleanAll}
-              disabled={busyKey !== ""}
-              onChange={(event) => setCleanAll(event.target.checked)}
+              checked={selectedAgents.includes(AGENTS[6])}
+              onChange={(event) => toggleAgent(AGENTS[6], event.target.checked)}
             />
-            <span>{copy("entire.actions.clean.all")}</span>
+            <span>{AGENTS[6]}</span>
           </label>
-          <div className="mt-2">
-            <Button type="button" size="sm" variant="ghost" disabled={busyKey !== ""} onClick={runClean}>
-              {copy("entire.actions.clean")}
-            </Button>
-          </div>
+          <Button type="button" size="sm" className="w-full justify-center" disabled={busyKey !== "" || !canEnable} onClick={runEnable}>
+            <Power className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {copy("entire.actions.enable")}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runDisable}>
+            <PowerOff className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {copy("entire.actions.disable")}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runDoctor}>
+            <Stethoscope className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {copy("entire.actions.doctor")}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runStatus}>
+            <Activity className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            {copy("entire.actions.status")}
+          </Button>
         </div>
 
         {error ? (
@@ -211,7 +156,7 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
         ) : null}
 
         {output ? (
-          <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-2 dark:border-oai-gray-800 dark:bg-white/[0.08]">
+          <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-1.5 dark:border-oai-gray-800 dark:bg-white/[0.08]">
             <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
               {copy("entire.actions.output")}
             </div>
@@ -221,6 +166,6 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
           </div>
         ) : null}
       </div>
-    </Card>
+    </div>
   );
 }

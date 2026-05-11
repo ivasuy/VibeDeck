@@ -1,13 +1,37 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { copy } from "../lib/copy";
-import { getBranchUsage, getCheckpoints, getEntireStatus, getKnownRepos } from "../lib/vibedeck-api";
+import { getBranchUsage, getCheckpoints, getEntireStatus, getKnownRepos, hideKnownRepo } from "../lib/vibedeck-api";
 import { RepoPathSelector } from "../components/entire/RepoPathSelector";
 import { EntireStatusCard } from "../components/entire/EntireStatusCard";
 import { CheckpointList } from "../components/entire/CheckpointList";
 import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
 import { AdvancedConfigurePanel } from "../components/entire/AdvancedConfigurePanel";
+import { EntireMaintenancePanel } from "../components/entire/EntireMaintenancePanel";
+import { RecentReposPane } from "../components/entire/RecentReposPane";
 import { PageFrame } from "../components/PageFrame.jsx";
 import { cn } from "../lib/cn";
+
+function WorkspacePanel({ title = "", subtitle = "", headerHidden = false, className = "", bodyClassName = "", children }) {
+  return (
+    <section className={cn(
+      "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-oai-gray-200 bg-white/90 shadow-[0_20px_50px_rgba(15,23,42,0.06)] backdrop-blur dark:border-oai-gray-800 dark:bg-oai-gray-900/90",
+      className,
+    )}
+    >
+      {headerHidden ? null : (
+        <header className="shrink-0 border-b border-oai-gray-200 px-4 py-3 dark:border-oai-gray-800">
+          {title ? <h2 className="text-sm font-semibold text-oai-black dark:text-white">{title}</h2> : null}
+          {subtitle ? (
+            <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">{subtitle}</p>
+          ) : null}
+        </header>
+      )}
+      <div className={cn("min-h-0 flex-1 overflow-auto p-4", bodyClassName)}>
+        {children}
+      </div>
+    </section>
+  );
+}
 
 export function EntirePage() {
   const [repoInput, setRepoInput] = useState("");
@@ -104,36 +128,99 @@ export function EntirePage() {
     await loadRepo(selectedRepo);
   }, [loadRepo, selectedRepo]);
 
-  return (
-    <PageFrame title={copy("entire.title")} subtitle={copy("entire.subtitle")} compact maxWidth="max-w-[1760px]">
-      <div className="flex h-[calc(100dvh-124px)] min-h-0 flex-col gap-3 overflow-hidden">
-        <RepoPathSelector
-          className="shrink-0"
-          value={repoInput}
-          onChange={setRepoInput}
-          onSubmit={loadRepo}
-          suggestions={repoSuggestions}
-          loading={statusLoading || checkpointsLoading}
-          error={repoError}
-        />
+  const removeRepo = useCallback(async (repoPath) => {
+    const repo = String(repoPath || "").trim();
+    if (!repo) return;
+    try {
+      await hideKnownRepo(repo);
+      setRepoSuggestions((prev) => (Array.isArray(prev) ? prev.filter((item) => item !== repo) : []));
+      if (selectedRepo === repo) {
+        setSelectedRepo("");
+        setRepoInput("");
+        setStatusData(null);
+        setStatusError("");
+        setCheckpointsData(null);
+        setCheckpointsError("");
+      }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : copy("entire.repo.validation.absolute_path");
+      setRepoError(message);
+    }
+  }, [selectedRepo]);
 
-        <div
-          className={cn(
-            "grid min-h-0 flex-1 gap-3 overflow-hidden",
-            selectedRepo ? "xl:grid-cols-[320px_minmax(0,1fr)]" : "lg:grid-cols-[360px_minmax(0,1fr)]",
-          )}
-        >
-          <div className="flex min-h-0 flex-col gap-3 overflow-auto pr-1">
-            <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
+  return (
+    <PageFrame hideHeader compact maxWidth="max-w-[1760px]" contentClassName="h-full px-1.5 sm:px-2 lg:px-2.5">
+      <div className="grid h-full min-h-0 max-h-full gap-1 overflow-hidden xl:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-rows-[minmax(0,370px)_310px_minmax(0,1fr)] gap-2 overflow-hidden">
+          <RecentReposPane
+            className="h-full max-h-full"
+            repos={repoSuggestions}
+            selectedRepo={selectedRepo}
+            onSelect={loadRepo}
+            onRemove={removeRepo}
+          />
+          <WorkspacePanel
+            title={copy("entire.status.title")}
+            className="h-[310px] min-h-0 shrink-0"
+            bodyClassName="overflow-hidden p-3"
+          >
+            <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} className="h-full" />
+          </WorkspacePanel>
+          <div aria-hidden />
+        </div>
+        <div className="grid min-h-0 grid-rows-[96px_132px_minmax(0,1fr)] gap-1 overflow-hidden">
+          <WorkspacePanel
+            headerHidden
+            className="h-[96px] min-h-0 shrink-0"
+            bodyClassName="overflow-hidden p-1.5"
+          >
+            <div className="grid gap-2">
+              <RepoPathSelector
+                value={repoInput}
+                onChange={setRepoInput}
+                onSubmit={loadRepo}
+                suggestions={repoSuggestions}
+                loading={statusLoading || checkpointsLoading}
+                error={repoError}
+                description={copy("entire.repo.subtitle")}
+              />
+            </div>
+          </WorkspacePanel>
+
+          <WorkspacePanel
+            headerHidden
+            className="h-[132px] min-h-0 shrink-0"
+            bodyClassName="overflow-hidden p-1.5"
+          >
+            <h2 className="sr-only">Controls</h2>
             {selectedRepo ? (
-              <>
-                <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-              </>
-            ) : null}
-          </div>
+              <div className="grid h-full min-h-0 gap-1.5 xl:grid-cols-[312px_minmax(0,1fr)_272px]">
+                <section className="min-h-0 overflow-hidden">
+                  <h3 className="sr-only">Checkpoint id</h3>
+                  <EntireMaintenancePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                </section>
+
+                <section className="min-h-0 overflow-hidden border-t border-oai-gray-200 pt-1.5 dark:border-oai-gray-800 xl:border-l xl:border-r xl:border-t-0 xl:px-1.5 xl:pt-0">
+                  <h3 className="sr-only">Actions</h3>
+                  <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                </section>
+
+                <section className="min-h-0 overflow-hidden border-t border-oai-gray-200 pt-1.5 dark:border-oai-gray-800 xl:border-t-0 xl:pt-0">
+                  <h3 className="sr-only">Configure</h3>
+                  <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
+                </section>
+              </div>
+            ) : (
+              <div className="grid h-full gap-3 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.rewind.input_label")}</p>
+                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.empty")}</p>
+                <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.empty")}</p>
+              </div>
+            )}
+          </WorkspacePanel>
+
           <CheckpointList
-            className="min-h-[360px]"
+            className={cn("min-h-0")}
             repo={selectedRepo}
             checkpoints={checkpointsData}
             loading={checkpointsLoading}

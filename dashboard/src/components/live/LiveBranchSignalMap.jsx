@@ -15,8 +15,8 @@ function branchName(row) {
 
 function WorkloadTile({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-md bg-oai-black/[0.035] px-2.5 py-2 dark:bg-white/[0.06]">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+    <div className="vd-subcard rounded-md bg-oai-black/[0.035] px-2.5 py-2 dark:bg-white/[0.06]">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
         <Icon className="h-3.5 w-3.5" aria-hidden />
         {label}
       </div>
@@ -76,7 +76,7 @@ export function LiveBranchSignalMap({ sessions = [] }) {
           </div>
         </div>
 
-        <div className="mt-3 rounded-lg bg-oai-black/[0.035] p-3 dark:bg-white/[0.06]">
+        <div className="vd-subcard mt-3 rounded-lg bg-oai-black/[0.035] p-3 dark:bg-white/[0.06]">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
               <GitBranch className="h-3.5 w-3.5" aria-hidden />
@@ -86,20 +86,20 @@ export function LiveBranchSignalMap({ sessions = [] }) {
               {model.branchCount} route{model.branchCount === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-oai-black/[0.06] dark:bg-white/[0.08]">
+          <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-oai-brand-100/80 dark:bg-oai-brand-950/60">
             <div className="h-full shrink-0 bg-oai-brand" style={{ flexBasis: `${model.routePct}%` }} aria-hidden />
             <div className="h-full shrink-0 bg-amber-500" style={{ flexBasis: `${model.unroutedPct}%` }} aria-hidden />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+            <div className="vd-card-solid rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Routed
               </div>
               <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.routedCount}</div>
             </div>
-            <div className="rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+            <div className="vd-card-solid rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
                 <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
                 Unrouted
               </div>
@@ -108,7 +108,7 @@ export function LiveBranchSignalMap({ sessions = [] }) {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-4 rounded-lg bg-oai-black/[0.035] p-3 dark:bg-white/[0.06]">
+        <div className="vd-subcard mt-3 flex items-center gap-4 rounded-lg bg-oai-black/[0.035] p-3 dark:bg-white/[0.06]">
           <div
             className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
             style={{

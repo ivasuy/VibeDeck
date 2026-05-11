@@ -14,19 +14,19 @@ import { cn } from "../lib/cn";
 function WorkspacePanel({ title = "", subtitle = "", headerHidden = false, className = "", bodyClassName = "", children }) {
   return (
     <section className={cn(
-      "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass",
+      "vd-card flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass",
       className,
     )}
     >
       {headerHidden ? null : (
-        <header className="shrink-0 border-b border-[var(--glass-border)] px-4 py-3">
+        <header className="shrink-0 border-b border-[var(--vd-border)] px-4 py-3">
           {title ? <h2 className="text-sm font-semibold text-oai-black dark:text-white">{title}</h2> : null}
           {subtitle ? (
             <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">{subtitle}</p>
           ) : null}
         </header>
       )}
-      <div className={cn("min-h-0 flex-1 overflow-auto p-4", bodyClassName)}>
+      <div className={cn("min-h-0 flex-1 overflow-auto p-5", bodyClassName)}>
         {children}
       </div>
     </section>
@@ -149,12 +149,12 @@ export function EntirePage() {
   }, [selectedRepo]);
 
   return (
-    <PageFrame hideHeader compact maxWidth="max-w-[1760px]" contentClassName="h-full px-4 sm:px-5 lg:px-6">
-      <div className="flex h-full min-h-0 max-h-full flex-col gap-3 overflow-hidden">
+    <PageFrame hideHeader compact maxWidth="max-w-[1760px]">
+      <div className="flex h-full min-h-0 max-h-full flex-col gap-5 overflow-y-auto overflow-x-hidden pr-1">
         <WorkspacePanel
           headerHidden
           className="shrink-0"
-          bodyClassName="overflow-hidden p-4"
+          bodyClassName="overflow-hidden p-5"
         >
           <RepoPathSelector
             value={repoInput}
@@ -167,10 +167,10 @@ export function EntirePage() {
           />
         </WorkspacePanel>
 
-        <div className="grid min-h-0 flex-1 gap-3 overflow-hidden xl:grid-cols-[220px_minmax(0,1fr)]">
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+        <div className="grid shrink-0 gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col gap-5">
             <RecentReposPane
-              className="min-h-0 flex-1"
+              className="h-[min(44dvh,440px)] min-h-[220px] shrink-0"
               repos={repoSuggestions}
               selectedRepo={selectedRepo}
               onSelect={loadRepo}
@@ -179,32 +179,32 @@ export function EntirePage() {
             <WorkspacePanel
               title={copy("entire.status.title")}
               className="shrink-0"
-              bodyClassName="overflow-hidden p-4"
+              bodyClassName="overflow-hidden p-5"
             >
               <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
             </WorkspacePanel>
           </div>
 
-          <div className="flex min-h-0 flex-col gap-3 overflow-hidden">
+          <div className="flex min-h-0 flex-col gap-5">
             <WorkspacePanel
               headerHidden
               className="shrink-0"
-              bodyClassName="overflow-hidden p-4"
+              bodyClassName="overflow-hidden p-5"
             >
               <h2 className="sr-only">Controls</h2>
               {selectedRepo ? (
-                <div className="grid min-h-0 gap-4 xl:grid-cols-[312px_minmax(0,1fr)_272px]">
+                <div className="grid min-h-0 gap-4 xl:grid-cols-[250px_minmax(300px,1fr)_220px]">
                   <section className="min-h-0 overflow-hidden">
                     <h3 className="sr-only">Checkpoint id</h3>
                     <EntireMaintenancePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
                   </section>
 
-                  <section className="min-h-0 overflow-hidden border-t border-[var(--glass-border)] pt-4 xl:border-l xl:border-r xl:border-t-0 xl:px-4 xl:pt-0">
+                  <section className="min-h-0 overflow-hidden border-t border-[var(--vd-border)] pt-4 xl:border-l xl:border-r xl:border-t-0 xl:px-4 xl:pt-0">
                     <h3 className="sr-only">Actions</h3>
                     <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
                   </section>
 
-                  <section className="min-h-0 overflow-hidden border-t border-[var(--glass-border)] pt-4 xl:border-t-0 xl:pt-0">
+                  <section className="min-h-0 overflow-hidden border-t border-[var(--vd-border)] pt-4 xl:border-t-0 xl:pt-0">
                     <h3 className="sr-only">Configure</h3>
                     <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
                   </section>
@@ -219,7 +219,7 @@ export function EntirePage() {
             </WorkspacePanel>
 
             <CheckpointList
-              className={cn("min-h-0 flex-1")}
+              className={cn("h-[clamp(420px,calc(100dvh-360px),620px)] min-h-0 shrink-0")}
               repo={selectedRepo}
               checkpoints={checkpointsData}
               loading={checkpointsLoading}

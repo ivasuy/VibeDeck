@@ -99,14 +99,14 @@ export function LiveSessionList({
 
   const content = (
     <>
-      <div className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-b border-oai-gray-100 px-5 py-4 dark:border-oai-gray-800">
+      <div className="flex min-h-[57px] flex-wrap items-center justify-between gap-3 border-b border-[var(--vd-border)] px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Activity className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
             <h2 className="text-sm font-semibold text-oai-black dark:text-white">Active workstreams</h2>
           </div>
         </div>
-        <span className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+        <span className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
           {`${visibleWorkstreams.length} ${visibleWorkstreams.length === 1 ? "workstream" : "workstreams"}`}
         </span>
       </div>
@@ -156,7 +156,7 @@ export function LiveSessionList({
                     "grid min-h-[132px] w-full cursor-pointer gap-3 border-l-2 px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
                     selected
                       ? "border-oai-brand-500 bg-oai-brand-50/70 ring-1 ring-inset ring-oai-brand-500/20 dark:bg-oai-brand-500/10"
-                      : "border-transparent hover:border-oai-gray-300 hover:bg-oai-gray-50 dark:hover:border-oai-gray-700 dark:hover:bg-oai-gray-900/80",
+                        : "border-transparent hover:border-oai-brand-300 hover:bg-oai-brand-50/60 dark:hover:border-oai-brand-500 dark:hover:bg-oai-brand-950/35",
                   )}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -167,7 +167,7 @@ export function LiveSessionList({
                           {repoName}
                         </span>
                         {selected ? (
-                          <span className="inline-flex h-5 items-center rounded-md bg-oai-black/[0.06] px-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:bg-white/[0.1] dark:text-oai-gray-300">
+                          <span className="vd-chip inline-flex h-5 items-center rounded-md bg-oai-black/[0.06] px-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:bg-white/[0.1] dark:text-oai-gray-300">
                             {copy("live.row.selected")}
                           </span>
                         ) : null}
@@ -201,7 +201,7 @@ export function LiveSessionList({
                         event.stopPropagation();
                         setOpenWorkstreamId(workstream.id);
                       }}
-                      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-gray-300 hover:text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:text-oai-gray-200 dark:hover:border-oai-gray-700 dark:hover:text-white"
+                      className="vd-control inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-brand-300 hover:text-oai-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:text-oai-gray-200 dark:hover:border-oai-brand-500 dark:hover:text-oai-brand-300"
                       aria-label={`View breakdown for ${repoName}`}
                     >
                       <Activity className="h-3.5 w-3.5" aria-hidden />

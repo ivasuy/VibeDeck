@@ -28,7 +28,7 @@ function cachedStateLabel(state) {
 function MetaRow({ label, value, wrap = false, mono = false, icon: Icon = null }) {
   return (
     <div className={[
-      "rounded-md bg-oai-black/[0.03] px-3 py-3 text-[11px] text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300",
+      "vd-subcard rounded-md border px-3 py-3 text-[11px] text-oai-gray-600 dark:text-oai-gray-300",
       wrap ? "grid gap-2" : "flex items-center justify-between gap-2",
     ].join(" ")}
     >
@@ -67,7 +67,7 @@ export function EntireStatusCard({ status = null, loading = false, error = "", c
         <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.empty")}</p>
       ) : (
         <div className="space-y-2.5">
-          <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-3 py-3 dark:bg-white/[0.08]">
+          <div className="vd-subcard flex items-center justify-between rounded-md border px-3 py-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
               <Activity className="h-3.5 w-3.5" aria-hidden />
               {copy("entire.status.state")}

@@ -92,9 +92,9 @@ function ProjectUsageCard({ entry, copy }) {
     ? entry.project_ref
     : null;
   const content = (
-    <div className="rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors hover:bg-oai-gray-50 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:bg-oai-gray-800/60">
+    <div className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors hover:bg-oai-brand-50/60 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:bg-oai-brand-950/35">
       <div className="flex items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oai-gray-100 text-sm font-medium text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-200">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oai-brand-100 text-sm font-medium text-oai-brand-700 dark:bg-oai-brand-950/60 dark:text-oai-brand-300">
           {projectInitial(entry)}
         </div>
         <div className="min-w-0 flex-1">
@@ -197,8 +197,8 @@ function ProjectUsageCard({ entry, copy }) {
 
 function ProjectStat({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
-      <div className="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+    <div className="vd-subcard rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
+      <div className="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
         {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
         <span className="truncate">{label}</span>
       </div>
@@ -246,15 +246,15 @@ export function DataDetails({
     <Card>
       {/* Tab Switcher + Controls */}
       <div className="flex items-center justify-between gap-3 mb-4">
-        <div role="tablist" aria-label="Data view" className="flex gap-1">
+        <div role="tablist" aria-label="Data view" className="flex gap-1 rounded-lg border border-[var(--vd-border)] bg-[var(--vd-tint)] p-1">
           <button
             role="tab"
             aria-selected={activeTab === "daily"}
             type="button"
             onClick={() => setActiveTab("daily")}
-            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`vd-tab text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "daily"
-                ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                ? "vd-tab-active text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
@@ -265,9 +265,9 @@ export function DataDetails({
             aria-selected={activeTab === "projects"}
             type="button"
             onClick={() => setActiveTab("projects")}
-            className={`text-xs font-medium px-3 py-1.5 rounded transition-colors ${
+            className={`vd-tab text-xs font-medium px-3 py-1.5 rounded transition-colors ${
               activeTab === "projects"
-                ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                ? "vd-tab-active text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                 : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/50"
             }`}
           >
@@ -279,7 +279,7 @@ export function DataDetails({
             aria-label="Number of projects to display"
             value={projectLimit}
             onChange={(e) => onProjectLimitChange?.(Number(e.target.value))}
-            className="text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded px-2 py-1 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 focus:border-oai-brand dark:focus:border-oai-brand focus:outline-none transition-colors"
+            className="vd-control text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded px-2 py-1 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 focus:border-oai-brand dark:focus:border-oai-brand focus:outline-none transition-colors"
           >
             <option value={3}>{copy("dashboard.projects.limit_top_3")}</option>
             <option value={6}>{copy("dashboard.projects.limit_top_6")}</option>
@@ -316,12 +316,12 @@ export function DataDetails({
           <div className="overflow-auto max-h-[384px] -mx-4 oai-scrollbar">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10">
-                <tr className="border-b border-oai-gray-200 dark:border-oai-gray-700">
+                <tr className="vd-table-head border-b border-oai-gray-200 dark:border-oai-gray-700">
                   {dailyBreakdownColumns.map((column) => (
                     <th
                       key={column.key}
                       aria-sort={dailyBreakdownAriaSortFor?.(column.key) || "none"}
-                      className="text-left p-0 bg-white dark:bg-oai-gray-900"
+                      className="text-left p-0 bg-transparent"
                     >
                       <button
                         type="button"
@@ -345,7 +345,7 @@ export function DataDetails({
                     key={String(
                       row?.[dailyBreakdownDateKey] || row?.day || row?.hour || row?.month || "",
                     )}
-                    className={`border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors ${
+                    className={`vd-row-hover border-b border-oai-gray-100 dark:border-oai-gray-800 last:border-b-0 hover:bg-oai-gray-50/50 dark:hover:bg-oai-gray-800/50 transition-colors ${
                       row.missing ? "text-oai-gray-400 dark:text-oai-gray-400" : row.future ? "text-oai-gray-300 dark:text-oai-gray-600" : "text-oai-black dark:text-oai-white"
                     }`}
                   >

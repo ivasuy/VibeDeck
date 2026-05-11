@@ -190,7 +190,7 @@ function ProviderLimitRow({ provider }) {
   const { id, name, active, windows, state } = provider;
 
   return (
-    <article className="grid min-h-[112px] gap-3 rounded-lg border border-oai-gray-200 bg-white p-3.5 dark:border-oai-gray-800 dark:bg-oai-gray-900 lg:grid-cols-[168px_minmax(0,1fr)]">
+    <article className="vd-card-solid grid min-h-[112px] gap-3 rounded-lg border border-oai-gray-200 bg-white p-3.5 dark:border-oai-gray-800 dark:bg-oai-gray-900 lg:grid-cols-[168px_minmax(0,1fr)]">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <ProviderIcon provider={id} size={18} className="shrink-0" />
@@ -240,15 +240,15 @@ export function LiveProviderLimitsGrid({ sessions = [], limits = null, loading =
   }, [activeProviders, limits]);
 
   return (
-    <section className={`flex min-h-0 flex-col overflow-hidden ${embedded ? "" : "h-[520px] rounded-xl border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900"} ${className}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-oai-gray-100 px-5 py-4 dark:border-oai-gray-800">
+    <section className={`flex min-h-0 flex-col overflow-hidden ${embedded ? "" : "vd-card h-[520px] rounded-xl border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900"} ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--vd-border)] px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Gauge className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
             <h2 className="text-sm font-semibold text-oai-black dark:text-white">Provider limits</h2>
           </div>
         </div>
-        <span className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+        <span className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
           {providers.length} recording
         </span>
       </div>

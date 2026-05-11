@@ -92,9 +92,9 @@ function formatSummaryCostLabel(totals) {
 
 function SummaryMetric({ icon: Icon, label, value }) {
   return (
-    <div className="rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm px-5 py-4">
-      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-        <span className="inline-flex h-6 w-6 items-center justify-center text-oai-gray-500 dark:text-oai-gray-300">
+    <div className="vd-subcard rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm px-5 py-4">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
+        <span className="inline-flex h-6 w-6 items-center justify-center text-oai-brand-500 dark:text-oai-brand-300">
           <Icon className="h-3.5 w-3.5" aria-hidden />
         </span>
         <span>{label}</span>
@@ -246,7 +246,7 @@ export function BranchesPage() {
 
   return (
     <PageFrame maxWidth="max-w-[1760px]" hideHeader>
-      <div className="grid min-h-0 gap-5 overflow-hidden">
+      <div className="grid min-h-0 gap-6">
         <Card bodyClassName="p-6">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <div className="w-full">
@@ -262,7 +262,7 @@ export function BranchesPage() {
                   value={effectiveSelectedRepo}
                   onChange={(event) => setSelectedRepo(event.target.value)}
                   disabled={repos.length === 0}
-                  className="h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
                   aria-label={copy("branches.project.select_label")}
                 >
                   {repos.map((repoEntry) => {
@@ -293,7 +293,7 @@ export function BranchesPage() {
                   value={effectiveSelectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
                   disabled={gitBranches.length === 0}
-                  className="h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
                   aria-label={copy("branches.branch.select_label")}
                 >
                   {gitBranches.map((branchName) => (
@@ -316,7 +316,7 @@ export function BranchesPage() {
               aria-label={copy("branches.filter.branch.label")}
             />
           </div>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <SummaryMetric
               icon={Cpu}
               label={copy("branches.total.tokens")}

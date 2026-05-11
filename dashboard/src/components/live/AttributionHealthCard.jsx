@@ -35,7 +35,7 @@ export function AttributionHealthCard({ stats, sessions = [], loading = false, e
 
   return (
     <section
-      className={`h-fit self-start rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
+      className={`vd-card h-fit self-start rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
       style={{ blockSize: "fit-content" }}
     >
       <div className="flex items-center justify-between gap-3">
@@ -54,7 +54,7 @@ export function AttributionHealthCard({ stats, sessions = [], loading = false, e
         <p className="mt-2 text-sm text-red-700 dark:text-red-300">{copy("live.attribution.error", { error })}</p>
       ) : (
         <div className="mt-3 space-y-2.5">
-          <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+          <div className="vd-subcard flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
             <span>{liveStats.total > 0 ? "Live sessions" : copy("live.attribution.total")}</span>
             <span className="font-semibold text-oai-black dark:text-white">{total}</span>
           </div>
@@ -69,7 +69,7 @@ export function AttributionHealthCard({ stats, sessions = [], loading = false, e
                     {count}
                   </span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-oai-black/[0.06] dark:bg-white/[0.08]">
+                <div className="h-1.5 overflow-hidden rounded-full bg-oai-brand-100/80 dark:bg-oai-brand-950/60">
                   <div
                     className="h-full rounded-full bg-oai-brand"
                     style={{ width: `${pct}%` }}

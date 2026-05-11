@@ -169,14 +169,14 @@ function NavItem({ item, collapsed, active, onClick }) {
         "relative flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors duration-150",
         collapsed && "justify-center px-0 py-2",
         active
-          ? "text-oai-black font-medium dark:text-white"
-          : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/50 hover:text-oai-black dark:hover:bg-oai-gray-800/60 dark:hover:text-white",
+          ? "vd-sidebar-active font-medium"
+          : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-brand-50/70 hover:text-oai-brand dark:hover:bg-oai-brand-950/35 dark:hover:text-oai-brand-300",
       )}
     >
       {active && (
         <motion.div
           layoutId="nav-active-indicator"
-          className="absolute inset-0 rounded-md bg-oai-gray-200/70 dark:bg-oai-gray-800"
+          className="vd-sidebar-active-bg absolute inset-0 rounded-md bg-oai-gray-200/70 dark:bg-oai-gray-800"
           transition={shouldReduceMotion ? { duration: 0 } : {
             type: "spring",
             stiffness: 500,
@@ -303,10 +303,10 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
         title={copy("nav.theme")}
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
+          "vd-control inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500",
           glassChrome
-            ? "border border-gray-500/20 dark:border-gray-500/30 bg-gray-500/[0.04] dark:bg-gray-500/[0.06] backdrop-blur-[2px] text-oai-gray-700 dark:text-oai-gray-300 hover:bg-gray-500/10 dark:hover:bg-gray-500/12 hover:border-gray-500/30 dark:hover:border-gray-500/40 hover:text-oai-black dark:hover:text-white"
-            : "border border-oai-gray-200 dark:border-oai-gray-700 text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-200/60 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white hover:border-oai-gray-300 dark:hover:border-oai-gray-600",
+            ? "border border-[var(--vd-border)] bg-[var(--vd-tint)] backdrop-blur-[2px] text-oai-brand-600 dark:text-oai-brand-300 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/40 hover:border-oai-brand-300 dark:hover:border-oai-brand-500"
+            : "border border-[var(--vd-border)] text-oai-brand-600 dark:text-oai-brand-300 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/40 hover:text-oai-brand-700 dark:hover:text-oai-brand-200 hover:border-oai-brand-300 dark:hover:border-oai-brand-500",
         )}
       >
         <ActiveIcon className="h-3.5 w-3.5" aria-hidden />
@@ -319,7 +319,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={shouldReduceMotion ? {} : { opacity: 0, scale: 0.95, y: 4 }}
             transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
-            className="absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass"
+            className="vd-popover absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-glass"
           >
             {THEME_OPTIONS.map(({ value, labelKey, Icon }) => {
               const active = theme === value;
@@ -332,8 +332,8 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
                   className={cn(
                     "flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors",
                     active
-                      ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                      : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white",
+                      ? "text-oai-brand-700 dark:text-oai-brand-300 bg-oai-brand-100 dark:bg-oai-brand-950/60"
+                      : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/35 hover:text-oai-brand-700 dark:hover:text-oai-brand-300",
                   )}
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -460,7 +460,7 @@ function MobileDrawer({ open, onClose }) {
       onClose={onClose}
       side="left"
       width="w-[260px] max-w-[80vw]"
-      className="bg-[var(--glass-bg)] backdrop-blur-[24px] border-r border-[var(--glass-border)] shadow-2xl"
+      className="vd-drawer bg-[var(--glass-bg)] backdrop-blur-[24px] border-r border-[var(--glass-border)] shadow-2xl"
     >
       <SidebarBody
         collapsed={false}
@@ -527,7 +527,7 @@ export function AppLayout({ children }) {
         <div className="flex-1 min-w-0 min-h-0 p-2 lg:pl-0 lg:pr-3 lg:pb-3 flex flex-col">
           <div
             className={cn(
-              "flex-1 min-h-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] overflow-hidden",
+              "vd-card flex-1 min-h-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] overflow-hidden",
               nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
               !nativeEmbed && "shadow-glass",
             )}

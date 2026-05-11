@@ -1,30 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#042f2e"/>
-      <stop offset="60%" stop-color="#064e3b"/>
-      <stop offset="100%" stop-color="#0f766e"/>
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="60%" stop-color="#312e6a"/>
+      <stop offset="100%" stop-color="#3b3686"/>
     </linearGradient>
     <linearGradient id="wave" x1="80" y1="180" x2="432" y2="340" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6ee7b7"/>
-      <stop offset="45%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#10b981"/>
+      <stop offset="0%" stop-color="#a5b4fc"/>
+      <stop offset="45%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
     </linearGradient>
     <linearGradient id="wave-hi" x1="80" y1="200" x2="432" y2="320" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#a7f3d0"/>
-      <stop offset="100%" stop-color="#6ee7b7"/>
+      <stop offset="0%" stop-color="#d4d4ff"/>
+      <stop offset="100%" stop-color="#a5b4fc"/>
     </linearGradient>
     <linearGradient id="card1" x1="120" y1="160" x2="400" y2="380" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10b981" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#059669" stop-opacity="0.06"/>
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#5b5fc7" stop-opacity="0.06"/>
     </linearGradient>
     <linearGradient id="card2" x1="100" y1="140" x2="420" y2="400" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#10b981" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#059669" stop-opacity="0.08"/>
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#5b5fc7" stop-opacity="0.08"/>
     </linearGradient>
   </defs>
 
-  <!-- Background: deep teal rounded square -->
+  <!-- Background: deep indigo rounded square -->
   <rect x="24" y="24" width="464" height="464" rx="100" fill="url(#bg)"/>
 
   <!-- Inset border — frosted glass edge -->
@@ -34,23 +34,21 @@
   <!-- DECK: two stacked card shapes, slightly offset + rotated for depth -->
   <!-- Back card — rotated -2deg, offset down-right -->
   <rect x="110" y="148" width="300" height="230" rx="18"
-        fill="url(#card1)" stroke="#10b981" stroke-opacity="0.12" stroke-width="1.2"
+        fill="url(#card1)" stroke="#6366f1" stroke-opacity="0.12" stroke-width="1.2"
         transform="rotate(-2.5 260 263)"/>
   <!-- Front card — rotated +1deg, offset up-left -->
   <rect x="98" y="136" width="316" height="242" rx="20"
-        fill="url(#card2)" stroke="#34d399" stroke-opacity="0.15" stroke-width="1.2"
+        fill="url(#card2)" stroke="#818cf8" stroke-opacity="0.15" stroke-width="1.2"
         transform="rotate(0.8 256 257)"/>
 
   <!-- Horizontal baseline on the card — like a graph axis -->
   <line x1="108" y1="278" x2="404" y2="278"
-        stroke="#10b981" stroke-opacity="0.12" stroke-width="1.2"
+        stroke="#6366f1" stroke-opacity="0.12" stroke-width="1.2"
         stroke-dasharray="4 6"/>
 
   <!-- VIBE: The waveform — shaped as a loose "V" with an ECG-style spike -->
-  <!-- This is the hero element. Drawn with intentional wobble in the control points -->
-  <!-- for a hand-sketched marker feel. Reads as a "V" at small sizes. -->
 
-  <!-- Glow/shadow layer (slightly thicker, slightly offset, blurred via opacity) -->
+  <!-- Glow/shadow layer -->
   <path d="M 82 268
            C 94 268, 108 267, 126 266
            C 138 265, 142 264, 150 252
@@ -72,7 +70,7 @@
            C 400 220, 404 228, 406 238
            C 410 252, 416 264, 424 268
            C 428 270, 434 270, 440 270"
-        stroke="#10b981" stroke-opacity="0.25" stroke-width="14"
+        stroke="#6366f1" stroke-opacity="0.25" stroke-width="14"
         stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- Main waveform stroke — the money line -->
@@ -101,7 +99,6 @@
         stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- Highlight stroke — slightly offset upward, thinner, brighter -->
-  <!-- This creates the "double-line marker" hand-drawn effect -->
   <path d="M 84 266
            C 96 266, 110 265, 128 264
            C 139 263, 143 261, 151 250
@@ -126,27 +123,25 @@
         stroke="url(#wave-hi)" stroke-opacity="0.5" stroke-width="2.5"
         stroke-linecap="round" stroke-linejoin="round"/>
 
-  <!-- Peak dot — marks the deepest valley of the "V" (highest data point) -->
-  <circle cx="302" cy="152" r="8" fill="#6ee7b7" opacity="0.9"/>
-  <circle cx="302" cy="152" r="4" fill="#d1fae5"/>
+  <!-- Peak dot — marks the highest data point -->
+  <circle cx="302" cy="152" r="8" fill="#a5b4fc" opacity="0.9"/>
+  <circle cx="302" cy="152" r="4" fill="#ededff"/>
 
   <!-- Secondary dot at the trough -->
-  <circle cx="238" cy="298" r="5.5" fill="#34d399" opacity="0.6"/>
-  <circle cx="238" cy="298" r="2.5" fill="#a7f3d0" opacity="0.8"/>
+  <circle cx="238" cy="298" r="5.5" fill="#818cf8" opacity="0.6"/>
+  <circle cx="238" cy="298" r="2.5" fill="#d4d4ff" opacity="0.8"/>
 
-  <!-- Sparkle/cross marks — hand-drawn accents near the peak -->
-  <g stroke="#6ee7b7" stroke-width="2" stroke-linecap="round" opacity="0.5">
-    <!-- Top-right sparkle -->
+  <!-- Sparkle/cross marks — accents near the peak -->
+  <g stroke="#a5b4fc" stroke-width="2" stroke-linecap="round" opacity="0.5">
     <line x1="362" y1="132" x2="362" y2="146"/>
     <line x1="355" y1="139" x2="369" y2="139"/>
-    <!-- Small tick -->
     <line x1="382" y1="154" x2="382" y2="162"/>
     <line x1="378" y1="158" x2="386" y2="158"/>
   </g>
 
-  <!-- Corner accent dots — like hand-drawn registration marks -->
-  <circle cx="84" cy="84" r="3" fill="#34d399" opacity="0.3"/>
-  <circle cx="428" cy="84" r="2.5" fill="#10b981" opacity="0.25"/>
-  <circle cx="84" cy="428" r="2" fill="#059669" opacity="0.2"/>
-  <circle cx="428" cy="428" r="3" fill="#34d399" opacity="0.15"/>
+  <!-- Corner accent dots -->
+  <circle cx="84" cy="84" r="3" fill="#818cf8" opacity="0.3"/>
+  <circle cx="428" cy="84" r="2.5" fill="#6366f1" opacity="0.25"/>
+  <circle cx="84" cy="428" r="2" fill="#5b5fc7" opacity="0.2"/>
+  <circle cx="428" cy="428" r="3" fill="#818cf8" opacity="0.15"/>
 </svg>

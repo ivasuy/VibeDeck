@@ -42,8 +42,8 @@ function OverviewTile({ icon: Icon, label, value, tone = "neutral" }) {
     ? "text-amber-700 dark:text-amber-300"
     : "text-oai-black dark:text-white";
   return (
-    <div className="rounded-lg bg-oai-black/[0.035] px-4 py-3 dark:bg-white/[0.06]">
-      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+    <div className="vd-subcard rounded-lg bg-oai-black/[0.035] px-4 py-3 dark:bg-white/[0.06]">
+      <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
         <Icon className="h-3.5 w-3.5" aria-hidden />
         {label}
       </div>
@@ -99,7 +99,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
   const hasAttributionNeeds = model.attributionGaps > 0;
 
   return (
-    <section className="rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <section className="vd-card rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
@@ -133,12 +133,12 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
             <span className="ml-1">active cost</span>
           </div>
         </div>
-        <div className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+        <div className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
           {status === "connected" ? "Live stream connected" : status}
         </div>
       </div>
 
-      <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-oai-black/[0.06] dark:bg-white/[0.08]">
+      <div className="mt-6 flex h-2 overflow-hidden rounded-full bg-oai-brand-100/80 dark:bg-oai-brand-950/60">
         {confidenceRows.map((row) => {
           const pct = total > 0 ? (row.count / total) * 100 : 0;
           const colors = {

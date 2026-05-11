@@ -81,8 +81,8 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
 
   return (
     <section className={cn("grid h-full min-h-0 max-h-full grid-rows-[minmax(0,1fr)] gap-1 overflow-hidden xl:grid-cols-[300px_minmax(0,1fr)]", className)}>
-      <div className="grid h-full min-h-0 max-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass">
-        <div className="flex min-h-0 items-center justify-between gap-2 border-b border-oai-gray-200 px-4 py-2.5 dark:border-oai-gray-800">
+      <div className="vd-card grid h-full min-h-0 max-h-full grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass">
+        <div className="flex min-h-0 items-center justify-between gap-2 border-b border-[var(--vd-border)] px-4 py-2.5">
           <h2 className="text-sm font-semibold text-oai-black dark:text-white">Checkpoint files</h2>
           {files.length > 0 ? (
             <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
@@ -112,8 +112,8 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                     className={cn(
                       "overflow-hidden rounded-2xl border transition-colors",
                       isOpen
-                        ? "border-oai-brand-500/40 bg-oai-brand-50/70"
-                        : "border-oai-gray-200 bg-oai-black/[0.025] dark:border-oai-gray-800 dark:bg-white/[0.04]",
+                        ? "border-oai-brand-500/40 bg-oai-brand-50/70 dark:bg-oai-brand-950/40"
+                        : "vd-subcard border-oai-gray-200 bg-oai-black/[0.025] dark:border-oai-gray-800 dark:bg-white/[0.04]",
                     )}
                   >
                     <button
@@ -125,7 +125,7 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                       className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
                       aria-expanded={isOpen}
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-oai-black/[0.06] text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-oai-brand-100 text-oai-brand-700 dark:bg-oai-brand-950/60 dark:text-oai-brand-300">
                         <FolderTree className="h-5 w-5" aria-hidden />
                       </span>
                       <span className="min-w-0 flex-1">
@@ -150,8 +150,8 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                               className={cn(
                                 "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
                                 active
-                                  ? "bg-oai-black text-white dark:bg-white dark:text-oai-black"
-                                  : "hover:bg-oai-black/[0.05] dark:hover:bg-white/[0.08]",
+                                  ? "bg-oai-brand-600 text-white dark:bg-oai-brand-400 dark:text-oai-brand-950"
+                                  : "hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/35",
                               )}
                               aria-pressed={active}
                             >

@@ -56,14 +56,14 @@ function RepoEntireCard({ session, status, loading, error }) {
         </p>
       ) : (
         <div className="mt-3 space-y-2">
-          <div className="rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+          <div className="vd-subcard rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
               <Database className="h-3.5 w-3.5" aria-hidden />
               Repo
             </div>
             <div className="truncate font-medium text-oai-black dark:text-white" title={repo}>{repo}</div>
           </div>
-          <div className="flex items-center justify-between gap-3 rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+          <div className="vd-subcard flex items-center justify-between gap-3 rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
             <span className="flex items-center gap-1.5">
               <Box className="h-3.5 w-3.5" aria-hidden />
               Entire
@@ -200,8 +200,8 @@ export function LivePage() {
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="grid min-w-0 gap-4">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="grid min-w-0 gap-6">
           <LiveWorkbenchOverview
             sessions={sessions}
             status={status}
@@ -218,7 +218,7 @@ export function LivePage() {
             limitsError={limitsError}
           />
         </section>
-        <aside className="grid auto-rows-max content-start items-start gap-4">
+        <aside className="grid auto-rows-max content-start items-start gap-6">
           {selectedSession ? (
             <BranchOverridePanel
               session={selectedSession}

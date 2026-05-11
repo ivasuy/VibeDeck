@@ -147,7 +147,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
       onClose={onClose}
       side="right"
       width="w-full max-w-5xl"
-      className="border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
+      className="vd-drawer border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
     >
       {workstream && <div
         role="dialog"
@@ -155,7 +155,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
         aria-labelledby={titleId}
         className="flex h-full flex-col"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-oai-gray-200 dark:border-oai-gray-800 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-[var(--vd-border)] px-5 py-4">
           <div className="min-w-0">
             <h2 id={titleId} className="text-sm font-semibold text-oai-black dark:text-white">
               Workstream breakdown
@@ -170,7 +170,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
           <Button
             variant="ghost"
             size="sm"
-            className="h-11 w-11 shrink-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-0 text-oai-gray-600 hover:border-oai-gray-300 hover:text-oai-black dark:border-oai-gray-800 dark:bg-white/[0.04] dark:text-oai-gray-300 dark:hover:border-oai-gray-700 dark:hover:text-white"
+            className="vd-control h-11 w-11 shrink-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-0 text-oai-brand-600 hover:border-oai-brand hover:text-oai-brand dark:border-oai-gray-800 dark:bg-white/[0.04] dark:text-oai-brand-300 dark:hover:border-oai-brand-400 dark:hover:text-oai-brand-200"
             aria-label="Close workstream breakdown"
             onClick={onClose}
           >

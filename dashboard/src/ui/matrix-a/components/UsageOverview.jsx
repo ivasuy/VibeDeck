@@ -136,9 +136,9 @@ export function UsageOverview({
           <div role="tablist" aria-label={copy("usage.overview.tablist_aria")} className="flex flex-wrap gap-1">
             {tabs.map((p) => {
               const isActive = period === p.key;
-              const tabClass = `text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
+              const tabClass = `vd-tab text-xs font-medium px-3 py-1.5 rounded-md border border-transparent transition-colors ${
                 isActive
-                  ? "text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
+                  ? "vd-tab-active text-oai-black dark:text-oai-white bg-oai-gray-100 dark:bg-oai-gray-800"
                   : "text-oai-gray-500 dark:text-oai-gray-300 hover:text-oai-black dark:hover:text-oai-white hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
               }`;
 
@@ -170,7 +170,7 @@ export function UsageOverview({
                     </Popover.Trigger>
                     <Popover.Portal>
                       <Popover.Positioner sideOffset={8} side="bottom" align="start" className="!z-[9999]">
-                        <Popover.Popup className="bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded-xl shadow-lg">
+                        <Popover.Popup className="vd-popover bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded-xl shadow-lg">
                           <DateRangePopover
                             from={customFrom}
                             to={customTo}
@@ -204,7 +204,7 @@ export function UsageOverview({
                 type="button"
                 onClick={onOpenShare}
                 aria-label={copy("share.button.aria")}
-                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
+                className="vd-control inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
               >
                 <SquareArrowOutUpRight className="h-3.5 w-3.5" strokeWidth={2} />
                 {copy("share.button.label")}
@@ -274,7 +274,7 @@ export function UsageOverview({
                   )
                   .join("，"),
               })}
-              className="h-1.5 w-full bg-oai-gray-100 dark:bg-oai-gray-800 rounded-full overflow-hidden flex"
+              className="h-1.5 w-full bg-oai-brand-100/70 dark:bg-oai-brand-950/60 rounded-full overflow-hidden flex"
             >
               {providers.map((provider, idx) => {
                 const color = getProviderColor(provider.label, idx);
@@ -314,8 +314,8 @@ export function UsageOverview({
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
                     className={`min-w-0 text-left p-3 rounded-lg border transition-colors duration-200 ${
                       isExpanded
-                        ? "border-oai-gray-300 dark:border-oai-gray-600 bg-oai-gray-50 dark:bg-oai-gray-800"
-                        : "border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
+                        ? "vd-card-solid border-oai-brand-300 dark:border-oai-brand-500 bg-oai-brand-50 dark:bg-oai-brand-950/40"
+                        : "vd-card-solid border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-brand-300 dark:hover:border-oai-brand-500"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 mb-1 min-w-0">

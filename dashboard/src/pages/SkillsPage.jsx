@@ -298,13 +298,13 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
                 disabled={installing}
                 aria-label={copy("skills.action.choose_targets")}
                 title={targetSummary}
-                className="inline-flex h-8 items-center justify-center rounded-r-md border-l border-white/20 bg-oai-black px-2 text-white hover:bg-oai-gray-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-oai-black/20 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+                className="inline-flex h-8 items-center justify-center rounded-r-md border-l border-white/20 bg-oai-brand px-2 text-white transition-colors hover:bg-oai-brand-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-oai-brand-950/30 dark:bg-oai-brand-400 dark:text-oai-brand-950 dark:hover:bg-oai-brand-300"
               >
                 <ChevronDown className="h-3.5 w-3.5" aria-hidden />
               </Popover.Trigger>
               <Popover.Portal>
                 <Popover.Positioner sideOffset={6} side="bottom" align="end" className="!z-[80]">
-                  <Popover.Popup className="min-w-[200px] rounded-lg bg-white p-1.5 shadow-lg ring-1 ring-oai-gray-200 dark:bg-oai-gray-950 dark:ring-oai-gray-800">
+                  <Popover.Popup className="vd-popover min-w-[200px] rounded-lg border p-1.5">
                     <div className="px-2 pb-1 pt-0.5 text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
                       {copy("skills.target.menu_label")}
                     </div>
@@ -318,8 +318,8 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
                           className={cn(
                             "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm",
                             checked
-                              ? "bg-oai-gray-100 dark:bg-oai-gray-800"
-                              : "hover:bg-oai-gray-50 dark:hover:bg-oai-gray-900",
+                              ? "vd-tab-active"
+                              : "vd-tab",
                           )}
                         >
                           <ProviderIcon
@@ -329,7 +329,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
                           />
                           <span className="flex-1 text-left">{target.label}</span>
                           {checked ? (
-                            <Check className="h-3.5 w-3.5 text-indigo-500" aria-hidden />
+                            <Check className="h-3.5 w-3.5 text-oai-brand-500 dark:text-oai-brand-300" aria-hidden />
                           ) : null}
                         </button>
                       );
@@ -913,7 +913,7 @@ export function SkillsPage() {
       }
     >
       <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-5 overflow-hidden">
-          <div className="flex shrink-0 gap-6 border-b border-oai-gray-200 dark:border-oai-gray-800">
+          <div className="flex shrink-0 gap-6 border-b border-[var(--vd-border)]">
             {[
               ["my", copy("skills.tab.my")],
               ["browse", copy("skills.tab.browse")],
@@ -926,8 +926,8 @@ export function SkillsPage() {
                 className={cn(
                   "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
                   tab === value
-                    ? "border-oai-black text-oai-black dark:border-white dark:text-white"
-                    : "border-transparent text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white",
+                    ? "border-oai-brand text-oai-brand dark:border-oai-brand-300 dark:text-oai-brand-300"
+                    : "border-transparent text-oai-gray-500 hover:text-oai-brand dark:text-oai-gray-400 dark:hover:text-oai-brand-300",
                 )}
               >
                 {label}
@@ -949,7 +949,7 @@ export function SkillsPage() {
                   value={myQuery}
                   onChange={(event) => setMyQuery(event.target.value)}
                   placeholder={copy("skills.my.search_placeholder")}
-                  className="pl-9 !border-oai-gray-200 dark:!border-oai-gray-800 focus:!border-oai-gray-400 focus:!ring-oai-gray-400/20 dark:focus:!border-oai-gray-500 dark:focus:!ring-oai-gray-500/20"
+                  className="pl-9 !border-[var(--vd-border-strong)] focus:!border-oai-brand focus:!ring-oai-brand/25"
                 />
               </div>
             </div>
@@ -960,7 +960,7 @@ export function SkillsPage() {
               <div
                 role="tablist"
                 aria-label={copy("skills.source.label")}
-                className="inline-flex h-10 shrink-0 items-center rounded-md border border-oai-gray-200 bg-oai-white p-1 dark:border-oai-gray-800 dark:bg-oai-gray-900"
+                className="inline-flex h-10 shrink-0 items-center rounded-md border border-[var(--vd-border)] bg-[var(--vd-tint)] p-1"
               >
                 {[
                   ["repo", copy("skills.mode.repo")],
@@ -980,8 +980,8 @@ export function SkillsPage() {
                       className={cn(
                         "rounded px-3 py-1 text-sm font-medium transition-colors",
                         active
-                          ? "bg-oai-gray-100 text-oai-black dark:bg-oai-gray-700 dark:text-white"
-                          : "text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200",
+                          ? "vd-tab-active bg-oai-gray-100 text-oai-black dark:bg-oai-gray-700 dark:text-white"
+                          : "vd-tab text-oai-gray-500 hover:text-oai-gray-800 dark:text-oai-gray-400 dark:hover:text-oai-gray-200",
                       )}
                     >
                       {label}
@@ -993,7 +993,7 @@ export function SkillsPage() {
                 <Select.Root value={source} onValueChange={setSource}>
                   <Select.Trigger
                     aria-label={copy("skills.source.label")}
-                    className="inline-flex h-10 w-44 shrink-0 items-center justify-between gap-2 rounded-md border border-oai-gray-200 bg-oai-white px-3 text-sm text-oai-black focus:outline-none data-[popup-open]:border-oai-gray-300 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-white dark:data-[popup-open]:border-oai-gray-700"
+                    className="vd-control inline-flex h-10 w-44 shrink-0 items-center justify-between gap-2 rounded-md border border-oai-gray-200 bg-oai-white px-3 text-sm text-oai-black focus:outline-none data-[popup-open]:border-oai-gray-300 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-white dark:data-[popup-open]:border-oai-gray-700"
                   >
                     <Select.Value>
                       {(value) => (value === SOURCE_ALL ? copy("skills.source.all") : value)}
@@ -1004,10 +1004,10 @@ export function SkillsPage() {
                   </Select.Trigger>
                   <Select.Portal>
                     <Select.Positioner sideOffset={4} alignItemWithTrigger={false} className="z-[60]">
-                      <Select.Popup className="min-w-[var(--anchor-width)] overflow-hidden rounded-md border border-oai-gray-200 bg-white p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.18)] outline-none transition-[opacity,transform] duration-150 ease-out data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[starting-style]:opacity-0 dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)]">
+                      <Select.Popup className="vd-popover min-w-[var(--anchor-width)] overflow-hidden rounded-md border border-oai-gray-200 bg-white p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.18)] outline-none transition-[opacity,transform] duration-150 ease-out data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[starting-style]:opacity-0 dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)]">
                         <Select.Item
                           value={SOURCE_ALL}
-                          className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-gray-100 dark:text-white dark:data-[highlighted]:bg-oai-gray-800"
+                          className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-brand-50 dark:text-white dark:data-[highlighted]:bg-oai-brand-950/50"
                         >
                           <Select.ItemText>{copy("skills.source.all")}</Select.ItemText>
                           <Select.ItemIndicator>
@@ -1020,7 +1020,7 @@ export function SkillsPage() {
                             <Select.Item
                               key={value}
                               value={value}
-                              className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-gray-100 dark:text-white dark:data-[highlighted]:bg-oai-gray-800"
+                              className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-brand-50 dark:text-white dark:data-[highlighted]:bg-oai-brand-950/50"
                             >
                               <Select.ItemText>{value}</Select.ItemText>
                               <Select.ItemIndicator>
@@ -1049,7 +1049,7 @@ export function SkillsPage() {
                         ? copy("skills.browse.placeholder_all")
                         : copy("skills.browse.placeholder_repo", { repo: source })
                   }
-                  className="pl-9 !border-oai-gray-200 dark:!border-oai-gray-800 focus:!border-oai-gray-400 focus:!ring-oai-gray-400/20 dark:focus:!border-oai-gray-500 dark:focus:!ring-oai-gray-500/20"
+                  className="pl-9 !border-[var(--vd-border-strong)] focus:!border-oai-brand focus:!ring-oai-brand/25"
                 />
               </div>
               {source === SOURCE_SKILLSSH ? (
@@ -1057,7 +1057,7 @@ export function SkillsPage() {
                   type="button"
                   onClick={handleSearch}
                   disabled={query.trim().length < 2 || busyKey === "search"}
-                  className="focus:!ring-oai-gray-400/30"
+                  className="focus:!ring-oai-brand/30"
                 >
                   {busyKey === "search" ? (
                     <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
@@ -1073,11 +1073,11 @@ export function SkillsPage() {
                   size="sm"
                   onClick={() => setManageOpen((prev) => !prev)}
                   aria-expanded={manageOpen}
-                  className="!h-10 shrink-0 whitespace-nowrap !border-oai-gray-200 dark:!border-oai-gray-800 hover:!border-oai-gray-300 dark:hover:!border-oai-gray-700 hover:!text-oai-black dark:hover:!text-white focus:!ring-oai-gray-400/30"
+                  className="!h-10 shrink-0 whitespace-nowrap !border-[var(--vd-border-strong)] hover:!border-oai-brand hover:!text-oai-brand dark:hover:!text-oai-brand-300 focus:!ring-oai-brand/30"
                 >
                   <Plus className="mr-1.5 h-3.5 w-3.5" aria-hidden />
                   {copy("skills.browse.manage_sources")}
-                  <span className="ml-1.5 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs font-medium text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300">
+                  <span className="vd-chip ml-1.5 rounded bg-oai-gray-100 px-1.5 py-0.5 text-xs font-medium text-oai-gray-600 dark:bg-oai-gray-800 dark:text-oai-gray-300">
                     {repos.length}
                   </span>
                 </Button>

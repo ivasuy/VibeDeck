@@ -160,7 +160,7 @@ export function BranchUsageTable({
       <div className="relative min-h-0 flex-1 overflow-auto [mask-image:linear-gradient(to_right,transparent_0,black_8px,black_calc(100%-8px),transparent_100%)]">
         <table className="w-full min-w-[920px] table-fixed border-collapse">
           <thead className="sticky top-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.08)] dark:shadow-[0_1px_0_rgba(255,255,255,0.08)]">
-            <tr className="border-b border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm text-left text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+            <tr className="vd-table-head border-b border-[var(--glass-border)] text-left text-[11px] uppercase tracking-wide text-oai-brand-600 dark:text-oai-brand-300">
               <th className="w-[28%] px-5 py-4 font-semibold">{copy("branches.table.branch")}</th>
               <th className="w-[12%] px-5 py-4 text-right font-semibold">{copy("branches.table.tokens")}</th>
               <th className="w-[10%] px-5 py-4 text-right font-semibold">{copy("branches.table.cost")}</th>
@@ -185,11 +185,11 @@ export function BranchUsageTable({
                 return (
                   <tr
                     key={`${String(row?.repo_root || "")}:${String(row?.branch || "")}`}
-                    className="border-b border-oai-gray-200/70 text-sm transition-colors last:border-b-0 hover:bg-oai-black/[0.018] dark:border-oai-gray-800/70 dark:hover:bg-white/[0.03]"
+                    className="vd-row-hover border-b border-oai-gray-200/70 text-sm transition-colors last:border-b-0 hover:bg-oai-black/[0.018] dark:border-oai-gray-800/70 dark:hover:bg-white/[0.03]"
                   >
                     <td className="px-5 py-4 align-middle text-oai-black dark:text-white">
                       <span
-                        className="inline-flex max-w-full items-center whitespace-normal break-words rounded-md bg-oai-black/[0.045] px-2.5 py-1 font-medium leading-5 dark:bg-white/[0.07]"
+                        className="vd-chip inline-flex max-w-full items-center whitespace-normal break-words rounded-md bg-oai-black/[0.045] px-2.5 py-1 font-medium leading-5 dark:bg-white/[0.07]"
                         title={String(row?.branch || "—")}
                       >
                         {String(row?.branch || "—")}

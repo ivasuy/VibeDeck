@@ -59,15 +59,15 @@ export function DateRangePopover({ from, to, onApply, onCancel }) {
           month_caption: "flex justify-center items-center h-8",
           caption_label: "text-sm font-medium text-oai-black dark:text-oai-white",
           nav: "flex items-center justify-between absolute inset-x-0 top-0 px-2",
-          button_previous: "inline-flex items-center justify-center w-7 h-7 rounded-md text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-oai-white hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors",
-          button_next: "inline-flex items-center justify-center w-7 h-7 rounded-md text-oai-gray-500 hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-oai-white hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 transition-colors",
+          button_previous: "inline-flex items-center justify-center w-7 h-7 rounded-md text-oai-brand-500 hover:text-oai-brand-700 dark:text-oai-brand-300 dark:hover:text-oai-brand-200 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/50 transition-colors",
+          button_next: "inline-flex items-center justify-center w-7 h-7 rounded-md text-oai-brand-500 hover:text-oai-brand-700 dark:text-oai-brand-300 dark:hover:text-oai-brand-200 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/50 transition-colors",
           chevron: "w-4 h-4",
           month_grid: "border-collapse",
           weekdays: "flex",
           weekday: "w-9 text-center text-xs font-medium text-oai-gray-400 dark:text-oai-gray-500 py-1",
           week: "flex",
           day: "w-9 h-9 text-center text-sm p-0 relative",
-          day_button: "w-full h-full inline-flex items-center justify-center rounded-md transition-colors hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 text-oai-black dark:text-oai-white cursor-pointer rdp-day-btn",
+          day_button: "w-full h-full inline-flex items-center justify-center rounded-md transition-colors hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/50 text-oai-black dark:text-oai-white cursor-pointer rdp-day-btn",
           today: "font-bold",
           selected: "rdp-selected",
           range_start: "rdp-selected rdp-range-start",
@@ -81,7 +81,7 @@ export function DateRangePopover({ from, to, onApply, onCancel }) {
           months: { position: "relative" },
         }}
       />
-      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-oai-gray-200 dark:border-oai-gray-700">
+      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-[var(--vd-border)]">
         {hasSelection && range.from && (
           <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400 mr-auto">
             {format(range.from, "MMM d, yyyy")}

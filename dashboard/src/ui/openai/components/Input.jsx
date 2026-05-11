@@ -16,7 +16,7 @@ export function Input({
   ...props
 }) {
   const baseStyles =
-    "w-full bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md text-oai-black dark:text-oai-white placeholder-oai-gray-400 dark:placeholder-oai-gray-500 transition-all duration-200 focus:outline-none focus:border-oai-brand dark:focus:border-oai-brand focus:ring-1 focus:ring-oai-brand/30";
+    "vd-control w-full bg-oai-white dark:bg-oai-gray-900 border border-oai-gray-300 dark:border-oai-gray-700 rounded-md text-oai-black dark:text-oai-white placeholder-oai-gray-400 dark:placeholder-oai-gray-500 transition-all duration-200 focus:outline-none focus:border-oai-brand dark:focus:border-oai-brand focus:ring-1 focus:ring-oai-brand/30";
 
   const disabledStyles = disabled
     ? "bg-oai-gray-50 dark:bg-oai-gray-800 text-oai-gray-400 dark:text-oai-gray-400 cursor-not-allowed"

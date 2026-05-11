@@ -103,47 +103,49 @@ export function EntireActionsPanel({ repo = "", onActionSuccess, className = "" 
     <div className={className}>
       <div className="space-y-1.5">
         <div>
-          <div className="grid gap-1 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
             {AGENTS.slice(0, 6).map((agent) => (
               <label
                 key={agent}
-                className="flex h-7 items-center gap-2 rounded-md border border-oai-gray-200 px-2 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
+                className="vd-control flex h-9 min-w-0 items-center gap-2 rounded-md border px-2.5 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/50 has-[:checked]:bg-oai-brand-500/10 dark:text-oai-gray-200"
               >
                 <input
                   type="checkbox"
+                  className="accent-oai-brand"
                   checked={selectedAgents.includes(agent)}
                   onChange={(event) => toggleAgent(agent, event.target.checked)}
                 />
-                <span>{agent}</span>
+                <span className="min-w-0 truncate">{agent}</span>
               </label>
             ))}
           </div>
         </div>
 
-        <div className="grid gap-1 xl:grid-cols-[minmax(170px,0.88fr)_repeat(4,minmax(0,1fr))]">
+        <div className="flex flex-wrap items-center gap-2">
           <label
-            className="flex h-7 items-center gap-2 rounded-md border border-oai-gray-200 px-2 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/40 has-[:checked]:bg-oai-brand-500/10 dark:border-oai-gray-800 dark:text-oai-gray-200"
+            className="vd-control flex h-9 min-w-[170px] flex-1 items-center gap-2 rounded-md border px-2.5 text-xs text-oai-gray-700 transition-colors has-[:checked]:border-oai-brand-500/50 has-[:checked]:bg-oai-brand-500/10 dark:text-oai-gray-200 sm:flex-none"
           >
             <input
               type="checkbox"
+              className="accent-oai-brand"
               checked={selectedAgents.includes(AGENTS[6])}
               onChange={(event) => toggleAgent(AGENTS[6], event.target.checked)}
             />
-            <span>{AGENTS[6]}</span>
+            <span className="min-w-0 truncate">{AGENTS[6]}</span>
           </label>
-          <Button type="button" size="sm" className="w-full justify-center" disabled={busyKey !== "" || !canEnable} onClick={runEnable}>
+          <Button type="button" size="sm" className="min-w-[96px] flex-1 justify-center sm:flex-none" disabled={busyKey !== "" || !canEnable} onClick={runEnable}>
             <Power className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             {copy("entire.actions.enable")}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runDisable}>
+          <Button type="button" size="sm" variant="secondary" className="min-w-[96px] flex-1 justify-center sm:flex-none" disabled={busyKey !== ""} onClick={runDisable}>
             <PowerOff className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             {copy("entire.actions.disable")}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runDoctor}>
+          <Button type="button" size="sm" variant="secondary" className="min-w-[96px] flex-1 justify-center sm:flex-none" disabled={busyKey !== ""} onClick={runDoctor}>
             <Stethoscope className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             {copy("entire.actions.doctor")}
           </Button>
-          <Button type="button" size="sm" variant="secondary" className="w-full justify-center" disabled={busyKey !== ""} onClick={runStatus}>
+          <Button type="button" size="sm" variant="secondary" className="min-w-[96px] flex-1 justify-center sm:flex-none" disabled={busyKey !== ""} onClick={runStatus}>
             <Activity className="mr-1.5 h-3.5 w-3.5" aria-hidden />
             {copy("entire.actions.status")}
           </Button>

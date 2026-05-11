@@ -215,7 +215,7 @@ export function ProjectUsagePanel({
   }, [displayEntries, expandedKey]);
 
   return (
-    <div className={`rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
+    <div className={`vd-card rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 ${className}`}>
       <div className="flex items-center justify-between gap-3 mb-4">
         <h3 className="text-sm font-medium text-oai-gray-500 dark:text-oai-gray-300 uppercase tracking-wide">
           {copy("dashboard.projects.title")}
@@ -234,13 +234,13 @@ export function ProjectUsagePanel({
         >
           <Select.Trigger
             aria-label={limitAria}
-            className="px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
+            className="vd-control px-2 py-1 text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded hover:border-oai-gray-300 dark:hover:border-oai-gray-600"
           >
             <Select.Value />
           </Select.Trigger>
           <Select.Portal>
             <Select.Positioner align="end" side="bottom" sideOffset={4} className="z-50">
-              <Select.Popup className="w-32 border border-oai-gray-200 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 rounded-lg shadow-lg">
+              <Select.Popup className="vd-popover w-32 border border-oai-gray-200 dark:border-oai-gray-700 bg-white dark:bg-oai-gray-900 rounded-lg shadow-lg">
                 <Select.List aria-label={limitAria} role="listbox">
                   {LIMIT_OPTIONS.map((value) => (
                     <Select.Item
@@ -249,8 +249,8 @@ export function ProjectUsagePanel({
                       className={({ selected }) =>
                         `w-full text-left px-3 py-2 text-xs ${
                           selected
-                            ? "bg-oai-gray-100 dark:bg-oai-gray-800 text-oai-black dark:text-oai-white"
-                            : "text-oai-gray-600 dark:text-oai-gray-300 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800"
+                            ? "bg-oai-brand-100 dark:bg-oai-brand-950/60 text-oai-brand-700 dark:text-oai-brand-300"
+                            : "text-oai-gray-600 dark:text-oai-gray-300 hover:bg-oai-brand-50 dark:hover:bg-oai-brand-950/35"
                         }`
                       }
                     >
@@ -333,19 +333,19 @@ function ProjectUsageCard({
     : copy("dashboard.projects.expand_project", { project: displayName });
 
   return (
-    <div className="overflow-hidden rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900">
+    <div className="vd-card-solid overflow-hidden rounded-lg border border-oai-gray-200 bg-white dark:border-oai-gray-700 dark:bg-oai-gray-900">
       <div className="flex items-stretch">
         <button
           type="button"
           aria-expanded={expanded}
           aria-label={buttonAriaLabel}
           onClick={() => onToggleExpand?.(entryKey)}
-          className="flex flex-1 items-center gap-3 p-4 text-left transition-colors hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/70"
+          className="flex flex-1 items-center gap-3 p-4 text-left transition-colors hover:bg-oai-brand-50/60 dark:hover:bg-oai-brand-950/35"
         >
           {avatarUrl ? (
             <img src={avatarUrl} alt="" className="h-10 w-10 rounded bg-oai-gray-100 object-cover dark:bg-oai-gray-800" />
           ) : (
-            <div className="h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="h-10 w-10 rounded bg-oai-brand-100 dark:bg-oai-brand-950/60" />
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
@@ -391,7 +391,7 @@ function ProjectUsageCard({
             target="_blank"
             rel="noopener noreferrer"
             aria-label={githubAria}
-            className="flex w-11 items-center justify-center border-l border-oai-gray-200 text-oai-gray-400 transition-colors hover:bg-oai-gray-50 hover:text-oai-black dark:border-oai-gray-700 dark:text-oai-gray-500 dark:hover:bg-oai-gray-800/70 dark:hover:text-oai-white"
+            className="flex w-11 items-center justify-center border-l border-[var(--vd-border)] text-oai-brand-500 transition-colors hover:bg-oai-brand-50 hover:text-oai-brand-700 dark:text-oai-brand-300 dark:hover:bg-oai-brand-950/40 dark:hover:text-oai-brand-200"
           >
             <ExternalLink className="h-4 w-4" aria-hidden />
           </a>

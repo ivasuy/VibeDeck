@@ -12,16 +12,16 @@ export function PageFrame({
   contentClassName = "",
   children,
 }) {
-  const compactFrame = hideHeader || compact;
+  const compactFrame = compact;
   return (
     <div className={cn(
       "flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white",
       compactFrame && "h-full min-h-0 overflow-hidden",
     )}
     >
-      <main className={compactFrame ? "h-full min-h-0 flex-1 overflow-hidden py-1 sm:py-1" : "flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10"}>
+      <main className={compactFrame ? "h-full min-h-0 flex-1 overflow-hidden py-4 sm:py-5" : "flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10"}>
         <div className={cn("mx-auto px-4 sm:px-6 lg:px-8", compactFrame && "h-full", maxWidth, contentClassName)}>
-          <PageTransition>
+          <PageTransition className={compactFrame ? "h-full min-h-0" : ""}>
             {hideHeader ? null : (
               <header className={cn("flex flex-wrap items-start justify-between gap-4", compact ? "mb-3" : "mb-8")}>
                 <div className="min-w-0">

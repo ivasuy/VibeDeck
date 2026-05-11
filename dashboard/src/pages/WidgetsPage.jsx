@@ -446,7 +446,7 @@ function MenuBarDisplayCard() {
   const animatedIcon = settings?.animatedIcon !== false;
 
   return (
-    <article className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 transition-colors duration-200 sm:p-6">
+    <article className="vd-card rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-sm p-5 transition-colors duration-200 sm:p-6">
       <MenuBarPreview slotConfigs={slotConfigs} showStats={showStats} />
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -522,7 +522,7 @@ function HeaderCta() {
       <button
         type="button"
         onClick={() => nativeAction("openWidgetGallery")}
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-brand px-4 text-sm font-medium text-white shadow-[0_10px_24px_rgba(91,95,199,0.22)] transition-colors hover:bg-oai-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-oai-brand-400 dark:text-oai-brand-950 dark:hover:bg-oai-brand-300"
       >
         {copy("widgets.cta.open_gallery")}
         <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
@@ -536,7 +536,7 @@ function HeaderCta() {
         href="https://github.com/ivasuy/VibeDeck/releases/latest"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-black px-4 text-sm font-medium text-white no-underline transition-colors hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-white dark:text-oai-black dark:hover:bg-oai-gray-200"
+        className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-brand px-4 text-sm font-medium text-white no-underline shadow-[0_10px_24px_rgba(91,95,199,0.22)] transition-colors hover:bg-oai-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-oai-brand-400 dark:text-oai-brand-950 dark:hover:bg-oai-brand-300"
       >
         <Download className="h-4 w-4" aria-hidden="true" />
         {copy("widgets.cta.download")}
@@ -564,7 +564,7 @@ const SECONDARY_WIDGETS = [
 
 function WidgetCatalogCard({ Preview, nameKey, descKey }) {
   return (
-    <article className="flex h-full flex-col rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
+    <article className="vd-card flex h-full flex-col rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 sm:p-5">
       <Preview />
       <div className="mt-4">
         <h3 className="text-[15px] font-semibold text-oai-black dark:text-white">

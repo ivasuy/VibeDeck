@@ -96,7 +96,7 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
 
   return (
     <section
-      className={`rounded-xl border border-oai-gray-200 bg-white p-5 pb-3 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
+      className={`vd-card rounded-xl border border-oai-gray-200 bg-white p-5 pb-3 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
     >
       <div className="flex items-center gap-2">
         <PencilLine className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
@@ -105,7 +105,7 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
       <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.override.subtitle")}</p>
 
       <div className="mt-3 grid gap-2 text-xs">
-        <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+        <div className="vd-subcard flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
           <span className="flex items-center gap-1.5">
             <GitBranch className="h-3.5 w-3.5" aria-hidden />
             {copy("live.override.meta.current_branch")}
@@ -114,7 +114,7 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
             {copy("live.override.meta.current_branch_value", { branch: currentBranch })}
           </span>
         </div>
-        <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+        <div className="vd-subcard flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
             {copy("live.override.meta.confidence")}

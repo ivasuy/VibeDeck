@@ -195,6 +195,22 @@ function updateSessionEndedState(db, { provider, session_id, ended_at, end_reaso
   ).run(ended_at, end_reason, now, provider, session_id);
 }
 
+function restoreSessionUpdatedAt(dbPath, { provider, session_id, updated_at } = {}) {
+  if (!isNonEmptyString(updated_at)) return;
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.prepare(
+      `
+      UPDATE vibedeck_sessions
+      SET updated_at = ?
+      WHERE provider = ? AND session_id = ? AND ended_at IS NULL
+      `,
+    ).run(updated_at, provider, session_id);
+  } finally {
+    db.close();
+  }
+}
+
 async function processSessionEvent(dbPath, event) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEvent: dbPath must be a non-empty string');
   if (!event || typeof event !== 'object') return;
@@ -356,6 +372,7 @@ async function recoverActiveSessionMetadata(dbPath) {
         .prepare(
           `
           SELECT provider, session_id, model
+               , COALESCE(updated_at, started_at) AS activity_at
           FROM vibedeck_sessions
           WHERE ended_at IS NULL
             AND (cwd IS NULL OR cwd = '' OR repo_root IS NULL OR repo_root = '')
@@ -378,10 +395,15 @@ async function recoverActiveSessionMetadata(dbPath) {
       kind: 'update',
       provider: row.provider,
       session_id: row.session_id,
-      observed_at: new Date().toISOString(),
+      observed_at: isNonEmptyString(row.activity_at) ? row.activity_at : new Date().toISOString(),
       delta_tokens: null,
       cwd: metadata.cwd,
       model: isNonEmptyString(row.model) ? row.model : metadata.model ?? null,
+    });
+    restoreSessionUpdatedAt(dbPath, {
+      provider: row.provider,
+      session_id: row.session_id,
+      updated_at: row.activity_at,
     });
     recovered += 1;
   }

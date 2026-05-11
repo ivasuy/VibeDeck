@@ -8,6 +8,7 @@ const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('../src/lib/db');
 const { processSessionEvent, recoverActiveSessionMetadata } = require('../src/lib/sessions/pipeline');
+const { reapOrphanedSessions } = require('../src/lib/sessions/reaper');
 const { getLiveBus } = require('../src/lib/sessions/live-bus');
 
 function getSessionEndedState(dbPath, sessionId) {
@@ -402,6 +403,63 @@ test('active unknown codex sessions can be backfilled from session file metadata
     assert.equal(result.recovered, 1);
     assert.equal(row.cwd, root);
     assert.equal(row.repo_root, await fs.realpath(root));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('active metadata backfill does not refresh stale open sessions', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-cwd-stale-backfill-'));
+  try {
+    cp.execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    const sessionFile = path.join(root, 'rollout-session.jsonl');
+    ensureSchema(dbPath);
+    await fs.writeFile(
+      sessionFile,
+      JSON.stringify({
+        timestamp: '2026-05-11T02:00:00.000Z',
+        type: 'session_meta',
+        payload: { cwd: root, model: 'gpt-5.5' },
+      }) + '\n',
+      'utf8',
+    );
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare(
+        `
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd,
+          created_at, updated_at
+        ) VALUES (
+          'codex', ?, '2026-05-11T01:00:00.000Z', NULL, NULL,
+          NULL, NULL, NULL, NULL,
+          NULL, 'D', 'unattributed', NULL,
+          'gpt-5.5', 100, NULL,
+          '2026-05-11T01:00:00.000Z', '2026-05-11T01:05:00.000Z'
+        )
+        `,
+      ).run(sessionFile);
+    } finally {
+      db.close();
+    }
+
+    const result = await recoverActiveSessionMetadata(dbPath);
+    assert.equal(result.recovered, 1);
+
+    const reaped = reapOrphanedSessions(dbPath, {
+      now: '2026-05-11T01:36:00.000Z',
+      idleTimeoutMin: 30,
+    });
+
+    assert.deepEqual(reaped, { reaped: 1, scanned: 1 });
+    const row = getSessionEndedState(dbPath, sessionFile);
+    assert.equal(row.ended_at, '2026-05-11T01:05:00.000Z');
+    assert.equal(row.end_reason, 'orphan_reaped');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

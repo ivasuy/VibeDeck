@@ -39,6 +39,10 @@ function checkpointIdFrom(checkpoint, filePath) {
   return null;
 }
 
+function isCheckpointMetadataPath(filePath) {
+  return isNonEmptyString(filePath) && filePath.endsWith('.json');
+}
+
 async function resolveBranchTierA({ repoRoot, provider, started_at, ended_at, bridge } = {}) {
   if (!isNonEmptyString(repoRoot)) throw new TypeError('resolveBranchTierA: repoRoot must be a non-empty string');
   if (!isNonEmptyString(provider)) throw new TypeError('resolveBranchTierA: provider must be a non-empty string');
@@ -83,6 +87,7 @@ async function resolveBranchTierA({ repoRoot, provider, started_at, ended_at, br
 
   const candidates = [];
   for (const filePath of list.files || []) {
+    if (!isCheckpointMetadataPath(filePath)) continue;
     let checkpoint;
     try {
       checkpoint = await impl.readCheckpoint(repoRoot, filePath);
@@ -131,4 +136,3 @@ async function resolveBranchTierA({ repoRoot, provider, started_at, ended_at, br
 }
 
 module.exports = { resolveBranchTierA };
-

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-function makeBridgeStub({ present = true, listResult, checkpointsByPath, detectThrows, readThrows }) {
+function makeBridgeStub({ present = true, listResult, checkpointsByPath, detectThrows, readThrows, readPaths }) {
   return {
     async detectEntire() {
       if (detectThrows) throw new Error(detectThrows);
@@ -11,6 +11,7 @@ function makeBridgeStub({ present = true, listResult, checkpointsByPath, detectT
       return listResult;
     },
     async readCheckpoint(_repoRoot, filePath) {
+      if (readPaths) readPaths.push(filePath);
       if (readThrows) throw new Error(readThrows);
       if (!checkpointsByPath || !Object.prototype.hasOwnProperty.call(checkpointsByPath, filePath)) {
         throw new Error(`missing checkpoint for ${filePath}`);
@@ -104,6 +105,51 @@ test('tier A: checkpoints branch not fetched returns null silently', async () =>
   assert.equal(r, null);
 });
 
+test('tier A: skips non-metadata checkpoint payload files without warnings', async () => {
+  const logs = [];
+  const readPaths = [];
+  const prev = console.warn;
+  console.warn = (...args) => logs.push(args.join(' '));
+  try {
+    const bridge = makeBridgeStub({
+      readPaths,
+      listResult: {
+        available: true,
+        files: [
+          '9c/caea628c7a/1/content_hash.txt',
+          '9c/caea628c7a/1/full.jsonl',
+          '9c/caea628c7a/1/prompt.txt',
+          'sessions/a.json',
+        ],
+      },
+      checkpointsByPath: {
+        'sessions/a.json': {
+          entire_session_id: 's1',
+          agent: 'codex',
+          branch: 'main',
+          started_at: '2026-05-09T10:00:00.000Z',
+          ended_at: '2026-05-09T10:10:00.000Z',
+          checkpoint_id: 'aaaaaaaaaaaa',
+        },
+      },
+    });
+    const { resolveBranchTierA } = require('../src/lib/sessions/tier-a-entire');
+    const r = await resolveBranchTierA({
+      repoRoot: '/repo',
+      provider: 'codex',
+      started_at: '2026-05-09T10:01:00.000Z',
+      ended_at: '2026-05-09T10:02:00.000Z',
+      bridge,
+    });
+
+    assert.equal(r.branch, 'main');
+    assert.deepEqual(readPaths, ['sessions/a.json']);
+    assert.equal(logs.some((l) => l.includes('tierA_entire_read_error')), false);
+  } finally {
+    console.warn = prev;
+  }
+});
+
 test('tier A: detectEntire errors return null and logs a structured warning', async () => {
   const logs = [];
   const prev = console.warn;
@@ -179,4 +225,3 @@ test('tier A: agent mismatch returns null', async () => {
   });
   assert.equal(r, null);
 });
-

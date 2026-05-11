@@ -5,7 +5,6 @@ import {
   BarChart3,
   GitBranch,
   GitGraph,
-  Gauge,
   LayoutGrid,
   Puzzle,
   Settings as SettingsIcon,
@@ -51,7 +50,6 @@ function getNavGroups() {
       id: "system",
       label: copy("nav.group.account"),
       items: [
-        { id: "limits", to: "/limits", icon: Gauge, label: copy("nav.limits") },
         { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
         { id: "settings", to: "/settings", icon: SettingsIcon, label: copy("nav.settings") },
       ],

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
@@ -10,7 +10,6 @@ import { DashboardPage } from "./pages/DashboardPage.jsx";
 import { LivePage } from "./pages/LivePage.jsx";
 import { BranchesPage } from "./pages/BranchesPage.jsx";
 import { EntirePage } from "./pages/EntirePage.jsx";
-import { LimitsPage } from "./pages/LimitsPage.jsx";
 import { SettingsPage } from "./pages/SettingsPage.jsx";
 import { SkillsPage } from "./pages/SkillsPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
@@ -37,24 +36,24 @@ export default function App() {
   const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const baseUrl = getBackendBaseUrl();
 
+  const isRemovedLimitsPath = normalizedPath === "/limits";
   const isLivePath = normalizedPath === "/" || normalizedPath === "/dashboard";
   const isUsagePath = normalizedPath === "/usage";
   const isBranchesPath = normalizedPath === "/branches";
   const isEntirePath = normalizedPath === "/entire";
-  const isLimitsPath = normalizedPath === "/limits";
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
 
   let PageComponent = LivePage;
-  if (isUsagePath) {
+  if (isRemovedLimitsPath) {
+    PageComponent = () => <Navigate to="/dashboard" replace />;
+  } else if (isUsagePath) {
     PageComponent = DashboardPage;
   } else if (isBranchesPath) {
     PageComponent = BranchesPage;
   } else if (isEntirePath) {
     PageComponent = EntirePage;
-  } else if (isLimitsPath) {
-    PageComponent = LimitsPage;
   } else if (isSettingsPath) {
     PageComponent = SettingsPage;
   } else if (isSkillsPath) {
@@ -69,7 +68,6 @@ export default function App() {
       isUsagePath ||
       isBranchesPath ||
       isEntirePath ||
-      isLimitsPath ||
       isSettingsPath ||
       isSkillsPath ||
       isWidgetsPath);

@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Box, Database, FolderGit2, PencilLine } from "lucide-react";
 import { Card } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { getAttributionStats, getEntireStatus, getSyncStatus } from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
-import { LiveSessionList } from "../components/live/LiveSessionList";
-import { AttributionHealthCard } from "../components/live/AttributionHealthCard";
+import { useUsageLimits } from "../hooks/use-usage-limits";
+import { LiveOperationsPanel } from "../components/live/LiveOperationsPanel";
+import { LiveWorkbenchOverview } from "../components/live/LiveWorkbenchOverview";
+import { LiveBranchSignalMap } from "../components/live/LiveBranchSignalMap";
 import { BranchOverridePanel } from "../components/live/BranchOverridePanel";
 import { PageFrame } from "../components/PageFrame.jsx";
 
@@ -35,9 +38,12 @@ function RepoEntireCard({ session, status, loading, error }) {
 
   return (
     <Card className="h-[178px] overflow-hidden" bodyClassName="h-full overflow-auto">
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">
-        {copy("live.repo_state.title")}
-      </h2>
+      <div className="flex items-center gap-2">
+        <FolderGit2 className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+        <h2 className="text-sm font-semibold text-oai-black dark:text-white">
+          {copy("live.repo_state.title")}
+        </h2>
+      </div>
       {!repo ? (
         <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
           {copy("live.repo_state.empty")}
@@ -45,11 +51,17 @@ function RepoEntireCard({ session, status, loading, error }) {
       ) : (
         <div className="mt-3 space-y-2">
           <div className="rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">Repo</div>
+            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
+              <Database className="h-3.5 w-3.5" aria-hidden />
+              Repo
+            </div>
             <div className="truncate font-medium text-oai-black dark:text-white" title={repo}>{repo}</div>
           </div>
           <div className="flex items-center justify-between gap-3 rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-            <span>Entire</span>
+            <span className="flex items-center gap-1.5">
+              <Box className="h-3.5 w-3.5" aria-hidden />
+              Entire
+            </span>
             {loading ? (
               <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.loading")}</span>
             ) : error ? (
@@ -69,7 +81,10 @@ function RepoEntireCard({ session, status, loading, error }) {
 function BranchOverridePlaceholder() {
   return (
     <Card>
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>
+      <div className="flex items-center gap-2">
+        <PencilLine className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+        <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>
+      </div>
       <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
         Select a live session to correct branch attribution.
       </p>
@@ -79,26 +94,22 @@ function BranchOverridePlaceholder() {
 
 export function LivePage() {
   const { sessions, status, error } = useVibeDeckLiveSessions();
+  const {
+    data: usageLimits,
+    error: limitsError,
+    isLoading: limitsLoading,
+  } = useUsageLimits({ initialRefresh: true });
   const [selectedKey, setSelectedKey] = useState(null);
-  const [attributionStats, setAttributionStats] = useState(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [statsError, setStatsError] = useState(null);
   const [syncWarning, setSyncWarning] = useState(null);
   const [entireStatus, setEntireStatus] = useState(null);
   const [entireLoading, setEntireLoading] = useState(false);
   const [entireError, setEntireError] = useState("");
 
   const refreshAttributionStats = useCallback(async () => {
-    setStatsLoading(true);
-    setStatsError(null);
     try {
-      const payload = await getAttributionStats();
-      setAttributionStats(payload || null);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : copy("live.override.error.fallback");
-      setStatsError(message);
-    } finally {
-      setStatsLoading(false);
+      await getAttributionStats();
+    } catch (_cause) {
+      // The live stream remains the source of truth for visible dashboard data.
     }
   }, []);
 
@@ -171,46 +182,36 @@ export function LivePage() {
     };
   }, [selectedSession?.repo_root]);
 
-  const streamStatusLabel = useMemo(() => {
-    if (status === "connected") return copy("live.status.connected");
-    if (status === "connecting") return copy("live.status.connecting");
-    if (status === "degraded") return copy("live.status.degraded");
-    return copy("live.status.idle");
-  }, [status]);
-
   return (
     <PageFrame
-      title={copy("live.title")}
-      subtitle={copy("live.subtitle")}
-      actions={(
-        <div className="inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 ring-1 ring-oai-black/10 dark:bg-white/[0.08] dark:text-oai-gray-200 dark:ring-white/10">
-          {streamStatusLabel}
-        </div>
-      )}
+      maxWidth="max-w-[1760px]"
+      hideHeader
     >
       {syncWarning ? (
-        <div className="-mt-4 mb-4 inline-flex min-h-8 items-center rounded-md border border-amber-300/60 bg-amber-50/60 px-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
+        <div className="mb-4 inline-flex min-h-8 items-center rounded-md border border-amber-300/60 bg-amber-50/60 px-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
           {syncWarning}
         </div>
       ) : null}
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="min-w-0">
-          <LiveSessionList
+      <div className="grid items-start gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="grid min-w-0 gap-4">
+          <LiveWorkbenchOverview
+            sessions={sessions}
+            status={status}
+            limits={usageLimits}
+          />
+          <LiveOperationsPanel
             sessions={sessions}
             selectedKey={selectedKey}
             onSelectSession={setSelectedKey}
             streamStatus={status}
             streamError={error}
+            limits={usageLimits}
+            limitsLoading={limitsLoading}
+            limitsError={limitsError}
           />
         </section>
         <aside className="grid auto-rows-max content-start items-start gap-4">
-          <AttributionHealthCard
-            stats={attributionStats}
-            sessions={sessions}
-            loading={statsLoading}
-            error={statsError}
-          />
           {selectedSession ? (
             <BranchOverridePanel
               session={selectedSession}
@@ -225,6 +226,7 @@ export function LivePage() {
             loading={entireLoading}
             error={entireError}
           />
+          <LiveBranchSignalMap sessions={sessions} />
         </aside>
       </div>
     </PageFrame>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Check, GitBranch, PencilLine, ShieldCheck, Trash2 } from "lucide-react";
 import { Button, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postAttribute } from "../../lib/vibedeck-api";
@@ -97,18 +98,27 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
     <section
       className={`rounded-xl border border-oai-gray-200 bg-white p-5 pb-3 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
     >
-      <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>
+      <div className="flex items-center gap-2">
+        <PencilLine className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+        <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>
+      </div>
       <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("live.override.subtitle")}</p>
 
       <div className="mt-3 grid gap-2 text-xs">
         <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-          <span>{copy("live.override.meta.current_branch")}</span>
+          <span className="flex items-center gap-1.5">
+            <GitBranch className="h-3.5 w-3.5" aria-hidden />
+            {copy("live.override.meta.current_branch")}
+          </span>
           <span className="truncate pl-2 font-medium text-oai-black dark:text-white" title={currentBranch}>
             {copy("live.override.meta.current_branch_value", { branch: currentBranch })}
           </span>
         </div>
         <div className="flex items-center justify-between rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-          <span>{copy("live.override.meta.confidence")}</span>
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+            {copy("live.override.meta.confidence")}
+          </span>
           <span className="font-medium capitalize text-oai-black dark:text-white">{confidence}</span>
         </div>
       </div>
@@ -123,12 +133,27 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
         />
         {error ? <p className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         {success ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{success}</p> : null}
-        <div className="flex flex-wrap items-center gap-2 pb-0">
-          <Button type="submit" size="sm" disabled={isBusy || !canMutate}>
-            {busyAction === "save" ? copy("live.override.action.saving") : copy("live.override.action.save")}
+        <div className="flex flex-wrap items-center justify-start gap-2 pb-0">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={isBusy || !canMutate}
+            onClick={handleClear}
+            className="h-7 min-w-[86px] gap-1.5 px-2.5 text-xs"
+          >
+            <Trash2 className="h-3 w-3" aria-hidden />
+            {busyAction === "clear" ? "Discarding" : "Discard"}
           </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={isBusy || !canMutate} onClick={handleClear}>
-            {busyAction === "clear" ? copy("live.override.action.clearing") : copy("live.override.action.clear")}
+          <Button
+            type="submit"
+            size="sm"
+            variant="secondary"
+            disabled={isBusy || !canMutate}
+            className="h-7 min-w-[86px] gap-1.5 px-2.5 text-xs"
+          >
+            <Check className="h-3 w-3" aria-hidden />
+            {busyAction === "save" ? "Saving" : "Save"}
           </Button>
         </div>
       </form>

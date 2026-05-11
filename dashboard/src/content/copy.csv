@@ -113,6 +113,11 @@ usage.metric.cached_short,ui,UsagePanel,UsagePanel,metric_cached_short,Cached,,a
 usage.metric.reasoning_short,ui,UsagePanel,UsagePanel,metric_reasoning_short,Reasoning,,active
 usage.button.refresh,ui,UsagePanel,UsagePanel,button_refresh,Refresh,,active
 usage.cost_info.label,ui,UsagePanel,UsagePanel,cost_info_label,Detail,,active
+usage.period.day,ui,DashboardPage,UsageOverview,period_day,Day,,active
+usage.period.week,ui,DashboardPage,UsageOverview,period_week,Week,,active
+usage.period.month,ui,DashboardPage,UsageOverview,period_month,Month,,active
+usage.period.total,ui,DashboardPage,UsageOverview,period_total,Total,,active
+usage.period.custom,ui,DashboardPage,UsageOverview,period_custom,Custom,,active
 
 dashboard.rolling.title,ui,RollingUsagePanel,RollingUsagePanel,title,Recent Activity,,active
 dashboard.rolling.last_7d,ui,RollingUsagePanel,RollingUsagePanel,label_last_7d,Last 7 days,,active

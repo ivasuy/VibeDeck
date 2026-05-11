@@ -27,6 +27,26 @@ vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
   }),
 }));
 
+vi.mock("../hooks/use-usage-limits", () => ({
+  useUsageLimits: () => ({
+    data: {
+      codex: {
+        configured: true,
+        primary_window: {
+          used_percent: 24,
+          reset_at: "2026-05-11T12:00:00.000Z",
+        },
+        secondary_window: {
+          used_percent: 12,
+          reset_at: "2026-05-16T12:00:00.000Z",
+        },
+      },
+    },
+    error: null,
+    isLoading: false,
+  }),
+}));
+
 vi.mock("../lib/vibedeck-api", async () => {
   const actual = await vi.importActual("../lib/vibedeck-api");
   return {
@@ -62,7 +82,7 @@ describe("LivePage override actions", () => {
     expect(headings.length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "feature/live-fix" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save branch override" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(postAttribute).toHaveBeenCalledWith({
@@ -82,7 +102,7 @@ describe("LivePage override actions", () => {
 
     const headings = await screen.findAllByRole("heading", { name: "Branch override" });
     expect(headings.length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Clear override" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     await waitFor(() => {
       expect(postAttribute).toHaveBeenCalledWith({

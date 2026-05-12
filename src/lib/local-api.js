@@ -2253,6 +2253,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         dbPath,
         listResult: result,
         readCheckpoint: (filePath) => require("./entire-bridge").readCheckpoint(repoRoot, filePath),
+        repoRoot,
       });
       json(res, {
         ...result,
@@ -2289,6 +2290,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         const usage = buildCheckpointUsage(dbPath, data, {
           metadataPath: checkpointPath,
           groupId: checkpointGroupId(checkpointPath),
+          repoRoot,
         });
         json(res, {
           ...data,

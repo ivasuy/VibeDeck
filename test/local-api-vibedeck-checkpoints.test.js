@@ -227,12 +227,15 @@ test("vibedeck checkpoint endpoints include canonical checkpoint usage from pers
         total_cost_usd: 1.23,
         known_cost_usd: 1.23,
         cost_unknown_count: 0,
-        providers: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        models: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        provider_breakdown: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        model_breakdown: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
+        cost_quality: "stored",
+        providers: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        models: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        provider_breakdown: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        model_breakdown: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        status: "linked",
         confidence: "linked",
         session_count: 1,
+        reason: null,
       });
     }
 
@@ -257,12 +260,15 @@ test("vibedeck checkpoint endpoints include canonical checkpoint usage from pers
         total_cost_usd: 1.23,
         known_cost_usd: 1.23,
         cost_unknown_count: 0,
-        providers: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        models: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        provider_breakdown: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
-        model_breakdown: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, session_count: 1 }],
+        cost_quality: "stored",
+        providers: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        models: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        provider_breakdown: [{ provider: "codex", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        model_breakdown: [{ model: "gpt-5.5", total_tokens: 1000, total_cost_usd: 1.23, known_cost_usd: 1.23, cost_unknown_count: 0, cost_quality: "stored", session_count: 1 }],
+        status: "linked",
         confidence: "linked",
         session_count: 1,
+        reason: null,
       });
     }
   } finally {
@@ -334,7 +340,201 @@ test("vibedeck checkpoint usage resolves links by checkpoint_id when entire_sess
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.body.toString("utf8"));
     assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].total_tokens, 500);
+    assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].status, "linked");
     assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].confidence, "linked");
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("vibedeck checkpoints include linked cost quality from checkpoint match table", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-match-linked-"));
+  const repoRoot = await fs.realpath(repoDir);
+  const trackerDir = path.join(repoDir, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const db = new DatabaseSync(dbPath);
+  db.prepare(`
+    INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd, last_observed_at,
+      cost_estimated, cost_quality, created_at, updated_at
+    ) VALUES (
+      'codex', 'sess-1', '2026-05-12T01:00:00.000Z', '2026-05-12T01:05:00.000Z', 'complete',
+      ?, ?, NULL, ?,
+      'main', 'A', 'high', NULL,
+      'gpt-5.5', 1000, 1.23, '2026-05-12T01:05:00.000Z',
+      0, 'stored', '2026-05-12T01:00:00.000Z', '2026-05-12T01:05:00.000Z'
+    );
+  `).run(repoRoot, repoRoot, repoRoot);
+  db.prepare(`
+    INSERT INTO vibedeck_entire_checkpoint_matches (
+      repo_root, checkpoint_group_id, checkpoint_id, metadata_path, checkpoint_tip,
+      entire_session_id, agent, provider, model, branch, started_at, ended_at,
+      session_provider, session_id, match_status, match_confidence, reason, candidate_count,
+      created_at, updated_at
+    ) VALUES (
+      ?, 'e2/abdc1ec6', 'e2abdc1ec6', 'e2/abdc1ec6/metadata.json', 'tip1',
+      'entire-session-1', 'codex', 'codex', 'gpt-5.5', 'main', '2026-05-12T01:00:00.000Z', '2026-05-12T01:05:00.000Z',
+      'codex', 'sess-1', 'linked', 'exact', NULL, 1,
+      '2026-05-12T01:06:00.000Z', '2026-05-12T01:06:00.000Z'
+    );
+  `).run(repoRoot);
+  db.close();
+
+  const metadataPath = "e2/abdc1ec6/metadata.json";
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({ available: true, files: [metadataPath] }),
+    readCheckpoint: async () => ({
+      path: metadataPath,
+      kind: "json",
+      parsed: {
+        checkpoint_id: "e2abdc1ec6",
+        entire_session_id: "entire-session-1",
+        agent: "codex",
+        model: "gpt-5.5",
+        branch: "main",
+        started_at: "2026-05-12T01:00:00.000Z",
+        ended_at: "2026-05-12T01:05:00.000Z",
+      },
+      raw: "{}",
+    }),
+    getEntireRepoStatus: async () => ({ state: "active", version: "1.0.0" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const handled = await handler(
+      req,
+      res,
+      new URL(`http://127.0.0.1/functions/vibedeck-checkpoints?repo=${encodeURIComponent(repoDir)}`),
+    );
+    assert.equal(handled, true);
+    const body = JSON.parse(res.body.toString("utf8"));
+    const usage = body.checkpoint_usage["e2/abdc1ec6"];
+    assert.equal(usage.status, "linked");
+    assert.equal(usage.confidence, "exact");
+    assert.equal(usage.total_cost_usd, 1.23);
+    assert.equal(usage.cost_quality, "stored");
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("vibedeck checkpoints expose ambiguous status without showing zero cost", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-match-ambiguous-"));
+  const repoRoot = await fs.realpath(repoDir);
+  const trackerDir = path.join(repoDir, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const db = new DatabaseSync(dbPath);
+  db.prepare(`
+    INSERT INTO vibedeck_entire_checkpoint_matches (
+      repo_root, checkpoint_group_id, checkpoint_id, metadata_path, checkpoint_tip,
+      entire_session_id, agent, provider, model, branch, started_at, ended_at,
+      session_provider, session_id, match_status, match_confidence, reason, candidate_count,
+      created_at, updated_at
+    ) VALUES (
+      ?, 'e2/abdc1ec6', 'e2abdc1ec6', 'e2/abdc1ec6/metadata.json', 'tip2',
+      'entire-session-1', 'codex', 'codex', 'gpt-5.5', 'main', '2026-05-12T01:00:00.000Z', '2026-05-12T01:05:00.000Z',
+      NULL, NULL, 'ambiguous', 'ambiguous', 'multiple_matching_sessions', 2,
+      '2026-05-12T01:06:00.000Z', '2026-05-12T01:06:00.000Z'
+    );
+  `).run(repoRoot);
+  db.close();
+
+  const metadataPath = "e2/abdc1ec6/metadata.json";
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({ available: true, files: [metadataPath] }),
+    readCheckpoint: async () => ({ path: metadataPath, kind: "json", parsed: { checkpoint_id: "e2abdc1ec6" }, raw: "{}" }),
+    getEntireRepoStatus: async () => ({ state: "active", version: "1.0.0" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const handled = await handler(
+      req,
+      res,
+      new URL(`http://127.0.0.1/functions/vibedeck-checkpoints?repo=${encodeURIComponent(repoDir)}`),
+    );
+    assert.equal(handled, true);
+    const body = JSON.parse(res.body.toString("utf8"));
+    const usage = body.checkpoint_usage["e2/abdc1ec6"];
+    assert.equal(usage.status, "ambiguous");
+    assert.equal(usage.confidence, "ambiguous");
+    assert.equal(usage.total_tokens, null);
+    assert.equal(usage.total_cost_usd, null);
+    assert.equal(usage.cost_quality, "unknown");
+    assert.equal(usage.reason, "multiple_matching_sessions");
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("vibedeck checkpoint metadata exposes unmatched usage status", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-match-unmatched-"));
+  const repoRoot = await fs.realpath(repoDir);
+  const trackerDir = path.join(repoDir, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const db = new DatabaseSync(dbPath);
+  db.prepare(`
+    INSERT INTO vibedeck_entire_checkpoint_matches (
+      repo_root, checkpoint_group_id, checkpoint_id, metadata_path, checkpoint_tip,
+      entire_session_id, agent, provider, model, branch, started_at, ended_at,
+      session_provider, session_id, match_status, match_confidence, reason, candidate_count,
+      created_at, updated_at
+    ) VALUES (
+      ?, 'e2/abdc1ec6', 'e2abdc1ec6', 'e2/abdc1ec6/metadata.json', 'tip3',
+      'entire-session-1', 'codex', 'codex', 'gpt-5.5', 'main', '2026-05-12T01:00:00.000Z', '2026-05-12T01:05:00.000Z',
+      NULL, NULL, 'unmatched', 'unmatched', 'no_matching_session', 0,
+      '2026-05-12T01:06:00.000Z', '2026-05-12T01:06:00.000Z'
+    );
+  `).run(repoRoot);
+  db.close();
+
+  const metadataPath = "e2/abdc1ec6/metadata.json";
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({ available: true, files: [metadataPath] }),
+    readCheckpoint: async () => ({ path: metadataPath, kind: "json", parsed: { checkpoint_id: "e2abdc1ec6" }, raw: "{}" }),
+    getEntireRepoStatus: async () => ({ state: "active", version: "1.0.0" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const handled = await handler(
+      req,
+      res,
+      new URL(`http://127.0.0.1/functions/vibedeck-checkpoint?repo=${encodeURIComponent(repoDir)}&path=${encodeURIComponent(metadataPath)}`),
+    );
+    assert.equal(handled, true);
+    const body = JSON.parse(res.body.toString("utf8"));
+    assert.equal(body.usage.status, "unmatched");
+    assert.equal(body.usage.total_cost_usd, null);
+    assert.equal(body.usage.cost_quality, "unknown");
   } finally {
     restore();
     await fs.rm(repoDir, { recursive: true, force: true });

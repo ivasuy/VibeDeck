@@ -1,6 +1,7 @@
 'use strict';
 
 const { DatabaseSync } = require('node:sqlite');
+const { summarizeCanonicalUsageRows } = require('./canonical-cost-summary');
 
 function normalizePath(value) {
   return String(value || '').replace(/\\/g, '/').trim();
@@ -39,86 +40,32 @@ function safeJsonArray(raw) {
   }
 }
 
-function summarizeRows(rows) {
-  const providerMap = new Map();
-  const modelMap = new Map();
-  let totalTokens = 0;
-  let knownCostUsd = 0;
-  let costUnknownCount = 0;
-
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const provider = String(row?.provider || 'unknown').trim() || 'unknown';
-    const model = String(row?.model || 'unknown').trim() || 'unknown';
-    const tokens = Number(row?.total_tokens || 0) || 0;
-    const costRaw = row?.total_cost_usd;
-    const hasKnownCost = costRaw != null && Number.isFinite(Number(costRaw));
-    const cost = hasKnownCost ? Number(costRaw) : null;
-
-    totalTokens += tokens;
-    if (hasKnownCost) knownCostUsd += cost;
-    else costUnknownCount += 1;
-
-    if (!providerMap.has(provider)) {
-      providerMap.set(provider, {
-        provider,
-        total_tokens: 0,
-        known_cost_usd: 0,
-        cost_unknown_count: 0,
-        session_count: 0,
-      });
-    }
-    if (!modelMap.has(model)) {
-      modelMap.set(model, {
-        model,
-        total_tokens: 0,
-        known_cost_usd: 0,
-        cost_unknown_count: 0,
-        session_count: 0,
-      });
-    }
-
-    const providerRow = providerMap.get(provider);
-    providerRow.total_tokens += tokens;
-    providerRow.session_count += 1;
-    if (hasKnownCost) providerRow.known_cost_usd += cost;
-    else providerRow.cost_unknown_count += 1;
-
-    const modelRow = modelMap.get(model);
-    modelRow.total_tokens += tokens;
-    modelRow.session_count += 1;
-    if (hasKnownCost) modelRow.known_cost_usd += cost;
-    else modelRow.cost_unknown_count += 1;
-  }
-
-  const provider_breakdown = Array.from(providerMap.values())
-    .map((row) => ({
-      ...row,
-      total_cost_usd: row.cost_unknown_count > 0 ? null : row.known_cost_usd,
-    }))
-    .sort((a, b) => a.provider.localeCompare(b.provider));
-  const model_breakdown = Array.from(modelMap.values())
-    .map((row) => ({
-      ...row,
-      total_cost_usd: row.cost_unknown_count > 0 ? null : row.known_cost_usd,
-    }))
-    .sort((a, b) => a.model.localeCompare(b.model));
-
-  return {
-    total_tokens: totalTokens,
-    total_cost_usd: costUnknownCount > 0 ? null : knownCostUsd,
-    known_cost_usd: knownCostUsd,
-    cost_unknown_count: costUnknownCount,
-    providers: provider_breakdown,
-    models: model_breakdown,
-    provider_breakdown,
-    model_breakdown,
-    session_count: Array.isArray(rows) ? rows.length : 0,
-  };
-}
-
 function normalizeCheckpointMetadata(payload) {
   if (payload && typeof payload.parsed === 'object' && payload.parsed) return payload.parsed;
   return payload && typeof payload === 'object' ? payload : {};
+}
+
+function matchRowByRepoGroup(db, repoRoot, checkpointGroupIdValue) {
+  if (!repoRoot || !checkpointGroupIdValue) return null;
+  return db
+    .prepare(`
+      SELECT *
+      FROM vibedeck_entire_checkpoint_matches
+      WHERE repo_root = ? AND checkpoint_group_id = ?
+    `)
+    .get(repoRoot, checkpointGroupIdValue);
+}
+
+function sessionByProviderAndId(db, provider, sessionId) {
+  if (!provider || !sessionId) return [];
+  return db
+    .prepare(`
+      SELECT provider, session_id, model, total_tokens, total_cost_usd, cost_quality
+      FROM vibedeck_sessions
+      WHERE LOWER(provider) = LOWER(?) AND session_id = ?
+      LIMIT 1
+    `)
+    .all(provider, sessionId);
 }
 
 function sessionsFromLinksByEntireSession(db, metadata) {
@@ -168,6 +115,73 @@ function sessionsFromOverlap(db, metadata) {
     .all(provider, endedAt, startedAt);
 }
 
+function statusUsageShell({
+  status,
+  confidence,
+  reason,
+  checkpointId,
+  metadataPath,
+  groupId,
+  metadata,
+  matchRow,
+}) {
+  return {
+    checkpoint_id: checkpointId || null,
+    metadata_path: metadataPath || null,
+    checkpoint_group_id: groupId,
+    agent: typeof metadata?.agent === 'string' ? metadata.agent : (matchRow?.agent || null),
+    provider: matchRow?.provider || agentToProvider(metadata?.agent),
+    model: matchRow?.model || (typeof metadata?.model === 'string' ? metadata.model : null),
+    branch: matchRow?.branch || (typeof metadata?.branch === 'string' ? metadata.branch : null),
+    total_tokens: null,
+    total_cost_usd: null,
+    known_cost_usd: 0,
+    cost_unknown_count: 0,
+    cost_quality: 'unknown',
+    providers: [],
+    models: [],
+    provider_breakdown: [],
+    model_breakdown: [],
+    session_count: 0,
+    status,
+    confidence,
+    reason: reason || null,
+  };
+}
+
+function usageFromRows({
+  rows,
+  checkpointId,
+  metadataPath,
+  groupId,
+  metadata,
+  status,
+  confidence,
+  reason,
+}) {
+  const summary = summarizeCanonicalUsageRows(rows);
+  return {
+    checkpoint_id: checkpointId || null,
+    metadata_path: metadataPath || null,
+    checkpoint_group_id: groupId,
+    agent: typeof metadata?.agent === 'string' ? metadata.agent : null,
+    branch: typeof metadata?.branch === 'string' ? metadata.branch : null,
+    total_tokens: summary.total_tokens,
+    total_cost_usd: summary.total_cost_usd,
+    known_cost_usd: summary.known_cost_usd,
+    cost_unknown_count: summary.cost_unknown_count,
+    cost_quality: summary.cost_quality,
+    providers: summary.providers,
+    models: summary.models,
+    provider_breakdown: summary.provider_breakdown,
+    model_breakdown: summary.model_breakdown,
+    session_count: summary.session_count,
+    status,
+    confidence,
+    reason: reason || null,
+  };
+}
+
 function buildCheckpointUsage(dbPath, payload, context = {}) {
   let db;
   try {
@@ -180,38 +194,69 @@ function buildCheckpointUsage(dbPath, payload, context = {}) {
     const checkpointId = checkpointIdFrom(metadata, context.metadataPath || payload?.path || '');
     const metadataPath = normalizePath(context.metadataPath || payload?.path || '');
     const groupId = checkpointGroupId(context.groupId || metadataPath);
+    const repoRoot = typeof context.repoRoot === 'string' ? context.repoRoot : '';
+    const allowOverlapFallback = context.allowOverlapFallback === true;
+    const matchRow = matchRowByRepoGroup(db, repoRoot, groupId);
+
+    if (matchRow && String(matchRow.match_status || '').trim()) {
+      const status = String(matchRow.match_status || '').trim();
+      const confidence = String(matchRow.match_confidence || status || 'unknown').trim();
+      const reason = matchRow.reason || null;
+      if (status === 'linked') {
+        let rows = sessionByProviderAndId(db, matchRow.session_provider, matchRow.session_id);
+        if (rows.length === 0) rows = sessionsFromLinksByEntireSession(db, metadata);
+        if (rows.length === 0 && checkpointId) rows = sessionsFromLinksByCheckpointId(db, checkpointId);
+        if (rows.length > 0) {
+          return usageFromRows({
+            rows,
+            checkpointId,
+            metadataPath,
+            groupId,
+            metadata,
+            status,
+            confidence,
+            reason,
+          });
+        }
+      }
+      if (status === 'ambiguous' || status === 'unmatched') {
+        return statusUsageShell({
+          status,
+          confidence,
+          reason,
+          checkpointId,
+          metadataPath,
+          groupId,
+          metadata,
+          matchRow,
+        });
+      }
+    }
+
     let rows = sessionsFromLinksByEntireSession(db, metadata);
     let confidence = 'linked';
     if (rows.length === 0 && checkpointId) rows = sessionsFromLinksByCheckpointId(db, checkpointId);
-    if (rows.length === 0) {
+    if (rows.length === 0 && allowOverlapFallback) {
       rows = sessionsFromOverlap(db, metadata);
       confidence = rows.length > 0 ? 'overlap' : 'linked';
     }
     if (rows.length === 0) return null;
-    const summary = summarizeRows(rows);
-    return {
-      checkpoint_id: checkpointId || null,
-      metadata_path: metadataPath || null,
-      checkpoint_group_id: groupId,
-      agent: typeof metadata?.agent === 'string' ? metadata.agent : null,
-      branch: typeof metadata?.branch === 'string' ? metadata.branch : null,
-      total_tokens: summary.total_tokens,
-      total_cost_usd: summary.total_cost_usd,
-      known_cost_usd: summary.known_cost_usd,
-      cost_unknown_count: summary.cost_unknown_count,
-      providers: summary.providers,
-      models: summary.models,
-      provider_breakdown: summary.provider_breakdown,
-      model_breakdown: summary.model_breakdown,
-      session_count: summary.session_count,
+    return usageFromRows({
+      rows,
+      checkpointId,
+      metadataPath,
+      groupId,
+      metadata,
+      status: 'linked',
       confidence,
-    };
+      reason: null,
+    });
   } finally {
     db.close();
   }
 }
 
-async function buildCheckpointUsageIndex({ dbPath, listResult, readCheckpoint }) {
+async function buildCheckpointUsageIndex({ dbPath, listResult, readCheckpoint, repoRoot }) {
   const files = Array.isArray(listResult?.files) ? listResult.files : [];
   const groups = new Map();
   for (const filePath of files) {
@@ -221,8 +266,7 @@ async function buildCheckpointUsageIndex({ dbPath, listResult, readCheckpoint })
   }
   const usage = {};
   for (const [groupId, groupFiles] of groups.entries()) {
-    const metadataPath = groupFiles.find((filePath) => normalizePath(filePath).endsWith('/metadata.json'))
-      || groupFiles.find((filePath) => normalizePath(filePath).endsWith('.json'));
+    const metadataPath = groupFiles.find((filePath) => normalizePath(filePath).endsWith('/metadata.json'));
     if (!metadataPath || typeof readCheckpoint !== 'function') continue;
     let metadata;
     try {
@@ -230,7 +274,11 @@ async function buildCheckpointUsageIndex({ dbPath, listResult, readCheckpoint })
     } catch {
       continue;
     }
-    const summary = buildCheckpointUsage(dbPath, metadata, { metadataPath, groupId });
+    const summary = buildCheckpointUsage(dbPath, metadata, {
+      metadataPath,
+      groupId,
+      repoRoot,
+    });
     if (summary) usage[groupId] = summary;
   }
   return usage;

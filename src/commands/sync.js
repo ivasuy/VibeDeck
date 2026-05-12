@@ -56,6 +56,7 @@ const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
+const { maybeRunPostSyncReadmeUpdate } = require("../lib/readme-sync/service");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -680,6 +681,14 @@ async function cmdSync(argv) {
       } catch (_e) {
         // ignore
       }
+    }
+
+    const readmeSyncResult = await maybeRunPostSyncReadmeUpdate();
+    if (!opts.auto && readmeSyncResult.attempted && readmeSyncResult.ok) {
+      process.stdout.write("- README banner updated on GitHub\n");
+    }
+    if (readmeSyncResult.warning && !opts.auto) {
+      process.stderr.write(`README sync warning: ${readmeSyncResult.warning}\n`);
     }
 
     if (!opts.auto) {

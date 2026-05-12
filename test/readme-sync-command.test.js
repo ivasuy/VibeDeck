@@ -45,3 +45,45 @@ test("readme-sync set stores config and status redacts the token", async () => {
   assert.doesNotMatch(out, /ghp_secret_token/);
   assert.match(out, /token: present/i);
 });
+
+test("readme-sync update reports repo and paths", async () => {
+  const servicePath = require.resolve("../src/lib/readme-sync/service");
+  const originalService = require.cache[servicePath];
+  let out = "";
+  const prevStdout = process.stdout.write;
+
+  try {
+    require.cache[servicePath] = {
+      exports: {
+        runReadmeSyncUpdate: async () => ({
+          repo: "ivasuy/vibedeck",
+          branch: "main",
+          readme_path: "README.md",
+        }),
+      },
+      filename: servicePath,
+      loaded: true,
+      id: servicePath,
+      children: [],
+    };
+
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+
+    await run(["readme-sync", "update"]);
+  } finally {
+    if (originalService) {
+      require.cache[servicePath] = originalService;
+    } else {
+      delete require.cache[servicePath];
+    }
+    process.stdout.write = prevStdout;
+  }
+
+  assert.match(out, /README sync: updated/);
+  assert.match(out, /Repo: ivasuy\/vibedeck/);
+  assert.match(out, /Branch: main/);
+  assert.match(out, /README: README\.md/);
+});

@@ -117,7 +117,12 @@ async function runUpdate() {
   const { runReadmeSyncUpdate } = require('../lib/readme-sync/service');
   const result = await runReadmeSyncUpdate();
   process.stdout.write(
-    `README sync: updated ${result.repo || 'unknown'}\n`,
+    [
+      'README sync: updated',
+      `Repo: ${result.repo}`,
+      `Branch: ${result.branch}`,
+      `README: ${result.readme_path}`,
+    ].join('\n') + '\n',
   );
   return 0;
 }

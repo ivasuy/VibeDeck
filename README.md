@@ -45,26 +45,26 @@ xcodegen generate --spec VibeDeckMac/project.yml
 ## CLI Commands
 
 ```bash
-vibedeck                     # start the local server and dashboard
-vibedeck sync                # parse provider logs into ~/.vibedeck/tracker/vibedeck.sqlite3
-vibedeck status              # show provider/configuration state
-vibedeck doctor              # run local health checks
-vibedeck init                # install or refresh provider hooks
-vibedeck uninstall           # remove hooks and local config
-vibedeck readme-sync set    # configure README sync target and token
-vibedeck readme-sync status # show configured README sync settings
-vibedeck readme-sync update # regenerate and upload the README banner immediately
-vibedeck readme-sync unset  # remove README sync configuration and token
+vibedeck                      # start the local server and dashboard
+vibedeck sync                 # parse provider logs into ~/.vibedeck/tracker/vibedeck.sqlite3
+vibedeck status               # show provider/configuration state
+vibedeck doctor               # run local health checks
+vibedeck init                 # install or refresh provider hooks
+vibedeck uninstall            # remove hooks and local config
+vibedeck readme-sync set      # configure README sync target and token
+vibedeck readme-sync status   # show configured README sync settings
+vibedeck readme-sync update   # regenerate and upload the README banner immediately
+vibedeck readme-sync unset    # remove README sync configuration and token
 ```
 
 Equivalent local dev entrypoints:
 
 ```bash
-node bin/vibedeck.js serve --port 7690
-node bin/vibedeck.js sync
-node bin/vibedeck.js status
-node bin/vibedeck.js doctor
-node bin/vibedeck.js init
+rtk node bin/vibedeck.js serve --port 7690
+rtk node bin/vibedeck.js sync
+rtk node bin/vibedeck.js status
+rtk node bin/vibedeck.js doctor
+rtk node bin/vibedeck.js init
 ```
 
 ## README Sync
@@ -72,43 +72,82 @@ node bin/vibedeck.js init
 Configure a GitHub README to be updated automatically from canonical local usage after successful syncs:
 
 ```bash
-node bin/vibedeck.js readme-sync set --repo owner/repo --token <github_pat> [--branch main] [--path README.md]
-node bin/vibedeck.js readme-sync status
-node bin/vibedeck.js readme-sync update
-node bin/vibedeck.js readme-sync unset
+rtk node bin/vibedeck.js readme-sync set --repo owner/repo --token <github_pat> [--branch main] [--path README.md]
+rtk node bin/vibedeck.js readme-sync status
+rtk node bin/vibedeck.js readme-sync update
+rtk node bin/vibedeck.js readme-sync unset
 ```
 
 `--token` stores your GitHub personal access token on disk at `~/.vibedeck/github.token` and is not printed in status output.
 
-After a successful `readme-sync set`, every `node bin/vibedeck.js sync` run regenerates `readme-banner.svg`, uploads it to the configured repo path, and updates the managed README marker block through the same GitHub API flow used by manual `readme-sync update`.
+After a successful `readme-sync set`, every `rtk node bin/vibedeck.js sync` run regenerates `readme-banner.svg`, uploads it to the configured repo path, and updates the managed README marker block through the same GitHub API flow used by manual `readme-sync update`.
 
 The dashboard `/usage` Sync button uses the same backend sync path (`vibedeck sync` via local API), so README updates use the same post-sync path and failure mode (`warning` only; sync remains successful).
+
+## Packaging Bootstrap
+
+- `vibedeck` packages bootstrap the macOS native app during install, so on macOS installs from Homebrew or npm you get `VibeDeckMac.app` automatically.
+- The installer prefers `/Applications` and falls back to `~/Applications` when `/Applications` is unavailable.
+
+```bash
+# Homebrew
+brew install --cask --verbose vibedeck
+
+# npm global install (requires macOS interactive shell for bootstrap)
+npm install -g vibedeck-cli
+```
+
+`brew` install runs the package formula’s post-install flow, and npm uses
+`node scripts/npm-postinstall.js`. The script is non-interactive-safe and skips in CI/non-interactive shells.
+
+If prerequisite checks fail during bootstrap, `vibedeck` prompts:
+
+```text
+The following VibeDeck prerequisites are not fully configured:
+  - native_app
+  - entire_login
+  - readme_sync
+
+Would you like to fix these missing prerequisites now?
+  1) Continue without setup
+  2) Fix missing prerequisites now
+```
+
+Declining or cancelling continues into `vibedeck` normally, leaving the soft prerequisites unresolved.
+
+- `vibedeck entire login` runs the `Entire` auth flow when needed.
+- `vibedeck status` and `vibedeck doctor` include bootstrap/ prerequisite state (native app, `Entire`, and README sync config).
+- `readme-sync` setup command remains the recovery path for README sync, for example:
+
+```bash
+rtk node bin/vibedeck.js readme-sync set --repo owner/repo --token <github_pat>
+```
 
 ## Build Commands
 
 Root package:
 
 ```bash
-npm run dashboard:build
+rtk npm run dashboard:build
 ```
 
 Dashboard only:
 
 ```bash
-npm --prefix dashboard run build
+rtk npm --prefix dashboard run build
 ```
 
 Native app:
 
 ```bash
-xcodegen generate --spec VibeDeckMac/project.yml
-xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+rtk xcodegen generate --spec VibeDeckMac/project.yml
+rtk xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 ```
 
 Signed native build on a machine with a valid Apple Development identity:
 
 ```bash
-xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug -allowProvisioningUpdates build
+rtk xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug -allowProvisioningUpdates build
 ```
 
 ## Test Commands
@@ -117,40 +156,40 @@ CLI and backend tests:
 
 ```bash
 npm test
-node --test test/*.test.js
+rtk node --test test/*.test.js
 ```
 
 Focused Node tests:
 
 ```bash
-node --test test/rollout-parser.test.js
-node --test test/local-api.test.js
+rtk node --test test/rollout-parser.test.js
+rtk node --test test/local-api.test.js
 ```
 
 Dashboard tests:
 
 ```bash
-npm --prefix dashboard run test
+rtk npm --prefix dashboard run test
 ```
 
 Dashboard watch mode:
 
 ```bash
-npm --prefix dashboard run test:watch
+rtk npm --prefix dashboard run test:watch
 ```
 
 Dashboard lint and typecheck:
 
 ```bash
-npm --prefix dashboard run lint
-npm --prefix dashboard run typecheck
+rtk npm --prefix dashboard run lint
+rtk npm --prefix dashboard run typecheck
 ```
 
 Native app verification:
 
 ```bash
-xcodegen generate --spec VibeDeckMac/project.yml
-xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+rtk xcodegen generate --spec VibeDeckMac/project.yml
+rtk xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 ```
 
 ## Local Development
@@ -160,8 +199,8 @@ xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -confi
 Build the dashboard bundle and start the local backend:
 
 ```bash
-npm --prefix dashboard run build
-node bin/vibedeck.js serve --port 7690
+rtk npm --prefix dashboard run build
+rtk node bin/vibedeck.js serve --port 7690
 ```
 
 Then open:
@@ -172,7 +211,7 @@ Then open:
 For dashboard-only frontend work:
 
 ```bash
-npm --prefix dashboard run dev
+rtk npm --prefix dashboard run dev
 ```
 
 ### Sync local usage data
@@ -180,15 +219,15 @@ npm --prefix dashboard run dev
 To populate the local database from supported provider logs:
 
 ```bash
-node bin/vibedeck.js init
-node bin/vibedeck.js sync
+rtk node bin/vibedeck.js init
+rtk node bin/vibedeck.js sync
 ```
 
 Useful follow-up checks:
 
 ```bash
-node bin/vibedeck.js status
-node bin/vibedeck.js doctor
+rtk node bin/vibedeck.js status
+rtk node bin/vibedeck.js doctor
 ```
 
 ## End-to-End Local Testing
@@ -205,13 +244,13 @@ npm --prefix dashboard install
 ### 2. Build the dashboard assets
 
 ```bash
-npm --prefix dashboard run build
+rtk npm --prefix dashboard run build
 ```
 
 ### 3. Install hooks and provider integrations
 
 ```bash
-node bin/vibedeck.js init
+rtk node bin/vibedeck.js init
 ```
 
 This installs or refreshes local hooks for supported providers where applicable.
@@ -225,7 +264,7 @@ Option B: if you already have provider logs from Claude Code, Codex CLI, Cursor,
 ### 5. Parse provider activity into the database
 
 ```bash
-node bin/vibedeck.js sync
+rtk node bin/vibedeck.js sync
 ```
 
 This writes normalized usage into:
@@ -237,8 +276,8 @@ This writes normalized usage into:
 ### 6. Verify data exists from the CLI
 
 ```bash
-node bin/vibedeck.js status
-node bin/vibedeck.js doctor
+rtk node bin/vibedeck.js status
+rtk node bin/vibedeck.js doctor
 ```
 
 If sync completed successfully, the CLI should show configured providers and recent activity state.
@@ -246,7 +285,7 @@ If sync completed successfully, the CLI should show configured providers and rec
 ### 7. Start the local backend
 
 ```bash
-node bin/vibedeck.js serve --port 7690
+rtk node bin/vibedeck.js serve --port 7690
 ```
 
 This serves the local API and dashboard on port `7690`.

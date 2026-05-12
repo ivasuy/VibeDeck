@@ -89,6 +89,29 @@ function findCandidatesByRuntimeSessionId(db, { repoRoot, provider, runtimeSessi
   return db.prepare(sql).all(...params);
 }
 
+function classifyRuntimeSessionIdMatch(candidates) {
+  const plausible = Array.isArray(candidates) ? candidates : [];
+  if (plausible.length === 0) {
+    return { status: 'unmatched', confidence: 'unmatched', reason: 'no_matching_session', candidate_count: 0, session: null };
+  }
+  if (plausible.length === 1) {
+    return {
+      status: 'linked',
+      confidence: 'exact',
+      reason: null,
+      candidate_count: 1,
+      session: plausible[0],
+    };
+  }
+  return {
+    status: 'ambiguous',
+    confidence: 'ambiguous',
+    reason: 'multiple_candidates',
+    candidate_count: plausible.length,
+    session: null,
+  };
+}
+
 function classifyMatch(candidates, metadata) {
   let plausible = Array.isArray(candidates) ? candidates : [];
   if (plausible.length === 0) {
@@ -257,10 +280,9 @@ async function backfillEntireCheckpointLinks({
         provider,
         runtimeSessionId: metadataRuntimeSessionId,
       });
-      let match = classifyMatch(candidates, metadata);
-      if (metadataRuntimeSessionId && match.status === 'linked') {
-        match = { ...match, confidence: 'exact' };
-      }
+      let match = metadataRuntimeSessionId
+        ? classifyRuntimeSessionIdMatch(candidates)
+        : classifyMatch(candidates, metadata);
       if (match.status === 'unmatched' && match.reason === 'no_matching_session') {
         candidates = findCandidates(db, { repoRoot, provider, startedAt, endedAt });
         match = classifyMatch(candidates, metadata);

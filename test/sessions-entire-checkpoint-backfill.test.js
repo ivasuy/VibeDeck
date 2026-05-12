@@ -497,3 +497,52 @@ test('backfill links by metadata runtime session_id when timestamps are missing'
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('backfill links unique runtime session_id candidate even when metadata model drifts', async () => {
+  const { dir, dbPath } = tmpDb();
+  try {
+    const runtimeId = '019e14a6-ea73-7c02-9101-d9169718424b';
+    const db = new DatabaseSync(dbPath);
+    insertSession(db, {
+      provider: 'codex',
+      session_id: `/Users/dev/.codex/sessions/2026/05/11/rollout-foo-${runtimeId}.jsonl`,
+      started_at: '2026-05-11T04:30:00.000Z',
+      ended_at: '2026-05-11T04:40:00.000Z',
+      repo_root: '/repo',
+      branch: 'publish-main~38',
+      model: 'gpt-5.4',
+      total_tokens: 900,
+      total_cost_usd: 1.8,
+    });
+    db.close();
+
+    const metadata = baseMetadata({
+      started_at: '',
+      ended_at: '',
+      branch: 'publish-main',
+      model: 'gpt-5.5',
+      session_id: runtimeId,
+    });
+    const result = await runBackfill(dbPath, metadata);
+    assert.equal(result.scanned, 1);
+    assert.equal(result.linked, 1);
+    assert.equal(result.ambiguous, 0);
+    assert.equal(result.unmatched, 0);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    const matchRow = readDb.prepare(`
+      SELECT match_status, match_confidence, session_provider, session_id, reason, candidate_count
+      FROM vibedeck_entire_checkpoint_matches
+      WHERE repo_root = ? AND checkpoint_group_id = ?
+    `).get('/repo', 'e2/abdc1ec6');
+    assert.equal(matchRow.match_status, 'linked');
+    assert.equal(matchRow.match_confidence, 'exact');
+    assert.equal(matchRow.session_provider, 'codex');
+    assert.equal(matchRow.session_id.includes(runtimeId), true);
+    assert.equal(matchRow.reason, null);
+    assert.equal(matchRow.candidate_count, 1);
+    readDb.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

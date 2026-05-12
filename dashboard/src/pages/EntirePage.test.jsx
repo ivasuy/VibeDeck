@@ -152,19 +152,31 @@ describe("EntirePage", () => {
       available: true,
       files: [
         "06/e2abdc1ec6/metadata.json",
+        "06/e2abdc1ec6/0/metadata.json",
         "06/e2abdc1ec6/0/prompt.txt",
         "06/e2abdc1ec6/0/full.jsonl",
         "06/e2abdc1ec6/0/content_hash.txt",
       ],
       checkpoint_usage: {
         "06/e2abdc1ec6": {
-          status: "linked",
-          confidence: "exact",
-          total_tokens: 12345,
-          total_cost_usd: 0.42,
-          cost_quality: "stored",
-          models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
-          providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
+          status: "metadata",
+          confidence: "metadata",
+          total_tokens: 2993312,
+          total_cost_usd: 1.46,
+          cost_quality: "checkpoint_metadata",
+          models: [
+            { model: "gpt-5.3-codex-spark", total_tokens: 2330934, total_cost_usd: 0.95 },
+            { model: "gpt-5.5", total_tokens: 662378, total_cost_usd: 0.51 },
+          ],
+          providers: [{ provider: "codex", total_tokens: 2993312, total_cost_usd: 1.46 }],
+          metadata_files: [
+            {
+              metadata_path: "06/e2abdc1ec6/0/metadata.json",
+              model: "gpt-5.5",
+              total_tokens: 662378,
+              total_cost_usd: 0.51,
+            },
+          ],
         },
       },
     });
@@ -223,10 +235,15 @@ describe("EntirePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
     expect(await screen.findByText("Checkpoint files")).toBeTruthy();
-    expect(await screen.findByText(/12,345.*\$0\.42.*claude-sonnet-4-6/)).toBeTruthy();
-    expect(await screen.findByText("Stored cost")).toBeTruthy();
+    expect(await screen.findByText("$1.46")).toBeTruthy();
+    expect(screen.getAllByText("gpt-5.3-codex-spark").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("gpt-5.5").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/2,993,312/)).toBeNull();
+    expect(screen.queryByText("Stored cost")).toBeNull();
     expect(screen.queryByText(/^0$/)).toBeNull();
     await expandCheckpointGroup(/06\/e2abdc1ec6/i);
+    expect(await screen.findByText("$0.51")).toBeTruthy();
+    expect(screen.queryByText("662,378")).toBeNull();
 
     expect(await screen.findByText("publish-main")).toBeTruthy();
 
@@ -241,7 +258,7 @@ describe("EntirePage", () => {
     expect(screen.queryByText(/Unable to load checkpoint/)).toBeNull();
   });
 
-  it("renders linked, unmatched, and ambiguous checkpoint usage states without fake zero cost", async () => {
+  it("renders metadata, unmatched, and ambiguous checkpoint usage states without fake zero cost", async () => {
     getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
     getBranchUsage.mockResolvedValue({ repos: [] });
     getEntireStatus.mockResolvedValue({ state: "active" });
@@ -254,11 +271,11 @@ describe("EntirePage", () => {
       ],
       checkpoint_usage: {
         "e2/linked": {
-          status: "linked",
-          confidence: "exact",
+          status: "metadata",
+          confidence: "metadata",
           total_tokens: 12345,
           total_cost_usd: 0.42,
-          cost_quality: "stored",
+          cost_quality: "checkpoint_metadata",
           models: [{ model: "gpt-5.5", total_tokens: 12345, total_cost_usd: 0.42 }],
           providers: [{ provider: "codex", total_tokens: 12345, total_cost_usd: 0.42 }],
         },
@@ -293,8 +310,10 @@ describe("EntirePage", () => {
     fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
-    expect(await screen.findByText(/12,345.*\$0\.42.*gpt-5.5/)).toBeTruthy();
-    expect(await screen.findByText("Stored cost")).toBeTruthy();
+    expect(await screen.findByText("$0.42")).toBeTruthy();
+    expect(screen.getAllByText("gpt-5.5").length).toBeGreaterThan(0);
+    expect(screen.queryByText("12,345")).toBeNull();
+    expect(screen.queryByText("Stored cost")).toBeNull();
     expect((await screen.findAllByText("Usage not linked")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Ambiguous usage")).toBeTruthy();
     expect(screen.queryByText("$0.00")).toBeNull();

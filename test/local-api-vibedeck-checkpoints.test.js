@@ -147,6 +147,203 @@ test("vibedeck Entire endpoints reject invalid repo paths", async () => {
   }
 });
 
+test("vibedeck checkpoints aggregate usage from child metadata files", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-metadata-usage-"));
+  const trackerDir = path.join(repoDir, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const rootMetadataPath = "17/2a6d406440/metadata.json";
+  const firstMetadataPath = "17/2a6d406440/0/metadata.json";
+  const secondMetadataPath = "17/2a6d406440/1/metadata.json";
+  const checkpointPayloads = new Map([
+    [
+      rootMetadataPath,
+      {
+        path: rootMetadataPath,
+        kind: "json",
+        parsed: {
+          checkpoint_id: "172a6d406440",
+          branch: "publish-main",
+          sessions: [
+            { metadata: `/${firstMetadataPath}`, transcript: "/17/2a6d406440/0/full.jsonl" },
+            { metadata: `/${secondMetadataPath}`, transcript: "/17/2a6d406440/1/full.jsonl" },
+          ],
+          token_usage: {
+            input_tokens: 21647,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 2276480,
+            output_tokens: 5885,
+            api_call_count: 25,
+          },
+        },
+        raw: "{}",
+      },
+    ],
+    [
+      firstMetadataPath,
+      {
+        path: firstMetadataPath,
+        kind: "json",
+        parsed: {
+          checkpoint_id: "172a6d406440",
+          session_id: "019e14a6-ea73-7c02-9101-d9169718424b",
+          agent: "Codex",
+          model: "gpt-5.5",
+          turn_id: "502ed0b42539",
+          branch: "publish-main",
+          token_usage: {
+            input_tokens: 11641,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 1994624,
+            output_tokens: 2095,
+            api_call_count: 11,
+          },
+        },
+        raw: "{}",
+      },
+    ],
+    [
+      secondMetadataPath,
+      {
+        path: secondMetadataPath,
+        kind: "json",
+        parsed: {
+          checkpoint_id: "172a6d406440",
+          session_id: "019e1536-375e-7da0-b5a0-e4f0383234df",
+          agent: "Codex",
+          model: "gpt-5.3-codex-spark",
+          turn_id: "3b301b5acd9b",
+          branch: "publish-main",
+          token_usage: {
+            input_tokens: 10006,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 281856,
+            output_tokens: 3790,
+            api_call_count: 14,
+          },
+        },
+        raw: "{}",
+      },
+    ],
+  ]);
+
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({
+      available: true,
+      files: [rootMetadataPath, firstMetadataPath, secondMetadataPath],
+    }),
+    readCheckpoint: async (_repo, filePath) => {
+      const payload = checkpointPayloads.get(filePath);
+      if (!payload) throw new Error(`missing checkpoint: ${filePath}`);
+      return payload;
+    },
+    getEntireRepoStatus: async () => ({ state: "active", version: "1.2.3" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const handled = await handler(
+      req,
+      res,
+      new URL(`http://127.0.0.1/functions/vibedeck-checkpoints?repo=${encodeURIComponent(repoDir)}`),
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+
+    const body = JSON.parse(res.body.toString("utf8"));
+    const usage = body.checkpoint_usage["17/2a6d406440"];
+    assert.equal(usage.status, "metadata");
+    assert.equal(usage.confidence, "metadata");
+    assert.equal(usage.total_tokens, 2304012);
+    assert.ok(usage.total_cost_usd > 0);
+    assert.equal(usage.cost_quality, "checkpoint_metadata");
+    assert.deepEqual(
+      usage.models.map((row) => row.model),
+      ["gpt-5.5", "gpt-5.3-codex-spark"],
+    );
+    assert.deepEqual(
+      usage.metadata_files.map((row) => ({
+        metadata_path: row.metadata_path,
+        model: row.model,
+        total_tokens: row.total_tokens,
+      })),
+      [
+        { metadata_path: firstMetadataPath, model: "gpt-5.5", total_tokens: 2008360 },
+        { metadata_path: secondMetadataPath, model: "gpt-5.3-codex-spark", total_tokens: 295652 },
+      ],
+    );
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
+test("vibedeck child checkpoint metadata includes direct token and cost usage", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-metadata-file-usage-"));
+  const trackerDir = path.join(repoDir, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const metadataPath = "17/2a6d406440/1/metadata.json";
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({ available: true, files: [metadataPath] }),
+    readCheckpoint: async () => ({
+      path: metadataPath,
+      kind: "json",
+      parsed: {
+        checkpoint_id: "172a6d406440",
+        session_id: "019e1536-375e-7da0-b5a0-e4f0383234df",
+        agent: "Codex",
+        model: "gpt-5.3-codex-spark",
+        turn_id: "3b301b5acd9b",
+        branch: "publish-main",
+        token_usage: {
+          input_tokens: 10006,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 281856,
+          output_tokens: 3790,
+          api_call_count: 14,
+        },
+      },
+      raw: "{}",
+    }),
+    getEntireRepoStatus: async () => ({ state: "active", version: "1.2.3" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const handled = await handler(
+      req,
+      res,
+      new URL(`http://127.0.0.1/functions/vibedeck-checkpoint?repo=${encodeURIComponent(repoDir)}&path=${encodeURIComponent(metadataPath)}`),
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 200);
+
+    const body = JSON.parse(res.body.toString("utf8"));
+    assert.equal(body.usage.status, "metadata");
+    assert.equal(body.usage.provider, "codex");
+    assert.equal(body.usage.model, "gpt-5.3-codex-spark");
+    assert.equal(body.usage.total_tokens, 295652);
+    assert.ok(body.usage.total_cost_usd > 0);
+    assert.equal(body.usage.cost_quality, "checkpoint_metadata");
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("vibedeck checkpoint endpoints include canonical checkpoint usage from persisted entire links", async () => {
   const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-usage-"));
   const trackerDir = path.join(repoDir, ".vibedeck", "tracker");

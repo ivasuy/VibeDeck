@@ -49,7 +49,7 @@ describe("CheckpointFileInspector", () => {
     expect(screen.getAllByRole("button", { name: "Parsed" }).length).toBe(1);
   });
 
-  it("renders usage preview block for metadata files", () => {
+  it("renders metadata cost as a preview card without token/model badges", () => {
     render(
       <CheckpointFileInspector
         file={{
@@ -59,12 +59,12 @@ describe("CheckpointFileInspector", () => {
           raw: "{\"branch\":\"publish-main\"}",
           parsed: { branch: "publish-main" },
           usage: {
-            status: "linked",
+            status: "metadata",
             total_tokens: 12345,
             total_cost_usd: 0.42,
-            cost_quality: "stored",
-            models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
-            providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
+            cost_quality: "checkpoint_metadata",
+            model: "claude-sonnet-4-6",
+            provider: "claude",
           },
           size_bytes: 25,
           line_count: 1,
@@ -72,12 +72,12 @@ describe("CheckpointFileInspector", () => {
       />,
     );
 
-    expect(screen.getByText("Usage preview")).toBeTruthy();
-    expect(screen.getAllByText("12,345").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Usage preview")).toBeNull();
+    expect(screen.getByText("COST")).toBeTruthy();
     expect(screen.getByText("$0.42")).toBeTruthy();
-    expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy();
-    expect(screen.getByText("claude")).toBeTruthy();
-    expect(screen.getByText("Stored cost")).toBeTruthy();
+    expect(screen.queryByText("12,345")).toBeNull();
+    expect(screen.queryByText("claude-sonnet-4-6")).toBeNull();
+    expect(screen.queryByText("claude")).toBeNull();
   });
 
   it("renders unmatched and ambiguous usage states without zero-dollar fallback", () => {

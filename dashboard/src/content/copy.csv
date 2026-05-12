@@ -314,6 +314,7 @@ branches.error,dashboard,BranchesPage,BranchesPage,error,Unable to load branch u
 branches.error.fallback,dashboard,BranchesPage,BranchesPage,error_fallback,Request failed,,active
 branches.project.select_label,dashboard,BranchesPage,BranchesPage,project_select_label,Project,,active
 branches.project.empty,dashboard,BranchesPage,BranchesPage,project_empty,No project branches yet.,,active
+branches.project.no_git_registered,dashboard,BranchesPage,BranchesPage,project_no_git_registered,No git registered,,active
 branches.branch.select_label,dashboard,BranchesPage,BranchesPage,branch_select_label,Branch,,active
 branches.filter.branch.label,dashboard,BranchesPage,BranchesPage,filter_branch_label,Attribution filter,,active
 branches.filter.branch.placeholder,dashboard,BranchesPage,BranchesPage,filter_branch_placeholder,Filter by attribution name,,active

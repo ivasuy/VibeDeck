@@ -4,7 +4,7 @@ import { copy } from "../../lib/copy";
 import { getCheckpoint } from "../../lib/vibedeck-api";
 import { CheckpointFileInspector } from "./CheckpointFileInspector";
 import { cn } from "../../lib/cn";
-import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
+import { formatUsdCurrency } from "../../lib/format";
 import { checkpointFileIconName, checkpointFileLabel, groupCheckpointFiles } from "./checkpoint-file-utils";
 
 function unavailableReasonText(checkpoints) {
@@ -34,16 +34,56 @@ function usageCostLabel(usage) {
   return formatUsdCurrency(Number(totalCost).toFixed(2));
 }
 
-function usageQualityLabel(usage) {
-  const quality = String(usage?.cost_quality || "").trim().toLowerCase();
-  if (quality === "stored") return copy("entire.checkpoints.usage.quality.stored");
-  if (quality === "estimated") return copy("entire.checkpoints.usage.quality.estimated");
-  if (quality === "token_buckets") return copy("entire.checkpoints.usage.quality.token_buckets");
-  return "";
-}
-
 function isMetadataFilePath(filePath) {
   return String(filePath || "").trim().toLowerCase().endsWith("/metadata.json");
+}
+
+function normalizeCheckpointPath(filePath) {
+  return String(filePath || "").trim().replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function topModelLabel(usage) {
+  const direct = String(usage?.model || "").trim();
+  if (direct) return direct;
+  const models = Array.isArray(usage?.models) ? usage.models : [];
+  return String(models[0]?.model || "").trim();
+}
+
+function modelLabels(usage) {
+  const labels = [];
+  const seen = new Set();
+  const add = (value) => {
+    const label = String(value || "").trim();
+    if (!label || seen.has(label)) return;
+    seen.add(label);
+    labels.push(label);
+  };
+  const models = Array.isArray(usage?.models) ? usage.models : [];
+  for (const row of models) add(row?.model);
+  add(usage?.model);
+  return labels;
+}
+
+function fileUsageForPath(usage, filePath) {
+  if (!usage || typeof usage !== "object") return null;
+  const normalizedPath = normalizeCheckpointPath(filePath);
+  const metadataFiles = Array.isArray(usage?.metadata_files) ? usage.metadata_files : [];
+  return metadataFiles.find((row) => normalizeCheckpointPath(row?.metadata_path) === normalizedPath) || null;
+}
+
+function UsageChip({ children, active = false }) {
+  return (
+    <span
+      className={cn(
+        "rounded-md px-1.5 py-0.5 text-[10px] font-medium",
+        active
+          ? "bg-white/15 text-white dark:bg-oai-black/10 dark:text-oai-black"
+          : "bg-oai-black/[0.06] text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300",
+      )}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function CheckpointList({ repo = "", checkpoints = null, loading = false, error = "", className = "" }) {
@@ -141,13 +181,9 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                   ? usageByGroup[group.id]
                   : null;
                 const hasMetadataFile = group.files.some((filePath) => isMetadataFilePath(filePath));
-                const totalTokens = usage?.total_tokens == null ? null : (Number(usage.total_tokens) || 0);
-                const topModel = Array.isArray(usage?.models) && usage.models.length > 0
-                  ? String(usage.models[0]?.model || "").trim()
-                  : "";
+                const models = modelLabels(usage);
                 const statusLabel = usageStatusLabel(usage) || (!usage && hasMetadataFile ? copy("entire.checkpoints.usage.not_linked") : "");
                 const costLabel = usageCostLabel(usage);
-                const qualityLabel = usageQualityLabel(usage);
                 return (
                   <section
                     key={group.id}
@@ -177,20 +213,16 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                         </span>
                         {usage || hasMetadataFile ? (
                           <>
-                            <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
+                            <span className="mt-1 flex flex-wrap gap-1">
                               {statusLabel ? statusLabel : (
                                 <>
-                                  {totalTokens == null ? "—" : toDisplayNumber(totalTokens)}
-                                  {costLabel ? ` · ${costLabel}` : ""}
-                                  {topModel ? ` · ${topModel}` : ""}
+                                  {costLabel ? <UsageChip>{costLabel}</UsageChip> : null}
+                                  {models.map((model) => (
+                                    <UsageChip key={model}>{model}</UsageChip>
+                                  ))}
                                 </>
                               )}
                             </span>
-                            {!statusLabel && qualityLabel ? (
-                              <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
-                                {qualityLabel}
-                              </span>
-                            ) : null}
                           </>
                         ) : null}
                       </span>
@@ -202,6 +234,9 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                         {group.files.map((filePath) => {
                           const Icon = iconForFile(filePath);
                           const active = selectedPath === filePath;
+                          const fileUsage = fileUsageForPath(usage, filePath);
+                          const fileCostLabel = usageCostLabel(fileUsage);
+                          const fileModel = topModelLabel(fileUsage);
                           return (
                             <button
                               key={filePath}
@@ -233,6 +268,12 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                                 >
                                   {filePath.split("/").at(-1) || filePath}
                                 </span>
+                                {fileUsage ? (
+                                  <span className="mt-1 flex flex-wrap gap-1">
+                                    {fileModel ? <UsageChip active={active}>{fileModel}</UsageChip> : null}
+                                    {fileCostLabel ? <UsageChip active={active}>{fileCostLabel}</UsageChip> : null}
+                                  </span>
+                                ) : null}
                               </span>
                             </button>
                           );

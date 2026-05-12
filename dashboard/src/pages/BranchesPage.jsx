@@ -162,6 +162,9 @@ export function BranchesPage() {
       ? selectedRepoEntry.git_branches.map((branchName) => String(branchName || "").trim()).filter(Boolean)
       : [];
   }, [selectedRepoEntry]);
+  const hasRegisteredGit = Boolean(selectedRepoEntry) && (
+    gitBranches.length > 0 || toCount(selectedRepoEntry?.git_branch_count) > 0
+  );
 
   const attributionBranchCounts = useMemo(() => {
     const counts = new Map();
@@ -174,12 +177,14 @@ export function BranchesPage() {
   }, [rows]);
 
   const effectiveSelectedBranch = useMemo(() => {
+    if (!hasRegisteredGit) return "";
     if (gitBranches.length === 0) return "";
     if (gitBranches.includes(selectedBranch)) return selectedBranch;
     return gitBranches.find((branchName) => attributionBranchCounts.has(branchName)) || gitBranches[0];
-  }, [attributionBranchCounts, gitBranches, selectedBranch]);
+  }, [attributionBranchCounts, gitBranches, hasRegisteredGit, selectedBranch]);
 
   const filteredRows = useMemo(() => {
+    if (selectedRepoEntry && !hasRegisteredGit) return [];
     const branchNeedle = branchFilter.trim().toLowerCase();
     return rows.filter((row) => {
       const attributionBranch = String(row?.attribution_branch || attributionBranchName(row?.branch));
@@ -191,7 +196,7 @@ export function BranchesPage() {
         : true;
       return selectedBranchMatches && branchMatches;
     });
-  }, [rows, branchFilter, effectiveSelectedBranch]);
+  }, [rows, branchFilter, effectiveSelectedBranch, hasRegisteredGit, selectedRepoEntry]);
 
   useEffect(() => {
     setBranchPage(0);
@@ -240,7 +245,9 @@ export function BranchesPage() {
   );
   const emptyMessage = repos.length === 0
     ? copy("branches.empty.no_repo_rows")
-    : totalCount === 0
+    : selectedRepoEntry && !hasRegisteredGit
+      ? copy("branches.project.no_git_registered")
+      : totalCount === 0
       ? copy("branches.project.empty")
       : copy("branches.empty");
 
@@ -292,7 +299,7 @@ export function BranchesPage() {
                   id="branches-branch-select"
                   value={effectiveSelectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
-                  disabled={gitBranches.length === 0}
+                  disabled={!hasRegisteredGit || gitBranches.length === 0}
                   className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
                   aria-label={copy("branches.branch.select_label")}
                 >

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Braces, Clipboard, FileJson, Hash, ScrollText } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { cn } from "../../lib/cn";
-import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
+import { formatUsdCurrency } from "../../lib/format";
 import { copy } from "../../lib/copy";
 
 function iconForKind(kind) {
@@ -15,10 +15,6 @@ function iconForKind(kind) {
 function primitiveEntries(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   return Object.entries(value).filter(([, item]) => item == null || ["string", "number", "boolean"].includes(typeof item));
-}
-
-function usageRows(value) {
-  return Array.isArray(value) ? value : [];
 }
 
 function usageStatusLabel(usage) {
@@ -36,21 +32,13 @@ function usageCostLabel(usage) {
   return formatUsdCurrency(Number(totalCost).toFixed(2));
 }
 
-function usageQualityLabel(usage) {
-  const quality = String(usage?.cost_quality || "").trim().toLowerCase();
-  if (quality === "stored") return copy("entire.checkpoints.usage.quality.stored");
-  if (quality === "estimated") return copy("entire.checkpoints.usage.quality.estimated");
-  if (quality === "token_buckets") return copy("entire.checkpoints.usage.quality.token_buckets");
-  return "";
-}
-
 function isMetadataPath(filePath) {
   return String(filePath || "").trim().toLowerCase().endsWith("/metadata.json");
 }
 
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
   const [tab, setTab] = useState("preview");
-  const fields = useMemo(() => primitiveEntries(file?.parsed), [file?.parsed]);
+  const primitiveFields = useMemo(() => primitiveEntries(file?.parsed), [file?.parsed]);
   const Icon = iconForKind(file?.kind);
   const tabs = useMemo(() => (
     file?.kind === "text"
@@ -67,12 +55,16 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
   const usage = file?.usage && typeof file.usage === "object" ? file.usage : null;
   const metadataPath = file?.path || selectedPath;
   const isMetadataFile = isMetadataPath(metadataPath);
-  const showUsagePreview = Boolean(usage) || isMetadataFile;
-  const usageModels = usageRows(usage?.models);
-  const usageProviders = usageRows(usage?.providers);
   const statusLabel = usageStatusLabel(usage) || (!usage && isMetadataFile ? copy("entire.checkpoints.usage.not_linked") : "");
   const costLabel = usageCostLabel(usage);
-  const qualityLabel = usageQualityLabel(usage);
+  const fields = useMemo(() => {
+    const rows = [...primitiveFields];
+    if (isMetadataFile) {
+      const costValue = statusLabel || costLabel;
+      if (costValue) rows.unshift(["COST", costValue]);
+    }
+    return rows;
+  }, [costLabel, isMetadataFile, primitiveFields, statusLabel]);
 
   useEffect(() => {
     setTab("preview");
@@ -147,54 +139,6 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
 
       <div className="min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto rounded-md bg-oai-brand-50/70 p-3 dark:bg-oai-brand-950/30">
-          {showUsagePreview ? (
-            <div className="mb-3 rounded-md border border-oai-gray-200 bg-white/80 p-3 dark:border-oai-gray-800 dark:bg-oai-black/20">
-              <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Usage preview</div>
-              {statusLabel ? (
-                <div className="mt-2 rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs font-semibold text-oai-black dark:bg-white/[0.06] dark:text-white">
-                  {statusLabel}
-                </div>
-              ) : null}
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
-                  <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total tokens</div>
-                  <div className="mt-1 font-semibold text-oai-black dark:text-white">
-                    {usage?.total_tokens == null ? "—" : toDisplayNumber(usage.total_tokens)}
-                  </div>
-                </div>
-                <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
-                  <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total cost</div>
-                  <div className="mt-1 font-semibold text-oai-black dark:text-white">
-                    {costLabel || "—"}
-                  </div>
-                </div>
-              </div>
-              {qualityLabel ? (
-                <div className="mt-2 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
-                  {qualityLabel}
-                </div>
-              ) : null}
-              {usageModels.length > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {usageModels.map((row, idx) => (
-                    <span key={`${String(row?.model || "unknown")}-${idx}`} className="rounded-md bg-oai-brand-100 px-2 py-1 text-[11px] font-medium text-oai-brand-800 dark:bg-oai-brand-950/60 dark:text-oai-brand-300">
-                      {String(row?.model || "unknown")}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {usageProviders.length > 0 ? (
-                <div className="mt-2 space-y-1">
-                  {usageProviders.map((row, idx) => (
-                    <div key={`${String(row?.provider || "unknown")}-${idx}`} className="flex items-center justify-between text-xs text-oai-gray-700 dark:text-oai-gray-200">
-                      <span>{String(row?.provider || "unknown")}</span>
-                      <span>{toDisplayNumber(row?.total_tokens ?? 0)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
           {tab === "raw" ? (
             <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
               {file.raw || ""}

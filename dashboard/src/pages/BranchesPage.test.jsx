@@ -285,10 +285,45 @@ describe("BranchesPage", () => {
     });
   });
 
+  it("shows a no git registered state instead of unattributed branch rows", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-no-git",
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "unattributed",
+            attribution_branch: null,
+            total_tokens: 1000,
+            total_cost_usd: 2.5,
+            session_count: 2,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 0, unattributed: 2 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const branchSelect = await screen.findByRole("combobox", {
+      name: copy("branches.branch.select_label"),
+    });
+    expect(branchSelect).toBeDisabled();
+    expect(screen.getByText("No git registered")).toBeTruthy();
+    expect(screen.queryByText("unattributed")).toBeNull();
+    expect(screen.queryByText("$2.50")).toBeNull();
+  });
+
   it("disambiguates duplicate repo basenames in the project selector", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/work/acme/app",
+        git_branches: ["feature-acme"],
+        git_branch_count: 1,
         branches: [
           {
             branch: "feature-acme",
@@ -304,6 +339,8 @@ describe("BranchesPage", () => {
       },
       {
         repo_root: "/tmp/sandbox/app",
+        git_branches: ["feature-sandbox"],
+        git_branch_count: 1,
         branches: [
           {
             branch: "feature-sandbox",
@@ -337,6 +374,8 @@ describe("BranchesPage", () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/repo-older",
+        git_branches: ["older-branch"],
+        git_branch_count: 1,
         branches: [
           {
             branch: "older-branch",
@@ -352,6 +391,8 @@ describe("BranchesPage", () => {
       },
       {
         repo_root: "/repo-newer",
+        git_branches: ["newer-branch"],
+        git_branch_count: 1,
         branches: [
           {
             branch: "newer-branch",
@@ -394,6 +435,8 @@ describe("BranchesPage", () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/repo-many",
+        git_branches: [],
+        git_branch_count: branches.length,
         branches,
       },
     ]));

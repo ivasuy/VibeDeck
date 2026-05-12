@@ -446,3 +446,89 @@ test("branch groups include separate active and audit totals with breakdowns", (
     assert.ok(Array.isArray(row.sessions));
   }
 });
+
+test("branch groups and sessions are sorted with active-first ordering", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "ended-z",
+      started_at: "2026-05-12T00:00:00.000Z",
+      ended_at: "2026-05-12T01:00:00.000Z",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "zzz-ended",
+      model: "gpt-5.5",
+      total_tokens: 100,
+      total_cost_usd: 0.1,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-12T01:00:00.000Z",
+      created_at: "2026-05-12T00:00:00.000Z",
+      updated_at: "2026-05-12T01:00:00.000Z",
+    },
+    {
+      provider: "codex",
+      session_id: "active-older",
+      started_at: "2026-05-12T00:10:00.000Z",
+      ended_at: null,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "aaa-active",
+      model: "gpt-5.5",
+      total_tokens: 200,
+      total_cost_usd: 0.2,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-12T00:20:00.000Z",
+      created_at: "2026-05-12T00:10:00.000Z",
+      updated_at: "2026-05-12T00:20:00.000Z",
+    },
+    {
+      provider: "codex",
+      session_id: "active-newer",
+      started_at: "2026-05-12T00:15:00.000Z",
+      ended_at: null,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "aaa-active",
+      model: "gpt-5.5",
+      total_tokens: 300,
+      total_cost_usd: 0.3,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-12T00:30:00.000Z",
+      created_at: "2026-05-12T00:15:00.000Z",
+      updated_at: "2026-05-12T00:30:00.000Z",
+    },
+    {
+      provider: "codex",
+      session_id: "ended-newest-in-active-branch",
+      started_at: "2026-05-12T00:20:00.000Z",
+      ended_at: "2026-05-12T01:10:00.000Z",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "aaa-active",
+      model: "gpt-5.5",
+      total_tokens: 400,
+      total_cost_usd: 0.4,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-12T01:10:00.000Z",
+      created_at: "2026-05-12T00:20:00.000Z",
+      updated_at: "2026-05-12T01:10:00.000Z",
+    },
+  ], {
+    now: "2026-05-12T01:15:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.deepEqual(ws.branch_groups.map((row) => row.branch), ["aaa-active", "zzz-ended"]);
+  assert.deepEqual(ws.branch_groups[0].sessions.map((row) => row.session_id), [
+    "active-newer",
+    "active-older",
+    "ended-newest-in-active-branch",
+  ]);
+});

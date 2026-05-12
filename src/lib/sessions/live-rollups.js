@@ -151,6 +151,13 @@ function sumCost(rows) {
   }, { total_cost_usd: 0, known_cost_usd: 0, unknown_count: 0 });
 }
 
+function compareLiveRowsActiveFirst(a, b) {
+  const aActive = !isSessionEnded(a);
+  const bActive = !isSessionEnded(b);
+  if (aActive !== bActive) return aActive ? -1 : 1;
+  return String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''));
+}
+
 function buildBreakdowns(rows, activeRows) {
   const byProvider = new Map();
   const byModel = new Map();
@@ -346,9 +353,24 @@ function buildBreakdowns(rows, activeRows) {
             audit_total_cost_usd: modelRow.audit_cost_unknown_count > 0 ? null : modelRow.audit_known_cost_usd,
           }))
           .sort((a, b) => a.model.localeCompare(b.model)),
-        sessions: row.sessions.sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''))),
+        sessions: row.sessions.sort(compareLiveRowsActiveFirst),
       }))
-      .sort((a, b) => a.branch.localeCompare(b.branch)),
+      .sort((a, b) => {
+        const aHasActive = a.active_session_count > 0;
+        const bHasActive = b.active_session_count > 0;
+        if (aHasActive !== bHasActive) return aHasActive ? -1 : 1;
+        const aNewestActive = aHasActive
+          ? Math.max(...a.sessions.filter((row) => !isSessionEnded(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
+          : 0;
+        const bNewestActive = bHasActive
+          ? Math.max(...b.sessions.filter((row) => !isSessionEnded(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
+          : 0;
+        if (aNewestActive !== bNewestActive) return bNewestActive - aNewestActive;
+        const aNewestAudit = Math.max(...a.sessions.map((row) => toMs(liveSortIso(row)) || 0), 0);
+        const bNewestAudit = Math.max(...b.sessions.map((row) => toMs(liveSortIso(row)) || 0), 0);
+        if (aNewestAudit !== bNewestAudit) return bNewestAudit - aNewestAudit;
+        return a.branch.localeCompare(b.branch);
+      }),
   };
 }
 

@@ -43,6 +43,44 @@ function formatCost(value) {
   return formatted === "-" ? "—" : formatted;
 }
 
+function sortDrawerSessions(sessions) {
+  return (Array.isArray(sessions) ? sessions : []).slice().sort((a, b) => {
+    const aActive = isActiveLiveSession(a);
+    const bActive = isActiveLiveSession(b);
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    const aIso = String(a?.last_observed_at || a?.observed_at || a?.updated_at || a?.ended_at || a?.started_at || a?.created_at || "");
+    const bIso = String(b?.last_observed_at || b?.observed_at || b?.updated_at || b?.ended_at || b?.started_at || b?.created_at || "");
+    return bIso.localeCompare(aIso);
+  });
+}
+
+function sortDrawerBranchGroups(branchGroups) {
+  return (Array.isArray(branchGroups) ? branchGroups : []).slice().sort((a, b) => {
+    const aHasActive = Number(a?.active_session_count || 0) > 0;
+    const bHasActive = Number(b?.active_session_count || 0) > 0;
+    if (aHasActive !== bHasActive) return aHasActive ? -1 : 1;
+    const aSessions = sortDrawerSessions(a?.sessions);
+    const bSessions = sortDrawerSessions(b?.sessions);
+    const aActiveNewest = aHasActive
+      ? String(aSessions.find((row) => isActiveLiveSession(row))?.last_observed_at
+        || aSessions.find((row) => isActiveLiveSession(row))?.observed_at
+        || aSessions.find((row) => isActiveLiveSession(row))?.updated_at
+        || "")
+      : "";
+    const bActiveNewest = bHasActive
+      ? String(bSessions.find((row) => isActiveLiveSession(row))?.last_observed_at
+        || bSessions.find((row) => isActiveLiveSession(row))?.observed_at
+        || bSessions.find((row) => isActiveLiveSession(row))?.updated_at
+        || "")
+      : "";
+    if (aActiveNewest !== bActiveNewest) return bActiveNewest.localeCompare(aActiveNewest);
+    const aAuditNewest = String(aSessions[0]?.last_observed_at || aSessions[0]?.observed_at || aSessions[0]?.updated_at || aSessions[0]?.ended_at || "");
+    const bAuditNewest = String(bSessions[0]?.last_observed_at || bSessions[0]?.observed_at || bSessions[0]?.updated_at || bSessions[0]?.ended_at || "");
+    if (aAuditNewest !== bAuditNewest) return bAuditNewest.localeCompare(aAuditNewest);
+    return String(a?.branch || "").localeCompare(String(b?.branch || ""));
+  });
+}
+
 function Metric({ icon: Icon, label, value }) {
   return (
     <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-3 py-2 dark:border-oai-gray-800 dark:bg-white/[0.04]">
@@ -145,6 +183,10 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
   const activeCost = workstream && Number(workstream?.active_cost_unknown_count || 0) > 0
     ? null
     : workstream?.active_total_cost_usd;
+  const branchGroups = sortDrawerBranchGroups(workstream?.branch_groups).map((group) => ({
+    ...group,
+    sessions: sortDrawerSessions(group?.sessions),
+  }));
 
   return (
     <SlidePanel
@@ -195,7 +237,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
           </div>
 
           <div className="grid gap-4">
-            {Array.isArray(workstream.branch_groups) && workstream.branch_groups.map((group) => (
+            {branchGroups.map((group) => (
               <section
                 key={group.branch}
                 className="rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]"
@@ -237,7 +279,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
             ))}
           </div>
 
-          {!Array.isArray(workstream.branch_groups) || workstream.branch_groups.length === 0 ? (
+          {branchGroups.length === 0 ? (
             <div className="rounded-md border border-oai-gray-200 p-6 text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
               No session detail available.
             </div>

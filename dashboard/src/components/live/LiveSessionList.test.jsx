@@ -168,4 +168,89 @@ describe("LiveSessionList", () => {
     expect(screen.getByText(/No Git repo/)).toBeTruthy();
     expect(screen.getByText("Branch unavailable")).toBeTruthy();
   });
+
+  it("shows current active session above stale history in drawer even with unsorted backend payload", () => {
+    render(
+      <LiveSessionList
+        streamStatus="connected"
+        selectedKey="codex:active-main"
+        onSelectSession={() => {}}
+        sessions={[
+          {
+            provider: "codex",
+            session_id: "active-main",
+            repo_root: "/repo/VibeDeck",
+            branch: "main",
+            confidence: "high",
+            branch_resolution_tier: "A",
+            model: "active-model",
+            total_tokens: 300,
+            total_cost_usd: 0.3,
+            updated_at: "2026-05-12T01:15:00.000Z",
+          },
+        ]}
+        workstreams={[
+          {
+            id: "project:vibedeck",
+            repo_root: "/repo/VibeDeck",
+            branches: ["main", "feature/old"],
+            primary_session: { provider: "codex", session_id: "active-main", model: "active-model" },
+            sessions: [{ provider: "codex", session_id: "active-main", model: "active-model" }],
+            active_session_count: 1,
+            recently_completed_count: 1,
+            active_total_tokens: 300,
+            active_total_cost_usd: 0.3,
+            audit_total_tokens: 800,
+            audit_total_cost_usd: 0.8,
+            audit_cost_unknown_count: 0,
+            branch_groups: [
+              {
+                branch: "feature/old",
+                active_session_count: 0,
+                recently_completed_count: 1,
+                audit_total_tokens: 500,
+                audit_total_cost_usd: 0.5,
+                sessions: [{
+                  provider: "codex",
+                  session_id: "ended-feature",
+                  branch: "feature/old",
+                  confidence: "medium",
+                  branch_resolution_tier: "B",
+                  model: "stale-model",
+                  total_tokens: 500,
+                  total_cost_usd: 0.5,
+                  ended_at: "2026-05-12T01:20:00.000Z",
+                  updated_at: "2026-05-12T01:20:00.000Z",
+                }],
+              },
+              {
+                branch: "main",
+                active_session_count: 1,
+                recently_completed_count: 0,
+                audit_total_tokens: 300,
+                audit_total_cost_usd: 0.3,
+                sessions: [{
+                  provider: "codex",
+                  session_id: "active-main",
+                  branch: "main",
+                  confidence: "high",
+                  branch_resolution_tier: "A",
+                  model: "active-model",
+                  total_tokens: 300,
+                  total_cost_usd: 0.3,
+                  updated_at: "2026-05-12T01:15:00.000Z",
+                }],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /view breakdown for VibeDeck/i }));
+    const activeModel = screen.getByText("active-model");
+    const staleModel = screen.getByText("stale-model");
+    const pos = activeModel.compareDocumentPosition(staleModel);
+    expect(Boolean(pos & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
 });

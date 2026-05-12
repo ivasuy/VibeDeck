@@ -29,6 +29,7 @@ const {
 const {
   normalizeState: normalizeUploadState,
 } = require("../lib/upload-throttle");
+const { readBootstrapState } = require("../lib/bootstrap/state");
 const { collectTrackerDiagnostics } = require("../lib/diagnostics");
 const { probeOpenclawHookState } = require("../lib/openclaw-hook");
 const {
@@ -70,6 +71,7 @@ async function cmdStatus(argv = []) {
   const throttlePath = path.join(trackerDir, "sync.throttle");
   const uploadThrottlePath = path.join(trackerDir, "upload.throttle.json");
   const autoRetryPath = path.join(trackerDir, "auto.retry.json");
+  const bootstrapState = await readBootstrapState();
   const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
   const codexConfigPath = path.join(codexHome, "config.toml");
   const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -219,6 +221,7 @@ async function cmdStatus(argv = []) {
     [
       "Status:",
       `- Base URL: ${config?.baseUrl || "unset"}`,
+      `- Bootstrap native app: ${bootstrapState?.native_app?.installed ? "installed" : "missing"}`,
       `- Device token: ${config?.deviceToken ? "set" : "unset"}`,
       `- Queue: ${pendingBytes} bytes pending`,
       `- Last parse: ${formatTimestampWithAge(cursors?.updatedAt)}`,

@@ -6,12 +6,14 @@ const { cmdDoctor } = require("./commands/doctor");
 const { cmdUninstall } = require("./commands/uninstall");
 const { cmdServe } = require("./commands/serve");
 const { cmdAttribute } = require("./commands/attribute");
+const { runFirstRunBootstrapIfNeeded } = require("./lib/bootstrap/orchestrator");
 
 async function run(argv) {
   const [command, ...rest] = argv;
 
   // No args → launch dashboard
   if (!command) {
+    await runFirstRunBootstrapIfNeeded();
     await cmdServe(argv);
     return;
   }

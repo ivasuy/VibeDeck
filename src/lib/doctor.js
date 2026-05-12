@@ -7,6 +7,8 @@ const { DatabaseSync } = require("node:sqlite");
 
 const { readJsonStrict } = require("./fs");
 const { detectEntire } = require("./entire-bridge");
+const { readBootstrapState } = require("./bootstrap/state");
+const { readReadmeSyncConfig, readGitHubToken } = require("./readme-sync/config");
 const hookSignature = require("./hook-merger/signature");
 
 async function buildDoctorReport({
@@ -63,9 +65,98 @@ async function runDoctorChecks({
   }
 
   checks.push(...(await buildHookIntegrityChecks({ home })));
+  checks.push(...(await buildBootstrapChecks()));
   checks.push(...(await buildDbHealthChecks({ home, paths, dbPath })));
 
   return checks;
+}
+
+async function buildBootstrapChecks() {
+  const checks = [];
+  const bootstrapState = await safeReadBootstrapState();
+  const readmeSyncConfig = await safeReadReadmeSyncConfig();
+  const githubToken = await safeReadGitHubToken();
+
+  const nativeInstalled = Boolean(bootstrapState?.native_app?.installed);
+  checks.push({
+    id: "bootstrap.native_app",
+    status: "info",
+    detail: nativeInstalled
+      ? `Native app installed at ${bootstrapState?.native_app?.path || "unknown"}`
+      : "Native app not recorded in bootstrap state",
+    critical: false,
+    meta: {
+      installed: nativeInstalled,
+      path: bootstrapState?.native_app?.path || null,
+      version: bootstrapState?.native_app?.version || null,
+    },
+  });
+
+  const entireInstalled = Boolean(bootstrapState?.entire?.installed);
+  const entireLoggedIn = entireInstalled ? Boolean(bootstrapState?.entire?.logged_in) : false;
+  checks.push({
+    id: "bootstrap.entire_installed",
+    status: "info",
+    detail: entireInstalled
+      ? "Entire CLI/install state recorded"
+      : "Entire not installed (bootstrap state)",
+    critical: false,
+    meta: { installed: entireInstalled, version: bootstrapState?.entire?.version || null },
+  });
+  checks.push({
+    id: "bootstrap.entire_login",
+    status: "info",
+    detail: entireInstalled
+      ? entireLoggedIn
+        ? "Entire login recorded"
+        : "Entire login not completed"
+      : "Entire login unavailable (Entire not installed)",
+    critical: false,
+    meta: { logged_in: entireLoggedIn, installed: entireInstalled },
+  });
+
+  const readmeReady = Boolean(readmeSyncConfig?.enabled && githubToken);
+  checks.push({
+    id: "bootstrap.readme_sync",
+    status: "info",
+    detail: readmeReady ? "README sync readiness recorded" : "README sync is not configured",
+    critical: false,
+    meta: {
+      enabled: Boolean(readmeSyncConfig?.enabled),
+      token_present: Boolean(githubToken),
+      config: readmeSyncConfig ? { repo: readmeSyncConfig.repo_owner ? `${readmeSyncConfig.repo_owner}/${readmeSyncConfig.repo_name}` : null } : null,
+    },
+  });
+
+  return checks;
+}
+
+async function safeReadBootstrapState() {
+  try {
+    return await readBootstrapState();
+  } catch {
+    return {
+      native_app: { installed: false, path: null, version: null },
+      entire: { installed: false, logged_in: false },
+      pending: [],
+    };
+  }
+}
+
+async function safeReadReadmeSyncConfig() {
+  try {
+    return await readReadmeSyncConfig();
+  } catch {
+    return null;
+  }
+}
+
+async function safeReadGitHubToken() {
+  try {
+    return await readGitHubToken();
+  } catch {
+    return null;
+  }
 }
 
 const HOOK_FILES = [

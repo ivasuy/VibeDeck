@@ -19,6 +19,29 @@ function unavailableReasonText(checkpoints) {
   return copy("entire.checkpoints.none");
 }
 
+function usageStatusLabel(usage) {
+  const status = String(usage?.status || "").trim().toLowerCase();
+  if (status === "ambiguous") return copy("entire.checkpoints.usage.ambiguous");
+  if (status === "unmatched") return copy("entire.checkpoints.usage.not_linked");
+  return "";
+}
+
+function usageCostLabel(usage) {
+  const totalCost = usage?.total_cost_usd;
+  const unknownCount = Number(usage?.cost_unknown_count || 0);
+  if (totalCost == null && unknownCount > 0) return copy("entire.checkpoints.usage.unknown_cost");
+  if (totalCost == null) return "";
+  return formatUsdCurrency(Number(totalCost).toFixed(2));
+}
+
+function usageQualityLabel(usage) {
+  const quality = String(usage?.cost_quality || "").trim().toLowerCase();
+  if (quality === "stored") return copy("entire.checkpoints.usage.quality.stored");
+  if (quality === "estimated") return copy("entire.checkpoints.usage.quality.estimated");
+  if (quality === "token_buckets") return copy("entire.checkpoints.usage.quality.token_buckets");
+  return "";
+}
+
 export function CheckpointList({ repo = "", checkpoints = null, loading = false, error = "", className = "" }) {
   const files = Array.isArray(checkpoints?.files) ? checkpoints.files : [];
   const usageByGroup = checkpoints?.checkpoint_usage && typeof checkpoints.checkpoint_usage === "object"
@@ -113,11 +136,13 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                 const usage = usageByGroup[group.id] && typeof usageByGroup[group.id] === "object"
                   ? usageByGroup[group.id]
                   : null;
-                const totalTokens = Number(usage?.total_tokens ?? 0) || 0;
-                const totalCost = usage?.total_cost_usd;
+                const totalTokens = usage?.total_tokens == null ? null : (Number(usage.total_tokens) || 0);
                 const topModel = Array.isArray(usage?.models) && usage.models.length > 0
                   ? String(usage.models[0]?.model || "").trim()
                   : "";
+                const statusLabel = usageStatusLabel(usage);
+                const costLabel = usageCostLabel(usage);
+                const qualityLabel = usageQualityLabel(usage);
                 return (
                   <section
                     key={group.id}
@@ -146,10 +171,22 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                           {group.files.length} files
                         </span>
                         {usage ? (
-                          <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
-                            {toDisplayNumber(totalTokens)} · {totalCost == null ? "Unknown" : formatUsdCurrency(Number(totalCost).toFixed(2))}
-                            {topModel ? ` · ${topModel}` : ""}
-                          </span>
+                          <>
+                            <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
+                              {statusLabel ? statusLabel : (
+                                <>
+                                  {totalTokens == null ? "—" : toDisplayNumber(totalTokens)}
+                                  {costLabel ? ` · ${costLabel}` : ""}
+                                  {topModel ? ` · ${topModel}` : ""}
+                                </>
+                              )}
+                            </span>
+                            {!statusLabel && qualityLabel ? (
+                              <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
+                                {qualityLabel}
+                              </span>
+                            ) : null}
+                          </>
                         ) : null}
                       </span>
                       <ChevronRight className={cn("h-4 w-4 shrink-0 text-oai-gray-500 transition-transform dark:text-oai-gray-400", isOpen && "rotate-90")} aria-hidden />

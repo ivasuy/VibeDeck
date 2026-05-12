@@ -158,8 +158,11 @@ describe("EntirePage", () => {
       ],
       checkpoint_usage: {
         "06/e2abdc1ec6": {
+          status: "linked",
+          confidence: "exact",
           total_tokens: 12345,
           total_cost_usd: 0.42,
+          cost_quality: "stored",
           models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
           providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
         },
@@ -221,6 +224,7 @@ describe("EntirePage", () => {
 
     expect(await screen.findByText("Checkpoint files")).toBeTruthy();
     expect(await screen.findByText(/12,345.*\$0\.42.*claude-sonnet-4-6/)).toBeTruthy();
+    expect(await screen.findByText("Stored cost")).toBeTruthy();
     expect(screen.queryByText(/^0$/)).toBeNull();
     await expandCheckpointGroup(/06\/e2abdc1ec6/i);
 
@@ -235,6 +239,65 @@ describe("EntirePage", () => {
     fireEvent.click(await screen.findByText("content_hash.txt"));
     expect(await screen.findByText("sha256")).toBeTruthy();
     expect(screen.queryByText(/Unable to load checkpoint/)).toBeNull();
+  });
+
+  it("renders linked, unmatched, and ambiguous checkpoint usage states without fake zero cost", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({
+      available: true,
+      files: [
+        "e2/linked/metadata.json",
+        "e2/unmatched/metadata.json",
+        "e2/ambiguous/metadata.json",
+      ],
+      checkpoint_usage: {
+        "e2/linked": {
+          status: "linked",
+          confidence: "exact",
+          total_tokens: 12345,
+          total_cost_usd: 0.42,
+          cost_quality: "stored",
+          models: [{ model: "gpt-5.5", total_tokens: 12345, total_cost_usd: 0.42 }],
+          providers: [{ provider: "codex", total_tokens: 12345, total_cost_usd: 0.42 }],
+        },
+        "e2/unmatched": {
+          status: "unmatched",
+          confidence: "unmatched",
+          total_tokens: null,
+          total_cost_usd: null,
+          cost_quality: "unknown",
+          reason: "no_matching_session",
+        },
+        "e2/ambiguous": {
+          status: "ambiguous",
+          confidence: "ambiguous",
+          total_tokens: null,
+          total_cost_usd: null,
+          cost_quality: "unknown",
+          reason: "multiple_matching_sessions",
+        },
+      },
+    });
+    getCheckpoint.mockResolvedValue({
+      path: "e2/linked/metadata.json",
+      file_name: "metadata.json",
+      kind: "json",
+      raw: "{}",
+      parsed: {},
+    });
+
+    render(<EntirePage />);
+    const input = await screen.findByPlaceholderText("/Users/you/project");
+    fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
+
+    expect(await screen.findByText(/12,345.*\$0\.42.*gpt-5.5/)).toBeTruthy();
+    expect(await screen.findByText("Stored cost")).toBeTruthy();
+    expect(await screen.findByText("Usage not linked")).toBeTruthy();
+    expect(await screen.findByText("Ambiguous usage")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
   });
 
   it("renders a kibana-like board with fixed tiles for status, actions, configure, and checkpoints", async () => {

@@ -59,8 +59,10 @@ describe("CheckpointFileInspector", () => {
           raw: "{\"branch\":\"publish-main\"}",
           parsed: { branch: "publish-main" },
           usage: {
+            status: "linked",
             total_tokens: 12345,
             total_cost_usd: 0.42,
+            cost_quality: "stored",
             models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
             providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
           },
@@ -75,5 +77,86 @@ describe("CheckpointFileInspector", () => {
     expect(screen.getByText("$0.42")).toBeTruthy();
     expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy();
     expect(screen.getByText("claude")).toBeTruthy();
+    expect(screen.getByText("Stored cost")).toBeTruthy();
+  });
+
+  it("renders unmatched and ambiguous usage states without zero-dollar fallback", () => {
+    const { rerender } = render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/metadata.json",
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{}",
+          parsed: {},
+          usage: {
+            status: "unmatched",
+            confidence: "unmatched",
+            total_tokens: null,
+            total_cost_usd: null,
+            cost_quality: "unknown",
+            reason: "no_matching_session",
+          },
+          size_bytes: 2,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Usage not linked")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+
+    rerender(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/metadata.json",
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{}",
+          parsed: {},
+          usage: {
+            status: "ambiguous",
+            confidence: "ambiguous",
+            total_tokens: null,
+            total_cost_usd: null,
+            cost_quality: "unknown",
+            reason: "multiple_matching_sessions",
+          },
+          size_bytes: 2,
+          line_count: 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("Ambiguous usage")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+  });
+
+  it("shows Unknown cost for linked usage with unknown cost", () => {
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/metadata.json",
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{}",
+          parsed: {},
+          usage: {
+            status: "linked",
+            confidence: "linked",
+            total_tokens: 123,
+            total_cost_usd: null,
+            known_cost_usd: 0,
+            cost_unknown_count: 1,
+            cost_quality: "unknown",
+            models: [{ model: "gpt-5.5", total_tokens: 123, total_cost_usd: null }],
+            providers: [{ provider: "codex", total_tokens: 123, total_cost_usd: null }],
+          },
+          size_bytes: 2,
+          line_count: 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("Unknown cost")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
   });
 });

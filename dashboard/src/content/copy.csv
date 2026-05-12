@@ -541,6 +541,12 @@ entire.checkpoints.detail.meta.type,dashboard,EntirePage,CheckpointList,meta_typ
 entire.checkpoints.detail.meta.keys,dashboard,EntirePage,CheckpointList,meta_keys,Keys,,active
 entire.checkpoints.detail.meta.fields,dashboard,EntirePage,CheckpointList,meta_fields,Fields,,active
 entire.checkpoints.detail.meta.none,dashboard,EntirePage,CheckpointList,meta_none,No metadata fields available.,,active
+entire.checkpoints.usage.not_linked,dashboard,EntirePage,CheckpointList,usage_not_linked,Usage not linked,,active
+entire.checkpoints.usage.ambiguous,dashboard,EntirePage,CheckpointList,usage_ambiguous,Ambiguous usage,,active
+entire.checkpoints.usage.unknown_cost,dashboard,EntirePage,CheckpointList,usage_unknown_cost,Unknown cost,,active
+entire.checkpoints.usage.quality.stored,dashboard,EntirePage,CheckpointList,usage_quality_stored,Stored cost,,active
+entire.checkpoints.usage.quality.estimated,dashboard,EntirePage,CheckpointList,usage_quality_estimated,Estimated cost,,active
+entire.checkpoints.usage.quality.token_buckets,dashboard,EntirePage,CheckpointList,usage_quality_token_buckets,Token bucket cost,,active
 entire.actions.title,dashboard,EntirePage,EntireActionsPanel,title,Actions,,active
 entire.actions.subtitle,dashboard,EntirePage,EntireActionsPanel,subtitle,Run Entire commands for the selected repository.,,active
 entire.actions.empty,dashboard,EntirePage,EntireActionsPanel,empty,Load a repository to run Entire commands.,,active

@@ -3,6 +3,7 @@ import { Braces, Clipboard, FileJson, Hash, ScrollText } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
+import { copy } from "../../lib/copy";
 
 function iconForKind(kind) {
   if (kind === "json") return FileJson;
@@ -18,6 +19,29 @@ function primitiveEntries(value) {
 
 function usageRows(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function usageStatusLabel(usage) {
+  const status = String(usage?.status || "").trim().toLowerCase();
+  if (status === "ambiguous") return copy("entire.checkpoints.usage.ambiguous");
+  if (status === "unmatched") return copy("entire.checkpoints.usage.not_linked");
+  return "";
+}
+
+function usageCostLabel(usage) {
+  const totalCost = usage?.total_cost_usd;
+  const unknownCount = Number(usage?.cost_unknown_count || 0);
+  if (totalCost == null && unknownCount > 0) return copy("entire.checkpoints.usage.unknown_cost");
+  if (totalCost == null) return "";
+  return formatUsdCurrency(Number(totalCost).toFixed(2));
+}
+
+function usageQualityLabel(usage) {
+  const quality = String(usage?.cost_quality || "").trim().toLowerCase();
+  if (quality === "stored") return copy("entire.checkpoints.usage.quality.stored");
+  if (quality === "estimated") return copy("entire.checkpoints.usage.quality.estimated");
+  if (quality === "token_buckets") return copy("entire.checkpoints.usage.quality.token_buckets");
+  return "";
 }
 
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
@@ -39,6 +63,9 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
   const usage = file?.usage && typeof file.usage === "object" ? file.usage : null;
   const usageModels = usageRows(usage?.models);
   const usageProviders = usageRows(usage?.providers);
+  const statusLabel = usageStatusLabel(usage);
+  const costLabel = usageCostLabel(usage);
+  const qualityLabel = usageQualityLabel(usage);
 
   useEffect(() => {
     setTab("preview");
@@ -116,18 +143,30 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
           {usage ? (
             <div className="mb-3 rounded-md border border-oai-gray-200 bg-white/80 p-3 dark:border-oai-gray-800 dark:bg-oai-black/20">
               <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Usage preview</div>
+              {statusLabel ? (
+                <div className="mt-2 rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs font-semibold text-oai-black dark:bg-white/[0.06] dark:text-white">
+                  {statusLabel}
+                </div>
+              ) : null}
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
                   <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total tokens</div>
-                  <div className="mt-1 font-semibold text-oai-black dark:text-white">{toDisplayNumber(usage.total_tokens ?? 0)}</div>
+                  <div className="mt-1 font-semibold text-oai-black dark:text-white">
+                    {usage?.total_tokens == null ? "—" : toDisplayNumber(usage.total_tokens)}
+                  </div>
                 </div>
                 <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
                   <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total cost</div>
                   <div className="mt-1 font-semibold text-oai-black dark:text-white">
-                    {usage.total_cost_usd == null ? "Unknown" : formatUsdCurrency(Number(usage.total_cost_usd).toFixed(2))}
+                    {costLabel || "—"}
                   </div>
                 </div>
               </div>
+              {qualityLabel ? (
+                <div className="mt-2 text-xs font-medium text-oai-gray-700 dark:text-oai-gray-200">
+                  {qualityLabel}
+                </div>
+              ) : null}
               {usageModels.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {usageModels.map((row, idx) => (

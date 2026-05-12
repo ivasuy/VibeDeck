@@ -4,6 +4,7 @@ import { copy } from "../../lib/copy";
 import { getCheckpoint } from "../../lib/vibedeck-api";
 import { CheckpointFileInspector } from "./CheckpointFileInspector";
 import { cn } from "../../lib/cn";
+import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { checkpointFileIconName, checkpointFileLabel, groupCheckpointFiles } from "./checkpoint-file-utils";
 
 function unavailableReasonText(checkpoints) {
@@ -20,6 +21,9 @@ function unavailableReasonText(checkpoints) {
 
 export function CheckpointList({ repo = "", checkpoints = null, loading = false, error = "", className = "" }) {
   const files = Array.isArray(checkpoints?.files) ? checkpoints.files : [];
+  const usageByGroup = checkpoints?.checkpoint_usage && typeof checkpoints.checkpoint_usage === "object"
+    ? checkpoints.checkpoint_usage
+    : {};
   const groups = groupCheckpointFiles(files);
   const [selectedPath, setSelectedPath] = useState("");
   const [openGroupId, setOpenGroupId] = useState();
@@ -106,6 +110,14 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
             <div className="space-y-1">
               {groups.map((group) => {
                 const isOpen = openGroupId === group.id;
+                const usage = usageByGroup[group.id] && typeof usageByGroup[group.id] === "object"
+                  ? usageByGroup[group.id]
+                  : null;
+                const totalTokens = Number(usage?.total_tokens ?? 0) || 0;
+                const totalCost = usage?.total_cost_usd;
+                const topModel = Array.isArray(usage?.models) && usage.models.length > 0
+                  ? String(usage.models[0]?.model || "").trim()
+                  : "";
                 return (
                   <section
                     key={group.id}
@@ -133,6 +145,12 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                         <span className="mt-1 block text-xs text-oai-gray-500 dark:text-oai-gray-400">
                           {group.files.length} files
                         </span>
+                        {usage ? (
+                          <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
+                            {toDisplayNumber(totalTokens)} · {totalCost == null ? "Unknown" : formatUsdCurrency(Number(totalCost).toFixed(2))}
+                            {topModel ? ` · ${topModel}` : ""}
+                          </span>
+                        ) : null}
                       </span>
                       <ChevronRight className={cn("h-4 w-4 shrink-0 text-oai-gray-500 transition-transform dark:text-oai-gray-400", isOpen && "rotate-90")} aria-hidden />
                     </button>

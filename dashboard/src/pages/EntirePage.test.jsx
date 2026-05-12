@@ -156,6 +156,14 @@ describe("EntirePage", () => {
         "06/e2abdc1ec6/0/full.jsonl",
         "06/e2abdc1ec6/0/content_hash.txt",
       ],
+      checkpoint_usage: {
+        "06/e2abdc1ec6": {
+          total_tokens: 12345,
+          total_cost_usd: 0.42,
+          models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
+          providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
+        },
+      },
     });
     getCheckpoint.mockImplementation((_repo, filePath) => {
       if (filePath.endsWith("metadata.json")) {
@@ -212,6 +220,7 @@ describe("EntirePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
     expect(await screen.findByText("Checkpoint files")).toBeTruthy();
+    expect(await screen.findByText(/12,345.*\$0\.42.*claude-sonnet-4-6/)).toBeTruthy();
     expect(screen.queryByText(/^0$/)).toBeNull();
     await expandCheckpointGroup(/06\/e2abdc1ec6/i);
 

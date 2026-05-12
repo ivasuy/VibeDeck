@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Braces, Clipboard, FileJson, Hash, ScrollText } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { cn } from "../../lib/cn";
+import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 
 function iconForKind(kind) {
   if (kind === "json") return FileJson;
@@ -13,6 +14,10 @@ function iconForKind(kind) {
 function primitiveEntries(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return [];
   return Object.entries(value).filter(([, item]) => item == null || ["string", "number", "boolean"].includes(typeof item));
+}
+
+function usageRows(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
@@ -31,6 +36,9 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
           { id: "parsed", label: "Parsed" },
         ]
   ), [file?.kind]);
+  const usage = file?.usage && typeof file.usage === "object" ? file.usage : null;
+  const usageModels = usageRows(usage?.models);
+  const usageProviders = usageRows(usage?.providers);
 
   useEffect(() => {
     setTab("preview");
@@ -105,6 +113,42 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
 
       <div className="min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto rounded-md bg-oai-brand-50/70 p-3 dark:bg-oai-brand-950/30">
+          {usage ? (
+            <div className="mb-3 rounded-md border border-oai-gray-200 bg-white/80 p-3 dark:border-oai-gray-800 dark:bg-oai-black/20">
+              <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Usage preview</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
+                  <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total tokens</div>
+                  <div className="mt-1 font-semibold text-oai-black dark:text-white">{toDisplayNumber(usage.total_tokens ?? 0)}</div>
+                </div>
+                <div className="rounded bg-oai-black/[0.04] px-2.5 py-2 text-xs dark:bg-white/[0.06]">
+                  <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Total cost</div>
+                  <div className="mt-1 font-semibold text-oai-black dark:text-white">
+                    {usage.total_cost_usd == null ? "Unknown" : formatUsdCurrency(Number(usage.total_cost_usd).toFixed(2))}
+                  </div>
+                </div>
+              </div>
+              {usageModels.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {usageModels.map((row, idx) => (
+                    <span key={`${String(row?.model || "unknown")}-${idx}`} className="rounded-md bg-oai-brand-100 px-2 py-1 text-[11px] font-medium text-oai-brand-800 dark:bg-oai-brand-950/60 dark:text-oai-brand-300">
+                      {String(row?.model || "unknown")}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {usageProviders.length > 0 ? (
+                <div className="mt-2 space-y-1">
+                  {usageProviders.map((row, idx) => (
+                    <div key={`${String(row?.provider || "unknown")}-${idx}`} className="flex items-center justify-between text-xs text-oai-gray-700 dark:text-oai-gray-200">
+                      <span>{String(row?.provider || "unknown")}</span>
+                      <span>{toDisplayNumber(row?.total_tokens ?? 0)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {tab === "raw" ? (
             <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
               {file.raw || ""}

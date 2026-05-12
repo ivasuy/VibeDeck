@@ -48,4 +48,32 @@ describe("CheckpointFileInspector", () => {
 
     expect(screen.getAllByRole("button", { name: "Parsed" }).length).toBe(1);
   });
+
+  it("renders usage preview block for metadata files", () => {
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/metadata.json",
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{\"branch\":\"publish-main\"}",
+          parsed: { branch: "publish-main" },
+          usage: {
+            total_tokens: 12345,
+            total_cost_usd: 0.42,
+            models: [{ model: "claude-sonnet-4-6", total_tokens: 12345, total_cost_usd: 0.42 }],
+            providers: [{ provider: "claude", total_tokens: 12345, total_cost_usd: 0.42 }],
+          },
+          size_bytes: 25,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Usage preview")).toBeTruthy();
+    expect(screen.getAllByText("12,345").length).toBeGreaterThan(0);
+    expect(screen.getByText("$0.42")).toBeTruthy();
+    expect(screen.getByText("claude-sonnet-4-6")).toBeTruthy();
+    expect(screen.getByText("claude")).toBeTruthy();
+  });
 });

@@ -405,7 +405,7 @@ function shouldSuppressStaleLiveDelta(event, nowMs = Date.now()) {
   ).trim();
   const observedMs = Date.parse(observed);
   if (!Number.isFinite(observedMs)) return false;
-  const staleWindowMs = getIdleTimeoutMin() * 60_000;
+  const staleWindowMs = Math.max(getIdleTimeoutMin() * 60_000, LIVE_RECENT_ENDED_MS);
   return nowMs - observedMs > staleWindowMs;
 }
 

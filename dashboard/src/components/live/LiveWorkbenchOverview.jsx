@@ -26,6 +26,8 @@ function confidenceKey(value) {
 }
 
 function hasAttributionGap(row) {
+  if (String(row?.audit_scope || "").trim().toLowerCase() === "cwd_only") return false;
+  if (String(row?.cwd || "").trim() && !String(row?.repo_root || "").trim()) return false;
   return !String(row?.repo_root || "").trim() || !String(row?.branch || "").trim();
 }
 

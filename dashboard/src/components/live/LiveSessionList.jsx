@@ -7,7 +7,7 @@ import { copy } from "../../lib/copy";
 import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "./ConfidenceBadge";
-import { buildLiveWorkstreams, isActiveLiveSession, liveSessionKey } from "../../lib/live-workstreams";
+import { buildLiveWorkstreams, isActiveLiveSession, liveBranchLabel, liveScopeLabel, liveSessionKey } from "../../lib/live-workstreams";
 import { LiveWorkstreamDrawer } from "./LiveWorkstreamDrawer";
 
 function getSessionKey(row) {
@@ -18,11 +18,6 @@ function repoBasename(value) {
   const normalized = String(value || "").replace(/\\/g, "/");
   const parts = normalized.split("/").filter(Boolean);
   return parts.length ? parts[parts.length - 1] : copy("live.value.unknown_repo");
-}
-
-function getBranch(row) {
-  const branch = String(row?.branch || "").trim();
-  return branch || copy("live.value.unattributed_branch");
 }
 
 function isActiveRow(row) {
@@ -148,6 +143,8 @@ export function LiveSessionList({
             const branchLabel = workstream.branches.join(", ");
             const relatedCount = Math.max(0, workstream.sessions.length - 1);
             const repoName = repoBasename(repoRoot);
+            const scopeLabel = liveScopeLabel(workstream);
+            const branchValue = liveBranchLabel(workstream, primary);
             const handleSelectWorkstream = () => activateWorkstream(workstream, onSelectSession);
             return (
               <StaggerItem key={workstream.id || primaryKey}>
@@ -187,13 +184,14 @@ export function LiveSessionList({
                         title={repoRoot || undefined}
                       >
                         Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || "—")}
+                        {scopeLabel ? ` · ${scopeLabel}` : ""}
                       </div>
                     </div>
                     <ConfidenceBadge confidence={primary?.confidence} className="shrink-0" />
                   </div>
 
                   <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
-                    <MetaItem icon={GitBranch} label="Branches" value={branchLabel || getBranch(primary)} />
+                    <MetaItem icon={GitBranch} label="Branches" value={scopeLabel === "No Git repo" ? branchValue : (branchLabel || branchValue)} />
                     <MetaItem icon={Layers3} label="Related sessions" value={toDisplayNumber(relatedCount)} />
                     <MetaItem icon={Radio} label="Project tokens" value={toDisplayNumber(workstreamTokens(workstream))} />
                     <MetaItem icon={CircleDollarSign} label="Project cost" value={formatWorkstreamCost(workstream)} />

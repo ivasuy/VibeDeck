@@ -48,6 +48,18 @@ export function attributionBranchName(value) {
   return String(value || "").trim().replace(/~\d+$/, "");
 }
 
+export function liveScopeLabel(workstream) {
+  if (workstream?.audit_scope === "cwd_only") return "No Git repo";
+  if (workstream?.audit_scope === "session_only") return "Session only";
+  return "";
+}
+
+export function liveBranchLabel(workstream, row) {
+  if (workstream?.audit_scope === "cwd_only") return "Branch unavailable";
+  const branch = String(row?.branch || workstream?.branches?.[0] || "").trim();
+  return branch || "Unattributed";
+}
+
 function branchName(row) {
   return attributionBranchName(row?.attribution_branch || row?.branch) || "unattributed";
 }

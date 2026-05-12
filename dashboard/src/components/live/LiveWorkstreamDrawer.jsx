@@ -18,7 +18,7 @@ import { cn } from "../../lib/cn";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
 import { ConfidenceBadge } from "./ConfidenceBadge";
-import { isActiveLiveSession, liveSessionCost, liveSessionKey } from "../../lib/live-workstreams";
+import { isActiveLiveSession, liveBranchLabel, liveSessionCost, liveSessionKey } from "../../lib/live-workstreams";
 
 function repoBasename(value) {
   const normalized = String(value || "").replace(/\\/g, "/");
@@ -55,7 +55,7 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
-function SessionRow({ session, primary = false, selected = false, onSelectSession }) {
+function SessionRow({ session, workstream, primary = false, selected = false, onSelectSession }) {
   const key = liveSessionKey(session);
   const active = isActiveLiveSession(session);
   const cost = liveSessionCost(session);
@@ -99,7 +99,7 @@ function SessionRow({ session, primary = false, selected = false, onSelectSessio
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
           <span className="inline-flex min-w-0 items-center gap-1">
             <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="truncate">{String(session?.branch || "unattributed")}</span>
+            <span className="truncate">{liveBranchLabel(workstream, session)}</span>
           </span>
           <span>Tier {String(session?.branch_resolution_tier || "—")}</span>
           <ConfidenceBadge confidence={session?.confidence} className="h-5 px-1.5 text-[10px]" />
@@ -203,7 +203,9 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <GitBranch className="h-4 w-4 shrink-0 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
-                    <h3 className="truncate text-sm font-semibold text-oai-black dark:text-white">{group.branch}</h3>
+                    <h3 className="truncate text-sm font-semibold text-oai-black dark:text-white">
+                      {liveBranchLabel(workstream, { branch: group.branch })}
+                    </h3>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
                     <span className="inline-flex items-center gap-1">
@@ -224,6 +226,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                     <SessionRow
                       key={liveSessionKey(session)}
                       session={session}
+                      workstream={workstream}
                       primary={liveSessionKey(session) === primaryKey}
                       selected={liveSessionKey(session) === selectedKey}
                       onSelectSession={onSelectSession}

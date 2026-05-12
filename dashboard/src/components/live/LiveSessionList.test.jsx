@@ -117,4 +117,55 @@ describe("LiveSessionList", () => {
     fireEvent.click(relatedRow);
     expect(onSelectSession).toHaveBeenCalledWith("codex:related-ended");
   });
+
+  it("shows cwd_only workstreams as no-git scope with branch unavailable", () => {
+    render(
+      <LiveSessionList
+        streamStatus="connected"
+        selectedKey="codex:nogit"
+        onSelectSession={() => {}}
+        sessions={[
+          {
+            provider: "codex",
+            session_id: "nogit",
+            cwd: "/Users/dev/no-git-project",
+            repo_root: null,
+            branch: "unattributed",
+            confidence: "unattributed",
+            branch_resolution_tier: "D",
+            model: "gpt-5.5",
+            total_tokens: 123,
+          },
+        ]}
+        workstreams={[
+          {
+            id: "cwd:no-git",
+            audit_scope: "cwd_only",
+            cwd: "/Users/dev/no-git-project",
+            repo_root: null,
+            branches: ["unattributed"],
+            confidence: "unattributed",
+            primary_session: {
+              provider: "codex",
+              session_id: "nogit",
+              model: "gpt-5.5",
+              confidence: "unattributed",
+            },
+            sessions: [{ provider: "codex", session_id: "nogit", model: "gpt-5.5" }],
+            active_session_count: 1,
+            recently_completed_count: 0,
+            active_total_tokens: 123,
+            active_total_cost_usd: 0.12,
+            audit_total_tokens: 123,
+            audit_total_cost_usd: 0.12,
+            audit_cost_unknown_count: 0,
+            branch_groups: [],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/No Git repo/)).toBeTruthy();
+    expect(screen.getByText("Branch unavailable")).toBeTruthy();
+  });
 });

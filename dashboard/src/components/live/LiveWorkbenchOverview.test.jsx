@@ -105,4 +105,40 @@ describe("LiveWorkbenchOverview", () => {
     expect(screen.getAllByText("$3.00").length).toBeGreaterThan(0);
     expect(container.querySelector('[data-counter-root="true"]')).not.toBeNull();
   });
+
+  it("does not count cwd_only sessions as attribution gaps", () => {
+    render(
+      <LiveWorkbenchOverview
+        status="connected"
+        sessions={[
+          {
+            provider: "codex",
+            session_id: "cwd-only",
+            cwd: "/Users/dev/no-git-project",
+            repo_root: null,
+            branch: null,
+            confidence: "unattributed",
+            total_tokens: 100,
+            estimated_total_cost_usd: 0.1,
+            cost_quality: "estimated_total_tokens",
+            audit_scope: "cwd_only",
+          },
+          {
+            provider: "codex",
+            session_id: "missing-session-only",
+            cwd: null,
+            repo_root: null,
+            branch: null,
+            confidence: "unattributed",
+            total_tokens: 100,
+            estimated_total_cost_usd: 0.1,
+            cost_quality: "estimated_total_tokens",
+            audit_scope: "session_only",
+          },
+        ]}
+      />,
+    );
+
+    expect(within(tileFor("Needs attribution")).getByText("1")).toBeTruthy();
+  });
 });

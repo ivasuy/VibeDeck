@@ -52,7 +52,14 @@ function OverviewTile({ icon: Icon, label, value, tone = "neutral" }) {
   );
 }
 
-export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits = null }) {
+export function LiveWorkbenchOverview({
+  sessions = [],
+  workstreams = [],
+  totals = null,
+  status = "idle",
+  limits = null,
+  canonicalIncomplete = false,
+}) {
   const model = useMemo(() => {
     const active = (Array.isArray(sessions) ? sessions : []).filter(isActiveRow);
     const providers = new Map();
@@ -93,9 +100,12 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
     key,
     count: model.confidence[key],
   }));
-  const tokenCounter = Number.isFinite(model.tokens) ? model.tokens : 0;
-  const activeCost = Number.isFinite(model.cost) ? model.cost : 0;
-  const costDisplay = formatUsdCurrency(activeCost.toFixed(2), { decimals: 2 });
+  const activeTokens = Number(totals?.active_tokens ?? model.tokens ?? 0) || 0;
+  const activeCost = Number(totals?.active_cost_usd ?? model.cost ?? 0) || 0;
+  const auditTokens = Number(totals?.audit_tokens ?? activeTokens) || 0;
+  const auditCost = Number(totals?.audit_cost_usd ?? activeCost) || 0;
+  const activeProjectCount = Number(totals?.active_projects ?? workstreams.length ?? 0) || 0;
+  const costDisplay = formatUsdCurrency(auditCost.toFixed(2), { decimals: 2 });
   const hasAttributionNeeds = model.attributionGaps > 0;
 
   return (
@@ -107,8 +117,8 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
           </div>
           <div className="mt-2 text-4xl font-semibold leading-none tracking-tight text-oai-black dark:text-white md:text-6xl">
             <Counter
-              value={tokenCounter}
-              displayValue={toDisplayNumber(tokenCounter)}
+              value={auditTokens}
+              displayValue={toDisplayNumber(auditTokens)}
               fontSize={60}
               padding={4}
               gap={0}
@@ -120,7 +130,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
           </div>
           <div className="mt-2 text-sm font-medium text-oai-brand dark:text-oai-brand-300">
             <Counter
-              value={activeCost}
+              value={auditCost}
               displayValue={costDisplay}
               fontSize={14}
               padding={2}
@@ -130,7 +140,7 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
               digitStyle={{ width: "0.72ch" }}
               counterStyle={{ gap: 0 }}
             />
-            <span className="ml-1">active cost</span>
+            <span className="ml-1">project total</span>
           </div>
         </div>
         <div className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
@@ -160,8 +170,10 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
 
       <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         <OverviewTile icon={Radio} label="Live sessions" value={model.active.length} />
-        <OverviewTile icon={Activity} label="Providers" value={model.providers.length} />
-        <OverviewTile icon={Cpu} label="Tokens" value={formatCompactNumber(model.tokens, { decimals: 1 })} />
+        <OverviewTile icon={Activity} label="Active projects" value={activeProjectCount} />
+        <OverviewTile icon={Cpu} label="Live now" value={formatCompactNumber(activeTokens, { decimals: 1 })} />
+        <OverviewTile icon={CircleDollarSign} label="Live cost" value={formatUsdCurrency(activeCost.toFixed(2))} />
+        <OverviewTile icon={Cpu} label="Project total" value={formatCompactNumber(auditTokens, { decimals: 1 })} />
         <OverviewTile
           icon={hasAttributionNeeds ? ShieldAlert : CircleDollarSign}
           label={hasAttributionNeeds ? "Needs attribution" : "Known cost"}
@@ -169,8 +181,12 @@ export function LiveWorkbenchOverview({ sessions = [], status = "idle", limits =
           tone={hasAttributionNeeds ? "risk" : "neutral"}
         />
         <OverviewTile icon={ShieldCheck} label="Limit sources" value={limitSummary.recorded} />
-        <OverviewTile icon={Activity} label="Active repos" value={model.repos.size} />
       </div>
+      {canonicalIncomplete ? (
+        <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
+          Canonical backfill is incomplete. Live audit totals may exclude older sessions until rebuild finishes.
+        </div>
+      ) : null}
     </section>
   );
 }

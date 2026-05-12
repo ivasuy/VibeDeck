@@ -7,6 +7,47 @@ import { render } from "../../test/test-utils";
 import { LiveSessionList } from "./LiveSessionList";
 
 describe("LiveSessionList", () => {
+  it("prefers backend workstream audit totals over locally rebuilt active rows", () => {
+    render(
+      <LiveSessionList
+        streamStatus="connected"
+        selectedKey="codex:active"
+        onSelectSession={() => {}}
+        sessions={[
+          {
+            provider: "codex",
+            session_id: "active",
+            repo_root: "/repo/VibeDeck",
+            branch: "main",
+            total_tokens: 100,
+            total_cost_usd: 0.5,
+          },
+        ]}
+        workstreams={[
+          {
+            id: "project:vibedeck",
+            repo_root: "/repo/VibeDeck",
+            branches: ["main", "feature/past"],
+            primary_session: { provider: "codex", session_id: "active", model: "gpt-5.5" },
+            sessions: [{ provider: "codex", session_id: "active", model: "gpt-5.5" }],
+            active_session_count: 1,
+            recently_completed_count: 0,
+            active_total_tokens: 100,
+            active_total_cost_usd: 0.5,
+            audit_total_tokens: 1100,
+            audit_total_cost_usd: 5.5,
+            audit_cost_unknown_count: 0,
+            branch_groups: [],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("1,100")).toBeTruthy();
+    expect(screen.getByText("$5.50")).toBeTruthy();
+    expect(screen.getByText(/feature\/past, main|main, feature\/past/)).toBeTruthy();
+  });
+
   it("renders repo workstream cards with branch-separated active and recently ended session breakdown", () => {
     const onSelectSession = vi.fn();
     render(
@@ -53,7 +94,7 @@ describe("LiveSessionList", () => {
     expect(screen.getByText(/dashboard, publish-main|publish-main, dashboard/)).toBeTruthy();
     expect(screen.queryByText("Primary session")).toBeNull();
     expect(screen.getByText("Related sessions")).toBeTruthy();
-    expect(screen.getByText("1 active")).toBeTruthy();
+    expect(screen.getByText("Live now")).toBeTruthy();
     expect(screen.getByText("1 stale")).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
     expect(screen.getByText("$0.70")).toBeTruthy();

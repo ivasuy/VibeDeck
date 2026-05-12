@@ -12,6 +12,49 @@ function tileFor(label) {
 }
 
 describe("LiveWorkbenchOverview", () => {
+  it("shows active-session totals separately from active-project audit totals", () => {
+    render(
+      <LiveWorkbenchOverview
+        status="connected"
+        sessions={[
+          {
+            provider: "codex",
+            session_id: "active",
+            repo_root: "/repo/vibedeck",
+            branch: "main",
+            confidence: "high",
+            total_tokens: 100,
+            estimated_total_cost_usd: 0.5,
+            cost_quality: "estimated_total_tokens",
+          },
+        ]}
+        totals={{
+          active_sessions: 1,
+          active_tokens: 100,
+          active_cost_usd: 0.5,
+          audit_tokens: 1100,
+          audit_cost_usd: 5.5,
+          active_projects: 1,
+        }}
+        workstreams={[
+          {
+            id: "project:vibedeck",
+            audit_total_tokens: 1100,
+            audit_total_cost_usd: 5.5,
+            active_total_tokens: 100,
+            active_total_cost_usd: 0.5,
+          },
+        ]}
+        limits={{}}
+      />,
+    );
+
+    expect(screen.getByText("Project total")).toBeTruthy();
+    expect(screen.getByText("Live now")).toBeTruthy();
+    expect(screen.getByText("$5.50")).toBeTruthy();
+    expect(screen.getAllByText("$0.50").length).toBeGreaterThan(0);
+  });
+
   it("counts attribution gaps, limit sources, and active repos separately", () => {
     const { container } = render(
       <LiveWorkbenchOverview
@@ -52,13 +95,14 @@ describe("LiveWorkbenchOverview", () => {
           codex: { configured: true, primary_window: { used_percent: 10 } },
           claude: { configured: true, five_hour: { used_percent: 20 } },
         }}
+        totals={{ active_projects: 2 }}
       />,
     );
 
     expect(within(tileFor("Needs attribution")).getByText("1")).toBeTruthy();
     expect(within(tileFor("Limit sources")).getByText("2")).toBeTruthy();
-    expect(within(tileFor("Active repos")).getByText("2")).toBeTruthy();
-    expect(screen.getByText("$3.00")).toBeTruthy();
+    expect(within(tileFor("Active projects")).getByText("2")).toBeTruthy();
+    expect(screen.getAllByText("$3.00").length).toBeGreaterThan(0);
     expect(container.querySelector('[data-counter-root="true"]')).not.toBeNull();
   });
 });

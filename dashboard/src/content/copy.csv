@@ -84,6 +84,11 @@ usage.period.week,ui,DashboardPage,UsageOverview,period_week,Week,,active
 usage.period.month,ui,DashboardPage,UsageOverview,period_month,Month,,active
 usage.period.total,ui,DashboardPage,UsageOverview,period_total,Total,,active
 usage.period.custom,ui,DashboardPage,UsageOverview,period_custom,Custom,,active
+live.metric.project_total,dashboard,LivePage,LiveWorkbenchOverview,metric_project_total,Project total,,active
+live.metric.live_now,dashboard,LivePage,LiveWorkbenchOverview,metric_live_now,Live now,,active
+live.metric.project_cost,dashboard,LivePage,LiveSessionList,metric_project_cost,Project cost,,active
+live.metric.project_tokens,dashboard,LivePage,LiveSessionList,metric_project_tokens,Project tokens,,active
+live.warning.canonical_incomplete,dashboard,LivePage,LiveWorkbenchOverview,canonical_incomplete,Canonical backfill is incomplete. Live audit totals may exclude older sessions until rebuild finishes.,,active
 
 dashboard.rolling.title,ui,RollingUsagePanel,RollingUsagePanel,title,Recent Activity,,active
 dashboard.rolling.last_7d,ui,RollingUsagePanel,RollingUsagePanel,label_last_7d,Last 7 days,,active

@@ -49,11 +49,16 @@ function emptyStateCopy(status) {
 }
 
 function formatWorkstreamCost(workstream) {
-  if (Number(workstream?.cost_unknown_count || 0) > 0) return "—";
-  const n = Number(workstream?.total_cost_usd);
+  const unknown = Number(workstream?.audit_cost_unknown_count ?? workstream?.cost_unknown_count ?? 0);
+  if (unknown > 0) return "—";
+  const n = Number(workstream?.audit_total_cost_usd ?? workstream?.total_cost_usd);
   if (!Number.isFinite(n)) return "—";
   const formatted = formatUsdCurrency(n.toFixed(2));
   return formatted === "-" ? "—" : formatted;
+}
+
+function workstreamTokens(workstream) {
+  return Number(workstream?.audit_total_tokens ?? workstream?.total_tokens ?? 0) || 0;
 }
 
 function MetaItem({ label, value, icon: Icon }) {
@@ -76,6 +81,8 @@ function activateWorkstream(workstream, onSelectSession) {
 
 export function LiveSessionList({
   sessions = [],
+  workstreams: backendWorkstreams = [],
+  totals = null,
   selectedKey = null,
   onSelectSession,
   streamStatus = "idle",
@@ -85,8 +92,11 @@ export function LiveSessionList({
 }) {
   const hint = streamNote(streamStatus);
   const emptyState = emptyStateCopy(streamStatus);
-  const workstreams = React.useMemo(() => buildLiveWorkstreams(sessions), [sessions]);
-  const visibleWorkstreams = workstreams.filter((workstream) => workstream.active_session_count > 0);
+  const fallbackWorkstreams = React.useMemo(() => buildLiveWorkstreams(sessions), [sessions]);
+  const workstreams = Array.isArray(backendWorkstreams) && backendWorkstreams.length > 0
+    ? backendWorkstreams
+    : fallbackWorkstreams;
+  const visibleWorkstreams = workstreams.filter((workstream) => Number(workstream.active_session_count || 0) > 0);
   const [openWorkstreamId, setOpenWorkstreamId] = React.useState(null);
   const selectedWorkstream = React.useMemo(
     () => visibleWorkstreams.find((workstream) => workstream.id === openWorkstreamId) || null,
@@ -185,9 +195,9 @@ export function LiveSessionList({
                   <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
                     <MetaItem icon={GitBranch} label="Branches" value={branchLabel || getBranch(primary)} />
                     <MetaItem icon={Layers3} label="Related sessions" value={toDisplayNumber(relatedCount)} />
-                    <MetaItem icon={Radio} label={copy("live.meta.tokens")} value={toDisplayNumber(workstream.total_tokens ?? 0)} />
-                    <MetaItem icon={CircleDollarSign} label={copy("live.meta.cost")} value={formatWorkstreamCost(workstream)} />
-                    <MetaItem icon={CirclePlay} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
+                    <MetaItem icon={Radio} label="Project tokens" value={toDisplayNumber(workstreamTokens(workstream))} />
+                    <MetaItem icon={CircleDollarSign} label="Project cost" value={formatWorkstreamCost(workstream)} />
+                    <MetaItem icon={CirclePlay} label="Live now" value={toDisplayNumber(workstream.active_total_tokens ?? 0)} />
                     <MetaItem icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
                   </div>
 

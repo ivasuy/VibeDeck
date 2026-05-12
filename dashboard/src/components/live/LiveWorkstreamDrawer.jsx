@@ -139,7 +139,12 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
   const titleId = "live-workstream-breakdown-title";
   const repoRoot = String(workstream?.repo_root || workstream?.cwd || "");
   const primaryKey = workstream ? liveSessionKey(workstream.primary_session) : null;
-  const cost = workstream && Number(workstream?.cost_unknown_count || 0) > 0 ? null : workstream?.total_cost_usd;
+  const auditCost = workstream && Number(workstream?.audit_cost_unknown_count ?? workstream?.cost_unknown_count ?? 0) > 0
+    ? null
+    : (workstream?.audit_total_cost_usd ?? workstream?.total_cost_usd);
+  const activeCost = workstream && Number(workstream?.active_cost_unknown_count || 0) > 0
+    ? null
+    : workstream?.active_total_cost_usd;
 
   return (
     <SlidePanel
@@ -183,8 +188,10 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
             <Metric icon={GitBranch} label="Branches" value={workstream.branches.join(", ") || "—"} />
             <Metric icon={Activity} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
             <Metric icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
-            <Metric icon={Radio} label="Tokens" value={toDisplayNumber(workstream.total_tokens ?? 0)} />
-            <Metric icon={CircleDollarSign} label="Cost" value={formatCost(cost)} />
+            <Metric icon={Radio} label="Project tokens" value={toDisplayNumber(workstream.audit_total_tokens ?? workstream.total_tokens ?? 0)} />
+            <Metric icon={CircleDollarSign} label="Project cost" value={formatCost(auditCost)} />
+            <Metric icon={Radio} label="Live tokens" value={toDisplayNumber(workstream.active_total_tokens ?? 0)} />
+            <Metric icon={CircleDollarSign} label="Live cost" value={formatCost(activeCost)} />
           </div>
 
           <div className="grid gap-4">
@@ -207,6 +214,8 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                       <PauseCircle className="h-3.5 w-3.5 text-amber-500" aria-hidden />
                       {toDisplayNumber(group.recently_completed_count)} stale
                     </span>
+                    <span>{toDisplayNumber(group.audit_total_tokens ?? group.total_tokens ?? 0)} tokens</span>
+                    <span>{formatCost(group.audit_total_cost_usd ?? group.total_cost_usd)}</span>
                   </div>
                 </div>
 

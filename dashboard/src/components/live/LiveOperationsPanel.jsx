@@ -4,6 +4,8 @@ import { LiveSessionList } from "./LiveSessionList";
 
 export function LiveOperationsPanel({
   sessions,
+  workstreams,
+  totals,
   selectedKey,
   onSelectSession,
   streamStatus,
@@ -28,6 +30,8 @@ export function LiveOperationsPanel({
         <div className="min-h-0">
           <LiveSessionList
             sessions={sessions}
+            workstreams={workstreams}
+            totals={totals}
             selectedKey={selectedKey}
             onSelectSession={onSelectSession}
             streamStatus={streamStatus}

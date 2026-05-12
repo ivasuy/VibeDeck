@@ -295,8 +295,34 @@ describe("EntirePage", () => {
 
     expect(await screen.findByText(/12,345.*\$0\.42.*gpt-5.5/)).toBeTruthy();
     expect(await screen.findByText("Stored cost")).toBeTruthy();
-    expect(await screen.findByText("Usage not linked")).toBeTruthy();
+    expect((await screen.findAllByText("Usage not linked")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Ambiguous usage")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+  });
+
+  it("shows Usage not linked for metadata group when checkpoint_usage entry is missing", async () => {
+    getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({
+      available: true,
+      files: ["e2/no-usage/metadata.json", "e2/no-usage/0/prompt.txt"],
+      checkpoint_usage: {},
+    });
+    getCheckpoint.mockResolvedValue({
+      path: "e2/no-usage/metadata.json",
+      file_name: "metadata.json",
+      kind: "json",
+      raw: "{}",
+      parsed: {},
+    });
+
+    render(<EntirePage />);
+    const input = await screen.findByPlaceholderText("/Users/you/project");
+    fireEvent.change(input, { target: { value: "/Users/dev/repo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
+
+    expect(await screen.findByText("Usage not linked")).toBeTruthy();
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 

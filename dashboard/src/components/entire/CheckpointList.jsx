@@ -42,6 +42,10 @@ function usageQualityLabel(usage) {
   return "";
 }
 
+function isMetadataFilePath(filePath) {
+  return String(filePath || "").trim().toLowerCase().endsWith("/metadata.json");
+}
+
 export function CheckpointList({ repo = "", checkpoints = null, loading = false, error = "", className = "" }) {
   const files = Array.isArray(checkpoints?.files) ? checkpoints.files : [];
   const usageByGroup = checkpoints?.checkpoint_usage && typeof checkpoints.checkpoint_usage === "object"
@@ -136,11 +140,12 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                 const usage = usageByGroup[group.id] && typeof usageByGroup[group.id] === "object"
                   ? usageByGroup[group.id]
                   : null;
+                const hasMetadataFile = group.files.some((filePath) => isMetadataFilePath(filePath));
                 const totalTokens = usage?.total_tokens == null ? null : (Number(usage.total_tokens) || 0);
                 const topModel = Array.isArray(usage?.models) && usage.models.length > 0
                   ? String(usage.models[0]?.model || "").trim()
                   : "";
-                const statusLabel = usageStatusLabel(usage);
+                const statusLabel = usageStatusLabel(usage) || (!usage && hasMetadataFile ? copy("entire.checkpoints.usage.not_linked") : "");
                 const costLabel = usageCostLabel(usage);
                 const qualityLabel = usageQualityLabel(usage);
                 return (
@@ -170,7 +175,7 @@ export function CheckpointList({ repo = "", checkpoints = null, loading = false,
                         <span className="mt-1 block text-xs text-oai-gray-500 dark:text-oai-gray-400">
                           {group.files.length} files
                         </span>
-                        {usage ? (
+                        {usage || hasMetadataFile ? (
                           <>
                             <span className="mt-1 block text-xs text-oai-gray-600 dark:text-oai-gray-300">
                               {statusLabel ? statusLabel : (

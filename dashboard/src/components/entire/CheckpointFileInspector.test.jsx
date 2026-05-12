@@ -159,4 +159,23 @@ describe("CheckpointFileInspector", () => {
     expect(screen.getByText("Unknown cost")).toBeTruthy();
     expect(screen.queryByText("$0.00")).toBeNull();
   });
+
+  it("shows Usage not linked for metadata file with no usage object", () => {
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/metadata.json",
+          file_name: "metadata.json",
+          kind: "json",
+          raw: "{}",
+          parsed: {},
+          size_bytes: 2,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Usage not linked")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+  });
 });

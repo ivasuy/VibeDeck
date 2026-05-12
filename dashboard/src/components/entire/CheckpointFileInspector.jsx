@@ -44,6 +44,10 @@ function usageQualityLabel(usage) {
   return "";
 }
 
+function isMetadataPath(filePath) {
+  return String(filePath || "").trim().toLowerCase().endsWith("/metadata.json");
+}
+
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
   const [tab, setTab] = useState("preview");
   const fields = useMemo(() => primitiveEntries(file?.parsed), [file?.parsed]);
@@ -61,9 +65,12 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
         ]
   ), [file?.kind]);
   const usage = file?.usage && typeof file.usage === "object" ? file.usage : null;
+  const metadataPath = file?.path || selectedPath;
+  const isMetadataFile = isMetadataPath(metadataPath);
+  const showUsagePreview = Boolean(usage) || isMetadataFile;
   const usageModels = usageRows(usage?.models);
   const usageProviders = usageRows(usage?.providers);
-  const statusLabel = usageStatusLabel(usage);
+  const statusLabel = usageStatusLabel(usage) || (!usage && isMetadataFile ? copy("entire.checkpoints.usage.not_linked") : "");
   const costLabel = usageCostLabel(usage);
   const qualityLabel = usageQualityLabel(usage);
 
@@ -140,7 +147,7 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
 
       <div className="min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto rounded-md bg-oai-brand-50/70 p-3 dark:bg-oai-brand-950/30">
-          {usage ? (
+          {showUsagePreview ? (
             <div className="mb-3 rounded-md border border-oai-gray-200 bg-white/80 p-3 dark:border-oai-gray-800 dark:bg-oai-black/20">
               <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Usage preview</div>
               {statusLabel ? (

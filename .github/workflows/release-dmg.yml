@@ -180,6 +180,13 @@ jobs:
           echo "App path: $APP_PATH"
           bash scripts/create-dmg.sh "$APP_PATH"
 
+      - name: Package zipped app artifact
+        working-directory: VibeDeckMac
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeckMac.app' -maxdepth 1)"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "build/VibeDeckMac-${{ inputs.version }}-universal.zip"
+          ls -l "build/VibeDeckMac-${{ inputs.version }}-universal.zip"
+
       # 6. Create GitHub Release with DMG
       - name: Create release
         env:
@@ -187,5 +194,6 @@ jobs:
         run: |
           gh release create "v${{ inputs.version }}" \
             VibeDeckMac/build/VibeDeckMac.dmg \
+            VibeDeckMac/build/VibeDeckMac-${{ inputs.version }}-universal.zip \
             --title "v${{ inputs.version }}" \
             --generate-notes

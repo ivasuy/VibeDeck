@@ -120,3 +120,18 @@ test("package.json files array includes dashboard/dist", () => {
     "published package should not reference deleted LICENSE file"
   );
 });
+
+test("package.json files array includes scripts directory for postinstall", () => {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")
+  );
+  assert.ok(
+    pkg.files.includes("scripts/"),
+    "published package must include scripts directory for postinstall hook"
+  );
+  assert.equal(
+    typeof pkg.scripts?.postinstall,
+    "string",
+    "postinstall should be defined in package scripts"
+  );
+});

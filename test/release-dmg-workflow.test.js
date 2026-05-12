@@ -81,6 +81,19 @@ test("workflow creates DMG via create-dmg.sh", () => {
   assert.ok(content.includes("create-dmg.sh"));
 });
 
+test("workflow packages zipped native app artifact", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("Package zipped app artifact"));
+  assert.ok(content.includes("VibeDeckMac-${{ inputs.version }}-universal.zip"));
+});
+
+test("workflow includes zip asset in GitHub release", () => {
+  const content = loadWorkflow();
+  assert.ok(content.includes("gh release create"));
+  assert.ok(content.includes("VibeDeckMac.dmg"));
+  assert.ok(content.includes("VibeDeckMac-${{ inputs.version }}-universal.zip"));
+});
+
 test("workflow creates GitHub release with DMG asset", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("gh release create"));
@@ -96,6 +109,7 @@ test("workflow has correct step order: dashboard → bundle → xcode → dmg �
     "patch-pbxproj-icon.rb",
     "xcodebuild",
     "create-dmg.sh",
+    "Package zipped app artifact",
     "gh release create",
   ];
   let lastIndex = -1;

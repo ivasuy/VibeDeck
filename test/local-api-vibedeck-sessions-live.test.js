@@ -596,6 +596,16 @@ test('vibedeck-sessions-live emits rollup:update after canonical session update'
 
     const sessionUpdate = events.find((event) => event.type === 'session:update' && event.session_id === 'rollup-session');
     assert.ok(sessionUpdate);
+    assert.equal(typeof sessionUpdate.cwd, 'string');
+    assert.equal(sessionUpdate.repo_root, null);
+    assert.equal(sessionUpdate.repo_common_dir, null);
+    assert.equal(sessionUpdate.parent_repo, null);
+    assert.equal(sessionUpdate.tier, 'D');
+    assert.equal(sessionUpdate.branch_resolution_tier, 'D');
+    assert.equal(sessionUpdate.confidence, 'unattributed');
+    assert.equal(typeof sessionUpdate.started_at, 'string');
+    assert.equal(typeof sessionUpdate.last_observed_at, 'string');
+    assert.equal(typeof sessionUpdate.updated_at, 'string');
 
     const rollupUpdate = events.find((event) => event.type === 'rollup:update');
     assert.ok(rollupUpdate);

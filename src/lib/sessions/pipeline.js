@@ -216,8 +216,12 @@ function emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphaned
     kind: busEventKind,
     ended_at: latest ? latest.ended_at : event.ended_at,
     end_reason: latest ? latest.end_reason : event.end_reason,
+    cwd: latest ? latest.cwd : event.cwd,
     repo_root: latest ? latest.repo_root : null,
+    repo_common_dir: latest ? latest.repo_common_dir : null,
+    parent_repo: latest ? latest.parent_repo : null,
     branch: latest ? latest.branch : null,
+    branch_resolution_tier: latest ? latest.branch_resolution_tier : null,
     tier: latest ? latest.branch_resolution_tier : null,
     confidence: latest ? latest.confidence : null,
     model: latest ? latest.model : event.model,
@@ -228,6 +232,9 @@ function emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphaned
     cache_creation_input_tokens: latest ? latest.cache_creation_input_tokens : event.cache_creation_input_tokens,
     output_tokens: latest ? latest.output_tokens : event.output_tokens,
     reasoning_output_tokens: latest ? latest.reasoning_output_tokens : event.reasoning_output_tokens,
+    last_observed_at: latest ? latest.last_observed_at : event.observed_at,
+    started_at: latest ? latest.started_at : event.started_at,
+    updated_at: latest ? latest.updated_at : null,
   };
   bus.emit(`session:${busEventKind}`, payload);
 }

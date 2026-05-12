@@ -266,6 +266,17 @@ test('live update events include persisted model for realtime cost pricing', asy
     assert.equal(seen[0].input_tokens, 200);
     assert.equal(seen[0].cached_input_tokens, 700);
     assert.equal(seen[0].output_tokens, 100);
+    assert.equal(seen[0].cwd, root);
+    assert.equal(seen[0].repo_root, null);
+    assert.equal(seen[0].repo_common_dir, null);
+    assert.equal(seen[0].parent_repo, null);
+    assert.equal(seen[0].branch, null);
+    assert.equal(seen[0].tier, 'D');
+    assert.equal(seen[0].branch_resolution_tier, 'D');
+    assert.equal(seen[0].confidence, 'unattributed');
+    assert.equal(typeof seen[0].started_at, 'string');
+    assert.equal(typeof seen[0].last_observed_at, 'string');
+    assert.equal(typeof seen[0].updated_at, 'string');
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

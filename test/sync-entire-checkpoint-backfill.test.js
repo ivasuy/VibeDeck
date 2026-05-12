@@ -343,3 +343,195 @@ test('normal sync runs lightweight backfill for active/recent and tip-changed ac
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test('normal sync writes diagnostics and preserves tip cursor when per-repo backfill fails', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-entire-faildiag-'));
+  const prevHome = process.env.HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    const cursorsPath = path.join(trackerDir, 'cursors.json');
+    await fs.mkdir(trackerDir, { recursive: true });
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_repos (repo_root, entire_state, entire_checked_at, entire_version)
+        VALUES ('/repo/failing', 'active', '2026-05-12T08:00:00.000Z', '1.0.0');
+      `);
+    } finally {
+      db.close();
+    }
+
+    await fs.writeFile(
+      cursorsPath,
+      JSON.stringify({
+        version: 1,
+        files: {},
+        updatedAt: null,
+        entireCheckpointBackfill: {
+          tips: {
+            '/repo/failing': 'old-tip',
+          },
+          updatedAt: null,
+        },
+      }),
+      'utf8',
+    );
+
+    const { cmdSync, restore } = loadSyncWithStubs({
+      entireBridgeStub: {
+        listCheckpointsCached: async () => ({
+          available: true,
+          files: ['e2/abdc1ec6/metadata.json'],
+          tip: 'new-tip',
+        }),
+        readCheckpoint: async (_repoRoot, filePath) => ({ path: filePath, kind: 'json', parsed: {} }),
+      },
+      backfillStub: {
+        backfillEntireCheckpointLinks: async () => {
+          throw new Error('forced backfill failure');
+        },
+      },
+      pipelineStub: {
+        processSessionEvent: async () => {},
+        recoverActiveSessionMetadata: async () => {},
+      },
+    });
+
+    try {
+      await cmdSync([]);
+    } finally {
+      restore();
+    }
+
+    const diagnosticsPath = path.join(
+      tmp,
+      '.vibedeck',
+      'tracker',
+      'diagnostics',
+      'entire-checkpoint-backfill.json',
+    );
+    const diagnostics = JSON.parse(await fs.readFile(diagnosticsPath, 'utf8'));
+    assert.equal(diagnostics.repos.length, 1);
+    assert.equal(diagnostics.repos[0].repo_root, '/repo/failing');
+    assert.match(String(diagnostics.repos[0].error || ''), /forced backfill failure/);
+    assert.deepEqual(diagnostics.totals, {
+      scanned: 0,
+      linked: 0,
+      ambiguous: 0,
+      unmatched: 0,
+    });
+
+    const cursors = JSON.parse(await fs.readFile(cursorsPath, 'utf8'));
+    assert.equal(cursors.entireCheckpointBackfill.tips['/repo/failing'], 'old-tip');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('normal sync treats last_observed_at as recent activity for checkpoint backfill selection', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-entire-lastobs-'));
+  const prevHome = process.env.HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const calledRepos = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    await fs.mkdir(trackerDir, { recursive: true });
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, last_observed_at,
+          cost_estimated, cost_quality, created_at, updated_at
+        ) VALUES (
+          'codex', 'recent-by-observed', '2026-05-12T07:00:00.000Z', '2026-05-12T08:00:00.000Z', 'normal',
+          '/repo/last-observed', '/repo/last-observed', '/repo/last-observed/.git', NULL,
+          'main', 'A', 'high', NULL, 'gpt-5.5', 10, 0.1, '2026-05-12T09:30:00.000Z',
+          0, 'stored', '2026-05-12T07:00:00.000Z', '2026-05-10T08:00:00.000Z'
+        );
+      `);
+    } finally {
+      db.close();
+    }
+
+    const { cmdSync, restore } = loadSyncWithStubs({
+      entireBridgeStub: {
+        listCheckpointsCached: async () => ({
+          available: true,
+          files: ['e2/abdc1ec6/metadata.json'],
+          tip: 'tip-lastobs',
+        }),
+        readCheckpoint: async (_repoRoot, filePath) => ({ path: filePath, kind: 'json', parsed: {} }),
+      },
+      backfillStub: {
+        backfillEntireCheckpointLinks: async ({ repoRoot }) => {
+          calledRepos.push(repoRoot);
+          return { scanned: 1, linked: 1, ambiguous: 0, unmatched: 0, skipped: 0 };
+        },
+      },
+      pipelineStub: {
+        processSessionEvent: async () => {},
+        recoverActiveSessionMetadata: async () => {},
+      },
+    });
+
+    try {
+      await cmdSync([]);
+    } finally {
+      restore();
+    }
+
+    assert.deepEqual(calledRepos, ['/repo/last-observed']);
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

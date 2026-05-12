@@ -979,7 +979,7 @@ function collectIncrementalEntireBackfillRepos(dbPath, { now = () => new Date() 
     const sessionRows = db.prepare(`
       SELECT
         repo_root,
-        MAX(updated_at) AS last_updated_at,
+        MAX(COALESCE(last_observed_at, updated_at)) AS last_activity_at,
         SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS open_sessions
       FROM vibedeck_sessions
       WHERE repo_root IS NOT NULL AND TRIM(repo_root) <> ''
@@ -989,7 +989,7 @@ function collectIncrementalEntireBackfillRepos(dbPath, { now = () => new Date() 
       const root = normalizeRepoRoot(row?.repo_root);
       if (!root) continue;
       const openSessions = Number(row?.open_sessions || 0);
-      const recent = isRecentIso(row?.last_updated_at || null, nowMs, recentWindowMs);
+      const recent = isRecentIso(row?.last_activity_at || null, nowMs, recentWindowMs);
       repoMap.set(root, {
         repo_root: root,
         active_recent: openSessions > 0 || recent,
@@ -1097,7 +1097,6 @@ async function runEntireCheckpointBackfill({
         unmatched: 0,
         error: err?.message || String(err),
       });
-      if (tip) backfillCursor.tips[repoRoot] = tip;
     }
   }
 

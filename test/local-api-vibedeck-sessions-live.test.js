@@ -130,6 +130,51 @@ function createBackpressureMockSseExchange() {
   };
 }
 
+function createSelectiveBackpressureMockSseExchange({ failDataWriteNumber = 2 } = {}) {
+  const writes = [];
+  const req = new EventEmitter();
+  req.method = 'GET';
+  req.headers = { host: 'localhost' };
+  req.destroy = () => {};
+
+  let dataWriteCount = 0;
+  let blocked = false;
+  const res = new EventEmitter();
+  res.statusCode = null;
+  res.headers = null;
+  res.writeHead = (statusCode, headers) => {
+    res.statusCode = statusCode;
+    res.headers = headers;
+  };
+  res.write = (chunk) => {
+    const str = String(chunk);
+    writes.push(str);
+    if (!str.startsWith('data: ')) return true;
+    dataWriteCount += 1;
+    if (!blocked && dataWriteCount === failDataWriteNumber) {
+      blocked = true;
+      return false;
+    }
+    return true;
+  };
+  res.end = () => {};
+
+  return {
+    req,
+    res,
+    unblock() {
+      blocked = false;
+      res.emit('drain');
+    },
+    readEvents() {
+      return parseSseEvents(writes.join('')).events;
+    },
+    close() {
+      res.emit('close');
+    },
+  };
+}
+
 async function flushAsyncEvents() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -798,6 +843,42 @@ test('vibedeck-sessions-live attaches one drain listener while backpressured', a
 
     exchange.unblock();
     await flushAsyncEvents();
+    exchange.close();
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live does not replay backpressured payload after drain', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-no-replay-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  try {
+    const exchange = createSelectiveBackpressureMockSseExchange({ failDataWriteNumber: 2 });
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+    assert.equal(exchange.res.statusCode, 200);
+
+    const bus = getLiveBus();
+    bus.emit('session:update', {
+      provider: 'codex',
+      session_id: 'bp-no-replay',
+      observed_at: '2026-05-09T00:02:00.000Z',
+      total_tokens: 42,
+    });
+
+    await flushAsyncEvents();
+    exchange.unblock();
+    await flushAsyncEvents();
+
+    const events = exchange.readEvents().filter((event) => event.type === 'session:update' && event.session_id === 'bp-no-replay');
+    assert.equal(events.length, 1);
     exchange.close();
   } finally {
     await fs.rm(root, { recursive: true, force: true });

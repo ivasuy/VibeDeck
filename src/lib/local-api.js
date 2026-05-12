@@ -1856,6 +1856,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         while (client.queue.length > 0) {
           const payload = client.queue[0];
           const ok = writeChunk(`data: ${stringifySsePayload(payload)}\n\n`);
+          client.queue.shift();
           if (!ok) {
             if (client.waitingForDrain) return;
             client.waitingForDrain = true;
@@ -1867,7 +1868,6 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             res.once("drain", client.onDrain);
             return;
           }
-          client.queue.shift();
         }
       }
 

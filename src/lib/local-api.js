@@ -2286,7 +2286,10 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           return true;
         }
         const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
-        const usage = buildCheckpointUsage(dbPath, data);
+        const usage = buildCheckpointUsage(dbPath, data, {
+          metadataPath: checkpointPath,
+          groupId: checkpointGroupId(checkpointPath),
+        });
         json(res, {
           ...data,
           usage: usage || null,

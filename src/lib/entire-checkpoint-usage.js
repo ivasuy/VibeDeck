@@ -13,6 +13,13 @@ function checkpointGroupId(filePath) {
   return 'unknown';
 }
 
+function checkpointIdFrom(metadata, metadataPath) {
+  const explicit = typeof metadata?.checkpoint_id === 'string' ? metadata.checkpoint_id.trim() : '';
+  if (explicit) return explicit;
+  const fromPath = normalizePath(metadataPath).match(/[a-f0-9]{12}/i);
+  return fromPath ? fromPath[0].toLowerCase() : '';
+}
+
 function agentToProvider(agent) {
   const normalized = String(agent || '').trim().toLowerCase();
   if (normalized === 'claude-code') return 'claude';
@@ -101,13 +108,20 @@ function summarizeRows(rows) {
     total_cost_usd: costUnknownCount > 0 ? null : knownCostUsd,
     known_cost_usd: knownCostUsd,
     cost_unknown_count: costUnknownCount,
+    providers: provider_breakdown,
+    models: model_breakdown,
     provider_breakdown,
     model_breakdown,
     session_count: Array.isArray(rows) ? rows.length : 0,
   };
 }
 
-function sessionsFromLinks(db, metadata) {
+function normalizeCheckpointMetadata(payload) {
+  if (payload && typeof payload.parsed === 'object' && payload.parsed) return payload.parsed;
+  return payload && typeof payload === 'object' ? payload : {};
+}
+
+function sessionsFromLinksByEntireSession(db, metadata) {
   const entireSessionId = String(metadata?.entire_session_id || '').trim();
   if (!entireSessionId) return [];
   return db
@@ -119,6 +133,23 @@ function sessionsFromLinks(db, metadata) {
       WHERE l.entire_session_id = ?
     `)
     .all(entireSessionId);
+}
+
+function sessionsFromLinksByCheckpointId(db, checkpointId) {
+  if (!checkpointId) return [];
+  return db
+    .prepare(`
+      SELECT DISTINCT s.provider, s.session_id, s.model, s.total_tokens, s.total_cost_usd
+      FROM vibedeck_session_entire_links l
+      JOIN vibedeck_sessions s
+        ON s.provider = l.provider AND s.session_id = l.session_id
+      WHERE EXISTS (
+        SELECT 1
+        FROM json_each(l.entire_checkpoint_ids)
+        WHERE LOWER(TRIM(json_each.value)) = LOWER(?)
+      )
+    `)
+    .all(checkpointId);
 }
 
 function sessionsFromOverlap(db, metadata) {
@@ -137,7 +168,7 @@ function sessionsFromOverlap(db, metadata) {
     .all(provider, endedAt, startedAt);
 }
 
-function buildCheckpointUsage(dbPath, metadata) {
+function buildCheckpointUsage(dbPath, payload, context = {}) {
   let db;
   try {
     db = new DatabaseSync(dbPath, { readOnly: true });
@@ -145,10 +176,36 @@ function buildCheckpointUsage(dbPath, metadata) {
     return null;
   }
   try {
-    let rows = sessionsFromLinks(db, metadata);
-    if (rows.length === 0) rows = sessionsFromOverlap(db, metadata);
+    const metadata = normalizeCheckpointMetadata(payload);
+    const checkpointId = checkpointIdFrom(metadata, context.metadataPath || payload?.path || '');
+    const metadataPath = normalizePath(context.metadataPath || payload?.path || '');
+    const groupId = checkpointGroupId(context.groupId || metadataPath);
+    let rows = sessionsFromLinksByEntireSession(db, metadata);
+    let confidence = 'linked';
+    if (rows.length === 0 && checkpointId) rows = sessionsFromLinksByCheckpointId(db, checkpointId);
+    if (rows.length === 0) {
+      rows = sessionsFromOverlap(db, metadata);
+      confidence = rows.length > 0 ? 'overlap' : 'linked';
+    }
     if (rows.length === 0) return null;
-    return summarizeRows(rows);
+    const summary = summarizeRows(rows);
+    return {
+      checkpoint_id: checkpointId || null,
+      metadata_path: metadataPath || null,
+      checkpoint_group_id: groupId,
+      agent: typeof metadata?.agent === 'string' ? metadata.agent : null,
+      branch: typeof metadata?.branch === 'string' ? metadata.branch : null,
+      total_tokens: summary.total_tokens,
+      total_cost_usd: summary.total_cost_usd,
+      known_cost_usd: summary.known_cost_usd,
+      cost_unknown_count: summary.cost_unknown_count,
+      providers: summary.providers,
+      models: summary.models,
+      provider_breakdown: summary.provider_breakdown,
+      model_breakdown: summary.model_breakdown,
+      session_count: summary.session_count,
+      confidence,
+    };
   } finally {
     db.close();
   }
@@ -173,7 +230,7 @@ async function buildCheckpointUsageIndex({ dbPath, listResult, readCheckpoint })
     } catch {
       continue;
     }
-    const summary = buildCheckpointUsage(dbPath, metadata);
+    const summary = buildCheckpointUsage(dbPath, metadata, { metadataPath, groupId });
     if (summary) usage[groupId] = summary;
   }
   return usage;

@@ -53,6 +53,7 @@ const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
+const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
@@ -92,6 +93,7 @@ async function cmdSync(argv) {
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
+      if (!opts.auto) process.stderr.write("Rebuild phase: clearing canonical tables\n");
       await resetVibedeckSyncState({
         dbPath,
         queuePath,
@@ -138,6 +140,10 @@ async function cmdSync(argv) {
     const openclawFiles = openclawSignal?.sessionFile
       ? [{ path: openclawSignal.sessionFile, source: "openclaw" }]
       : [];
+
+    if (opts.rebuildVibedeckDb && !opts.auto) {
+      process.stderr.write("Rebuild phase: parsing provider logs\n");
+    }
 
     if (progress?.enabled) {
       progress.start(
@@ -597,6 +603,9 @@ async function cmdSync(argv) {
         )}/${formatNumber(sessionEventProcessor.total)} events`,
       );
     }
+    if (opts.rebuildVibedeckDb && !opts.auto) {
+      process.stderr.write("Rebuild phase: draining session events\n");
+    }
     const sessionEventDrain = await sessionEventProcessor.drain({
       onProgress: progress?.enabled
         ? ({ processed, total }) => {
@@ -607,12 +616,47 @@ async function cmdSync(argv) {
           }
         : null,
     });
+    let failureDiagnosticsPath = null;
+    if (sessionEventDrain.errors.length > 0) {
+      failureDiagnosticsPath = await writeSessionFailureDiagnostics(trackerDir, sessionEventDrain.errors);
+    }
     if (!opts.auto && sessionEventDrain.errors.length > 0) {
+      const examples = sessionEventDrain.errors
+        .slice(0, 5)
+        .map(
+          (row) =>
+            `- ${row.provider || "unknown"} ${row.session_id || "unknown"} ${row.kind || "event"} ${
+              row.observed_at || "unknown-time"
+            }: ${row.message}`,
+        )
+        .join("\n");
       process.stderr.write(
-        `Session live-state sync: ${sessionEventDrain.errors.length} event(s) failed\n`,
+        `Session live-state sync: ${sessionEventDrain.errors.length} event(s) failed\n${examples}\nDiagnostics: ${
+          failureDiagnosticsPath || "not written"
+        }\n`,
+      );
+    }
+    if (opts.rebuildVibedeckDb && sessionEventDrain.errors.length > 0) {
+      throw new Error(
+        `rebuild completed with ${sessionEventDrain.errors.length} failed session event(s); diagnostics: ${
+          failureDiagnosticsPath || "not written"
+        }`,
       );
     }
     await recoverActiveSessionMetadata(dbPath);
+    if (opts.rebuildVibedeckDb) {
+      if (!opts.auto) process.stderr.write("Rebuild phase: closing historical idle sessions\n");
+      const closure = reapOrphanedSessions(dbPath, {
+        idleTimeoutMin: getIdleTimeoutMin(),
+        endReason: "historical_idle_reaped",
+      });
+      if (!opts.auto && closure.reaped > 0) {
+        process.stderr.write(`Historical idle closure: ${closure.reaped} open session(s) closed\n`);
+      }
+      if (!opts.auto) {
+        process.stderr.write("Rebuild phase: validating canonical facts\n");
+      }
+    }
 
     cursors.updatedAt = new Date().toISOString();
     await writeJson(cursorsPath, cursors);
@@ -621,10 +665,12 @@ async function cmdSync(argv) {
 
     await clearAutoRetry(trackerDir);
 
-    try {
-      reapOrphanedSessions(dbPath);
-    } catch (_e) {
-      // ignore
+    if (!opts.rebuildVibedeckDb) {
+      try {
+        reapOrphanedSessions(dbPath);
+      } catch (_e) {
+        // ignore
+      }
     }
 
     if (!opts.auto) {
@@ -772,7 +818,7 @@ function createSessionEventProcessor(processor) {
     queue = queue
       .then(() => processor(event))
       .catch((err) => {
-        errors.push(err);
+        errors.push(eventFailureRecord(event, err));
       })
       .finally(() => {
         processed += 1;
@@ -807,6 +853,28 @@ function createSessionEventProcessor(processor) {
       return total;
     },
   };
+}
+
+function eventFailureRecord(event, err) {
+  return {
+    provider: event?.provider || null,
+    session_id: event?.session_id || null,
+    kind: event?.kind || null,
+    observed_at: event?.observed_at || null,
+    message: err?.message || String(err),
+    stack: err?.stack || null,
+  };
+}
+
+async function writeSessionFailureDiagnostics(trackerDir, failures) {
+  if (!Array.isArray(failures) || failures.length === 0) return null;
+  const diagnosticsDir = path.join(trackerDir, "diagnostics");
+  await fs.mkdir(diagnosticsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const outPath = path.join(diagnosticsDir, `session-event-failures-${stamp}.jsonl`);
+  const body = failures.map((row) => JSON.stringify(row)).join("\n") + "\n";
+  await fs.writeFile(outPath, body, "utf8");
+  return outPath;
 }
 
 module.exports = {

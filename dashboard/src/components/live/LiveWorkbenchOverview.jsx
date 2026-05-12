@@ -136,13 +136,12 @@ export function LiveWorkbenchOverview({
               displayValue={costDisplay}
               fontSize={14}
               padding={2}
-              gap={0}
+              gap={1.5}
               fontWeight={600}
               gradientHeight={0}
-              digitStyle={{ width: "0.72ch" }}
-              counterStyle={{ gap: 0 }}
+              digitStyle={{ width: "0.86ch" }}
+              counterStyle={{ gap: "0.08em", letterSpacing: "0.03em" }}
             />
-            <span className="ml-1">project total</span>
           </div>
         </div>
         <div className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">

@@ -193,8 +193,8 @@ export function LiveSessionList({
                   <div className="grid gap-3 text-xs sm:grid-cols-3 xl:grid-cols-4">
                     <MetaItem icon={GitBranch} label="Branches" value={scopeLabel === "No Git repo" ? branchValue : (branchLabel || branchValue)} />
                     <MetaItem icon={Layers3} label="Related sessions" value={toDisplayNumber(relatedCount)} />
-                    <MetaItem icon={Radio} label="Project tokens" value={toDisplayNumber(workstreamTokens(workstream))} />
-                    <MetaItem icon={CircleDollarSign} label="Project cost" value={formatWorkstreamCost(workstream)} />
+                    <MetaItem icon={Radio} label="Tokens" value={toDisplayNumber(workstreamTokens(workstream))} />
+                    <MetaItem icon={CircleDollarSign} label="Cost" value={formatWorkstreamCost(workstream)} />
                     <MetaItem icon={CirclePlay} label="Live now" value={toDisplayNumber(workstream.active_total_tokens ?? 0)} />
                     <MetaItem icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
                   </div>

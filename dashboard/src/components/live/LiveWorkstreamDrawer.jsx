@@ -188,8 +188,8 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
             <Metric icon={GitBranch} label="Branches" value={workstream.branches.join(", ") || "—"} />
             <Metric icon={Activity} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
             <Metric icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
-            <Metric icon={Radio} label="Project tokens" value={toDisplayNumber(workstream.audit_total_tokens ?? workstream.total_tokens ?? 0)} />
-            <Metric icon={CircleDollarSign} label="Project cost" value={formatCost(auditCost)} />
+            <Metric icon={Radio} label="Audit tokens" value={toDisplayNumber(workstream.audit_total_tokens ?? workstream.total_tokens ?? 0)} />
+            <Metric icon={CircleDollarSign} label="Audit cost" value={formatCost(auditCost)} />
             <Metric icon={Radio} label="Live tokens" value={toDisplayNumber(workstream.active_total_tokens ?? 0)} />
             <Metric icon={CircleDollarSign} label="Live cost" value={formatCost(activeCost)} />
           </div>

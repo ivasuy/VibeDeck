@@ -12,7 +12,7 @@ function tileFor(label) {
 }
 
 describe("LiveWorkbenchOverview", () => {
-  it("shows active-session totals separately from active-project audit totals", () => {
+  it("shows active-session totals separately from audit totals without inline project-total text", () => {
     render(
       <LiveWorkbenchOverview
         status="connected"
@@ -49,7 +49,7 @@ describe("LiveWorkbenchOverview", () => {
       />,
     );
 
-    expect(screen.getByText("Project total")).toBeTruthy();
+    expect(screen.queryByText("project total")).toBeNull();
     expect(screen.getByText("Live now")).toBeTruthy();
     expect(screen.getByText("$5.50")).toBeTruthy();
     expect(screen.getAllByText("$0.50").length).toBeGreaterThan(0);

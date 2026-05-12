@@ -252,5 +252,6 @@ describe("LiveSessionList", () => {
     const staleModel = screen.getByText("stale-model");
     const pos = activeModel.compareDocumentPosition(staleModel);
     expect(Boolean(pos & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(screen.queryAllByText("Branches").length).toBe(1);
   });
 });

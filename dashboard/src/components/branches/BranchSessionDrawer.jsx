@@ -1,10 +1,11 @@
 import React from "react";
-import { CalendarClock, CircleDollarSign, Cpu, Layers3, Server, Tag, X } from "lucide-react";
+import { CalendarClock, CircleDollarSign, Cpu, Layers3, Tag, X } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { SlidePanel } from "../../ui/foundation";
 import { copy } from "../../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "../live/ConfidenceBadge";
+import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
 
 function formatTimestamp(value) {
   if (!value) return "—";
@@ -33,6 +34,25 @@ function formatEstimatedCostLabel(entry) {
   const formatted = formatCostLabel(entry?.total_cost_usd);
   if (formatted === copy("branches.value.unknown_cost")) return formatted;
   return formatted;
+}
+
+function normalizeProvider(value) {
+  const provider = String(value || "").trim().toLowerCase();
+  return provider || "unknown";
+}
+
+function modelProvidersFromSessions(model, sessions) {
+  const targetModel = String(model || "").trim();
+  const out = [];
+  const seen = new Set();
+  for (const session of Array.isArray(sessions) ? sessions : []) {
+    if (String(session?.model || "").trim() !== targetModel) continue;
+    const provider = normalizeProvider(session?.provider);
+    if (seen.has(provider)) continue;
+    seen.add(provider);
+    out.push(provider);
+  }
+  return out;
 }
 
 function SessionMetric({ icon: Icon, label, value }) {
@@ -106,6 +126,21 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                     <div className="max-w-[220px] truncate text-xs font-medium text-oai-black dark:text-white">
                       {String(modelEntry?.model || "—")}
                     </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      {(modelEntry?.provider
+                        ? [normalizeProvider(modelEntry.provider)]
+                        : modelProvidersFromSessions(modelEntry?.model, sessions)
+                      ).map((provider) => (
+                        <span
+                          key={`${String(modelEntry?.model || "unknown")}:${provider}`}
+                          className="inline-flex items-center gap-1 rounded-md bg-oai-black/[0.04] px-1.5 py-0.5 text-[10px] font-medium text-oai-gray-600 dark:bg-white/[0.06] dark:text-oai-gray-300"
+                          aria-label={`Provider ${provider}`}
+                        >
+                          <ProviderIcon provider={provider} size={12} className="shrink-0" />
+                          <span className="truncate">{provider}</span>
+                        </span>
+                      ))}
+                    </div>
                     <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
                       <span className="inline-flex items-center gap-1 tabular-nums">
                         <Cpu className="h-3 w-3" aria-hidden />
@@ -134,8 +169,11 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="vd-chip inline-flex items-center gap-1.5 rounded-md bg-oai-black/[0.035] px-2 py-1 text-xs font-medium text-oai-black dark:bg-white/[0.06] dark:text-white">
-                          <Server className="h-3.5 w-3.5" aria-hidden />
+                        <span
+                          className="vd-chip inline-flex items-center gap-1.5 rounded-md bg-oai-black/[0.035] px-2 py-1 text-xs font-medium text-oai-black dark:bg-white/[0.06] dark:text-white"
+                          aria-label={`Provider ${normalizeProvider(session?.provider)}`}
+                        >
+                          <ProviderIcon provider={session?.provider} size={14} className="shrink-0" />
                           {String(session?.provider || "—")}
                         </span>
                         <span className="truncate text-sm font-medium text-oai-black dark:text-white">

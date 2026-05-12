@@ -171,6 +171,8 @@ describe("BranchesPage", () => {
     expect(screen.queryByText("s-001")).toBeNull();
     expect(screen.queryByText("s-002")).toBeNull();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText("Provider codex").length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText("Provider claude").length).toBeGreaterThan(0);
     expect(screen.getByText("Tier A")).toBeTruthy();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });

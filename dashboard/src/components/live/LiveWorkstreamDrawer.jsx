@@ -226,8 +226,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
         </div>
 
         <div className="flex-1 overflow-auto p-5">
-          <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            <Metric icon={GitBranch} label="Branches" value={workstream.branches.join(", ") || "—"} />
+          <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Metric icon={Activity} label="Active" value={`${toDisplayNumber(workstream.active_session_count)} active`} />
             <Metric icon={PauseCircle} label="Stale" value={`${toDisplayNumber(workstream.recently_completed_count)} stale`} />
             <Metric icon={Radio} label="Audit tokens" value={toDisplayNumber(workstream.audit_total_tokens ?? workstream.total_tokens ?? 0)} />

@@ -58,16 +58,20 @@ describe("reduceLiveSessionEvent", () => {
         },
       ],
     });
-    expect(state).toEqual([
-      { provider: "codex", session_id: "s-live", total_tokens: 10, state: "live" },
-      {
-        provider: "codex",
-        session_id: "s-ended",
-        total_tokens: 20,
-        ended_at: "2026-05-10T10:00:00.000Z",
-        state: "ended",
-      },
-    ]);
+    expect(state).toHaveLength(2);
+    expect(state.find((row) => row.session_id === "s-live")).toMatchObject({
+      provider: "codex",
+      session_id: "s-live",
+      total_tokens: 10,
+      state: "live",
+    });
+    expect(state.find((row) => row.session_id === "s-ended")).toMatchObject({
+      provider: "codex",
+      session_id: "s-ended",
+      total_tokens: 20,
+      ended_at: "2026-05-10T10:00:00.000Z",
+      state: "ended",
+    });
   });
 
   it("creates or upserts a session for session:start", () => {
@@ -175,6 +179,66 @@ describe("useVibeDeckLiveSessions", () => {
     expect(result.current.sessions[0].total_tokens).toBe(2);
   });
 
+  it("stores backend workstreams and totals from snapshot events", () => {
+    const { result } = renderHook(() => useVibeDeckLiveSessions());
+    const source = MockEventSource.instances[0];
+
+    act(() => {
+      source.emitMessage(JSON.stringify({
+        type: "snapshot",
+        sessions: [{ provider: "codex", session_id: "s1", total_tokens: 1 }],
+        workstreams: [{
+          id: "project:vibedeck",
+          active_session_count: 1,
+          active_total_tokens: 1,
+          audit_total_tokens: 101,
+          audit_total_cost_usd: 4.5,
+        }],
+        totals: {
+          active_sessions: 1,
+          active_tokens: 1,
+          audit_tokens: 101,
+          audit_cost_usd: 4.5,
+        },
+        generated_at: "2026-05-12T00:00:00.000Z",
+        last_sync_at: "2026-05-12T00:00:00.000Z",
+      }));
+    });
+
+    expect(result.current.sessions).toHaveLength(1);
+    expect(result.current.workstreams).toHaveLength(1);
+    expect(result.current.totals.audit_tokens).toBe(101);
+    expect(result.current.generatedAt).toBe("2026-05-12T00:00:00.000Z");
+    expect(result.current.lastSyncAt).toBe("2026-05-12T00:00:00.000Z");
+  });
+
+  it("replaces backend rollups on rollup:update while preserving session rows", () => {
+    const { result } = renderHook(() => useVibeDeckLiveSessions());
+    const source = MockEventSource.instances[0];
+
+    act(() => {
+      source.emitMessage(JSON.stringify({
+        type: "snapshot",
+        sessions: [{ provider: "codex", session_id: "s1", total_tokens: 1 }],
+        workstreams: [],
+        totals: { active_tokens: 1, audit_tokens: 1 },
+      }));
+    });
+
+    act(() => {
+      source.emitMessage(JSON.stringify({
+        type: "rollup:update",
+        sessions: [{ provider: "codex", session_id: "s1", total_tokens: 2 }],
+        workstreams: [{ id: "project:vibedeck", audit_total_tokens: 200 }],
+        totals: { active_tokens: 2, audit_tokens: 200 },
+      }));
+    });
+
+    expect(result.current.sessions[0].total_tokens).toBe(2);
+    expect(result.current.workstreams[0].audit_total_tokens).toBe(200);
+    expect(result.current.totals.audit_tokens).toBe(200);
+  });
+
   it("keeps recently ended snapshot rows for stale workstream detail", () => {
     const { result } = renderHook(() => useVibeDeckLiveSessions());
     const source = MockEventSource.instances[0];
@@ -195,8 +259,8 @@ describe("useVibeDeckLiveSessions", () => {
     });
 
     expect(result.current.sessions).toHaveLength(2);
-    expect(result.current.sessions[0]).toMatchObject({ session_id: "s-live", state: "live" });
-    expect(result.current.sessions[1]).toMatchObject({ session_id: "s-ended", state: "ended" });
+    expect(result.current.sessions.find((row) => row.session_id === "s-live")).toMatchObject({ session_id: "s-live", state: "live" });
+    expect(result.current.sessions.find((row) => row.session_id === "s-ended")).toMatchObject({ session_id: "s-ended", state: "ended" });
   });
 
   it("marks degraded state for invalid JSON", () => {

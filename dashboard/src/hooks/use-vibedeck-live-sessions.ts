@@ -3,6 +3,24 @@ import { useEffect, useMemo, useState } from "react";
 type LiveSession = Record<string, any>;
 type LiveSessionEvent = Record<string, any> & { type?: string };
 type LiveSessionStatus = "idle" | "connecting" | "connected" | "degraded";
+type LivePayloadState = {
+  sessions: LiveSession[];
+  workstreams: Record<string, any>[];
+  totals: Record<string, any>;
+  generatedAt: string | null;
+  lastSyncAt: string | null;
+  canonicalIncomplete: boolean;
+};
+
+const EMPTY_TOTALS: Record<string, any> = {};
+const EMPTY_STATE: LivePayloadState = {
+  sessions: [],
+  workstreams: [],
+  totals: EMPTY_TOTALS,
+  generatedAt: null,
+  lastSyncAt: null,
+  canonicalIncomplete: false,
+};
 
 function isRecord(value: unknown): value is Record<string, any> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -33,12 +51,12 @@ function eventPayload(event: LiveSessionEvent): LiveSession {
   return payload;
 }
 
+function sortKey(row: LiveSession): string {
+  return String(row.last_observed_at || row.observed_at || row.ended_at || row.started_at || row.created_at || row.updated_at || "");
+}
+
 function sortByRecent(rows: LiveSession[]): LiveSession[] {
-  return rows.slice().sort((a, b) =>
-    String(b.updated_at || b.last_observed_at || b.observed_at || b.started_at || "").localeCompare(
-      String(a.updated_at || a.last_observed_at || a.observed_at || a.started_at || ""),
-    ),
-  );
+  return rows.slice().sort((a, b) => sortKey(b).localeCompare(sortKey(a)));
 }
 
 export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEvent): LiveSession[] {
@@ -88,8 +106,27 @@ export function reduceLiveSessionEvent(prev: LiveSession[], event: LiveSessionEv
   return sortByRecent([...passthrough, ...keyed.values()]);
 }
 
+export function reduceLivePayloadEvent(prev: LivePayloadState, event: LiveSessionEvent): LivePayloadState {
+  if (!isRecord(event)) return prev;
+  if (event.type === "snapshot" || event.type === "rollup:update") {
+    return {
+      sessions: reduceLiveSessionEvent(prev.sessions, { ...event, type: "snapshot" }),
+      workstreams: Array.isArray(event.workstreams) ? event.workstreams.filter(isRecord) : prev.workstreams,
+      totals: isRecord(event.totals) ? { ...event.totals } : prev.totals,
+      generatedAt: typeof event.generated_at === "string" ? event.generated_at : prev.generatedAt,
+      lastSyncAt: typeof event.last_sync_at === "string" ? event.last_sync_at : prev.lastSyncAt,
+      canonicalIncomplete: Boolean(event.canonical_incomplete ?? prev.canonicalIncomplete),
+    };
+  }
+  if (event.type === "rollup:error") return prev;
+  return {
+    ...prev,
+    sessions: reduceLiveSessionEvent(prev.sessions, event),
+  };
+}
+
 export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean } = {}) {
-  const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [payload, setPayload] = useState<LivePayloadState>(EMPTY_STATE);
   const [status, setStatus] = useState<LiveSessionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +150,7 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     source.onmessage = (event) => {
       try {
         const parsed = JSON.parse(String(event?.data ?? ""));
-        setSessions((prev) => reduceLiveSessionEvent(prev, parsed));
+        setPayload((prev) => reduceLivePayloadEvent(prev, parsed));
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Invalid live session event";
         setStatus("degraded");
@@ -131,5 +168,9 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     };
   }, [enabled]);
 
-  return useMemo(() => ({ sessions, status, error }), [sessions, status, error]);
+  return useMemo(() => ({
+    ...payload,
+    status,
+    error,
+  }), [payload, status, error]);
 }

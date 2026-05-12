@@ -99,7 +99,7 @@ function BranchOverridePlaceholder() {
 }
 
 export function LivePage() {
-  const { sessions, status, error } = useVibeDeckLiveSessions();
+  const { sessions, workstreams, totals, status, error, canonicalIncomplete } = useVibeDeckLiveSessions();
   const {
     data: usageLimits,
     error: limitsError,
@@ -204,11 +204,16 @@ export function LivePage() {
         <section className="grid min-w-0 gap-6">
           <LiveWorkbenchOverview
             sessions={sessions}
+            workstreams={workstreams}
+            totals={totals}
+            canonicalIncomplete={canonicalIncomplete}
             status={status}
             limits={usageLimits}
           />
           <LiveOperationsPanel
             sessions={sessions}
+            workstreams={workstreams}
+            totals={totals}
             selectedKey={selectedKey}
             onSelectSession={setSelectedKey}
             streamStatus={status}

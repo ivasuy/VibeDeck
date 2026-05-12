@@ -14,6 +14,11 @@ const {
   listExcludedSources,
   normalizeUsageScope,
 } = require("./source-metadata");
+const {
+  checkpointGroupId,
+  buildCheckpointUsage,
+  buildCheckpointUsageIndex,
+} = require("./entire-checkpoint-usage");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -2243,7 +2248,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       }
       const { listCheckpointsCached } = require("./entire-bridge");
       const result = await listCheckpointsCached(repoRoot);
-      json(res, result);
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const checkpointUsage = await buildCheckpointUsageIndex({
+        dbPath,
+        listResult: result,
+        readCheckpoint: (filePath) => require("./entire-bridge").readCheckpoint(repoRoot, filePath),
+      });
+      json(res, {
+        ...result,
+        checkpoint_usage: checkpointUsage,
+      });
       return true;
     }
 
@@ -2266,7 +2280,18 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const { readCheckpoint } = require("./entire-bridge");
       try {
         const data = await readCheckpoint(repoRoot, checkpointPath);
-        json(res, data);
+        const isMetadata = String(checkpointPath || "").replace(/\\/g, "/").endsWith("/metadata.json");
+        if (!isMetadata) {
+          json(res, data);
+          return true;
+        }
+        const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+        const usage = buildCheckpointUsage(dbPath, data);
+        json(res, {
+          ...data,
+          usage: usage || null,
+          checkpoint_group_id: checkpointGroupId(checkpointPath),
+        });
       } catch (e) {
         json(res, { error: "checkpoint_unavailable", message: e?.message || String(e) }, 500);
       }

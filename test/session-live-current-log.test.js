@@ -282,6 +282,88 @@ test('live update events include persisted model for realtime cost pricing', asy
   }
 });
 
+test('live update events from git repo include immediate attribution payload fields', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-git-attribution-'));
+  try {
+    cp.execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: root, stdio: 'ignore' });
+    await fs.writeFile(path.join(root, 'README.md'), 'test\n', 'utf8');
+    cp.execFileSync('git', ['add', 'README.md'], { cwd: root, stdio: 'ignore' });
+    cp.execFileSync('git', ['commit', '-m', 'init'], { cwd: root, stdio: 'ignore' });
+    const branchName = 'feature/live-immediate';
+    cp.execFileSync('git', ['checkout', '-b', branchName], { cwd: root, stdio: 'ignore' });
+
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+    const now = Date.now();
+    const transitionedAt = new Date(now - 2000).toISOString();
+    const started = new Date(now - 1000).toISOString();
+    const observed = new Date(now).toISOString();
+    const realRoot = await fs.realpath(root);
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare(
+        `
+        INSERT INTO vibedeck_head_history (
+          repo_root, worktree_root, transitioned_at, ref_name
+        ) VALUES (?, ?, ?, ?)
+        `,
+      ).run(realRoot, realRoot, transitionedAt, branchName);
+    } finally {
+      db.close();
+    }
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'git-attribution-session',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+
+    const bus = getLiveBus();
+    const seen = [];
+    const onUpdate = (event) => seen.push(event);
+    bus.on('session:update', onUpdate);
+    try {
+      await processSessionEvent(dbPath, {
+        kind: 'update',
+        provider: 'codex',
+        session_id: 'git-attribution-session',
+        observed_at: observed,
+        delta_tokens: 10,
+        input_tokens: 6,
+        cached_input_tokens: 2,
+        output_tokens: 2,
+        reasoning_output_tokens: 0,
+        cwd: root,
+        model: 'gpt-5.4',
+      });
+    } finally {
+      bus.off('session:update', onUpdate);
+    }
+
+    assert.equal(seen.length, 1);
+    const event = seen[0];
+    const realCommon = await fs.realpath(path.join(root, '.git'));
+    assert.equal(event.cwd, root);
+    assert.equal(event.repo_root, realRoot);
+    assert.equal(event.repo_common_dir, realCommon);
+    assert.equal(event.parent_repo, null);
+    assert.equal(event.branch, branchName);
+    assert.ok(event.branch_resolution_tier);
+    assert.equal(event.tier, event.branch_resolution_tier);
+    assert.notEqual(event.confidence, 'unattributed');
+    assert.equal(typeof event.started_at, 'string');
+    assert.equal(typeof event.last_observed_at, 'string');
+    assert.equal(typeof event.updated_at, 'string');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('new activity after orphan_reaped reopens the session', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-live-reopen-reaped-'));
   try {

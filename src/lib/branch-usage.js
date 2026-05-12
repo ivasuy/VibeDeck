@@ -90,11 +90,11 @@ function queryBranchUsage(
     const params = {};
 
     if (from) {
-      clauses.push('started_at >= @from');
+      clauses.push('activity_at >= @from');
       params.from = from;
     }
     if (to) {
-      clauses.push('started_at <= @to');
+      clauses.push('activity_at <= @to');
       params.to = to;
     }
     if (repo) {
@@ -118,6 +118,7 @@ function queryBranchUsage(
             s.session_id,
             w.window_start AS started_at,
             w.window_end AS ended_at,
+            COALESCE(w.window_end, s.last_observed_at, s.ended_at, w.window_start, s.started_at) AS activity_at,
             s.repo_root,
             COALESCE(w.branch, 'unattributed') AS branch,
             s.branch_resolution_tier,
@@ -136,7 +137,8 @@ function queryBranchUsage(
             s.provider,
             s.session_id,
             s.started_at,
-            s.ended_at,
+            COALESCE(s.ended_at, s.last_observed_at, s.started_at) AS ended_at,
+            COALESCE(s.last_observed_at, s.ended_at, s.started_at) AS activity_at,
             s.repo_root,
             COALESCE(s.branch, 'unattributed') AS branch,
             s.branch_resolution_tier,
@@ -197,7 +199,7 @@ function queryBranchUsage(
           cost_estimated: false,
           cost_quality: 'zero_tokens',
           session_count: 0,
-          last_seen_at: row.started_at,
+          last_seen_at: row.activity_at,
           confidence: confidenceShape(),
           models: new Map(),
           _cost: createCostAccumulator(),
@@ -209,8 +211,8 @@ function queryBranchUsage(
       entry.total_tokens += Number(row.total_tokens || 0);
       entry.session_count += 1;
       addCostToAccumulator(entry._cost, resolvedCost);
-      if (String(row.started_at || '') > String(entry.last_seen_at || '')) {
-        entry.last_seen_at = row.started_at;
+      if (String(row.activity_at || '') > String(entry.last_seen_at || '')) {
+        entry.last_seen_at = row.activity_at;
       }
       entry.confidence[normalizeConfidence(row.confidence)] += 1;
 

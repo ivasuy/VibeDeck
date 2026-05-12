@@ -556,3 +556,82 @@ test('GET /functions/vibedeck-branch-usage estimates stale zero branch window co
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('GET /functions/vibedeck-branch-usage uses last_observed_at for open-session branch rows', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-open-observed-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['feature/live', 'main']);
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.prepare(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, last_observed_at,
+          cost_estimated, cost_quality, created_at, updated_at
+        ) VALUES (
+          @provider, @session_id, @started_at, @ended_at, NULL,
+          @cwd, @repo_root, NULL, @parent_repo,
+          @branch, @branch_resolution_tier, @confidence, NULL,
+          @model, @total_tokens, @total_cost_usd, @last_observed_at,
+          @cost_estimated, @cost_quality, @created_at, @updated_at
+        )
+      `).run({
+        provider: 'claude',
+        session_id: 'open-branch',
+        started_at: '2026-05-12T01:00:00.000Z',
+        ended_at: null,
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        parent_repo: repoRoot,
+        branch: 'feature/live',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'claude-sonnet-4',
+        total_tokens: 2000,
+        total_cost_usd: 2.5,
+        last_observed_at: '2026-05-12T01:15:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+        created_at: '2026-05-12T01:00:00.000Z',
+        updated_at: '2026-05-12T01:16:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+    );
+
+    assert.equal(res.statusCode, 200);
+    const payload = JSON.parse(res.body.toString('utf8'));
+    const repo = payload.repos.find((row) => row.repo_root === repoRoot);
+    assert.ok(repo);
+    const branch = repo.branches.find((row) => row.branch === 'feature/live');
+    assert.ok(branch);
+    assert.equal(branch.total_tokens, 2000);
+    assert.equal(branch.total_cost_usd, 2.5);
+    assert.equal(branch.last_seen_at, '2026-05-12T01:15:00.000Z');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

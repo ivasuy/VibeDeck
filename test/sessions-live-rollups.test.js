@@ -332,3 +332,117 @@ test("provider and model groups expose unknown cost via null totals", () => {
   assert.equal(unknownModel.audit_cost_unknown_count, 1);
   assert.equal(unknownModel.active_cost_unknown_count, 1);
 });
+
+test("branch groups include separate active and audit totals with breakdowns", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "ended-main",
+      started_at: "2026-05-12T00:00:00.000Z",
+      ended_at: "2026-05-12T00:30:00.000Z",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "main",
+      model: "gpt-5.5",
+      total_tokens: 1000,
+      total_cost_usd: 1.25,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      last_observed_at: "2026-05-12T00:30:00.000Z",
+      created_at: "2026-05-12T00:00:00.000Z",
+      updated_at: "2026-05-12T00:30:00.000Z",
+    },
+    {
+      provider: "claude",
+      session_id: "active-feature",
+      started_at: "2026-05-12T01:00:00.000Z",
+      ended_at: null,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "feature/live",
+      model: "claude-sonnet-4",
+      total_tokens: 2000,
+      total_cost_usd: 2.75,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      last_observed_at: "2026-05-12T01:10:00.000Z",
+      created_at: "2026-05-12T01:00:00.000Z",
+      updated_at: "2026-05-12T01:10:00.000Z",
+    },
+  ], {
+    now: "2026-05-12T01:15:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.equal(ws.branch_groups.length, 2);
+
+  const featureBranch = ws.branch_groups.find((row) => row.branch === "feature/live");
+  const mainBranch = ws.branch_groups.find((row) => row.branch === "main");
+  assert.ok(featureBranch);
+  assert.ok(mainBranch);
+
+  assert.equal(featureBranch.active_session_count, 1);
+  assert.equal(featureBranch.audit_session_count, 1);
+  assert.equal(featureBranch.active_total_tokens, 2000);
+  assert.equal(featureBranch.audit_total_tokens, 2000);
+  assert.equal(featureBranch.active_total_cost_usd, 2.75);
+  assert.equal(featureBranch.audit_total_cost_usd, 2.75);
+
+  assert.equal(mainBranch.active_session_count, 0);
+  assert.equal(mainBranch.recently_completed_count, 1);
+  assert.equal(mainBranch.audit_session_count, 1);
+  assert.equal(mainBranch.active_total_tokens, 0);
+  assert.equal(mainBranch.audit_total_tokens, 1000);
+  assert.equal(mainBranch.active_total_cost_usd, 0);
+  assert.equal(mainBranch.audit_total_cost_usd, 1.25);
+
+  assert.deepEqual(featureBranch.providers, [
+    {
+      provider: "claude",
+      session_count: 1,
+      active_total_tokens: 2000,
+      audit_total_tokens: 2000,
+      active_total_cost_usd: 2.75,
+      audit_total_cost_usd: 2.75,
+      active_known_cost_usd: 2.75,
+      audit_known_cost_usd: 2.75,
+      active_cost_unknown_count: 0,
+      audit_cost_unknown_count: 0,
+    },
+  ]);
+  assert.deepEqual(mainBranch.models, [
+    {
+      model: "gpt-5.5",
+      session_count: 1,
+      active_total_tokens: 0,
+      audit_total_tokens: 1000,
+      active_total_cost_usd: 0,
+      audit_total_cost_usd: 1.25,
+      active_known_cost_usd: 0,
+      audit_known_cost_usd: 1.25,
+      active_cost_unknown_count: 0,
+      audit_cost_unknown_count: 0,
+    },
+  ]);
+
+  for (const row of ws.branch_groups) {
+    assert.equal(typeof row.active_cost_unknown_count, "number");
+    assert.equal(typeof row.audit_cost_unknown_count, "number");
+    assert.ok(Array.isArray(row.providers));
+    assert.ok(Array.isArray(row.models));
+    assert.ok(Array.isArray(row.sessions));
+  }
+});

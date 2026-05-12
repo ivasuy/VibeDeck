@@ -202,6 +202,13 @@ function buildBreakdowns(rows, activeRows) {
         audit_total_tokens: 0,
         active_total_cost_usd: 0,
         audit_total_cost_usd: 0,
+        active_known_cost_usd: 0,
+        audit_known_cost_usd: 0,
+        active_cost_unknown_count: 0,
+        audit_cost_unknown_count: 0,
+        providers: new Map(),
+        models: new Map(),
+        sessions: [],
       });
     }
 
@@ -231,10 +238,66 @@ function buildBreakdowns(rows, activeRows) {
     b.audit_session_count += 1;
     b.audit_total_tokens += tokens;
     b.audit_total_cost_usd += cost.total_cost_usd ?? 0;
+    b.audit_known_cost_usd += cost.known_cost_usd;
+    b.audit_cost_unknown_count += cost.unknown_count;
+    b.sessions.push(row);
+    if (!b.providers.has(provider)) {
+      b.providers.set(provider, {
+        provider,
+        session_count: 0,
+        active_total_tokens: 0,
+        audit_total_tokens: 0,
+        active_total_cost_usd: 0,
+        audit_total_cost_usd: 0,
+        active_known_cost_usd: 0,
+        audit_known_cost_usd: 0,
+        active_cost_unknown_count: 0,
+        audit_cost_unknown_count: 0,
+      });
+    }
+    if (!b.models.has(model)) {
+      b.models.set(model, {
+        model,
+        session_count: 0,
+        active_total_tokens: 0,
+        audit_total_tokens: 0,
+        active_total_cost_usd: 0,
+        audit_total_cost_usd: 0,
+        active_known_cost_usd: 0,
+        audit_known_cost_usd: 0,
+        active_cost_unknown_count: 0,
+        audit_cost_unknown_count: 0,
+      });
+    }
+
+    const bp = b.providers.get(provider);
+    bp.session_count += 1;
+    bp.audit_total_tokens += tokens;
+    bp.audit_total_cost_usd += cost.total_cost_usd ?? 0;
+    bp.audit_known_cost_usd += cost.known_cost_usd;
+    bp.audit_cost_unknown_count += cost.unknown_count;
+
+    const bm = b.models.get(model);
+    bm.session_count += 1;
+    bm.audit_total_tokens += tokens;
+    bm.audit_total_cost_usd += cost.total_cost_usd ?? 0;
+    bm.audit_known_cost_usd += cost.known_cost_usd;
+    bm.audit_cost_unknown_count += cost.unknown_count;
+
     if (active) {
       b.active_session_count += 1;
       b.active_total_tokens += tokens;
       b.active_total_cost_usd += cost.total_cost_usd ?? 0;
+      b.active_known_cost_usd += cost.known_cost_usd;
+      b.active_cost_unknown_count += cost.unknown_count;
+      bp.active_total_tokens += tokens;
+      bp.active_total_cost_usd += cost.total_cost_usd ?? 0;
+      bp.active_known_cost_usd += cost.known_cost_usd;
+      bp.active_cost_unknown_count += cost.unknown_count;
+      bm.active_total_tokens += tokens;
+      bm.active_total_cost_usd += cost.total_cost_usd ?? 0;
+      bm.active_known_cost_usd += cost.known_cost_usd;
+      bm.active_cost_unknown_count += cost.unknown_count;
     } else if (isSessionEnded(row)) {
       b.recently_completed_count += 1;
     }
@@ -255,7 +318,37 @@ function buildBreakdowns(rows, activeRows) {
         audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
       }))
       .sort((a, b) => a.model.localeCompare(b.model)),
-    branch_groups: Array.from(byBranch.values()).sort((a, b) => a.branch.localeCompare(b.branch)),
+    branch_groups: Array.from(byBranch.values())
+      .map((row) => ({
+        branch: row.branch,
+        active_session_count: row.active_session_count,
+        recently_completed_count: row.recently_completed_count,
+        audit_session_count: row.audit_session_count,
+        active_total_tokens: row.active_total_tokens,
+        audit_total_tokens: row.audit_total_tokens,
+        active_known_cost_usd: row.active_known_cost_usd,
+        audit_known_cost_usd: row.audit_known_cost_usd,
+        active_cost_unknown_count: row.active_cost_unknown_count,
+        audit_cost_unknown_count: row.audit_cost_unknown_count,
+        active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
+        audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
+        providers: Array.from(row.providers.values())
+          .map((providerRow) => ({
+            ...providerRow,
+            active_total_cost_usd: providerRow.active_cost_unknown_count > 0 ? null : providerRow.active_known_cost_usd,
+            audit_total_cost_usd: providerRow.audit_cost_unknown_count > 0 ? null : providerRow.audit_known_cost_usd,
+          }))
+          .sort((a, b) => a.provider.localeCompare(b.provider)),
+        models: Array.from(row.models.values())
+          .map((modelRow) => ({
+            ...modelRow,
+            active_total_cost_usd: modelRow.active_cost_unknown_count > 0 ? null : modelRow.active_known_cost_usd,
+            audit_total_cost_usd: modelRow.audit_cost_unknown_count > 0 ? null : modelRow.audit_known_cost_usd,
+          }))
+          .sort((a, b) => a.model.localeCompare(b.model)),
+        sessions: row.sessions.sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''))),
+      }))
+      .sort((a, b) => a.branch.localeCompare(b.branch)),
   };
 }
 

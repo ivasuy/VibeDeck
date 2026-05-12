@@ -390,6 +390,25 @@ function readLiveSnapshotForSse(queuePath) {
   return readLiveSessionsSnapshot(queuePath);
 }
 
+function shouldSuppressStaleLiveDelta(event, nowMs = Date.now()) {
+  if (!event || typeof event !== "object") return false;
+  const endedAt = String(event.ended_at || "").trim();
+  const state = String(event.state || "").trim().toLowerCase();
+  const ended = Boolean(endedAt) || state === "ended";
+  if (!ended) return false;
+  const observed = String(
+    event.last_observed_at ||
+      event.observed_at ||
+      event.ended_at ||
+      event.started_at ||
+      "",
+  ).trim();
+  const observedMs = Date.parse(observed);
+  if (!Number.isFinite(observedMs)) return false;
+  const staleWindowMs = getIdleTimeoutMin() * 60_000;
+  return nowMs - observedMs > staleWindowMs;
+}
+
 // ---------------------------------------------------------------------------
 // Per-model pricing — delegated to src/lib/pricing/
 //   - CURATED overrides (kiro-*, hy3-*, composer-*, kimi-for-coding, etc.)
@@ -1925,10 +1944,12 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
 
       const bus = getLiveBus();
       client.onStart = (event) => {
+        if (shouldSuppressStaleLiveDelta(event)) return;
         enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
         enqueueRollupUpdate();
       };
       client.onUpdate = (event) => {
+        if (shouldSuppressStaleLiveDelta(event)) return;
         const extra =
           event && event.cwd == null && typeof event.observed_at === "string"
             ? { last_observed_at: event.observed_at }
@@ -1942,6 +1963,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         enqueueRollupUpdate();
       };
       client.onEnd = (event) => {
+        if (shouldSuppressStaleLiveDelta(event)) return;
         enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
         enqueueRollupUpdate();
       };

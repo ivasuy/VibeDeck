@@ -265,6 +265,100 @@ test('vibedeck-sessions-live streams snapshot then deltas', async () => {
   }
 });
 
+test('vibedeck-sessions-live suppresses stale historical catch-up deltas after snapshot', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-stale-catchup-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  const srv = await startLocalApiServer({ queuePath });
+  let req = null;
+  let res = null;
+  try {
+    const connection = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
+    req = connection.req;
+    res = connection.res;
+    assert.equal(res.statusCode, 200);
+    res.setEncoding('utf8');
+    res.resume();
+
+    let buf = '';
+    const got = [];
+    let resolveSnapshot;
+    let resolveCurrentUpdate;
+    const snapshotPromise = new Promise((resolve) => { resolveSnapshot = resolve; });
+    const currentUpdatePromise = new Promise((resolve) => { resolveCurrentUpdate = resolve; });
+    const snapshotTimeout = setTimeout(() => resolveSnapshot(new Error('timeout waiting for snapshot')), 1000);
+    const currentUpdateTimeout = setTimeout(() => resolveCurrentUpdate(new Error('timeout waiting for current session:update')), 2000);
+
+    res.on('data', (chunk) => {
+      buf += chunk;
+      const parsed = parseSseEvents(buf);
+      buf = parsed.rest;
+      for (const event of parsed.events) {
+        got.push(event);
+        if (event.type === 'snapshot') resolveSnapshot();
+        if (event.type === 'session:update' && event.session_id === 'current-live') resolveCurrentUpdate();
+      }
+    });
+
+    const snapResult = await snapshotPromise;
+    clearTimeout(snapshotTimeout);
+    if (snapResult instanceof Error) throw snapResult;
+
+    const now = Date.now();
+    const staleObservedAt = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+    const staleStartedAt = new Date(now - 3 * 60 * 60 * 1000).toISOString();
+    const bus = getLiveBus();
+
+    bus.emit('session:start', {
+      provider: 'codex',
+      session_id: 'historical-ended',
+      started_at: staleStartedAt,
+      last_observed_at: staleObservedAt,
+      ended_at: staleObservedAt,
+      total_tokens: 10,
+      model: 'gpt-5.4',
+    });
+    bus.emit('session:end', {
+      provider: 'codex',
+      session_id: 'historical-ended',
+      started_at: staleStartedAt,
+      last_observed_at: staleObservedAt,
+      ended_at: staleObservedAt,
+      total_tokens: 10,
+      model: 'gpt-5.4',
+    });
+
+    bus.emit('session:update', {
+      provider: 'codex',
+      session_id: 'current-live',
+      observed_at: new Date(now).toISOString(),
+      total_tokens: 30,
+      model: 'gpt-5.4',
+    });
+
+    const currentUpdateResult = await currentUpdatePromise;
+    clearTimeout(currentUpdateTimeout);
+    if (currentUpdateResult instanceof Error) throw currentUpdateResult;
+
+    assert.equal(got.some((event) => event.type === 'session:start' && event.session_id === 'historical-ended'), false);
+    assert.equal(got.some((event) => event.type === 'session:end' && event.session_id === 'historical-ended'), false);
+    assert.equal(got.some((event) => event.type === 'session:update' && event.session_id === 'current-live'), true);
+
+  } finally {
+    try {
+      if (req) req.destroy();
+      if (res) res.destroy();
+    } catch {}
+    await srv.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('vibedeck-sessions-live snapshot estimates positive-token known-model rows', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-estimated-cost-'));
   const trackerDir = path.join(root, '.vibedeck', 'tracker');

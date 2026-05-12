@@ -142,6 +142,53 @@ test("GET /functions/vibedeck-sessions-live-snapshot excludes ended sessions out
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test("GET /functions/vibedeck-sessions-live-snapshot reaps old open rows using last_observed_at", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "vd-live-snapshot-reap-"));
+  const trackerDir = path.join(root, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const oldObserved = "2026-04-01T00:05:00.000Z";
+  const freshMutation = new Date().toISOString();
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      model, total_tokens, total_cost_usd, last_observed_at,
+      created_at, updated_at
+    ) VALUES (
+      'claude', 'old-open', '2026-04-01T00:00:00.000Z', NULL, NULL,
+      '/tmp/repo', '/tmp/repo', NULL, NULL,
+      'main', 'A', 'high', NULL,
+      'claude-sonnet-4', 1000, 0.01, '${oldObserved}',
+      '2026-04-01T00:00:00.000Z', '${freshMutation}'
+    );
+  `);
+  db.close();
+
+  const { createLocalApiHandler } = require("../src/lib/local-api");
+  const handler = createLocalApiHandler({ queuePath });
+  const req = createRequest({ method: "GET" });
+  const res = createResponse();
+  await handler(req, res, new URL("http://127.0.0.1/functions/vibedeck-sessions-live-snapshot"));
+
+  const payload = parseResponseJson(res);
+  assert.deepEqual(payload.sessions.map((row) => row.session_id), []);
+
+  const verify = new DatabaseSync(dbPath, { readOnly: true });
+  const row = verify.prepare("SELECT ended_at, end_reason FROM vibedeck_sessions WHERE session_id = 'old-open'").get();
+  verify.close();
+  assert.equal(row.ended_at, oldObserved);
+  assert.equal(row.end_reason, "orphan_reaped");
+
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test("POST /functions/vibedeck-sessions-live-snapshot returns 405", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "vd-live-snapshot-method-"));
   const trackerDir = path.join(root, ".vibedeck", "tracker");

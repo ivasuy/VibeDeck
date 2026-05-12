@@ -1,6 +1,11 @@
 'use strict';
 
 const DEFAULT_NEARBY_MS = 60 * 60 * 1000;
+const {
+  isSessionEnded,
+  sessionActivityIso,
+  liveSortIso,
+} = require('./activity-state');
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
@@ -18,9 +23,7 @@ function sessionKey(row) {
 }
 
 function isActiveSession(row) {
-  if (!row) return false;
-  if (isNonEmptyString(row.ended_at)) return false;
-  return String(row.state || '').trim().toLowerCase() !== 'ended';
+  return !isSessionEnded(row);
 }
 
 function attributionBranchName(value) {
@@ -50,9 +53,7 @@ function sessionStart(row, fallbackNow) {
 
 function sessionEnd(row, fallbackNow) {
   return parseTime(row?.ended_at)
-    ?? parseTime(row?.updated_at)
-    ?? parseTime(row?.last_observed_at)
-    ?? parseTime(row?.observed_at)
+    ?? parseTime(sessionActivityIso(row))
     ?? sessionStart(row, fallbackNow);
 }
 
@@ -173,7 +174,9 @@ function buildLiveWorkstreams(sessions, options = {}) {
       started_at: new Date(group.window_start).toISOString(),
       updated_at: new Date(group.window_end).toISOString(),
     };
-  }).sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+  }).sort((a, b) => String(liveSortIso(b.primary_session) || b.updated_at || '').localeCompare(
+    String(liveSortIso(a.primary_session) || a.updated_at || ''),
+  ));
 }
 
 function cryptoSafeHash(value) {

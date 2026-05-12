@@ -2,6 +2,7 @@
 
 const { DatabaseSync } = require('node:sqlite');
 const { getIdleTimeoutMin } = require('./idle-timeout');
+const { sessionActivityIso, shouldReapIdleSession } = require('./activity-state');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -18,25 +19,16 @@ function toDateOrThrow(now) {
   throw new TypeError('reapOrphanedSessions: now must be a Date or ISO string');
 }
 
-function maxIso(a, b) {
-  if (a == null) return b;
-  if (b == null) return a;
-  return a >= b ? a : b;
-}
-
-function reapOrphanedSessions(dbPath, { now, idleTimeoutMin } = {}) {
+function reapOrphanedSessions(dbPath, { now, idleTimeoutMin, endReason = 'orphan_reaped' } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('reapOrphanedSessions: dbPath must be a non-empty string');
 
   const timeoutMin = getIdleTimeoutMin(idleTimeoutMin);
 
   const nowDate = toDateOrThrow(now);
-  const nowMs = nowDate.getTime();
-  const timeoutMs = timeoutMin * 60 * 1000;
-
   const db = new DatabaseSync(dbPath);
   try {
     const live = db
-      .prepare('SELECT provider, session_id, started_at, updated_at FROM vibedeck_sessions WHERE ended_at IS NULL')
+      .prepare('SELECT provider, session_id, started_at, last_observed_at, updated_at, ended_at FROM vibedeck_sessions WHERE ended_at IS NULL')
       .all();
 
     const update = db.prepare(
@@ -51,11 +43,10 @@ function reapOrphanedSessions(dbPath, { now, idleTimeoutMin } = {}) {
     db.exec('BEGIN');
     try {
       for (const row of live) {
-        const lastActivityIso = maxIso(row.updated_at, row.started_at);
-        const lastActivityMs = new Date(lastActivityIso).getTime();
-        if (!Number.isFinite(lastActivityMs)) continue;
-        if (nowMs - lastActivityMs > timeoutMs) {
-          update.run(lastActivityIso, 'orphan_reaped', nowDate.toISOString(), row.provider, row.session_id);
+        const lastActivityIso = sessionActivityIso(row);
+        if (!lastActivityIso) continue;
+        if (shouldReapIdleSession(row, { now: nowDate, idleTimeoutMin: timeoutMin })) {
+          update.run(lastActivityIso, endReason, nowDate.toISOString(), row.provider, row.session_id);
           reaped += 1;
         }
       }

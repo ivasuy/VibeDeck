@@ -7,6 +7,7 @@ const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
 const { reapOrphanedSessions } = require("./sessions/reaper");
 const { buildLiveWorkstreams } = require("./sessions/workstreams");
+const { liveSortIso } = require("./sessions/activity-state");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
   filterRowsByUsageScope,
@@ -350,7 +351,8 @@ function readLiveSessionsSnapshot(queuePath) {
         WHERE ended_at IS NULL OR ended_at >= ?
       `)
       .all(recentEndedCutoff)
-      .map(enrichLiveSessionCost);
+      .map(enrichLiveSessionCost)
+      .sort((a, b) => String(liveSortIso(b) || "").localeCompare(String(liveSortIso(a) || "")));
     return {
       sessions,
       generated_at: generatedAt,

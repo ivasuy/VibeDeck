@@ -21,11 +21,13 @@ function sessionStart(row, now = Date.now()) {
   return parseTime(row?.started_at) ?? parseTime(row?.created_at) ?? now;
 }
 
+function sessionActivityAt(row) {
+  return row?.last_observed_at || row?.observed_at || row?.ended_at || row?.started_at || row?.created_at || null;
+}
+
 function sessionEnd(row, now = Date.now()) {
   return parseTime(row?.ended_at)
-    ?? parseTime(row?.updated_at)
-    ?? parseTime(row?.last_observed_at)
-    ?? parseTime(row?.observed_at)
+    ?? parseTime(sessionActivityAt(row))
     ?? sessionStart(row, now);
 }
 

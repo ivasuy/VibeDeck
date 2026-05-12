@@ -5,9 +5,9 @@ const { spawn, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
-const { reapOrphanedSessions } = require("./sessions/reaper");
 const { buildLiveWorkstreams } = require("./sessions/workstreams");
-const { liveSortIso } = require("./sessions/activity-state");
+const { readLiveAuditRollups } = require("./sessions/live-rollups");
+const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
   filterRowsByUsageScope,
@@ -341,26 +341,16 @@ function readLiveSessionsSnapshot(queuePath) {
     lastSyncAt = fs.statSync(queuePath).mtime.toISOString();
   } catch {}
 
-  reapOrphanedSessions(dbPath);
-  const db = new DatabaseSync(dbPath);
-  try {
-    const recentEndedCutoff = new Date(Date.now() - LIVE_RECENT_ENDED_MS).toISOString();
-    const sessions = db
-      .prepare(`
-        SELECT * FROM vibedeck_sessions
-        WHERE ended_at IS NULL OR ended_at >= ?
-      `)
-      .all(recentEndedCutoff)
-      .map(enrichLiveSessionCost)
-      .sort((a, b) => String(liveSortIso(b) || "").localeCompare(String(liveSortIso(a) || "")));
-    return {
-      sessions,
-      generated_at: generatedAt,
-      last_sync_at: lastSyncAt,
-    };
-  } finally {
-    db.close();
-  }
+  const rollups = readLiveAuditRollups(dbPath, {
+    now: generatedAt,
+    idleTimeoutMin: getIdleTimeoutMin(),
+    recentEndedMs: LIVE_RECENT_ENDED_MS,
+  });
+  return {
+    ...rollups,
+    generated_at: generatedAt,
+    last_sync_at: rollups.last_sync_at || lastSyncAt || null,
+  };
 }
 
 // ---------------------------------------------------------------------------

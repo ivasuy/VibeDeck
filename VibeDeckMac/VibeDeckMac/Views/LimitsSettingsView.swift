@@ -82,7 +82,10 @@ struct LimitsSettingsView: View {
                 default: return "copilot.svg"
                 }
             }()
-            if let image = bundledSVGIcon(named: filename, color: colorScheme == .dark ? "#FFFFFF" : "#111111") {
+            if let image = BrandLogoResolver.shared.image(
+                named: filename,
+                replacingCurrentColorWith: colorScheme == .dark ? "#FFFFFF" : "#111111"
+            ) {
                 Image(nsImage: image)
                     .resizable()
                     .interpolation(.high)
@@ -101,27 +104,6 @@ struct LimitsSettingsView: View {
                 Color.clear
             }
         }
-    }
-
-    private func bundledSVGIcon(named filename: String, color: String) -> NSImage? {
-        guard let url = Bundle.main.resourceURL?
-            .appendingPathComponent("EmbeddedServer/vibedeck/dashboard/dist/brand-logos/\(filename)"),
-              var svg = try? String(contentsOf: url, encoding: .utf8) else {
-            return nil
-        }
-        svg = svg.replacingOccurrences(of: "currentColor", with: color)
-
-        // Normalize width/height to 24
-        let widthPattern = #"width\s*=\s*"[^"]*""#
-        let heightPattern = #"height\s*=\s*"[^"]*""#
-        svg = svg.replacingOccurrences(of: widthPattern, with: #"width="24""#, options: .regularExpression)
-        svg = svg.replacingOccurrences(of: heightPattern, with: #"height="24""#, options: .regularExpression)
-
-        guard let data = svg.data(using: .utf8),
-              let image = NSImage(data: data) else { return nil }
-        image.size = NSSize(width: 24, height: 24)
-        image.isTemplate = false
-        return image
     }
 }
 

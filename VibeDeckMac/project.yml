@@ -58,11 +58,24 @@ targets:
     postBuildScripts:
       - script: |
           SRC_DIR="${SRCROOT}/EmbeddedServer"
+          if [ ! -d "$SRC_DIR" ]; then
+            SRC_DIR="${SRCROOT}/../EmbeddedServer"
+          fi
           DST_DIR="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer"
+          DASHBOARD_BRAND_LOGOS_DIR="${SRCROOT}/../dashboard/dist/brand-logos"
+          if [ ! -d "$DASHBOARD_BRAND_LOGOS_DIR" ]; then
+            DASHBOARD_BRAND_LOGOS_DIR="${SRCROOT}/dashboard/dist/brand-logos"
+          fi
+          BRAND_LOGOS_DIR="${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/brand-logos"
           if [ -d "$SRC_DIR" ]; then
             rm -rf "$DST_DIR"
             cp -a "$SRC_DIR" "$DST_DIR"
             chmod +x "$DST_DIR/node"
+          fi
+
+          if [ -d "$DASHBOARD_BRAND_LOGOS_DIR" ]; then
+            mkdir -p "$BRAND_LOGOS_DIR"
+            cp -a "$DASHBOARD_BRAND_LOGOS_DIR/." "$BRAND_LOGOS_DIR/"
           fi
           exit 0
         name: "Copy EmbeddedServer to app bundle"

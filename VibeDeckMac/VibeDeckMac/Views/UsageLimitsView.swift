@@ -321,7 +321,7 @@ struct UsageLimitsView: View {
                 default: return "copilot.svg"
                 }
             }()
-            if let image = bundledSVGIcon(
+            if let image = BrandLogoResolver.shared.image(
                 named: filename,
                 replacingCurrentColorWith: colorScheme == .dark ? "#FFFFFF" : "#111111"
             ) {
@@ -339,66 +339,6 @@ struct UsageLimitsView: View {
         }
     }
 
-    private func bundledSVGIcon(named filename: String, replacingCurrentColorWith color: String? = nil) -> NSImage? {
-        guard let url = Bundle.main.resourceURL?
-            .appendingPathComponent("EmbeddedServer/vibedeck/dashboard/dist/brand-logos/\(filename)"),
-              var svg = try? String(contentsOf: url, encoding: .utf8) else {
-            return nil
-        }
-
-        if let color {
-            svg = svg.replacingOccurrences(of: "currentColor", with: color)
-        }
-
-        svg = normalizedIconSVG(svg, targetSize: 24)
-
-        guard let data = svg.data(using: .utf8),
-              let sourceImage = NSImage(data: data) else {
-            return nil
-        }
-
-        sourceImage.size = NSSize(width: 24, height: 24)
-        sourceImage.isTemplate = false
-        return sourceImage
-    }
-
-    private func normalizedIconSVG(_ svg: String, targetSize: Int) -> String {
-        var normalized = svg
-        let widthPattern = #"width\s*=\s*"[^"]*""#
-        let heightPattern = #"height\s*=\s*"[^"]*""#
-
-        if normalized.range(of: widthPattern, options: .regularExpression) != nil {
-            normalized = normalized.replacingOccurrences(
-                of: widthPattern,
-                with: #"width="\#(targetSize)""#,
-                options: .regularExpression
-            )
-        } else {
-            normalized = normalized.replacingOccurrences(
-                of: "<svg",
-                with: #"<svg width="\#(targetSize)""#,
-                options: .literal,
-                range: normalized.range(of: "<svg")
-            )
-        }
-
-        if normalized.range(of: heightPattern, options: .regularExpression) != nil {
-            normalized = normalized.replacingOccurrences(
-                of: heightPattern,
-                with: #"height="\#(targetSize)""#,
-                options: .regularExpression
-            )
-        } else {
-            normalized = normalized.replacingOccurrences(
-                of: "<svg",
-                with: #"<svg height="\#(targetSize)""#,
-                options: .literal,
-                range: normalized.range(of: "<svg")
-            )
-        }
-
-        return normalized
-    }
 }
 
 // MARK: - Settings Gear Button

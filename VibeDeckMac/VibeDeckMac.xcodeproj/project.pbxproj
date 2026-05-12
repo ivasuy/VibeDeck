@@ -65,6 +65,7 @@
 		F29C7F18F954BF21B9F513D0 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9341C5A49C80D84102DB7EB2 /* DashboardView.swift */; };
 		F5BBE5517A8F5D827A1C0EED /* UsageTrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5375DFB65B81D5B1490AA128 /* UsageTrendChart.swift */; };
 		F799073A0EC11ED475C9E5D6 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 882E3FC66D8617C1D9C55EDE /* APIClient.swift */; };
+		FC79D011D015191DC95637F0 /* BrandLogoResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E94FF86955465993DC542661 /* BrandLogoResolver.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -146,6 +147,7 @@
 		E3611E096621563F8352AA4D /* VibeDeckMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VibeDeckMac.entitlements; sourceTree = "<group>"; };
 		E51990BFC043870F480BDBC8 /* TopModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopModelsView.swift; sourceTree = "<group>"; };
 		E60C40E6B513BEEAC04E1D95 /* BoltShape.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoltShape.swift; sourceTree = "<group>"; };
+		E94FF86955465993DC542661 /* BrandLogoResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandLogoResolver.swift; sourceTree = "<group>"; };
 		F1A00300744831AD0EE6F7FA /* HeatmapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapData.swift; sourceTree = "<group>"; };
 		F1DE8AB3CEF7C00070F9E108 /* ProjectUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectUsage.swift; sourceTree = "<group>"; };
 		F5AA8B5146A5728E579F48C0 /* MonthlyUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthlyUsage.swift; sourceTree = "<group>"; };
@@ -159,6 +161,7 @@
 		122434145ED2AD7E0368D6B3 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				E94FF86955465993DC542661 /* BrandLogoResolver.swift */,
 				BE7A5DC73A77F821FEF1C4C2 /* Colors.swift */,
 				BE148F533E8FA42A439DD514 /* Constants.swift */,
 				A2E4D71F62423E91406FE27E /* DashboardBrowserOpener.swift */,
@@ -427,7 +430,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "SRC_DIR=\"${SRCROOT}/EmbeddedServer\"\nDST_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer\"\nif [ -d \"$SRC_DIR\" ]; then\n  rm -rf \"$DST_DIR\"\n  cp -a \"$SRC_DIR\" \"$DST_DIR\"\n  chmod +x \"$DST_DIR/node\"\nfi\nexit 0\n";
+			shellScript = "SRC_DIR=\"${SRCROOT}/EmbeddedServer\"\nif [ ! -d \"$SRC_DIR\" ]; then\n  SRC_DIR=\"${SRCROOT}/../EmbeddedServer\"\nfi\nDST_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer\"\nDASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/../dashboard/dist/brand-logos\"\nif [ ! -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  DASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/dashboard/dist/brand-logos\"\nfi\nBRAND_LOGOS_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/brand-logos\"\nif [ -d \"$SRC_DIR\" ]; then\n  rm -rf \"$DST_DIR\"\n  cp -a \"$SRC_DIR\" \"$DST_DIR\"\n  chmod +x \"$DST_DIR/node\"\nfi\n\nif [ -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  mkdir -p \"$BRAND_LOGOS_DIR\"\n  cp -a \"$DASHBOARD_BRAND_LOGOS_DIR/.\" \"$BRAND_LOGOS_DIR/\"\nfi\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -439,6 +442,7 @@
 				F799073A0EC11ED475C9E5D6 /* APIClient.swift in Sources */,
 				6E9883B41A4B2C848C53B3B8 /* ActivityHeatmapView.swift in Sources */,
 				5B19EB69B23C4843577D7A61 /* BoltShape.swift in Sources */,
+				FC79D011D015191DC95637F0 /* BrandLogoResolver.swift in Sources */,
 				689290B7393DE8B4FCB9C0A3 /* ClawdCompanionView.swift in Sources */,
 				10F798965E11A08905A314ED /* Colors.swift in Sources */,
 				625603966AE9CAC866BECC30 /* Constants.swift in Sources */,

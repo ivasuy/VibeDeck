@@ -1,14 +1,27 @@
 import SwiftUI
+import AppKit
 
 extension Color {
     static let brand = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 1.0)
     static let brandStrong = Color(.sRGB, red: 0.310, green: 0.275, blue: 0.659, opacity: 1.0)
     static let brandLight = Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
-    static let chromeTop = Color(.sRGB, red: 0.965, green: 0.969, blue: 0.992, opacity: 0.92)
-    static let chromeBottom = Color(.sRGB, red: 0.938, green: 0.944, blue: 0.985, opacity: 0.78)
-    static let panelFill = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.10)
-    static let panelFillStrong = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.16)
-    static let panelBorder = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.22)
+    static let chromeTop = Color(NSColor.windowBackgroundColor).opacity(0.98)
+    static let chromeBottom = Color(NSColor.controlColor).opacity(0.86)
+    static var panelFill: Color {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isDark {
+            return Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.14)
+        }
+        return Color(.sRGB, red: 0.657, green: 0.694, blue: 0.988, opacity: 0.14)
+    }
+    static var panelFillStrong: Color {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isDark {
+            return Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.28)
+        }
+        return Color(.sRGB, red: 0.657, green: 0.694, blue: 0.988, opacity: 0.28)
+    }
+    static let panelBorder = Color(NSColor.separatorColor).opacity(0.45)
     static let statusOnline = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.92)
     static let statusWarning = Color(.sRGB, red: 0.933, green: 0.620, blue: 0.243, opacity: 0.92)
 

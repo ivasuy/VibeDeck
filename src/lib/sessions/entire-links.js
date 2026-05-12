@@ -4,6 +4,12 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+function normalizeMatchConfidence(value) {
+  const normalized = nonEmpty(value) ? value.trim().toLowerCase() : 'high';
+  if (normalized === 'exact' || normalized === 'overlap' || normalized === 'high') return normalized;
+  return 'high';
+}
+
 function normalizeCheckpointIds(checkpointIds) {
   if (!Array.isArray(checkpointIds)) return [];
   return checkpointIds
@@ -36,7 +42,7 @@ function upsertEntireLink(db, {
     session_id.trim(),
     entire_session_id.trim(),
     idsJson,
-    nonEmpty(match_confidence) ? match_confidence.trim() : 'high',
+    normalizeMatchConfidence(match_confidence),
   );
   return true;
 }

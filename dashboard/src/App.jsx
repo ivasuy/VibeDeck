@@ -15,6 +15,10 @@ import { SkillsPage } from "./pages/SkillsPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
 import { WidgetsPage } from "./pages/WidgetsPage.jsx";
 
+function RemovedLimitsRedirect() {
+  return <Navigate to="/dashboard" replace />;
+}
+
 export default function App() {
   // Subscribing to locale here makes App rerender on language switch, which
   // rebuilds every child element reference and triggers copy() re-evaluation
@@ -39,7 +43,7 @@ export default function App() {
 
   let PageComponent = LivePage;
   if (isRemovedLimitsPath) {
-    PageComponent = () => <Navigate to="/dashboard" replace />;
+    PageComponent = RemovedLimitsRedirect;
   } else if (isUsagePath) {
     PageComponent = DashboardPage;
   } else if (isBranchesPath) {

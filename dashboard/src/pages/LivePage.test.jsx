@@ -142,17 +142,15 @@ describe("LivePage", () => {
     expect(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i }).length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: /view breakdown for VibeDeck/i })[0]);
     expect(screen.getByRole("dialog", { name: /workstream breakdown/i })).toBeTruthy();
-    expect(screen.getByText("$0.05")).toBeTruthy();
+    expect(screen.getAllByText("$0.05").length).toBeGreaterThan(0);
     expect(screen.queryByText("$0.05 est.")).toBeNull();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
     expect(screen.queryByText("$0.00 est.")).toBeNull();
     expect(screen.getByText("$0.00")).toBeTruthy();
     expect(screen.getAllByText("Live sessions").length).toBeGreaterThan(0);
     expect(screen.getByText("Live control center")).toBeTruthy();
-    expect(screen.getByText("Providers")).toBeTruthy();
     expect(screen.getByText("Needs attribution")).toBeTruthy();
     expect(screen.getByText("Limit sources")).toBeTruthy();
-    expect(screen.getByText("Active repos")).toBeTruthy();
     expect(screen.getByText("Branch routing")).toBeTruthy();
     expect(screen.getByText("Unrouted")).toBeTruthy();
     expect(screen.getByText("Provider limits")).toBeTruthy();

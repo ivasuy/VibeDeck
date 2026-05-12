@@ -86,7 +86,7 @@ The dashboard `/usage` Sync button uses the same backend sync path (`vibedeck sy
 
 ## Packaging Bootstrap
 
-- `vibedeck` packages bootstrap the macOS native app during install, so on macOS installs from Homebrew or npm you get `VibeDeckMac.app` automatically.
+- `vibedeck` packages bootstrap the macOS native app during install, so on macOS installs from Homebrew or npm you get `VibeDeck.app` automatically.
 - The installer prefers `/Applications` and falls back to `~/Applications` when `/Applications` is unavailable.
 
 ```bash
@@ -142,6 +142,47 @@ Native app:
 ```bash
 rtk xcodegen generate --spec VibeDeckMac/project.yml
 rtk xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+```
+
+Homebrew packages for the native release flow:
+
+```bash
+brew install xcodegen
+brew install create-dmg
+```
+
+`xcodegen` is required. `create-dmg` is used by the CI/headless DMG path and is safe to install locally too.
+
+One-command native release build from the project root with the embedded server, widget, `.app`, and `.dmg`:
+
+```bash
+bash scripts/build-release-mac.sh
+```
+
+Release outputs:
+
+```text
+/Users/vasuyadav/Downloads/Projects/VibeDeck/VibeDeckMac/build/DerivedData/Build/Products/Release/VibeDeck.app
+/Users/vasuyadav/Downloads/Projects/VibeDeck/VibeDeckMac/build/VibeDeck.dmg
+```
+
+Manual native release path if you need each step separately:
+
+```bash
+bash VibeDeckMac/scripts/bundle-node.sh
+xcodegen generate --spec VibeDeckMac/project.yml
+
+xcodebuild \
+  -project VibeDeckMac/VibeDeckMac.xcodeproj \
+  -scheme VibeDeckMac \
+  -configuration Release \
+  -derivedDataPath VibeDeckMac/build/DerivedData \
+  ARCHS="arm64 x86_64" \
+  ONLY_ACTIVE_ARCH=NO \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
+  clean build
 ```
 
 Signed native build on a machine with a valid Apple Development identity:
@@ -328,7 +369,7 @@ xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -confi
 The built app will be under a DerivedData path similar to:
 
 ```text
-/Users/<you>/Library/Developer/Xcode/DerivedData/.../Build/Products/Debug/VibeDeckMac.app
+/Users/<you>/Library/Developer/Xcode/DerivedData/.../Build/Products/Debug/VibeDeck.app
 ```
 
 Launch that app, or open `VibeDeckMac/VibeDeckMac.xcodeproj` in Xcode and run the `VibeDeckMac` scheme.

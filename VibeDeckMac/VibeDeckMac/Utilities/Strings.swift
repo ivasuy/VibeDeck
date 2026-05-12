@@ -126,7 +126,7 @@ enum Strings {
     static var installing: String { "Installing..." }
     static var restarting: String { "Restarting..." }
     static var installationFailedTitle: String { "Installation Failed" }
-    static var manualInstallHint: String { "Please drag VibeDeckMac into Applications manually." }
+    static var manualInstallHint: String { "Please drag VibeDeck into Applications manually." }
     static var updateCompleteTitle: String { "Update Complete" }
     static var updateCompleteMessage: String {
         "New version installed to /Applications. Please restart manually."

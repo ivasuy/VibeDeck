@@ -547,7 +547,7 @@ final class StatusBarController: NSObject {
 
         // About
         let version = UpdateChecker.shared.currentVersion()
-        let aboutItem = NSMenuItem(title: "VibeDeckMac v\(version)", action: #selector(openAbout), keyEquivalent: "")
+        let aboutItem = NSMenuItem(title: "VibeDeck v\(version)", action: #selector(openAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
 

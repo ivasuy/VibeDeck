@@ -88,7 +88,7 @@ echo "📂 Copying vibedeck source..."
 TT_DIR="$EMBED_DIR/vibedeck"
 mkdir -p "$TT_DIR/bin"
 
-cp "$REPO_ROOT/bin/tracker.js" "$TT_DIR/bin/"
+cp "$REPO_ROOT/bin/vibedeck.js" "$TT_DIR/bin/"
 cp -R "$REPO_ROOT/src" "$TT_DIR/src"
 cp "$REPO_ROOT/package.json" "$TT_DIR/"
 

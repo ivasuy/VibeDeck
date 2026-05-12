@@ -5,18 +5,29 @@ extension Color {
     static let brand = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 1.0)
     static let brandStrong = Color(.sRGB, red: 0.310, green: 0.275, blue: 0.659, opacity: 1.0)
     static let brandLight = Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
-    static let chromeTop = Color(NSColor.windowBackgroundColor).opacity(0.98)
-    static let chromeBottom = Color(NSColor.controlColor).opacity(0.86)
+    private static var isDarkAppearance: Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+    static var chromeTop: Color {
+        if isDarkAppearance {
+            return Color(.sRGB, red: 0.118, green: 0.122, blue: 0.157, opacity: 0.98)
+        }
+        return Color(NSColor.windowBackgroundColor).opacity(0.98)
+    }
+    static var chromeBottom: Color {
+        if isDarkAppearance {
+            return Color(.sRGB, red: 0.149, green: 0.153, blue: 0.204, opacity: 0.96)
+        }
+        return Color(NSColor.controlColor).opacity(0.86)
+    }
     static var panelFill: Color {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        if isDark {
+        if isDarkAppearance {
             return Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.14)
         }
         return Color(.sRGB, red: 0.657, green: 0.694, blue: 0.988, opacity: 0.14)
     }
     static var panelFillStrong: Color {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        if isDark {
+        if isDarkAppearance {
             return Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.28)
         }
         return Color(.sRGB, red: 0.657, green: 0.694, blue: 0.988, opacity: 0.28)

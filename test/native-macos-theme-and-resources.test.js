@@ -60,6 +60,14 @@ test("theme tokens should remain appearance-aware and preserve VibeDeck indigo s
   const colors = read("VibeDeckMac/VibeDeckMac/Utilities/Colors.swift");
 
   assert.ok(
+    colors.includes("static var chromeTop: Color {"),
+    "chromeTop should be appearance-aware so dark mode can use a darker surface"
+  );
+  assert.ok(
+    colors.includes("static var chromeBottom: Color {"),
+    "chromeBottom should be appearance-aware so dark mode can use a darker surface"
+  );
+  assert.ok(
     colors.includes("static var panelFill: Color {"),
     "panelFill should be an appearance-aware computed color"
   );
@@ -76,4 +84,83 @@ test("theme tokens should remain appearance-aware and preserve VibeDeck indigo s
     "indigo-brand channel values should be preserved for panel colors"
   );
   assert.ok(!colors.includes("controlAccentColor"), "theme tokens should not switch to global accent color");
+});
+
+test("widget metadata and strings should stay searchable under the VibeDeck name", () => {
+  const widgetStrings = read("VibeDeckMac/VibeDeckWidget/Views/WidgetStrings.swift");
+  const widgetInfo = read("VibeDeckMac/VibeDeckWidget/Info.plist");
+
+  assert.ok(
+    widgetStrings.includes('static var usageName: String { "VibeDeck Usage" }'),
+    "usage widget should be searchable with the VibeDeck name"
+  );
+  assert.ok(
+    widgetStrings.includes('static var heatmapName: String { "VibeDeck Heatmap" }'),
+    "heatmap widget should be searchable with the VibeDeck name"
+  );
+  assert.ok(
+    widgetInfo.includes("<string>VibeDeck Widgets</string>"),
+    "widget extension display name should remain branded as VibeDeck"
+  );
+});
+
+test("top models view should use provider logos instead of rank dots", () => {
+  const topModelsView = read("VibeDeckMac/VibeDeckMac/Views/TopModelsView.swift");
+
+  assert.ok(
+    topModelsView.includes("BrandLogoResolver.shared.image"),
+    "top models rows should resolve provider logos from bundled assets"
+  );
+  assert.ok(
+    topModelsView.includes("providerIcon"),
+    "top models rows should render a dedicated provider icon view"
+  );
+  assert.ok(
+    !topModelsView.includes(".fill(Color.modelDot"),
+    "top models rows should no longer render rank dots as the primary provider marker"
+  );
+});
+
+test("embedded mac bundle should use vibedeck.js as the only CLI entrypoint", () => {
+  const bundleScript = read("VibeDeckMac/scripts/bundle-node.sh");
+  const serverManager = read("VibeDeckMac/VibeDeckMac/Services/ServerManager.swift");
+
+  assert.ok(
+    bundleScript.includes('cp "$REPO_ROOT/bin/vibedeck.js" "$TT_DIR/bin/"'),
+    "bundle script should copy bin/vibedeck.js into the embedded bundle"
+  );
+  assert.ok(
+    !bundleScript.includes('cp "$REPO_ROOT/bin/tracker.js" "$TT_DIR/bin/"'),
+    "bundle script should no longer copy tracker.js"
+  );
+  assert.ok(
+    serverManager.includes('.appendingPathComponent("EmbeddedServer/vibedeck/bin/vibedeck.js")'),
+    "native app should launch the embedded vibedeck.js entrypoint"
+  );
+  assert.ok(
+    !serverManager.includes('EmbeddedServer/vibedeck/bin/tracker.js'),
+    "native app should no longer reference tracker.js"
+  );
+});
+
+test("native app product name should ship as VibeDeck", () => {
+  const projectYml = read("VibeDeckMac/project.yml");
+  const dmgScript = read("VibeDeckMac/scripts/create-dmg.sh");
+
+  assert.ok(
+    projectYml.includes('PRODUCT_NAME: VibeDeck'),
+    "native app PRODUCT_NAME should be VibeDeck"
+  );
+  assert.ok(
+    projectYml.includes('CFBundleName: VibeDeck'),
+    "native app bundle name should be VibeDeck"
+  );
+  assert.ok(
+    dmgScript.includes('APP_NAME="VibeDeck"'),
+    "DMG packaging should stage VibeDeck.app"
+  );
+  assert.ok(
+    dmgScript.includes('VOLUME_NAME="VibeDeck"'),
+    "DMG volume name should be VibeDeck"
+  );
 });

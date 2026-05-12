@@ -10,6 +10,6 @@ test("release manifest resolves macOS zipped app artifact", () => {
     arch: "arm64",
   });
   assert.equal(spec.kind, "zip");
-  assert.match(spec.fileName, /VibeDeckMac.*\.zip$/);
+  assert.match(spec.fileName, /VibeDeck.*\.zip$/);
   assert.match(spec.url, /v0\.6\.1/);
 });

@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # =============================================================================
-# create-dmg.sh — Create a professional DMG installer for VibeDeckMac
-# Usage: ./create-dmg.sh [path/to/VibeDeckMac.app]
+# create-dmg.sh — Create a professional DMG installer for VibeDeck
+# Usage: ./create-dmg.sh [path/to/VibeDeck.app]
 # Set CI=true to skip Finder/AppleScript customization (headless mode)
 # =============================================================================
 
-APP_NAME="VibeDeckMac"
-VOLUME_NAME="VibeDeckMac"
+APP_NAME="VibeDeck"
+VOLUME_NAME="VibeDeck"
 DMG_FILENAME="${APP_NAME}.dmg"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -43,7 +43,7 @@ fi
 
 if [[ ! -d "$APP_PATH" ]]; then
     echo "Error: ${APP_NAME}.app not found at: $APP_PATH"
-    echo "Usage: $0 [path/to/VibeDeckMac.app]"
+    echo "Usage: $0 [path/to/VibeDeck.app]"
     exit 1
 fi
 

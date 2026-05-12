@@ -15,7 +15,7 @@
 ### Live Cost UI
 
 - `dashboard/src/components/live/LiveWorkbenchOverview.jsx`
-  - The top cost line uses `Counter` with `digitStyle={{ width: "0.72ch" }}` and `gap={0}`. This can visually squeeze `$597.16`.
+- The top cost line uses animated `Counter`, which should be preserved, but `digitStyle={{ width: "0.72ch" }}` and `gap={0}` can visually squeeze `$597.16`.
   - It appends `<span className="ml-1">project total</span>` beside the cost. The token number above already describes the aggregate scope, so this flag is redundant and visually noisy.
   - The overview tiles still include `Project total` and `Known cost` labels. These are acceptable for secondary tiles, but the headline cost should not repeat scope text.
 
@@ -316,13 +316,23 @@ Assert:
 - Headline cost still renders the same aggregate value from `totals.audit_cost_usd`.
 - Workstream cards and drawer still show token/cost pairs.
 
-- [ ] **Step 2: Replace headline cost Counter**
+- [ ] **Step 2: Keep headline cost Counter but widen spacing**
 
-In `LiveWorkbenchOverview.jsx`, use a plain tabular number for cost or a wider `Counter`. Preferred implementation:
+In `LiveWorkbenchOverview.jsx`, keep the animated `Counter` for cost. Increase inline spacing and digit width so currency values do not visually overlap:
 
 ```jsx
-<div className="mt-3 text-base font-semibold tabular-nums tracking-[0.03em] text-oai-brand dark:text-oai-brand-300">
-  {costDisplay}
+<div className="mt-2 text-sm font-medium text-oai-brand dark:text-oai-brand-300">
+  <Counter
+    value={auditCost}
+    displayValue={costDisplay}
+    fontSize={14}
+    padding={2}
+    gap={1.5}
+    fontWeight={600}
+    gradientHeight={0}
+    digitStyle={{ width: "0.86ch" }}
+    counterStyle={{ gap: "0.08em", letterSpacing: "0.03em" }}
+  />
 </div>
 ```
 

@@ -96,7 +96,7 @@ final class ServerManager: ObservableObject {
             .appendingPathComponent("EmbeddedServer/node")
             .path
         let entryPath = resourceURL
-            .appendingPathComponent("EmbeddedServer/vibedeck/bin/tracker.js")
+            .appendingPathComponent("EmbeddedServer/vibedeck/bin/vibedeck.js")
             .path
 
         let fm = FileManager.default

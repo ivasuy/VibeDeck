@@ -84,20 +84,20 @@ test("workflow creates DMG via create-dmg.sh", () => {
 test("workflow packages zipped native app artifact", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("Package zipped app artifact"));
-  assert.ok(content.includes("VibeDeckMac-${{ inputs.version }}-universal.zip"));
+  assert.ok(content.includes("VibeDeck-${{ inputs.version }}-universal.zip"));
 });
 
 test("workflow includes zip asset in GitHub release", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("gh release create"));
-  assert.ok(content.includes("VibeDeckMac.dmg"));
-  assert.ok(content.includes("VibeDeckMac-${{ inputs.version }}-universal.zip"));
+  assert.ok(content.includes("VibeDeck.dmg"));
+  assert.ok(content.includes("VibeDeck-${{ inputs.version }}-universal.zip"));
 });
 
 test("workflow creates GitHub release with DMG asset", () => {
   const content = loadWorkflow();
   assert.ok(content.includes("gh release create"));
-  assert.ok(content.includes("VibeDeckMac.dmg"));
+  assert.ok(content.includes("VibeDeck.dmg"));
 });
 
 test("workflow has correct step order: dashboard → bundle → xcode → dmg → release", () => {
@@ -138,5 +138,25 @@ test("create-dmg.sh supports CI headless mode", () => {
   assert.ok(
     dmgScript.includes('CI:-}'),
     "create-dmg.sh should check CI env var for headless mode"
+  );
+});
+
+test("build-release.sh orchestrates bundled release app and dmg creation", () => {
+  const buildScript = fs.readFileSync(
+    path.join(__dirname, "..", "scripts", "build-release-mac.sh"),
+    "utf8"
+  );
+
+  assert.ok(buildScript.includes("VibeDeckMac/scripts/bundle-node.sh"));
+  assert.ok(buildScript.includes("npm --prefix \"$REPO_ROOT/dashboard\" run build"));
+  assert.ok(buildScript.includes("xcodegen generate --spec \"$REPO_ROOT/VibeDeckMac/project.yml\""));
+  assert.ok(buildScript.includes("-configuration \"$CONFIGURATION\""));
+  assert.ok(buildScript.includes("create-dmg.sh"));
+  assert.ok(buildScript.includes("\"$APP_PATH\""));
+  assert.ok(buildScript.includes("VibeDeck.app"));
+  assert.ok(buildScript.includes("VibeDeck.dmg"));
+  assert.ok(
+    buildScript.includes("com.apple.security.app-sandbox"),
+    "local release script should verify widget sandbox entitlement survives signing"
   );
 });

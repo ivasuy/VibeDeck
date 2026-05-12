@@ -1,25 +1,25 @@
 import Foundation
 
 enum WidgetStrings {
-    static var usageName: String { "Usage" }
+    static var usageName: String { "VibeDeck Usage" }
     static var usageDescription: String { "Today's tokens at a glance, with trend." }
     static var today: String { "TODAY" }
     static var sevenDays: String { "7 DAYS" }
     static var thirtyDays: String { "30 DAYS" }
     static var vsYesterday: String { "vs. yesterday" }
 
-    static var heatmapName: String { "Activity Heatmap" }
+    static var heatmapName: String { "VibeDeck Heatmap" }
     static var heatmapDescription: String { "GitHub-style daily activity calendar." }
     static func streak(_ days: Int) -> String { "\(days)d streak" }
     static func tokensActiveDays(activeDays: Int) -> String {
         "tokens - \(activeDays) active days"
     }
 
-    static var limitsName: String { "Usage Limits" }
+    static var limitsName: String { "VibeDeck Limits" }
     static var limitsDescription: String { "Rate limits for Claude, Codex, Cursor, Gemini, and more." }
     static var noConfiguredProviders: String { "No configured providers" }
 
-    static var topModelsName: String { "Top Models" }
+    static var topModelsName: String { "VibeDeck Top Models" }
     static var topModelsDescription: String { "Models with the highest token usage." }
     static var noModelUsage: String { "No model usage yet" }
 

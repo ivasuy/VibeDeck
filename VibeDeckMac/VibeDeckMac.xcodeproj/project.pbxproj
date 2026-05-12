@@ -536,7 +536,7 @@
 				);
 				MARKETING_VERSION = 0.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app;
-				PRODUCT_NAME = VibeDeckMac;
+				PRODUCT_NAME = VibeDeck;
 				SDKROOT = macosx;
 				STRIP_INSTALLED_PRODUCT = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -562,7 +562,7 @@
 				);
 				MARKETING_VERSION = 0.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app;
-				PRODUCT_NAME = VibeDeckMac;
+				PRODUCT_NAME = VibeDeck;
 				SDKROOT = macosx;
 				STRIP_INSTALLED_PRODUCT = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;

@@ -230,6 +230,13 @@ test('normal sync runs lightweight backfill for active/recent and tip-changed ac
   const prevGeminiHome = process.env.GEMINI_HOME;
   const prevOpencodeHome = process.env.OPENCODE_HOME;
   const calledRepos = [];
+  const nowMs = Date.now();
+  const activeStartedAt = new Date(nowMs - 2 * 60 * 60 * 1000).toISOString();
+  const activeObservedAt = new Date(nowMs - 20 * 60 * 1000).toISOString();
+  const inactiveStartedAt = new Date(nowMs - 5 * 24 * 60 * 60 * 1000).toISOString();
+  const inactiveEndedAt = new Date(nowMs - 5 * 24 * 60 * 60 * 1000 + 5 * 60 * 1000).toISOString();
+  const inactiveObservedAt = inactiveEndedAt;
+  const checkedAt = new Date(nowMs - 60 * 60 * 1000).toISOString();
 
   try {
     process.env.HOME = tmp;
@@ -246,7 +253,7 @@ test('normal sync runs lightweight backfill for active/recent and tip-changed ac
 
     const db = new DatabaseSync(dbPath);
     try {
-      db.exec(`
+      db.prepare(`
         INSERT INTO vibedeck_sessions (
           provider, session_id, started_at, ended_at, end_reason,
           cwd, repo_root, repo_common_dir, parent_repo,
@@ -254,16 +261,28 @@ test('normal sync runs lightweight backfill for active/recent and tip-changed ac
           model, total_tokens, total_cost_usd, last_observed_at,
           cost_estimated, cost_quality, created_at, updated_at
         ) VALUES
-          ('codex', 'active-1', '2026-05-12T09:00:00.000Z', NULL, NULL,
+          ('codex', 'active-1', ?, NULL, NULL,
            '/repo/active', '/repo/active', '/repo/active/.git', NULL, 'main', 'A', 'high', NULL,
-           'gpt-5.5', 10, 0.1, '2026-05-12T09:05:00.000Z', 0, 'stored', '2026-05-12T09:00:00.000Z', '2026-05-12T09:05:00.000Z'),
-          ('codex', 'inactive-1', '2026-05-10T09:00:00.000Z', '2026-05-10T09:05:00.000Z', 'normal',
+           'gpt-5.5', 10, 0.1, ?, 0, 'stored', ?, ?),
+          ('codex', 'inactive-1', ?, ?, 'normal',
            '/repo/inactive', '/repo/inactive', '/repo/inactive/.git', NULL, 'main', 'A', 'high', NULL,
-           'gpt-5.5', 10, 0.1, '2026-05-10T09:05:00.000Z', 0, 'stored', '2026-05-10T09:00:00.000Z', '2026-05-10T09:05:00.000Z');
+           'gpt-5.5', 10, 0.1, ?, 0, 'stored', ?, ?);
 
-        INSERT INTO vibedeck_repos (repo_root, entire_state, entire_checked_at, entire_version) VALUES
-          ('/repo/entire-tip-change', 'active', '2026-05-12T08:00:00.000Z', '1.0.0');
-      `);
+      `).run(
+        activeStartedAt,
+        activeObservedAt,
+        activeStartedAt,
+        activeObservedAt,
+        inactiveStartedAt,
+        inactiveEndedAt,
+        inactiveObservedAt,
+        inactiveStartedAt,
+        inactiveEndedAt,
+      );
+      db.prepare(`
+        INSERT INTO vibedeck_repos (repo_root, entire_state, entire_checked_at, entire_version)
+        VALUES ('/repo/entire-tip-change', 'active', ?, '1.0.0');
+      `).run(checkedAt);
     } finally {
       db.close();
     }
@@ -460,6 +479,11 @@ test('normal sync treats last_observed_at as recent activity for checkpoint back
   const prevGeminiHome = process.env.GEMINI_HOME;
   const prevOpencodeHome = process.env.OPENCODE_HOME;
   const calledRepos = [];
+  const nowMs = Date.now();
+  const recentObservedAt = new Date(nowMs - 30 * 60 * 1000).toISOString();
+  const oldUpdatedAt = new Date(nowMs - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const startedAt = new Date(nowMs - 2 * 60 * 60 * 1000).toISOString();
+  const endedAt = new Date(nowMs - 90 * 60 * 1000).toISOString();
 
   try {
     process.env.HOME = tmp;
@@ -475,7 +499,7 @@ test('normal sync treats last_observed_at as recent activity for checkpoint back
 
     const db = new DatabaseSync(dbPath);
     try {
-      db.exec(`
+      db.prepare(`
         INSERT INTO vibedeck_sessions (
           provider, session_id, started_at, ended_at, end_reason,
           cwd, repo_root, repo_common_dir, parent_repo,
@@ -483,12 +507,12 @@ test('normal sync treats last_observed_at as recent activity for checkpoint back
           model, total_tokens, total_cost_usd, last_observed_at,
           cost_estimated, cost_quality, created_at, updated_at
         ) VALUES (
-          'codex', 'recent-by-observed', '2026-05-12T07:00:00.000Z', '2026-05-12T08:00:00.000Z', 'normal',
+          'codex', 'recent-by-observed', ?, ?, 'normal',
           '/repo/last-observed', '/repo/last-observed', '/repo/last-observed/.git', NULL,
-          'main', 'A', 'high', NULL, 'gpt-5.5', 10, 0.1, '2026-05-12T09:30:00.000Z',
-          0, 'stored', '2026-05-12T07:00:00.000Z', '2026-05-10T08:00:00.000Z'
+          'main', 'A', 'high', NULL, 'gpt-5.5', 10, 0.1, ?,
+          0, 'stored', ?, ?
         );
-      `);
+      `).run(startedAt, endedAt, recentObservedAt, startedAt, oldUpdatedAt);
     } finally {
       db.close();
     }

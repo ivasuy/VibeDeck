@@ -157,7 +157,7 @@ describe("BranchesPage", () => {
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
     expect(screen.queryByText("/repo-a")).toBeNull();
-    expect(screen.getAllByText("feature-a").length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("feature-a")).length).toBeGreaterThan(0);
     expect(screen.queryByText("/repo-b")).toBeNull();
     expect(screen.queryByText("release-b")).toBeNull();
     expect(screen.queryByText("Showing 1 of 1 branches")).toBeNull();

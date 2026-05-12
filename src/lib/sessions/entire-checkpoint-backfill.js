@@ -37,9 +37,7 @@ function metadataFromPayload(payload) {
 
 function selectMetadataPath(groupFiles) {
   const paths = Array.isArray(groupFiles) ? groupFiles.map((entry) => normalizePath(entry)).filter(Boolean) : [];
-  return paths.find((entry) => entry.endsWith('/metadata.json'))
-    || paths.find((entry) => entry.endsWith('.json'))
-    || '';
+  return paths.find((entry) => entry.endsWith('/metadata.json')) || '';
 }
 
 function findCandidates(db, { repoRoot, provider, startedAt, endedAt }) {
@@ -66,8 +64,8 @@ function findCandidates(db, { repoRoot, provider, startedAt, endedAt }) {
 }
 
 function classifyMatch(candidates, metadata) {
-  const providerTimeCandidates = Array.isArray(candidates) ? candidates : [];
-  if (providerTimeCandidates.length === 0) {
+  let plausible = Array.isArray(candidates) ? candidates : [];
+  if (plausible.length === 0) {
     return { status: 'unmatched', confidence: 'unmatched', reason: 'no_matching_session', candidate_count: 0, session: null };
   }
 
@@ -75,40 +73,31 @@ function classifyMatch(candidates, metadata) {
   const metadataBranch = normalizeText(metadata?.branch);
   const normalizedMetadataBranch = normalizeBranch(metadataBranch);
 
-  const modelAndBranchMatches = providerTimeCandidates.filter((row) => {
-    const rowModel = normalizeText(row?.model);
-    const rowBranch = normalizeText(row?.branch);
-    const branchMatch = rowBranch === metadataBranch || normalizeBranch(rowBranch) === normalizedMetadataBranch;
-    return rowModel === metadataModel && branchMatch;
-  });
-
-  if (metadataModel && metadataBranch && modelAndBranchMatches.length === 1) {
-    return {
-      status: 'linked',
-      confidence: 'exact',
-      reason: null,
-      candidate_count: 1,
-      session: modelAndBranchMatches[0],
-    };
+  if (metadataModel) {
+    plausible = plausible.filter((row) => normalizeText(row?.model) === metadataModel);
+    if (plausible.length === 0) {
+      return { status: 'unmatched', confidence: 'unmatched', reason: 'no_strict_match', candidate_count: 0, session: null };
+    }
   }
 
-  if (metadataModel && metadataBranch && modelAndBranchMatches.length > 1) {
-    return {
-      status: 'ambiguous',
-      confidence: 'ambiguous',
-      reason: 'multiple_candidates',
-      candidate_count: modelAndBranchMatches.length,
-      session: null,
-    };
+  if (metadataBranch) {
+    plausible = plausible.filter((row) => {
+      const rowBranch = normalizeText(row?.branch);
+      return rowBranch === metadataBranch || normalizeBranch(rowBranch) === normalizedMetadataBranch;
+    });
+    if (plausible.length === 0) {
+      return { status: 'unmatched', confidence: 'unmatched', reason: 'no_strict_match', candidate_count: 0, session: null };
+    }
   }
 
-  if (providerTimeCandidates.length === 1 && (!metadataModel || !metadataBranch)) {
+  if (plausible.length === 1) {
+    const confidence = metadataModel && metadataBranch ? 'exact' : 'overlap';
     return {
       status: 'linked',
-      confidence: 'overlap',
+      confidence,
       reason: null,
       candidate_count: 1,
-      session: providerTimeCandidates[0],
+      session: plausible[0],
     };
   }
 
@@ -116,7 +105,7 @@ function classifyMatch(candidates, metadata) {
     status: 'ambiguous',
     confidence: 'ambiguous',
     reason: 'multiple_candidates',
-    candidate_count: providerTimeCandidates.length,
+    candidate_count: plausible.length,
     session: null,
   };
 }

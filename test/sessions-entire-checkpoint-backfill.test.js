@@ -78,6 +78,20 @@ async function runBackfill(dbPath, metadata) {
   });
 }
 
+async function runBackfillWithFiles(dbPath, metadata, files) {
+  return backfillEntireCheckpointLinks({
+    dbPath,
+    repoRoot: '/repo',
+    checkpointTip: null,
+    listCheckpointsCached: async () => ({
+      available: true,
+      files,
+    }),
+    readCheckpoint: async () => metadata,
+    now: () => new Date('2026-05-12T09:00:00.000Z'),
+  });
+}
+
 test('backfill links a checkpoint to one exact repo/provider/model/branch/time session', async () => {
   const { dir, dbPath } = tmpDb();
   try {
@@ -265,6 +279,160 @@ test('backfill does not create vibedeck_session_entire_links for ambiguous or un
     const readDb = new DatabaseSync(dbPath, { readOnly: true });
     const linkCount = readDb.prepare('SELECT COUNT(*) AS count FROM vibedeck_session_entire_links').get().count;
     assert.equal(linkCount, 0);
+    readDb.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('backfill links the only model match when branch metadata is missing', async () => {
+  const { dir, dbPath } = tmpDb();
+  try {
+    const db = new DatabaseSync(dbPath);
+    insertSession(db, {
+      provider: 'codex',
+      session_id: 'sess-model-1',
+      started_at: '2026-05-12T01:00:00.000Z',
+      ended_at: '2026-05-12T01:06:00.000Z',
+      repo_root: '/repo',
+      branch: 'feature',
+      model: 'gpt-5.5',
+    });
+    insertSession(db, {
+      provider: 'codex',
+      session_id: 'sess-model-2',
+      started_at: '2026-05-12T01:00:30.000Z',
+      ended_at: '2026-05-12T01:06:30.000Z',
+      repo_root: '/repo',
+      branch: 'main',
+      model: 'gpt-4.1',
+    });
+    db.close();
+
+    const result = await runBackfill(dbPath, baseMetadata({ branch: '' }));
+    assert.equal(result.linked, 1);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    const matchRow = readDb.prepare(`
+      SELECT match_status, match_confidence, session_id, candidate_count
+      FROM vibedeck_entire_checkpoint_matches
+      WHERE repo_root = ? AND checkpoint_group_id = ?
+    `).get('/repo', 'e2/abdc1ec6');
+    assert.equal(matchRow.match_status, 'linked');
+    assert.equal(matchRow.match_confidence, 'overlap');
+    assert.equal(matchRow.session_id, 'sess-model-1');
+    assert.equal(matchRow.candidate_count, 1);
+
+    const linkRow = readDb.prepare(`
+      SELECT provider, session_id, match_confidence
+      FROM vibedeck_session_entire_links
+      WHERE provider = ? AND session_id = ?
+    `).get('codex', 'sess-model-1');
+    assert.equal(linkRow.provider, 'codex');
+    assert.equal(linkRow.session_id, 'sess-model-1');
+    assert.equal(linkRow.match_confidence, 'overlap');
+    readDb.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('backfill links the only branch match when model metadata is missing', async () => {
+  const { dir, dbPath } = tmpDb();
+  try {
+    const db = new DatabaseSync(dbPath);
+    insertSession(db, {
+      provider: 'codex',
+      session_id: 'sess-branch-1',
+      started_at: '2026-05-12T01:00:00.000Z',
+      ended_at: '2026-05-12T01:06:00.000Z',
+      repo_root: '/repo',
+      branch: 'main',
+      model: 'gpt-4.1',
+    });
+    insertSession(db, {
+      provider: 'codex',
+      session_id: 'sess-branch-2',
+      started_at: '2026-05-12T01:00:30.000Z',
+      ended_at: '2026-05-12T01:06:30.000Z',
+      repo_root: '/repo',
+      branch: 'feature',
+      model: 'gpt-4.1',
+    });
+    db.close();
+
+    const result = await runBackfill(dbPath, baseMetadata({ model: '' }));
+    assert.equal(result.linked, 1);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    const matchRow = readDb.prepare(`
+      SELECT match_status, match_confidence, session_id, candidate_count
+      FROM vibedeck_entire_checkpoint_matches
+      WHERE repo_root = ? AND checkpoint_group_id = ?
+    `).get('/repo', 'e2/abdc1ec6');
+    assert.equal(matchRow.match_status, 'linked');
+    assert.equal(matchRow.match_confidence, 'overlap');
+    assert.equal(matchRow.session_id, 'sess-branch-1');
+    assert.equal(matchRow.candidate_count, 1);
+    readDb.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('backfill skips groups without metadata json', async () => {
+  const { dir, dbPath } = tmpDb();
+  try {
+    const result = await runBackfillWithFiles(
+      dbPath,
+      baseMetadata(),
+      ['e2/abdc1ec6/payload.json', 'e2/abdc1ec6/0/prompt.txt'],
+    );
+    assert.equal(result.scanned, 0);
+    assert.equal(result.skipped, 1);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    const count = readDb.prepare('SELECT COUNT(*) AS count FROM vibedeck_entire_checkpoint_matches').get().count;
+    assert.equal(count, 0);
+    readDb.close();
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('backfill records unmatched when strict metadata filters leave no candidate', async () => {
+  const { dir, dbPath } = tmpDb();
+  try {
+    const db = new DatabaseSync(dbPath);
+    insertSession(db, {
+      provider: 'codex',
+      session_id: 'sess-mismatch-1',
+      started_at: '2026-05-12T01:00:00.000Z',
+      ended_at: '2026-05-12T01:06:00.000Z',
+      repo_root: '/repo',
+      branch: 'dev',
+      model: 'gpt-4.1',
+    });
+    db.close();
+
+    const result = await runBackfill(dbPath, baseMetadata({ branch: 'main', model: 'gpt-5.5' }));
+    assert.equal(result.unmatched, 1);
+    assert.equal(result.linked, 0);
+    assert.equal(result.ambiguous, 0);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    const matchRow = readDb.prepare(`
+      SELECT match_status, match_confidence, reason, candidate_count
+      FROM vibedeck_entire_checkpoint_matches
+      WHERE repo_root = ? AND checkpoint_group_id = ?
+    `).get('/repo', 'e2/abdc1ec6');
+    assert.equal(matchRow.match_status, 'unmatched');
+    assert.equal(matchRow.match_confidence, 'unmatched');
+    assert.equal(matchRow.candidate_count, 0);
+    assert.ok(['no_matching_session', 'no_strict_match'].includes(matchRow.reason));
+
+    const links = readDb.prepare('SELECT COUNT(*) AS count FROM vibedeck_session_entire_links').get().count;
+    assert.equal(links, 0);
     readDb.close();
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

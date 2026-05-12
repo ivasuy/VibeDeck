@@ -12,7 +12,7 @@ struct WidgetHeader: View {
         HStack(spacing: 6) {
             Image(systemName: icon)
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.tint)
+                .foregroundStyle(WidgetTheme.brand)
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.primary)
@@ -84,7 +84,7 @@ struct SparklineView: View {
                     p.closeSubpath()
                 }
                 .fill(LinearGradient(
-                    colors: [Color.accentColor.opacity(0.35), Color.accentColor.opacity(0.02)],
+                    colors: [WidgetTheme.brand.opacity(0.35), WidgetTheme.brand.opacity(0.02)],
                     startPoint: .top, endPoint: .bottom
                 ))
 
@@ -94,7 +94,7 @@ struct SparklineView: View {
                     p.move(to: first)
                     appendMonotoneCubic(to: &p, points: pts)
                 }
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                .stroke(WidgetTheme.brand, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
             }
         }
     }
@@ -196,7 +196,7 @@ struct BarTrendChart: View {
                     let h = max((CGFloat(v) / CGFloat(maxV)) * geo.size.height, 1)
                     RoundedRectangle(cornerRadius: 1.5)
                         .fill(LinearGradient(
-                            colors: [Color.accentColor, Color.accentColor.opacity(0.55)],
+                            colors: [WidgetTheme.brand, WidgetTheme.brand.opacity(0.55)],
                             startPoint: .top, endPoint: .bottom
                         ))
                         .frame(width: barWidth, height: h)
@@ -333,7 +333,7 @@ struct WidgetFooter: View {
     var body: some View {
         HStack(spacing: 4) {
             Circle()
-                .fill(serverOnline ? Color.green : Color.orange)
+                .fill(serverOnline ? WidgetTheme.statusOnline : WidgetTheme.statusWarning)
                 .frame(width: 5, height: 5)
             Text(WidgetStrings.updated(WidgetFormat.relativeUpdated(updated)))
                 .font(.system(size: 9))

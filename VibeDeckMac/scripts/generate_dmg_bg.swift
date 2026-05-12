@@ -36,9 +36,13 @@ NSGraphicsContext.current = ctx
 let cg = ctx.cgContext
 let cs = CGColorSpaceCreateDeviceRGB()
 
-// ── 1. Background — clean gradient with subtle cool tones ──
-let c1 = NSColor(red: 0.965, green: 0.968, blue: 0.975, alpha: 1).cgColor  // top: cool white
-let c2 = NSColor(red: 0.925, green: 0.928, blue: 0.938, alpha: 1).cgColor  // bottom: soft cool gray
+let brand = NSColor(red: 0.357, green: 0.373, blue: 0.780, alpha: 1)
+let brandStrong = NSColor(red: 0.310, green: 0.275, blue: 0.659, alpha: 1)
+let brandLight = NSColor(red: 0.506, green: 0.549, blue: 0.973, alpha: 1)
+
+// ── 1. Background — indigo-tinted chrome matching the dashboard ──
+let c1 = NSColor(red: 0.958, green: 0.962, blue: 0.988, alpha: 1).cgColor
+let c2 = NSColor(red: 0.915, green: 0.922, blue: 0.970, alpha: 1).cgColor
 let bg = CGGradient(colorsSpace: cs, colors: [c1, c2] as CFArray, locations: [0, 1])!
 cg.drawLinearGradient(bg, start: CGPoint(x: 0, y: H), end: .zero, options: [])
 
@@ -54,11 +58,11 @@ func radialGlow(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat, _ color: NSColor) {
 }
 
 // Large soft glow from top center for depth
-radialGlow(W / 2, H + 100, 700, NSColor(white: 1.0, alpha: 0.45))
+radialGlow(W / 2, H + 100, 720, brandLight.withAlphaComponent(0.28))
 
 // ── 3. Soft light pools behind icon positions ──
-radialGlow(appCX, iconCY, 200, NSColor(white: 1.0, alpha: 0.5))
-radialGlow(appsCX, iconCY, 200, NSColor(white: 1.0, alpha: 0.5))
+radialGlow(appCX, iconCY, 220, brand.withAlphaComponent(0.22))
+radialGlow(appsCX, iconCY, 220, brand.withAlphaComponent(0.18))
 
 // ── 3b. Very subtle inner shadow / vignette at edges ──
 cg.saveGState()
@@ -73,7 +77,7 @@ cg.restoreGState()
 
 // ── 4. THE ARROW — elegant dashed arc with arrowhead ──
 // Curved path from app to Applications, slightly arching upward
-let arrowColor = NSColor(red: 0.30, green: 0.35, blue: 0.45, alpha: 0.50)
+let arrowColor = brandStrong.withAlphaComponent(0.52)
 
 cg.saveGState()
 cg.setStrokeColor(arrowColor.cgColor)
@@ -126,7 +130,7 @@ paraStyle.alignment = .center
 
 // Thin separator line
 let sepY: CGFloat = 150
-cg.setFillColor(NSColor(white: 0.0, alpha: 0.06).cgColor)
+cg.setFillColor(brand.withAlphaComponent(0.12).cgColor)
 cg.fill(CGRect(x: W / 2 - 180, y: sepY, width: 360, height: 1))
 
 // Instruction text
@@ -134,17 +138,17 @@ cg.fill(CGRect(x: W / 2 - 180, y: sepY, width: 360, height: 1))
     in: NSRect(x: 0, y: 80, width: W, height: 44),
     withAttributes: [
         .font: NSFont.systemFont(ofSize: 22, weight: .regular),
-        .foregroundColor: NSColor(red: 0.30, green: 0.30, blue: 0.34, alpha: 0.65),
+        .foregroundColor: brandStrong.withAlphaComponent(0.76),
         .paragraphStyle: paraStyle,
         .kern: 0.3 as NSNumber
     ])
 
 // Brand wordmark
-("TOKENTRACKER" as NSString).draw(
+("VIBEDECK" as NSString).draw(
     in: NSRect(x: 0, y: 40, width: W, height: 24),
     withAttributes: [
         .font: NSFont.systemFont(ofSize: 13, weight: .medium),
-        .foregroundColor: NSColor(white: 0.45, alpha: 0.35),
+        .foregroundColor: brand.withAlphaComponent(0.42),
         .paragraphStyle: paraStyle,
         .kern: 3.0 as NSNumber
     ])

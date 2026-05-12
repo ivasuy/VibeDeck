@@ -1,31 +1,39 @@
 import SwiftUI
 
 extension Color {
-    /// Primary accent used for emphasis throughout the app.
-    static let brand = Color.accentColor
+    static let brand = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 1.0)
+    static let brandStrong = Color(.sRGB, red: 0.310, green: 0.275, blue: 0.659, opacity: 1.0)
+    static let brandLight = Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
+    static let chromeTop = Color(.sRGB, red: 0.965, green: 0.969, blue: 0.992, opacity: 0.92)
+    static let chromeBottom = Color(.sRGB, red: 0.938, green: 0.944, blue: 0.985, opacity: 0.78)
+    static let panelFill = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.10)
+    static let panelFillStrong = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.16)
+    static let panelBorder = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.22)
+    static let statusOnline = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.92)
+    static let statusWarning = Color(.sRGB, red: 0.933, green: 0.620, blue: 0.243, opacity: 0.92)
 
-    /// Heatmap level colors using the brand accent, indexed 0-4.
+    /// Primary accent used for emphasis throughout the app.
     static let heatmapLevels: [Color] = [
         Color(.sRGB, red: 0.5, green: 0.5, blue: 0.5, opacity: 0.10),  // level 0 — empty
-        Color.accentColor.opacity(0.25),                                  // level 1
-        Color.accentColor.opacity(0.50),                                  // level 2
-        Color.accentColor.opacity(0.75),                                  // level 3
-        Color.accentColor,                                                // level 4
+        Color.brand.opacity(0.25),                                       // level 1
+        Color.brand.opacity(0.50),                                       // level 2
+        Color.brand.opacity(0.75),                                       // level 3
+        Color.brand,                                                     // level 4
     ]
 
     /// Trend chart fill gradient.
-    static let trendFill = Color.accentColor.opacity(0.15)
+    static let trendFill = Color.brand.opacity(0.15)
 
     /// Trend chart line color.
-    static let trendLine = Color.accentColor
+    static let trendLine = Color.brand
 
     /// Refined dot colors for model list, ordered by rank.
     private static let modelDotPalette: [Color] = [
-        Color(.sRGB, red: 0.35, green: 0.55, blue: 0.95, opacity: 1.0),  // soft blue
-        Color(.sRGB, red: 0.60, green: 0.45, blue: 0.90, opacity: 1.0),  // lavender
-        Color(.sRGB, red: 0.30, green: 0.72, blue: 0.65, opacity: 1.0),  // teal
-        Color(.sRGB, red: 0.90, green: 0.55, blue: 0.35, opacity: 1.0),  // warm amber
-        Color(.sRGB, red: 0.70, green: 0.50, blue: 0.75, opacity: 1.0),  // muted plum
+        Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0),
+        Color(.sRGB, red: 0.431, green: 0.447, blue: 0.788, opacity: 1.0),
+        Color(.sRGB, red: 0.306, green: 0.322, blue: 0.612, opacity: 1.0),
+        Color(.sRGB, red: 0.651, green: 0.690, blue: 0.973, opacity: 1.0),
+        Color(.sRGB, red: 0.243, green: 0.255, blue: 0.525, opacity: 1.0),
     ]
 
     /// Returns a dot color for model list by rank index.
@@ -48,13 +56,13 @@ extension Color {
     /// Returns a brand color for the given AI source/provider name.
     static func sourceColor(_ source: String) -> Color {
         switch source.lowercased() {
-        case "claude":    return .purple
-        case "codex":     return .green
-        case "gemini":    return .blue
-        case "opencode":  return .orange
-        case "openclaw":  return .pink
-        case "cursor":    return .yellow
-        case "everycode": return .cyan
+        case "claude":    return Color(.sRGB, red: 0.431, green: 0.447, blue: 0.788, opacity: 1.0)
+        case "codex":     return Color(.sRGB, red: 0.306, green: 0.322, blue: 0.612, opacity: 1.0)
+        case "gemini":    return Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
+        case "opencode":  return Color(.sRGB, red: 0.533, green: 0.475, blue: 0.863, opacity: 1.0)
+        case "openclaw":  return Color(.sRGB, red: 0.647, green: 0.529, blue: 0.839, opacity: 1.0)
+        case "cursor":    return Color(.sRGB, red: 0.396, green: 0.420, blue: 0.710, opacity: 1.0)
+        case "everycode": return Color(.sRGB, red: 0.459, green: 0.573, blue: 0.914, opacity: 1.0)
         default:          return .gray
         }
     }

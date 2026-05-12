@@ -197,6 +197,15 @@ actor APIClient {
         return payload.token
     }
 
+    private func validateResponse(_ response: URLResponse) throws {
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+    }
+
     private func legacyAwarePaths(for primaryPath: String) -> [String] {
         let legacyPath = primaryPath.replacingOccurrences(of: "/functions/vibedeck-", with: "/functions/vibedeck-")
         if legacyPath == primaryPath {

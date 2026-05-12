@@ -15,7 +15,7 @@ struct FooterView: View {
                 }
                     .font(.caption)
                     .modifier(FontWeightModifier(weight: .medium))
-                    .foregroundStyle(hoveringDashboard ? .primary : Color.accentColor)
+                    .foregroundStyle(hoveringDashboard ? .primary : Color.brand)
                     .scaleEffect(hoveringDashboard ? 1.03 : 1.0)
                     .animation(.easeOut(duration: 0.12), value: hoveringDashboard)
             }

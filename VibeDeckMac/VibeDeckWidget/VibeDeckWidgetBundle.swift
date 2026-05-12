@@ -6,7 +6,5 @@ struct VibeDeckWidgetBundle: WidgetBundle {
     var body: some Widget {
         SummaryWidget()
         HeatmapWidget()
-        TopModelsWidget()
-        UsageLimitsWidget()
     }
 }

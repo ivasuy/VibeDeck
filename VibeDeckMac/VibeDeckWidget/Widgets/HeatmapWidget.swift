@@ -11,7 +11,9 @@ struct HeatmapWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             HeatmapWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) {
+                    WidgetTheme.widgetBackground
+                }
         }
         .configurationDisplayName(WidgetStrings.heatmapName)
         .description(WidgetStrings.heatmapDescription)
@@ -42,10 +44,10 @@ struct HeatmapWidgetView: View {
                     if streak > 0 {
                         Text(WidgetStrings.streak(streak))
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(.accentColor)
+                            .foregroundColor(WidgetTheme.brandStrong)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(Color.accentColor.opacity(0.16), in: Capsule())
+                            .background(WidgetTheme.brand.opacity(0.16), in: Capsule())
                     }
                 }
 

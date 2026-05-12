@@ -55,7 +55,11 @@ struct PlaceholderBlock: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(Color.gray.opacity(0.06))
+            .fill(Color.panelFill)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.panelBorder, lineWidth: 1)
+            )
             .frame(height: height)
             .overlay(
                 Text(hint)

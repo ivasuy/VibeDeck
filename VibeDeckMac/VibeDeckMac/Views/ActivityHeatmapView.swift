@@ -56,7 +56,11 @@ struct ActivityHeatmapView: View {
                 }
             } else {
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.gray.opacity(0.06))
+                    .fill(Color.panelFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color.panelBorder, lineWidth: 1)
+                    )
                     .frame(height: 7 * (cellSize + spacing) - spacing)
             }
         }

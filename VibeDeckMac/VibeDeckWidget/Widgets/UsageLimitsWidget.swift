@@ -11,7 +11,9 @@ struct UsageLimitsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             UsageLimitsWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) {
+                    WidgetTheme.widgetBackground
+                }
         }
         .configurationDisplayName(WidgetStrings.limitsName)
         .description(WidgetStrings.limitsDescription)

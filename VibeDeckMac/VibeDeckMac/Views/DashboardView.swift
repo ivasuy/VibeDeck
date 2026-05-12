@@ -59,7 +59,13 @@ struct DashboardView: View {
             Divider()
             FooterView()
         }
-        .background(.ultraThinMaterial)
+        .background(
+            LinearGradient(
+                colors: [Color.chromeTop, Color.chromeBottom],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
         .id(localization.revision)
     }
 

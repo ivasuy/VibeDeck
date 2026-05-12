@@ -15,13 +15,13 @@ import Foundation
 public enum WidgetSharedConstants {
     /// Shared App Group identifier. Must be added to *both* targets'
     /// entitlements (`com.apple.security.application-groups`).
-    public static let appGroupIdentifier = "group.com.vibedeck.bar"
+    public static let appGroupIdentifier = "group.com.vasuyadav.vibedeck.shared"
 
     /// Bundle identifier of the widget extension. Used by the host app to
     /// write snapshot files directly into the widget's sandbox container as
     /// a fallback path for ad-hoc / dev signed builds where the App Group
     /// container is not actually provisioned by the system.
-    public static let widgetBundleIdentifier = "com.vibedeck.bar.widget"
+    public static let widgetBundleIdentifier = "com.vasuyadav.vibedeck.app.widget"
 
     /// Filename of the snapshot inside the App Group container.
     public static let snapshotFilename = "widget-snapshot.json"

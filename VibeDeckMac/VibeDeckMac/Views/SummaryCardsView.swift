@@ -61,7 +61,14 @@ private struct StatCard: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 6).fill(.regularMaterial))
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.panelBorder, lineWidth: 1)
+                )
+        )
         .accessibilityElement(children: .combine)
     }
 }

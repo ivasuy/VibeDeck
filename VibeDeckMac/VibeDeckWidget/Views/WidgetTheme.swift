@@ -5,14 +5,22 @@ import SwiftUI
 // separate target with its own compilation unit and tight binary-size budget.
 
 enum WidgetTheme {
+    static let brand = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 1.0)
+    static let brandStrong = Color(.sRGB, red: 0.310, green: 0.275, blue: 0.659, opacity: 1.0)
+    static let brandLight = Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
+    static let surfaceTop = Color(.sRGB, red: 0.965, green: 0.969, blue: 0.992, opacity: 0.96)
+    static let surfaceBottom = Color(.sRGB, red: 0.938, green: 0.944, blue: 0.985, opacity: 0.92)
+    static let surfaceStroke = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.18)
+    static let statusOnline = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.92)
+    static let statusWarning = Color(.sRGB, red: 0.933, green: 0.620, blue: 0.243, opacity: 0.92)
 
     // MARK: - Heatmap palette
     static let heatmapLevels: [Color] = [
         Color(.sRGB, red: 0.5, green: 0.5, blue: 0.5, opacity: 0.10),
-        Color.accentColor.opacity(0.25),
-        Color.accentColor.opacity(0.50),
-        Color.accentColor.opacity(0.75),
-        Color.accentColor
+        WidgetTheme.brand.opacity(0.25),
+        WidgetTheme.brand.opacity(0.50),
+        WidgetTheme.brand.opacity(0.75),
+        WidgetTheme.brand
     ]
 
     // MARK: - Limit bars
@@ -27,30 +35,38 @@ enum WidgetTheme {
     // MARK: - Source colors
     static func sourceColor(_ source: String) -> Color {
         switch source.lowercased() {
-        case "claude":      return .purple
-        case "codex":       return .green
-        case "gemini":      return .blue
-        case "opencode":    return .orange
-        case "openclaw":    return .pink
-        case "cursor":      return .yellow
-        case "kimi":        return .purple
-        case "everycode":   return .cyan
-        case "kiro":        return .mint
-        case "antigravity": return .indigo
-        case "copilot":     return .teal
+        case "claude":      return Color(.sRGB, red: 0.431, green: 0.447, blue: 0.788, opacity: 1.0)
+        case "codex":       return Color(.sRGB, red: 0.306, green: 0.322, blue: 0.612, opacity: 1.0)
+        case "gemini":      return Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
+        case "opencode":    return Color(.sRGB, red: 0.533, green: 0.475, blue: 0.863, opacity: 1.0)
+        case "openclaw":    return Color(.sRGB, red: 0.647, green: 0.529, blue: 0.839, opacity: 1.0)
+        case "cursor":      return Color(.sRGB, red: 0.396, green: 0.420, blue: 0.710, opacity: 1.0)
+        case "kimi":        return Color(.sRGB, red: 0.459, green: 0.420, blue: 0.812, opacity: 1.0)
+        case "everycode":   return Color(.sRGB, red: 0.459, green: 0.573, blue: 0.914, opacity: 1.0)
+        case "kiro":        return Color(.sRGB, red: 0.494, green: 0.612, blue: 0.922, opacity: 1.0)
+        case "antigravity": return Color(.sRGB, red: 0.243, green: 0.255, blue: 0.525, opacity: 1.0)
+        case "copilot":     return Color(.sRGB, red: 0.380, green: 0.498, blue: 0.855, opacity: 1.0)
         default:            return .gray
         }
     }
 
     static func modelDot(_ idx: Int) -> Color {
         let palette: [Color] = [
-            Color(.sRGB, red: 0.35, green: 0.55, blue: 0.95, opacity: 1),
-            Color(.sRGB, red: 0.60, green: 0.45, blue: 0.90, opacity: 1),
-            Color(.sRGB, red: 0.30, green: 0.72, blue: 0.65, opacity: 1),
-            Color(.sRGB, red: 0.90, green: 0.55, blue: 0.35, opacity: 1),
-            Color(.sRGB, red: 0.70, green: 0.50, blue: 0.75, opacity: 1)
+            WidgetTheme.brandLight,
+            Color(.sRGB, red: 0.431, green: 0.447, blue: 0.788, opacity: 1.0),
+            WidgetTheme.brandStrong,
+            Color(.sRGB, red: 0.651, green: 0.690, blue: 0.973, opacity: 1.0),
+            Color(.sRGB, red: 0.243, green: 0.255, blue: 0.525, opacity: 1.0)
         ]
         return palette[idx % palette.count]
+    }
+
+    static var widgetBackground: some View {
+        LinearGradient(
+            colors: [surfaceTop, surfaceBottom],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 }
 
@@ -104,7 +120,7 @@ enum WidgetFormat {
     static func deltaColor(_ percent: Double?) -> Color {
         guard let p = percent, Int(p.rounded()) != 0 else { return .secondary }
         return p > 0
-            ? Color(.sRGB, red: 0.20, green: 0.72, blue: 0.40, opacity: 1)
+            ? WidgetTheme.brand
             : Color(.sRGB, red: 0.55, green: 0.55, blue: 0.55, opacity: 1)
     }
 

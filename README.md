@@ -1,84 +1,321 @@
 # VibeDeck
 
-VibeDeck is a local-first dashboard for AI coding work. It parses usage from supported coding agents, attributes activity to projects and branches, estimates model cost, and serves everything from your machine.
+VibeDeck is a local-first usage, cost, provenance, and live-session dashboard for AI coding agents. It parses local provider activity, stores normalized usage in a local SQLite database, serves a local API, and exposes the same data through the CLI, the web dashboard, and the macOS menu bar app.
 
-The project is intentionally local-only. It does not include remote account features, public rankings, public profiles, generated social cards, or marketing pages.
+The product is intentionally local-only. It does not include remote account features, public rankings, public profiles, generated social cards, or marketing pages.
 
-## Quick Start
+## Requirements
 
-Requirements:
+- Node.js `22.5+`
+- npm or pnpm
+- macOS for the native app and widget targets
+- Xcode 16+ for the native app
+- `xcodegen` for regenerating the native project from `VibeDeckMac/project.yml`
 
-- Node.js 22.5 or newer
-- macOS, Linux, or Windows for the CLI
-- macOS for the native menu bar app and widget targets
+Canonical local paths:
 
-```bash
-npx vibedeck-cli
-```
+- data root: `~/.vibedeck/`
+- SQLite database: `~/.vibedeck/tracker/vibedeck.sqlite3`
+- default dashboard URL: `http://localhost:7690`
 
-First run installs supported hooks, syncs local usage data, and opens the dashboard at `http://localhost:7690`.
+## Repo Layout
 
-For local development:
+- `bin/vibedeck.js` - CLI entry point
+- `src/commands/` - CLI commands such as `serve`, `sync`, `init`, `status`, and `doctor`
+- `src/lib/local-api.js` - local backend consumed by dashboard and native app
+- `dashboard/` - Vite/React dashboard
+- `VibeDeckMac/` - macOS menu bar app and widget extension
+- `test/` - Node test suite
+
+## Install
+
+Install root and dashboard dependencies:
 
 ```bash
 npm install
 npm --prefix dashboard install
-npm --prefix dashboard run build
-node bin/vibedeck.js serve
 ```
 
-## Commands
+If you are working on the native app, generate the Xcode project:
 
 ```bash
-vibedeck              # Start the local dashboard
-vibedeck sync         # Parse provider logs into the local database
-vibedeck status       # Show integration status
-vibedeck doctor       # Run health checks
-vibedeck init         # Install or refresh provider hooks
-vibedeck uninstall    # Remove installed hooks and local config
+xcodegen generate --spec VibeDeckMac/project.yml
 ```
+
+## CLI Commands
+
+```bash
+vibedeck                     # start the local server and dashboard
+vibedeck sync                # parse provider logs into ~/.vibedeck/tracker/vibedeck.sqlite3
+vibedeck status              # show provider/configuration state
+vibedeck doctor              # run local health checks
+vibedeck init                # install or refresh provider hooks
+vibedeck uninstall           # remove hooks and local config
+```
+
+Equivalent local dev entrypoints:
+
+```bash
+node bin/vibedeck.js serve --port 7690
+node bin/vibedeck.js sync
+node bin/vibedeck.js status
+node bin/vibedeck.js doctor
+node bin/vibedeck.js init
+```
+
+## Build Commands
+
+Root package:
+
+```bash
+npm run dashboard:build
+```
+
+Dashboard only:
+
+```bash
+npm --prefix dashboard run build
+```
+
+Native app:
+
+```bash
+xcodegen generate --spec VibeDeckMac/project.yml
+xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+```
+
+Signed native build on a machine with a valid Apple Development identity:
+
+```bash
+xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug -allowProvisioningUpdates build
+```
+
+## Test Commands
+
+CLI and backend tests:
+
+```bash
+npm test
+node --test test/*.test.js
+```
+
+Focused Node tests:
+
+```bash
+node --test test/rollout-parser.test.js
+node --test test/local-api.test.js
+```
+
+Dashboard tests:
+
+```bash
+npm --prefix dashboard run test
+```
+
+Dashboard watch mode:
+
+```bash
+npm --prefix dashboard run test:watch
+```
+
+Dashboard lint and typecheck:
+
+```bash
+npm --prefix dashboard run lint
+npm --prefix dashboard run typecheck
+```
+
+Native app verification:
+
+```bash
+xcodegen generate --spec VibeDeckMac/project.yml
+xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+```
+
+## Local Development
+
+### Run the backend and dashboard
+
+Build the dashboard bundle and start the local backend:
+
+```bash
+npm --prefix dashboard run build
+node bin/vibedeck.js serve --port 7690
+```
+
+Then open:
+
+- `http://127.0.0.1:7690`
+- or `http://localhost:7690`
+
+For dashboard-only frontend work:
+
+```bash
+npm --prefix dashboard run dev
+```
+
+### Sync local usage data
+
+To populate the local database from supported provider logs:
+
+```bash
+node bin/vibedeck.js init
+node bin/vibedeck.js sync
+```
+
+Useful follow-up checks:
+
+```bash
+node bin/vibedeck.js status
+node bin/vibedeck.js doctor
+```
+
+## End-to-End Local Testing
+
+This is the shortest reliable path to get data flowing into all three surfaces: CLI, dashboard, and mac app.
+
+### 1. Install dependencies
+
+```bash
+npm install
+npm --prefix dashboard install
+```
+
+### 2. Build the dashboard assets
+
+```bash
+npm --prefix dashboard run build
+```
+
+### 3. Install hooks and provider integrations
+
+```bash
+node bin/vibedeck.js init
+```
+
+This installs or refreshes local hooks for supported providers where applicable.
+
+### 4. Generate some local data
+
+Option A: use your existing supported tools normally so they write logs that VibeDeck can parse.
+
+Option B: if you already have provider logs from Claude Code, Codex CLI, Cursor, Gemini CLI, or other supported tools on this machine, just proceed to sync.
+
+### 5. Parse provider activity into the database
+
+```bash
+node bin/vibedeck.js sync
+```
+
+This writes normalized usage into:
+
+```bash
+~/.vibedeck/tracker/vibedeck.sqlite3
+```
+
+### 6. Verify data exists from the CLI
+
+```bash
+node bin/vibedeck.js status
+node bin/vibedeck.js doctor
+```
+
+If sync completed successfully, the CLI should show configured providers and recent activity state.
+
+### 7. Start the local backend
+
+```bash
+node bin/vibedeck.js serve --port 7690
+```
+
+This serves the local API and dashboard on port `7690`.
+
+### 8. Test the dashboard
+
+Open:
+
+```text
+http://localhost:7690
+```
+
+The dashboard reads from the same local backend and SQLite-backed API.
+
+### 9. Test the CLI against the same local data
+
+Run:
+
+```bash
+node bin/vibedeck.js status
+node bin/vibedeck.js sync
+```
+
+You are now exercising the same local store that feeds the dashboard and native app.
+
+### 10. Test the mac app
+
+Generate the Xcode project if needed:
+
+```bash
+xcodegen generate --spec VibeDeckMac/project.yml
+```
+
+Build the app:
+
+```bash
+xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug -allowProvisioningUpdates build
+```
+
+The built app will be under a DerivedData path similar to:
+
+```text
+/Users/<you>/Library/Developer/Xcode/DerivedData/.../Build/Products/Debug/VibeDeckMac.app
+```
+
+Launch that app, or open `VibeDeckMac/VibeDeckMac.xcodeproj` in Xcode and run the `VibeDeckMac` scheme.
+
+The native app reads the same local backend and local data model:
+
+- it embeds the Node server bundle
+- it points at the same local API routes
+- its widgets use snapshots written from the same local usage state
+
+## How Data Reaches All Surfaces
+
+```text
+provider logs and hooks
+  -> node bin/vibedeck.js sync
+  -> ~/.vibedeck/tracker/vibedeck.sqlite3
+  -> src/lib/local-api.js
+  -> CLI / dashboard / mac app / widgets
+```
+
+If one surface looks empty while another has data, check these first:
+
+1. `node bin/vibedeck.js sync`
+2. `node bin/vibedeck.js status`
+3. `node bin/vibedeck.js doctor`
+4. confirm `~/.vibedeck/tracker/vibedeck.sqlite3` exists
+5. confirm the local backend is running on `http://localhost:7690`
 
 ## Supported Providers
 
 VibeDeck tracks local usage from:
 
 - Claude Code
-- Codex CLI and Every Code
+- Codex CLI
 - Cursor
 - Gemini CLI
 - Kiro
-- OpenCode and OpenClaw
+- OpenCode
+- OpenClaw
+- Every Code
 - Hermes Agent
 - GitHub Copilot
 - Kimi Code
 - CodeBuddy
 - oh-my-pi
 
-Hook-based providers get lightweight local hooks. Passive providers are read from files they already write, such as SQLite databases, JSONL logs, or OpenTelemetry exports.
-
-## What VibeDeck Tracks
-
-- Token usage by day, hour, model, provider, project, branch, and live workstream
-- Estimated USD cost using bundled pricing data and local overrides
-- Active and recently stale sessions
-- Provider configuration and sync freshness
-- Entire CLI status and checkpoints for selected repositories
-- Skills installation and per-provider sync state
-
-VibeDeck tracks counts and metadata. It is designed not to upload prompts, responses, file contents, or conversation text.
-
-## Data Flow
-
-```text
-AI coding tools
-  -> hooks and passive log readers
-  -> local sync
-  -> ~/.vibedeck/tracker/vibedeck.sqlite3
-  -> local API
-  -> dashboard, menu bar app, and widgets
-```
-
-Compatibility exports such as `queue.jsonl` may still be written for older readers, but the canonical local store is the SQLite database under `~/.vibedeck/tracker/`.
+Hook-based providers get lightweight local hooks. Passive providers are read from files they already write, including SQLite databases, JSONL logs, and local exports.
 
 ## Configuration
 
@@ -92,28 +329,15 @@ Common environment variables:
 | `CODEX_HOME` | Override Codex config directory |
 | `GEMINI_HOME` | Override Gemini config directory |
 
-Some legacy environment aliases are still accepted for migration or provider-hook compatibility.
+Some legacy aliases still exist for migration and hook compatibility.
 
-## Development
+## macOS Notes
 
-```bash
-rtk node --test test/*.test.js
-rtk npm --prefix dashboard run test
-rtk npm --prefix dashboard run build
-```
-
-Useful focused commands:
-
-```bash
-rtk node --test test/rollout-parser.test.js
-rtk node bin/vibedeck.js sync
-rtk node bin/vibedeck.js serve --port 7690
-```
-
-## macOS App
-
-The native app lives in `VibeDeckMac/`. It embeds the local Node server, hosts the dashboard in a WKWebView, and writes WidgetKit snapshots for the VibeDeck widget target.
+- Native project source of truth: `VibeDeckMac/project.yml`
+- Regenerated project: `VibeDeckMac/VibeDeckMac.xcodeproj`
+- Signed builds require a valid Apple Development identity in Xcode
+- Widget testing requires running the native app at least once so widget snapshot data can be written locally
 
 ## License
 
-MIT.
+MIT

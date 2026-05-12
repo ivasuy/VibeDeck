@@ -10,7 +10,9 @@ struct TopModelsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             TopModelsWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) {
+                    WidgetTheme.widgetBackground
+                }
         }
         .configurationDisplayName(WidgetStrings.topModelsName)
         .description(WidgetStrings.topModelsDescription)

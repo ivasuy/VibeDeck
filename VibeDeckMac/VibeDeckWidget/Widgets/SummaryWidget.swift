@@ -13,7 +13,9 @@ struct SummaryWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             SummaryWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) {
+                    WidgetTheme.widgetBackground
+                }
         }
         .configurationDisplayName(WidgetStrings.usageName)
         .description(WidgetStrings.usageDescription)

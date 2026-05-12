@@ -222,6 +222,8 @@ test("vibedeck checkpoint endpoints include canonical checkpoint usage from pers
         metadata_path: "e2/abdc1ec6/metadata.json",
         checkpoint_group_id: "e2/abdc1ec6",
         agent: "codex",
+        provider: "codex",
+        model: "gpt-5.5",
         branch: "main",
         total_tokens: 1000,
         total_cost_usd: 1.23,
@@ -255,6 +257,8 @@ test("vibedeck checkpoint endpoints include canonical checkpoint usage from pers
         metadata_path: "e2/abdc1ec6/metadata.json",
         checkpoint_group_id: "e2/abdc1ec6",
         agent: "codex",
+        provider: "codex",
+        model: "gpt-5.5",
         branch: "main",
         total_tokens: 1000,
         total_cost_usd: 1.23,
@@ -342,6 +346,8 @@ test("vibedeck checkpoint usage resolves links by checkpoint_id when entire_sess
     assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].total_tokens, 500);
     assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].status, "linked");
     assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].confidence, "linked");
+    assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].provider, "codex");
+    assert.equal(body.checkpoint_usage["aa/11bb22ccdd"].model, "gpt-5.5");
   } finally {
     restore();
     await fs.rm(repoDir, { recursive: true, force: true });
@@ -425,6 +431,8 @@ test("vibedeck checkpoints include linked cost quality from checkpoint match tab
     assert.equal(usage.confidence, "exact");
     assert.equal(usage.total_cost_usd, 1.23);
     assert.equal(usage.cost_quality, "stored");
+    assert.equal(usage.provider, "codex");
+    assert.equal(usage.model, "gpt-5.5");
   } finally {
     restore();
     await fs.rm(repoDir, { recursive: true, force: true });
@@ -482,6 +490,8 @@ test("vibedeck checkpoints expose ambiguous status without showing zero cost", a
     assert.equal(usage.total_cost_usd, null);
     assert.equal(usage.cost_quality, "unknown");
     assert.equal(usage.reason, "multiple_matching_sessions");
+    assert.equal(usage.provider, "codex");
+    assert.equal(usage.model, "gpt-5.5");
   } finally {
     restore();
     await fs.rm(repoDir, { recursive: true, force: true });
@@ -535,6 +545,8 @@ test("vibedeck checkpoint metadata exposes unmatched usage status", async () => 
     assert.equal(body.usage.status, "unmatched");
     assert.equal(body.usage.total_cost_usd, null);
     assert.equal(body.usage.cost_quality, "unknown");
+    assert.equal(body.usage.provider, "codex");
+    assert.equal(body.usage.model, "gpt-5.5");
   } finally {
     restore();
     await fs.rm(repoDir, { recursive: true, force: true });

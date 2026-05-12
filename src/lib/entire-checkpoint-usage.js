@@ -158,13 +158,22 @@ function usageFromRows({
   status,
   confidence,
   reason,
+  matchRow,
 }) {
   const summary = summarizeCanonicalUsageRows(rows);
+  const firstProvider = Array.isArray(summary.providers) && summary.providers.length > 0
+    ? summary.providers[0].provider
+    : null;
+  const firstModel = Array.isArray(summary.models) && summary.models.length > 0
+    ? summary.models[0].model
+    : null;
   return {
     checkpoint_id: checkpointId || null,
     metadata_path: metadataPath || null,
     checkpoint_group_id: groupId,
     agent: typeof metadata?.agent === 'string' ? metadata.agent : null,
+    provider: matchRow?.provider || firstProvider || agentToProvider(metadata?.agent),
+    model: matchRow?.model || firstModel || (typeof metadata?.model === 'string' ? metadata.model : null),
     branch: typeof metadata?.branch === 'string' ? metadata.branch : null,
     total_tokens: summary.total_tokens,
     total_cost_usd: summary.total_cost_usd,
@@ -216,6 +225,7 @@ function buildCheckpointUsage(dbPath, payload, context = {}) {
             status,
             confidence,
             reason,
+            matchRow,
           });
         }
       }
@@ -250,6 +260,7 @@ function buildCheckpointUsage(dbPath, payload, context = {}) {
       status: 'linked',
       confidence,
       reason: null,
+      matchRow: null,
     });
   } finally {
     db.close();

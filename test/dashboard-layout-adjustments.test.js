@@ -40,8 +40,8 @@ function readFile(filePath) {
 
 test("DashboardPage places TrendMonitor and heatmap in left column", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
+  const leftStart = src.indexOf("xl:col-span-4");
+  const rightStart = src.indexOf("xl:col-span-8", leftStart + 1);
   assert.ok(leftStart !== -1, "expected left column markup");
   assert.ok(rightStart !== -1, "expected right column markup");
 
@@ -54,8 +54,8 @@ test("DashboardPage places TrendMonitor and heatmap in left column", () => {
 
 test("DashboardPage right column contains UsageOverview", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("lg:col-span-4");
-  const rightStart = src.indexOf("lg:col-span-8", leftStart + 1);
+  const leftStart = src.indexOf("xl:col-span-4");
+  const rightStart = src.indexOf("xl:col-span-8", leftStart + 1);
   assert.ok(leftStart !== -1, "expected left column markup");
   assert.ok(rightStart !== -1, "expected right column markup");
 

@@ -30,6 +30,7 @@ const height = toNumber(readArg("--height", "997"), 997);
 const dpr = toNumber(readArg("--dpr", "2"), 2);
 const waitMs = toNumber(readArg("--wait", "1200"), 1200);
 const fullPage = !hasFlag("--no-full-page");
+const theme = readArg("--theme", "").toLowerCase();
 
 const resolvedOut = path.isAbsolute(out) ? out : path.resolve(out);
 
@@ -43,6 +44,15 @@ async function run() {
   });
 
   try {
+    if (theme === "light" || theme === "dark" || theme === "system") {
+      await page.addInitScript((forcedTheme) => {
+        try {
+          window.localStorage.setItem("vibedeck-theme", forcedTheme);
+        } catch {
+          // ignore storage failures in screenshot mode
+        }
+      }, theme);
+    }
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(url, { waitUntil: "domcontentloaded" });
     await page.addStyleTag({

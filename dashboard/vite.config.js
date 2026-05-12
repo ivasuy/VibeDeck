@@ -748,7 +748,7 @@ async function handleLocalApi(req, res, url) {
 }
 
 async function proxyToLocalCli(req, res) {
-  const target = `http://127.0.0.1:7680${req.url}`;
+  const target = `http://127.0.0.1:7690${req.url}`;
   const headers = { ...req.headers };
   delete headers.host;
   delete headers.connection;
@@ -771,7 +771,7 @@ async function proxyToLocalCli(req, res) {
     res.statusCode = 502;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({
-      error: `Local CLI not reachable on :7680 — start it with: node bin/vibedeck.js serve --no-sync --no-open`,
+      error: `Local CLI not reachable on :7690 — start it with: node bin/vibedeck.js serve --no-sync --no-open`,
       detail: String(error?.message || error),
     }));
   }

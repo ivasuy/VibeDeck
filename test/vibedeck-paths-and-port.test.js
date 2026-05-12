@@ -19,6 +19,13 @@ test('default port is 7690', () => {
   assert.strictEqual(Number(match[1]), 7690);
 });
 
+test('native mac app also points at port 7690', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '../VibeDeckMac/VibeDeckMac/Utilities/Constants.swift'), 'utf8');
+  assert.match(src, /serverBaseURL = "http:\/\/localhost:7690"/);
+  assert.match(src, /serverPort = 7690/);
+});
+
 test('serve banner uses VibeDeck branding and explains no-sync', () => {
   const fs = require('node:fs');
   const src = fs.readFileSync(path.join(__dirname, '../src/commands/serve.js'), 'utf8');

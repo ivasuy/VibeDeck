@@ -1,0 +1,406 @@
+- generic [ref=e3]:
+  - complementary "Main navigation" [ref=e4]:
+    - link "VibeDeck" [ref=e6] [cursor=pointer]:
+      - /url: /dashboard
+      - generic [ref=e7]: VibeDeck
+    - navigation "Primary" [ref=e8]:
+      - generic [ref=e9]:
+        - generic [ref=e10]: General
+        - generic [ref=e11]:
+          - link "Live" [ref=e12] [cursor=pointer]:
+            - /url: /dashboard
+            - img [ref=e14]
+            - generic [ref=e16]: Live
+          - link "Usage" [ref=e17] [cursor=pointer]:
+            - /url: /usage
+            - img [ref=e19]
+            - generic [ref=e21]: Usage
+          - link "Branches" [ref=e22] [cursor=pointer]:
+            - /url: /branches
+            - img [ref=e25]
+            - generic [ref=e29]: Branches
+      - generic [ref=e30]:
+        - generic [ref=e31]: Tools
+        - generic [ref=e32]:
+          - link "Entire" [ref=e33] [cursor=pointer]:
+            - /url: /entire
+            - img [ref=e35]
+            - generic [ref=e40]: Entire
+          - link "Skills" [ref=e41] [cursor=pointer]:
+            - /url: /skills
+            - img [ref=e43]
+            - generic [ref=e45]: Skills
+      - generic [ref=e46]:
+        - generic [ref=e47]: Account
+        - generic [ref=e48]:
+          - link "macOS Widgets" [ref=e49] [cursor=pointer]:
+            - /url: /widgets
+            - img [ref=e51]
+            - generic [ref=e56]: macOS Widgets
+          - link "Settings" [ref=e57] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e59]
+            - generic [ref=e62]: Settings
+    - generic [ref=e63]:
+      - button "Theme" [ref=e65] [cursor=pointer]:
+        - img [ref=e66]
+      - generic [ref=e72]:
+        - link "Star (0)" [ref=e130] [cursor=pointer]:
+          - /url: https://github.com/ivasuy/VibeDeck
+          - img [ref=e74]
+          - generic [ref=e76]: Star
+          - generic [ref=e131]: "0"
+        - button "Collapse sidebar" [ref=e77] [cursor=pointer]:
+          - img [ref=e78]
+  - main [ref=e84]:
+    - generic [ref=e87]:
+      - generic [ref=e89]:
+        - generic [ref=e90]:
+          - generic [ref=e91]:
+            - generic [ref=e92]: Project
+            - generic [ref=e93]:
+              - combobox "Project" [ref=e94]:
+                - option "VibeDeck" [selected]
+                - option "switchyard"
+                - option "vasu-portfolio-v2"
+                - option "agentfield"
+                - option "cli"
+                - option "paperclip"
+                - option "worktrace"
+                - option "quickwatch"
+                - option "commitd"
+                - option "portfolio"
+              - img
+          - generic [ref=e95]:
+            - generic [ref=e96]: Branch
+            - generic [ref=e97]:
+              - combobox "Branch" [ref=e98]:
+                - option "entire/19f2e36-e3b0c4"
+                - option "entire/9182de5-e3b0c4"
+                - option "entire/a1fbd0a-e3b0c4"
+                - option "entire/checkpoints/v1"
+                - option "entire/dac2395-e3b0c4"
+                - option "fix/entire-known-repos" [selected]
+                - option "main"
+                - option "token-trackerbar-dashboard-parity"
+              - img
+          - generic [ref=e99]:
+            - generic [ref=e100]: Attribution filter
+            - textbox "Attribution filter" [ref=e101]:
+              - /placeholder: Filter by attribution name
+        - generic [ref=e102]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - img [ref=e106]
+              - generic [ref=e109]: Tokens
+            - generic [ref=e110]: 228,172,395
+          - generic [ref=e111]:
+            - generic [ref=e112]:
+              - img [ref=e114]
+              - generic [ref=e117]: Cost
+            - generic [ref=e118]: $96.74
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - img [ref=e122]
+              - generic [ref=e125]: Sessions
+            - generic [ref=e126]: "72"
+      - generic [ref=e133]:
+        - table [ref=e135]:
+          - rowgroup [ref=e136]:
+            - row "Attribution Tokens Cost Top model Last seen Confidence mix Sessions" [ref=e137]:
+              - columnheader "Attribution" [ref=e138]
+              - columnheader "Tokens" [ref=e139]
+              - columnheader "Cost" [ref=e140]
+              - columnheader "Top model" [ref=e141]
+              - columnheader "Last seen" [ref=e142]
+              - columnheader "Confidence mix" [ref=e143]
+              - columnheader "Sessions" [ref=e144]
+          - rowgroup [ref=e145]:
+            - row "fix/entire-known-repos~10 123,864,669 $48.60 gpt-5.4 11 May 05:29 pm high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e146]:
+              - cell "fix/entire-known-repos~10" [ref=e147]:
+                - generic "fix/entire-known-repos~10" [ref=e148]
+              - cell "123,864,669" [ref=e149]
+              - cell "$48.60" [ref=e150]
+              - cell "gpt-5.4" [ref=e151]:
+                - generic [ref=e153]: gpt-5.4
+              - cell "11 May 05:29 pm" [ref=e154]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e155]:
+                - generic [ref=e156]:
+                  - generic [ref=e157]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e158]:
+                    - generic [ref=e159]:
+                      - generic [ref=e160]: high
+                      - generic [ref=e161]: "0"
+                    - generic [ref=e162]:
+                      - generic [ref=e163]: medium
+                      - generic [ref=e164]: "0"
+                    - generic [ref=e165]:
+                      - generic [ref=e166]: low
+                      - generic [ref=e167]: "1"
+                    - generic [ref=e168]:
+                      - generic [ref=e169]: unattributed
+                      - generic [ref=e170]: "0"
+              - cell "1 View sessions" [ref=e171]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]: "1"
+                  - button "View sessions" [ref=e174] [cursor=pointer]: View
+            - row "fix/entire-known-repos~62 8,959,158 $3.11 gpt-5.4 10 May 06:47 pm high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e175]:
+              - cell "fix/entire-known-repos~62" [ref=e176]:
+                - generic "fix/entire-known-repos~62" [ref=e177]
+              - cell "8,959,158" [ref=e178]
+              - cell "$3.11" [ref=e179]
+              - cell "gpt-5.4" [ref=e180]:
+                - generic [ref=e182]: gpt-5.4
+              - cell "10 May 06:47 pm" [ref=e183]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e184]:
+                - generic [ref=e185]:
+                  - generic [ref=e186]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e187]:
+                    - generic [ref=e188]:
+                      - generic [ref=e189]: high
+                      - generic [ref=e190]: "0"
+                    - generic [ref=e191]:
+                      - generic [ref=e192]: medium
+                      - generic [ref=e193]: "0"
+                    - generic [ref=e194]:
+                      - generic [ref=e195]: low
+                      - generic [ref=e196]: "1"
+                    - generic [ref=e197]:
+                      - generic [ref=e198]: unattributed
+                      - generic [ref=e199]: "0"
+              - cell "1 View sessions" [ref=e200]:
+                - generic [ref=e201]:
+                  - generic [ref=e202]: "1"
+                  - button "View sessions" [ref=e203] [cursor=pointer]: View
+            - row "fix/entire-known-repos~63 5,874,614 $2.03 gpt-5.4 10 May 06:26 pm high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e204]:
+              - cell "fix/entire-known-repos~63" [ref=e205]:
+                - generic "fix/entire-known-repos~63" [ref=e206]
+              - cell "5,874,614" [ref=e207]
+              - cell "$2.03" [ref=e208]
+              - cell "gpt-5.4" [ref=e209]:
+                - generic [ref=e211]: gpt-5.4
+              - cell "10 May 06:26 pm" [ref=e212]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e213]:
+                - generic [ref=e214]:
+                  - generic [ref=e215]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e216]:
+                    - generic [ref=e217]:
+                      - generic [ref=e218]: high
+                      - generic [ref=e219]: "0"
+                    - generic [ref=e220]:
+                      - generic [ref=e221]: medium
+                      - generic [ref=e222]: "0"
+                    - generic [ref=e223]:
+                      - generic [ref=e224]: low
+                      - generic [ref=e225]: "1"
+                    - generic [ref=e226]:
+                      - generic [ref=e227]: unattributed
+                      - generic [ref=e228]: "0"
+              - cell "1 View sessions" [ref=e229]:
+                - generic [ref=e230]:
+                  - generic [ref=e231]: "1"
+                  - button "View sessions" [ref=e232] [cursor=pointer]: View
+            - row "fix/entire-known-repos~49 5,434,977 $2.21 gpt-5.4 10 May 09:28 pm high 0 · medium 0 · low 2 · unattributed 0 2 View sessions" [ref=e233]:
+              - cell "fix/entire-known-repos~49" [ref=e234]:
+                - generic "fix/entire-known-repos~49" [ref=e235]
+              - cell "5,434,977" [ref=e236]
+              - cell "$2.21" [ref=e237]
+              - cell "gpt-5.4" [ref=e238]:
+                - generic [ref=e240]: gpt-5.4
+              - cell "10 May 09:28 pm" [ref=e241]
+              - cell "high 0 · medium 0 · low 2 · unattributed 0" [ref=e242]:
+                - generic [ref=e243]:
+                  - generic [ref=e244]: high 0 · medium 0 · low 2 · unattributed 0
+                  - generic [ref=e245]:
+                    - generic [ref=e246]:
+                      - generic [ref=e247]: high
+                      - generic [ref=e248]: "0"
+                    - generic [ref=e249]:
+                      - generic [ref=e250]: medium
+                      - generic [ref=e251]: "0"
+                    - generic [ref=e252]:
+                      - generic [ref=e253]: low
+                      - generic [ref=e254]: "2"
+                    - generic [ref=e255]:
+                      - generic [ref=e256]: unattributed
+                      - generic [ref=e257]: "0"
+              - cell "2 View sessions" [ref=e258]:
+                - generic [ref=e259]:
+                  - generic [ref=e260]: "2"
+                  - button "View sessions" [ref=e261] [cursor=pointer]: View
+            - row "fix/entire-known-repos~65 5,288,831 $1.99 gpt-5.4 10 May 06:05 pm high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e262]:
+              - cell "fix/entire-known-repos~65" [ref=e263]:
+                - generic "fix/entire-known-repos~65" [ref=e264]
+              - cell "5,288,831" [ref=e265]
+              - cell "$1.99" [ref=e266]
+              - cell "gpt-5.4" [ref=e267]:
+                - generic [ref=e269]: gpt-5.4
+              - cell "10 May 06:05 pm" [ref=e270]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e271]:
+                - generic [ref=e272]:
+                  - generic [ref=e273]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e274]:
+                    - generic [ref=e275]:
+                      - generic [ref=e276]: high
+                      - generic [ref=e277]: "0"
+                    - generic [ref=e278]:
+                      - generic [ref=e279]: medium
+                      - generic [ref=e280]: "0"
+                    - generic [ref=e281]:
+                      - generic [ref=e282]: low
+                      - generic [ref=e283]: "1"
+                    - generic [ref=e284]:
+                      - generic [ref=e285]: unattributed
+                      - generic [ref=e286]: "0"
+              - cell "1 View sessions" [ref=e287]:
+                - generic [ref=e288]:
+                  - generic [ref=e289]: "1"
+                  - button "View sessions" [ref=e290] [cursor=pointer]: View
+            - row "fix/entire-known-repos~61 5,102,555 $1.85 gpt-5.4 10 May 06:56 pm high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e291]:
+              - cell "fix/entire-known-repos~61" [ref=e292]:
+                - generic "fix/entire-known-repos~61" [ref=e293]
+              - cell "5,102,555" [ref=e294]
+              - cell "$1.85" [ref=e295]
+              - cell "gpt-5.4" [ref=e296]:
+                - generic [ref=e298]: gpt-5.4
+              - cell "10 May 06:56 pm" [ref=e299]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e300]:
+                - generic [ref=e301]:
+                  - generic [ref=e302]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e303]:
+                    - generic [ref=e304]:
+                      - generic [ref=e305]: high
+                      - generic [ref=e306]: "0"
+                    - generic [ref=e307]:
+                      - generic [ref=e308]: medium
+                      - generic [ref=e309]: "0"
+                    - generic [ref=e310]:
+                      - generic [ref=e311]: low
+                      - generic [ref=e312]: "1"
+                    - generic [ref=e313]:
+                      - generic [ref=e314]: unattributed
+                      - generic [ref=e315]: "0"
+              - cell "1 View sessions" [ref=e316]:
+                - generic [ref=e317]:
+                  - generic [ref=e318]: "1"
+                  - button "View sessions" [ref=e319] [cursor=pointer]: View
+            - row "fix/entire-known-repos~27 4,478,753 $2.04 gpt-5.4 11 May 01:51 am high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e320]:
+              - cell "fix/entire-known-repos~27" [ref=e321]:
+                - generic "fix/entire-known-repos~27" [ref=e322]
+              - cell "4,478,753" [ref=e323]
+              - cell "$2.04" [ref=e324]
+              - cell "gpt-5.4" [ref=e325]:
+                - generic [ref=e327]: gpt-5.4
+              - cell "11 May 01:51 am" [ref=e328]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e329]:
+                - generic [ref=e330]:
+                  - generic [ref=e331]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e332]:
+                    - generic [ref=e333]:
+                      - generic [ref=e334]: high
+                      - generic [ref=e335]: "0"
+                    - generic [ref=e336]:
+                      - generic [ref=e337]: medium
+                      - generic [ref=e338]: "0"
+                    - generic [ref=e339]:
+                      - generic [ref=e340]: low
+                      - generic [ref=e341]: "1"
+                    - generic [ref=e342]:
+                      - generic [ref=e343]: unattributed
+                      - generic [ref=e344]: "0"
+              - cell "1 View sessions" [ref=e345]:
+                - generic [ref=e346]:
+                  - generic [ref=e347]: "1"
+                  - button "View sessions" [ref=e348] [cursor=pointer]: View
+            - row "fix/entire-known-repos~29 4,390,128 $2.18 gpt-5.4 11 May 01:39 am high 0 · medium 0 · low 1 · unattributed 0 1 View sessions" [ref=e349]:
+              - cell "fix/entire-known-repos~29" [ref=e350]:
+                - generic "fix/entire-known-repos~29" [ref=e351]
+              - cell "4,390,128" [ref=e352]
+              - cell "$2.18" [ref=e353]
+              - cell "gpt-5.4" [ref=e354]:
+                - generic [ref=e356]: gpt-5.4
+              - cell "11 May 01:39 am" [ref=e357]
+              - cell "high 0 · medium 0 · low 1 · unattributed 0" [ref=e358]:
+                - generic [ref=e359]:
+                  - generic [ref=e360]: high 0 · medium 0 · low 1 · unattributed 0
+                  - generic [ref=e361]:
+                    - generic [ref=e362]:
+                      - generic [ref=e363]: high
+                      - generic [ref=e364]: "0"
+                    - generic [ref=e365]:
+                      - generic [ref=e366]: medium
+                      - generic [ref=e367]: "0"
+                    - generic [ref=e368]:
+                      - generic [ref=e369]: low
+                      - generic [ref=e370]: "1"
+                    - generic [ref=e371]:
+                      - generic [ref=e372]: unattributed
+                      - generic [ref=e373]: "0"
+              - cell "1 View sessions" [ref=e374]:
+                - generic [ref=e375]:
+                  - generic [ref=e376]: "1"
+                  - button "View sessions" [ref=e377] [cursor=pointer]: View
+            - row "fix/entire-known-repos~54 4,268,320 $1.74 gpt-5.4 10 May 08:57 pm high 0 · medium 0 · low 2 · unattributed 0 2 View sessions" [ref=e378]:
+              - cell "fix/entire-known-repos~54" [ref=e379]:
+                - generic "fix/entire-known-repos~54" [ref=e380]
+              - cell "4,268,320" [ref=e381]
+              - cell "$1.74" [ref=e382]
+              - cell "gpt-5.4" [ref=e383]:
+                - generic [ref=e385]: gpt-5.4
+              - cell "10 May 08:57 pm" [ref=e386]
+              - cell "high 0 · medium 0 · low 2 · unattributed 0" [ref=e387]:
+                - generic [ref=e388]:
+                  - generic [ref=e389]: high 0 · medium 0 · low 2 · unattributed 0
+                  - generic [ref=e390]:
+                    - generic [ref=e391]:
+                      - generic [ref=e392]: high
+                      - generic [ref=e393]: "0"
+                    - generic [ref=e394]:
+                      - generic [ref=e395]: medium
+                      - generic [ref=e396]: "0"
+                    - generic [ref=e397]:
+                      - generic [ref=e398]: low
+                      - generic [ref=e399]: "2"
+                    - generic [ref=e400]:
+                      - generic [ref=e401]: unattributed
+                      - generic [ref=e402]: "0"
+              - cell "2 View sessions" [ref=e403]:
+                - generic [ref=e404]:
+                  - generic [ref=e405]: "2"
+                  - button "View sessions" [ref=e406] [cursor=pointer]: View
+            - row "fix/entire-known-repos~35 4,133,523 $1.92 gpt-5.4 11 May 12:21 am high 0 · medium 0 · low 2 · unattributed 0 2 View sessions" [ref=e407]:
+              - cell "fix/entire-known-repos~35" [ref=e408]:
+                - generic "fix/entire-known-repos~35" [ref=e409]
+              - cell "4,133,523" [ref=e410]
+              - cell "$1.92" [ref=e411]
+              - cell "gpt-5.4" [ref=e412]:
+                - generic [ref=e414]: gpt-5.4
+              - cell "11 May 12:21 am" [ref=e415]
+              - cell "high 0 · medium 0 · low 2 · unattributed 0" [ref=e416]:
+                - generic [ref=e417]:
+                  - generic [ref=e418]: high 0 · medium 0 · low 2 · unattributed 0
+                  - generic [ref=e419]:
+                    - generic [ref=e420]:
+                      - generic [ref=e421]: high
+                      - generic [ref=e422]: "0"
+                    - generic [ref=e423]:
+                      - generic [ref=e424]: medium
+                      - generic [ref=e425]: "0"
+                    - generic [ref=e426]:
+                      - generic [ref=e427]: low
+                      - generic [ref=e428]: "2"
+                    - generic [ref=e429]:
+                      - generic [ref=e430]: unattributed
+                      - generic [ref=e431]: "0"
+              - cell "2 View sessions" [ref=e432]:
+                - generic [ref=e433]:
+                  - generic [ref=e434]: "2"
+                  - button "View sessions" [ref=e435] [cursor=pointer]: View
+        - generic [ref=e436]:
+          - generic [ref=e437]:
+            - generic [ref=e438]: 1-10 of 47
+            - generic [ref=e439]: Medium/low/unattributed indicate uncertain branch attribution; review session details before acting.
+          - generic [ref=e440]:
+            - button "Prev" [disabled] [ref=e441]
+            - generic [ref=e442]: 1 / 5
+            - button "Next" [ref=e443] [cursor=pointer]

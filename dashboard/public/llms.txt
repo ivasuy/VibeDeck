@@ -13,7 +13,7 @@ Kiro, Hermes Agent, GitHub Copilot, Kimi Code, oh-my-pi (omp), and CodeBuddy.
 - [Claude IP check](https://github.com/ivasuy/VibeDeck)
 
 ## Post-install (local) views
-After running `npx vibedeck-cli`, these views are available at http://localhost:7680
+After running `npx vibedeck-cli`, these views are available at http://localhost:7690
 on the user's own machine — they are not public URLs:
 - Usage dashboard, cost analysis, usage limits panel
 - Project attribution, activity heatmap, trend charts

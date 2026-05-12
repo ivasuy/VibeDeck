@@ -7,9 +7,12 @@ const {
   addCostToAccumulator,
   finalizeCostAccumulator,
 } = require('./cost-estimation');
+const { readCanonicalCompleteness } = require('./sessions/canonical-completeness');
 
 function readUsageRowsFromDb(dbPath) {
   if (typeof dbPath !== 'string' || !dbPath.trim() || !fs.existsSync(dbPath)) return [];
+  const completeness = readCanonicalCompleteness(dbPath);
+  if (!completeness.complete) return [];
 
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {

@@ -55,6 +55,7 @@ const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
+const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -656,6 +657,14 @@ async function cmdSync(argv) {
       if (!opts.auto) {
         process.stderr.write("Rebuild phase: validating canonical facts\n");
       }
+
+      const queueRows = await readQueueRowsForAudit(queuePath);
+      const report = reconcileCanonicalUsage({ dbPath, queueRows });
+      const diagnosticsDir = path.join(trackerDir, "diagnostics");
+      await fs.mkdir(diagnosticsDir, { recursive: true });
+      const outPath = path.join(diagnosticsDir, "canonical-reconciliation.json");
+      await fs.writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
+      if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
     }
 
     cursors.updatedAt = new Date().toISOString();
@@ -875,6 +884,28 @@ async function writeSessionFailureDiagnostics(trackerDir, failures) {
   const body = failures.map((row) => JSON.stringify(row)).join("\n") + "\n";
   await fs.writeFile(outPath, body, "utf8");
   return outPath;
+}
+
+async function readQueueRowsForAudit(queuePath) {
+  let raw = '';
+  try {
+    raw = await fs.readFile(queuePath, "utf8");
+  } catch {
+    return [];
+  }
+
+  const out = [];
+  for (const line of String(raw || '').split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") out.push(parsed);
+    } catch {
+      // ignore malformed queue rows in diagnostics-only reconciliation path
+    }
+  }
+  return out;
 }
 
 module.exports = {

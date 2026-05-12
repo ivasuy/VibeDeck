@@ -80,6 +80,9 @@ test("GET /functions/vibedeck-sessions-live-snapshot returns current live sessio
   const payload = parseResponseJson(res);
   assert.equal(typeof payload.generated_at, "string");
   assert.equal(payload.last_sync_at, null);
+  assert.equal(payload.canonical.complete, false);
+  assert.equal(payload.canonical_incomplete, true);
+  assert.ok(payload.canonical.sessions_missing_bucket_facts >= 1);
   assert.equal(Array.isArray(payload.sessions), true);
   assert.equal(payload.sessions.length, 1);
   assert.equal(payload.sessions[0].session_id, "snapshot-open");

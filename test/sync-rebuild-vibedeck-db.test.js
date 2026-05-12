@@ -337,3 +337,85 @@ test('sync --rebuild-vibedeck-db closes historical idle sessions with historical
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test('sync --rebuild-vibedeck-db clears stale checkpoint match and link rows before backfill', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-entire-reset-'));
+  const prevHome = process.env.HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    await fs.mkdir(trackerDir, { recursive: true });
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, last_observed_at,
+          cost_estimated, cost_quality, created_at, updated_at
+        ) VALUES (
+          'codex', 'old-session', '2026-05-12T00:00:00.000Z', '2026-05-12T00:05:00.000Z', 'normal',
+          '/repo/stale', '/repo/stale', '/repo/stale/.git', NULL,
+          'main', 'A', 'high', NULL,
+          'gpt-5.5', 100, 1.25, '2026-05-12T00:05:00.000Z',
+          0, 'stored', '2026-05-12T00:00:00.000Z', '2026-05-12T00:05:00.000Z'
+        );
+
+        INSERT INTO vibedeck_session_entire_links (
+          provider, session_id, entire_session_id, entire_checkpoint_ids, match_confidence
+        ) VALUES ('codex', 'old-session', 'entire-old', '["deadbeef0001"]', 'high');
+
+        INSERT INTO vibedeck_entire_checkpoint_matches (
+          repo_root, checkpoint_group_id, checkpoint_id, metadata_path, checkpoint_tip,
+          entire_session_id, agent, provider, model, branch, started_at, ended_at,
+          session_provider, session_id, match_status, match_confidence, reason, candidate_count,
+          created_at, updated_at
+        ) VALUES (
+          '/repo/stale', 'de/adbeef0001', 'deadbeef0001', 'de/adbeef0001/metadata.json', 'oldtip',
+          'entire-old', 'codex', 'codex', 'gpt-5.5', 'main', '2026-05-12T00:00:00.000Z', '2026-05-12T00:05:00.000Z',
+          'codex', 'old-session', 'linked', 'exact', NULL, 1,
+          '2026-05-12T00:00:00.000Z', '2026-05-12T00:00:00.000Z'
+        );
+      `);
+    } finally {
+      db.close();
+    }
+
+    await cmdSync(['--rebuild-vibedeck-db']);
+
+    const readDb = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const links = readDb.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_entire_links').get();
+      const matches = readDb.prepare('SELECT COUNT(*) AS n FROM vibedeck_entire_checkpoint_matches').get();
+      assert.equal(Number(links.n), 0);
+      assert.equal(Number(matches.n), 0);
+    } finally {
+      readDb.close();
+    }
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

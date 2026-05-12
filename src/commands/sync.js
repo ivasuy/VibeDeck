@@ -57,6 +57,8 @@ const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { maybeRunPostSyncReadmeUpdate } = require("../lib/readme-sync/service");
+const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
+const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -646,6 +648,13 @@ async function cmdSync(argv) {
       );
     }
     await recoverActiveSessionMetadata(dbPath);
+    await runEntireCheckpointBackfill({
+      dbPath,
+      trackerDir,
+      cursors,
+      rebuild: opts.rebuildVibedeckDb,
+      auto: opts.auto,
+    });
     if (opts.rebuildVibedeckDb) {
       if (!opts.auto) process.stderr.write("Rebuild phase: closing historical idle sessions\n");
       const closure = reapOrphanedSessions(dbPath, {
@@ -774,6 +783,8 @@ function clearCanonicalVibedeckTables(dbPath) {
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
         DELETE FROM vibedeck_sessions;
+        DELETE FROM vibedeck_entire_checkpoint_matches;
+        DELETE FROM vibedeck_session_entire_links;
       `);
       db.exec('COMMIT');
     } catch (err) {
@@ -915,6 +926,195 @@ async function readQueueRowsForAudit(queuePath) {
     }
   }
   return out;
+}
+
+function normalizeRepoRoot(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function isRecentIso(iso, nowMs, recentWindowMs) {
+  if (!iso) return false;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return false;
+  return t >= nowMs - recentWindowMs;
+}
+
+function isEntireStateActive(value) {
+  const state = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!state) return false;
+  return !["not_enabled", "not_installed", "disabled"].includes(state);
+}
+
+function collectRebuildEntireBackfillRepos(dbPath) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const roots = new Set();
+    const repoRows = db.prepare("SELECT repo_root FROM vibedeck_repos").all();
+    for (const row of repoRows) {
+      const root = normalizeRepoRoot(row?.repo_root);
+      if (root) roots.add(root);
+    }
+    const sessionRows = db.prepare(`
+      SELECT DISTINCT repo_root
+      FROM vibedeck_sessions
+      WHERE repo_root IS NOT NULL AND TRIM(repo_root) <> ''
+    `).all();
+    for (const row of sessionRows) {
+      const root = normalizeRepoRoot(row?.repo_root);
+      if (root) roots.add(root);
+    }
+    return Array.from(roots).sort();
+  } finally {
+    db.close();
+  }
+}
+
+function collectIncrementalEntireBackfillRepos(dbPath, { now = () => new Date() } = {}) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const nowMs = now().getTime();
+    const recentWindowMs = 24 * 60 * 60 * 1000;
+    const repoMap = new Map();
+
+    const sessionRows = db.prepare(`
+      SELECT
+        repo_root,
+        MAX(updated_at) AS last_updated_at,
+        SUM(CASE WHEN ended_at IS NULL THEN 1 ELSE 0 END) AS open_sessions
+      FROM vibedeck_sessions
+      WHERE repo_root IS NOT NULL AND TRIM(repo_root) <> ''
+      GROUP BY repo_root
+    `).all();
+    for (const row of sessionRows) {
+      const root = normalizeRepoRoot(row?.repo_root);
+      if (!root) continue;
+      const openSessions = Number(row?.open_sessions || 0);
+      const recent = isRecentIso(row?.last_updated_at || null, nowMs, recentWindowMs);
+      repoMap.set(root, {
+        repo_root: root,
+        active_recent: openSessions > 0 || recent,
+        entire_active: false,
+      });
+    }
+
+    const repoRows = db.prepare("SELECT repo_root, entire_state FROM vibedeck_repos").all();
+    for (const row of repoRows) {
+      const root = normalizeRepoRoot(row?.repo_root);
+      if (!root) continue;
+      const existing = repoMap.get(root) || { repo_root: root, active_recent: false, entire_active: false };
+      existing.entire_active = isEntireStateActive(row?.entire_state);
+      repoMap.set(root, existing);
+    }
+
+    return Array.from(repoMap.values()).sort((a, b) => a.repo_root.localeCompare(b.repo_root));
+  } finally {
+    db.close();
+  }
+}
+
+async function writeEntireBackfillDiagnostics(trackerDir, payload) {
+  const diagnosticsDir = path.join(trackerDir, "diagnostics");
+  await fs.mkdir(diagnosticsDir, { recursive: true });
+  const outPath = path.join(diagnosticsDir, "entire-checkpoint-backfill.json");
+  await fs.writeFile(outPath, JSON.stringify(payload, null, 2), "utf8");
+  return outPath;
+}
+
+async function runEntireCheckpointBackfill({
+  dbPath,
+  trackerDir,
+  cursors,
+  rebuild = false,
+  auto = false,
+} = {}) {
+  const backfillCursor = (cursors.entireCheckpointBackfill ||= { tips: {}, updatedAt: null });
+  if (!backfillCursor.tips || typeof backfillCursor.tips !== "object") backfillCursor.tips = {};
+
+  const candidates = rebuild
+    ? collectRebuildEntireBackfillRepos(dbPath).map((repoRoot) => ({
+        repo_root: repoRoot,
+        active_recent: true,
+        entire_active: true,
+      }))
+    : collectIncrementalEntireBackfillRepos(dbPath);
+
+  const repos = [];
+  const totals = { scanned: 0, linked: 0, ambiguous: 0, unmatched: 0 };
+
+  for (const candidate of candidates) {
+    const repoRoot = candidate.repo_root;
+    const prevTip = backfillCursor.tips[repoRoot] || null;
+    let listed = null;
+    let tip = null;
+    try {
+      listed = await listCheckpointsCached(repoRoot);
+      tip = listed && typeof listed.tip === "string" && listed.tip.trim() ? listed.tip.trim() : null;
+    } catch (err) {
+      repos.push({
+        repo_root: repoRoot,
+        checkpoint_tip: null,
+        scanned: 0,
+        linked: 0,
+        ambiguous: 0,
+        unmatched: 0,
+        error: err?.message || String(err),
+      });
+      continue;
+    }
+
+    const tipChanged = tip && tip !== prevTip;
+    const shouldRun = rebuild || candidate.active_recent || tipChanged || (candidate.entire_active && tipChanged);
+    if (!shouldRun) continue;
+
+    try {
+      const result = await backfillEntireCheckpointLinks({
+        dbPath,
+        repoRoot,
+        checkpointTip: tip,
+        listCheckpointsCached: async () => listed || listCheckpointsCached(repoRoot),
+        readCheckpoint: async (filePath) => readCheckpoint(repoRoot, filePath),
+      });
+      repos.push({
+        repo_root: repoRoot,
+        checkpoint_tip: tip,
+        scanned: Number(result?.scanned || 0),
+        linked: Number(result?.linked || 0),
+        ambiguous: Number(result?.ambiguous || 0),
+        unmatched: Number(result?.unmatched || 0),
+      });
+      totals.scanned += Number(result?.scanned || 0);
+      totals.linked += Number(result?.linked || 0);
+      totals.ambiguous += Number(result?.ambiguous || 0);
+      totals.unmatched += Number(result?.unmatched || 0);
+      if (tip) backfillCursor.tips[repoRoot] = tip;
+    } catch (err) {
+      repos.push({
+        repo_root: repoRoot,
+        checkpoint_tip: tip,
+        scanned: 0,
+        linked: 0,
+        ambiguous: 0,
+        unmatched: 0,
+        error: err?.message || String(err),
+      });
+      if (tip) backfillCursor.tips[repoRoot] = tip;
+    }
+  }
+
+  backfillCursor.updatedAt = new Date().toISOString();
+  const diagnosticsPayload = {
+    generated_at: new Date().toISOString(),
+    repos,
+    totals,
+  };
+  const diagnosticsPath = await writeEntireBackfillDiagnostics(trackerDir, diagnosticsPayload);
+  if (!auto) {
+    process.stderr.write(
+      `Entire checkpoint backfill: ${totals.scanned} scanned, ${totals.linked} linked, ${totals.ambiguous} ambiguous, ${totals.unmatched} unmatched\n`,
+    );
+    process.stderr.write(`Diagnostics: ${diagnosticsPath}\n`);
+  }
+  return { diagnosticsPath, repos, totals };
 }
 
 module.exports = {

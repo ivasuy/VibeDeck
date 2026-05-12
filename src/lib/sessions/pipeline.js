@@ -11,6 +11,7 @@ const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
 const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
+const { upsertEntireLink } = require('./entire-links');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -370,6 +371,15 @@ async function processSessionEvent(dbPath, event) {
             tier: branchRes.tier,
             confidence: branchRes.confidence,
           });
+          if (isNonEmptyString(branchRes.entire_link)) {
+            upsertEntireLink(db, {
+              provider: session.provider,
+              session_id: session.session_id,
+              entire_session_id: branchRes.entire_link,
+              checkpoint_ids: branchRes.checkpoint_ids,
+              match_confidence: branchRes.confidence,
+            });
+          }
         }
 
         let latest = loadSession(db, { provider: session.provider, session_id: session.session_id });

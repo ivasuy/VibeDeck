@@ -10,6 +10,7 @@ const { detectEntire } = require("./entire-bridge");
 const { readBootstrapState } = require("./bootstrap/state");
 const { readReadmeSyncConfig, readGitHubToken } = require("./readme-sync/config");
 const hookSignature = require("./hook-merger/signature");
+const { readCanonicalCompleteness } = require("./sessions/canonical-completeness");
 
 async function buildDoctorReport({
   runtime = {},
@@ -305,6 +306,34 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         critical: false,
         meta: { path: resolved },
       },
+      {
+        id: "db.canonical_completeness",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+      {
+        id: "db.session_cost_quality",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+      {
+        id: "db.entire_checkpoint_coverage",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
+      {
+        id: "db.entire_checkpoint_unmatched",
+        status: "info",
+        detail: `DB not found (${resolved})`,
+        critical: false,
+        meta: { path: resolved },
+      },
     ];
   }
 
@@ -387,6 +416,114 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         id: "db.live_sessions_anomaly",
         status: "fail",
         detail: `live session query failed: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+    }
+
+    // canonical_completeness
+    try {
+      const completeness = readCanonicalCompleteness(resolved);
+      const status = completeness.complete ? "ok" : "warn";
+      checks.push({
+        id: "db.canonical_completeness",
+        status,
+        detail: completeness.complete
+          ? `canonical bucket facts complete (sessions ${Number(completeness.session_count || 0)})`
+          : `canonical incomplete: missing bucket facts ${Number(completeness.sessions_missing_bucket_facts || 0)}`,
+        critical: false,
+        meta: completeness,
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.canonical_completeness",
+        status: "fail",
+        detail: `canonical completeness query failed: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+    }
+
+    // session_cost_quality
+    try {
+      const row = db
+        .prepare(
+          `SELECT COUNT(*) AS c
+             FROM vibedeck_sessions
+            WHERE COALESCE(total_tokens, 0) > 0
+              AND total_cost_usd IS NULL
+              AND COALESCE(NULLIF(cost_quality, ''), 'pricing_missing') = 'pricing_missing'`,
+        )
+        .get();
+      const count = Number(row?.c || 0);
+      checks.push({
+        id: "db.session_cost_quality",
+        status: count > 0 ? "warn" : "ok",
+        detail: count > 0 ? `found ${count} positive-token sessions missing canonical cost` : "session cost quality healthy",
+        critical: false,
+        meta: { missing_cost_sessions: count },
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.session_cost_quality",
+        status: "fail",
+        detail: `session cost quality query failed: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+    }
+
+    // entire_checkpoint_coverage + entire_checkpoint_unmatched
+    try {
+      const row = db
+        .prepare(
+          `SELECT
+             COUNT(*) AS scanned,
+             SUM(CASE WHEN match_status = 'linked' THEN 1 ELSE 0 END) AS linked,
+             SUM(CASE WHEN match_status = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous,
+             SUM(CASE WHEN match_status = 'unmatched' THEN 1 ELSE 0 END) AS unmatched
+           FROM vibedeck_entire_checkpoint_matches`,
+        )
+        .get();
+      const scanned = Number(row?.scanned || 0);
+      const linked = Number(row?.linked || 0);
+      const ambiguous = Number(row?.ambiguous || 0);
+      const unmatched = Number(row?.unmatched || 0);
+      const ratio = scanned > 0 ? linked / scanned : null;
+      checks.push({
+        id: "db.entire_checkpoint_coverage",
+        status: scanned === 0 ? "info" : ratio >= 0.8 ? "ok" : "warn",
+        detail:
+          scanned === 0
+            ? "no checkpoint match rows"
+            : `checkpoint link coverage ${(ratio * 100).toFixed(1)}% (${linked}/${scanned})`,
+        critical: false,
+        meta: { scanned, linked, ambiguous, unmatched, linked_ratio: ratio },
+      });
+      checks.push({
+        id: "db.entire_checkpoint_unmatched",
+        status: scanned === 0 ? "info" : ambiguous + unmatched > 0 ? "warn" : "ok",
+        detail:
+          scanned === 0
+            ? "no checkpoint match rows"
+            : ambiguous + unmatched > 0
+              ? `found ${ambiguous} ambiguous and ${unmatched} unmatched checkpoints`
+              : "no ambiguous or unmatched checkpoints",
+        critical: false,
+        meta: { scanned, ambiguous, unmatched },
+      });
+    } catch (err) {
+      checks.push({
+        id: "db.entire_checkpoint_coverage",
+        status: "fail",
+        detail: `checkpoint coverage query failed: ${err?.message || String(err)}`,
+        critical: false,
+        meta: { path: resolved },
+      });
+      checks.push({
+        id: "db.entire_checkpoint_unmatched",
+        status: "fail",
+        detail: `checkpoint unmatched query failed: ${err?.message || String(err)}`,
         critical: false,
         meta: { path: resolved },
       });

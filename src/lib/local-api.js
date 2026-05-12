@@ -334,21 +334,38 @@ function enrichLiveSessionCost(row) {
 function readLiveSessionsSnapshot(queuePath) {
   const trackerDir = path.dirname(queuePath);
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
-  const { readCanonicalCompleteness } = require("./sessions/canonical-completeness");
+  const {
+    readCanonicalCompleteness,
+    summarizeCanonicalCompletenessForSessions,
+  } = require("./sessions/canonical-completeness");
   const generatedAt = new Date().toISOString();
   const lastSyncAt = readCanonicalLastSyncAt(trackerDir);
-  const canonical = readCanonicalCompleteness(dbPath);
+  const globalCanonical = readCanonicalCompleteness(dbPath);
 
   const rollups = readLiveAuditRollups(dbPath, {
     now: generatedAt,
     idleTimeoutMin: getIdleTimeoutMin(),
     recentEndedMs: LIVE_RECENT_ENDED_MS,
   });
+  const liveIdentities = Array.from(new Map(
+    (Array.isArray(rollups?.workstreams) ? rollups.workstreams : [])
+      .flatMap((workstream) => Array.isArray(workstream?.sessions) ? workstream.sessions : [])
+      .map((row) => {
+        const provider = typeof row?.provider === "string" ? row.provider.trim() : "";
+        const sessionId = typeof row?.session_id === "string" ? row.session_id.trim() : "";
+        if (!provider || !sessionId) return null;
+        return { provider, session_id: sessionId };
+      })
+      .filter(Boolean)
+      .map((identity) => [`${identity.provider}:${identity.session_id}`, identity]),
+  ).values());
+  const liveCanonical = summarizeCanonicalCompletenessForSessions(dbPath, liveIdentities);
   return {
     ...rollups,
     sessions: Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [],
-    canonical,
-    canonical_incomplete: !canonical.complete,
+    canonical: globalCanonical,
+    live_canonical: liveCanonical,
+    canonical_incomplete: !liveCanonical.complete,
     generated_at: generatedAt,
     last_sync_at: lastSyncAt || null,
   };

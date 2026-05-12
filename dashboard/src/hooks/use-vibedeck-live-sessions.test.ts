@@ -202,6 +202,7 @@ describe("useVibeDeckLiveSessions", () => {
         },
         generated_at: "2026-05-12T00:00:00.000Z",
         last_sync_at: "2026-05-12T00:00:00.000Z",
+        live_canonical: { complete: true },
       }));
     });
 
@@ -210,6 +211,7 @@ describe("useVibeDeckLiveSessions", () => {
     expect(result.current.totals.audit_tokens).toBe(101);
     expect(result.current.generatedAt).toBe("2026-05-12T00:00:00.000Z");
     expect(result.current.lastSyncAt).toBe("2026-05-12T00:00:00.000Z");
+    expect(result.current.liveCanonical).toEqual({ complete: true });
   });
 
   it("replaces backend rollups on rollup:update while preserving session rows", () => {

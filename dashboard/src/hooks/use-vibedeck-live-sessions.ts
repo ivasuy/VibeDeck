@@ -10,6 +10,7 @@ type LivePayloadState = {
   generatedAt: string | null;
   lastSyncAt: string | null;
   canonicalIncomplete: boolean;
+  liveCanonical: Record<string, any> | null;
 };
 
 const EMPTY_TOTALS: Record<string, any> = {};
@@ -20,6 +21,7 @@ const EMPTY_STATE: LivePayloadState = {
   generatedAt: null,
   lastSyncAt: null,
   canonicalIncomplete: false,
+  liveCanonical: null,
 };
 
 function isRecord(value: unknown): value is Record<string, any> {
@@ -116,6 +118,7 @@ export function reduceLivePayloadEvent(prev: LivePayloadState, event: LiveSessio
       generatedAt: typeof event.generated_at === "string" ? event.generated_at : prev.generatedAt,
       lastSyncAt: typeof event.last_sync_at === "string" ? event.last_sync_at : prev.lastSyncAt,
       canonicalIncomplete: Boolean(event.canonical_incomplete ?? prev.canonicalIncomplete),
+      liveCanonical: isRecord(event.live_canonical) ? { ...event.live_canonical } : prev.liveCanonical,
     };
   }
   if (event.type === "rollup:error") return prev;

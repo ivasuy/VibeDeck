@@ -65,7 +65,7 @@ const {
 } = require("../lib/cli-ui");
 const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
 const { detectEntire } = require("../lib/entire-bridge");
-const execa = require("execa");
+const { runEntireLogin } = require("../lib/bootstrap/ensure-entire");
 
 const ASCII_LOGO = [
   "  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░",
@@ -231,7 +231,7 @@ async function maybeOfferEntireLogin({ opts }) {
   }
 
   try {
-    await execa("entire", ["login"], { stdio: "inherit", timeout: 5 * 60 * 1000 });
+    await runEntireLogin();
     process.stdout.write("Entire login complete.\n\n");
   } catch (err) {
     const msg = err && (err.shortMessage || err.message) ? err.shortMessage || err.message : "unknown error";

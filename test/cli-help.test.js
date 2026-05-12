@@ -21,4 +21,5 @@ test("help output uses VibeDeck identifiers", async () => {
   assert.match(out, /vibedeck/);
   assert.ok(!out.includes("@vibescore/tracker"));
   assert.match(out, /doctor/);
+  assert.match(out, /readme-sync/);
 });

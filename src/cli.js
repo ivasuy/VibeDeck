@@ -49,6 +49,9 @@ async function run(argv) {
     case "auth":
       process.exitCode = await require("./commands/auth").run(rest);
       return;
+    case "readme-sync":
+      process.exitCode = await require("./commands/readme-sync").run(rest);
+      return;
     case "repo":
       process.exitCode = await require("./commands/repo").run(rest);
       return;
@@ -71,6 +74,7 @@ function printHelp() {
       "  npx vibedeck-cli [--debug] status [--probe-keychain] [--probe-keychain-details]",
       "  npx vibedeck-cli [--debug] diagnostics [--out diagnostics.json]",
       "  npx vibedeck-cli [--debug] doctor [--json] [--out doctor.json] [--base-url <url>]",
+      "  npx vibedeck-cli [--debug] readme-sync <set|update|status|unset>",
       "  npx vibedeck-cli [--debug] uninstall [--purge]",
       "",
       "Notes:",

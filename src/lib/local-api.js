@@ -5,7 +5,6 @@ const { spawn, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
-const { buildLiveWorkstreams } = require("./sessions/workstreams");
 const { readLiveAuditRollups } = require("./sessions/live-rollups");
 const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
@@ -336,10 +335,7 @@ function readLiveSessionsSnapshot(queuePath) {
   const trackerDir = path.dirname(queuePath);
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   const generatedAt = new Date().toISOString();
-  let lastSyncAt = null;
-  try {
-    lastSyncAt = fs.statSync(queuePath).mtime.toISOString();
-  } catch {}
+  const lastSyncAt = readCanonicalLastSyncAt(trackerDir);
 
   const rollups = readLiveAuditRollups(dbPath, {
     now: generatedAt,
@@ -348,9 +344,24 @@ function readLiveSessionsSnapshot(queuePath) {
   });
   return {
     ...rollups,
+    sessions: Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [],
     generated_at: generatedAt,
-    last_sync_at: rollups.last_sync_at || lastSyncAt || null,
+    last_sync_at: lastSyncAt || null,
   };
+}
+
+function readCanonicalLastSyncAt(trackerDir) {
+  try {
+    const cursorsPath = path.join(trackerDir, "cursors.json");
+    const parsed = JSON.parse(fs.readFileSync(cursorsPath, "utf8"));
+    const value = typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null;
+    if (value && Number.isFinite(Date.parse(value))) return value;
+  } catch {}
+  return null;
+}
+
+function readLiveSnapshotForSse(queuePath) {
+  return readLiveSessionsSnapshot(queuePath);
 }
 
 // ---------------------------------------------------------------------------
@@ -1768,8 +1779,6 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
 
-      const { sessions, generated_at: generatedAt, last_sync_at: lastSyncAt } = snapshot;
-
       liveSseClientCount += 1;
       ensureSseIdleScanner();
 
@@ -1782,6 +1791,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         onStart: null,
         onUpdate: null,
         onEnd: null,
+        rollupTimer: null,
+        rollupScheduled: false,
         closed: false,
         flushScheduled: false,
         close(reason) {
@@ -1789,6 +1800,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           this.closed = true;
           try {
             if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+            if (this.rollupTimer) clearTimeout(this.rollupTimer);
           } catch {}
           try {
             const bus = getLiveBus();
@@ -1844,9 +1856,34 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         setImmediate(flushQueue);
       }
 
+      function enqueueRollupUpdate() {
+        if (client.rollupScheduled || client.closed) return;
+        client.rollupScheduled = true;
+        client.rollupTimer = setTimeout(() => {
+          client.rollupScheduled = false;
+          client.rollupTimer = null;
+          if (client.closed) return;
+          try {
+            enqueue({
+              type: "rollup:update",
+              dropped: client.dropped,
+              ...readLiveSnapshotForSse(qp),
+            });
+          } catch (cause) {
+            enqueue({
+              type: "rollup:error",
+              dropped: client.dropped,
+              message: cause?.message || String(cause),
+            });
+          }
+        }, 500);
+        if (typeof client.rollupTimer?.unref === "function") client.rollupTimer.unref();
+      }
+
       const bus = getLiveBus();
       client.onStart = (event) => {
         enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueueRollupUpdate();
       };
       client.onUpdate = (event) => {
         const extra =
@@ -1859,9 +1896,11 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           ...enrichLiveSessionCost(event),
           ...extra,
         });
+        enqueueRollupUpdate();
       };
       client.onEnd = (event) => {
         enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueueRollupUpdate();
       };
 
       bus.on("session:start", client.onStart);
@@ -1879,10 +1918,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       // Snapshot first, after listeners exist but before heartbeats.
       enqueue({
         type: "snapshot",
-        sessions,
-        workstreams: buildLiveWorkstreams(sessions, { now: generatedAt }),
-        generated_at: generatedAt,
-        last_sync_at: lastSyncAt,
+        ...snapshot,
       });
 
       client.heartbeatInterval = setInterval(() => {

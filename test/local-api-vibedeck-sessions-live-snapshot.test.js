@@ -79,13 +79,39 @@ test("GET /functions/vibedeck-sessions-live-snapshot returns current live sessio
   assert.equal(res.statusCode, 200);
   const payload = parseResponseJson(res);
   assert.equal(typeof payload.generated_at, "string");
-  assert.equal(typeof payload.last_sync_at, "string");
+  assert.equal(payload.last_sync_at, null);
   assert.equal(Array.isArray(payload.sessions), true);
   assert.equal(payload.sessions.length, 1);
   assert.equal(payload.sessions[0].session_id, "snapshot-open");
   assert.equal(payload.sessions[0].provider, "codex");
   assert.equal(payload.sessions[0].estimated_total_cost_usd > 0, true);
   assert.equal(payload.sessions[0].cost_estimated, true);
+
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+test("GET /functions/vibedeck-sessions-live-snapshot uses cursors.json updatedAt for freshness", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "vd-live-snapshot-cursor-"));
+  const trackerDir = path.join(root, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  await fs.writeFile(path.join(trackerDir, "cursors.json"), JSON.stringify({
+    updatedAt: "2026-05-12T01:00:00.000Z",
+  }), "utf8");
+  ensureSchema(dbPath);
+
+  const { createLocalApiHandler } = require("../src/lib/local-api");
+  const handler = createLocalApiHandler({ queuePath });
+  const req = createRequest({ method: "GET" });
+  const res = createResponse();
+  const handled = await handler(req, res, new URL("http://127.0.0.1/functions/vibedeck-sessions-live-snapshot"));
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  const payload = parseResponseJson(res);
+  assert.equal(payload.last_sync_at, "2026-05-12T01:00:00.000Z");
 
   await fs.rm(root, { recursive: true, force: true });
 });

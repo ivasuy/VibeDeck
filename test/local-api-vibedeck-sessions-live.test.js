@@ -150,6 +150,9 @@ test('vibedeck-sessions-live streams snapshot then deltas', async () => {
     assert.equal(snapshotEvents[0].type, 'snapshot');
     assert.ok(Array.isArray(snapshotEvents[0].sessions));
     assert.equal(snapshotEvents[0].sessions.length, 1);
+    assert.equal(Array.isArray(snapshotEvents[0].workstreams), true);
+    assert.equal(typeof snapshotEvents[0].totals, "object");
+    assert.equal(snapshotEvents[0].totals.active_sessions, 1);
     assert.equal(snapshotEvents[0].sessions[0].session_id, 's-live-1');
     assert.equal(snapshotEvents[0].sessions[0].estimated_total_cost_usd, null);
     assert.equal(snapshotEvents[0].sessions[0].cost_estimated, true);
@@ -406,11 +409,16 @@ test('vibedeck-sessions-live snapshot includes live workstreams with recent ende
     assert.deepEqual(workstream.branches.sort(), ['dashboard', 'publish-main']);
     assert.equal(workstream.active_session_count, 1);
     assert.equal(workstream.recently_completed_count, 1);
-    assert.equal(workstream.total_tokens, 1500);
-    assert.equal(workstream.total_cost_usd, 0.20500000000000002);
+    assert.equal(workstream.active_total_tokens, 1000);
+    assert.equal(workstream.audit_total_tokens, 1500);
+    assert.equal(workstream.active_total_cost_usd, 0.5);
+    assert.equal(workstream.audit_total_cost_usd, 0.7);
     assert.equal(workstream.primary_session.session_id, 'main-live');
     assert.equal(workstream.branch_groups.length, 2);
-    assert.equal(workstream.branch_groups.find((group) => group.branch === 'dashboard').sessions[0].session_id, 'related-ended');
+    const dashboardBranch = workstream.branch_groups.find((group) => group.branch === 'dashboard');
+    assert.ok(dashboardBranch);
+    assert.equal(dashboardBranch.audit_session_count, 1);
+    assert.equal(dashboardBranch.active_session_count, 0);
     exchange.close();
   } finally {
     await fs.rm(root, { recursive: true, force: true });
@@ -506,6 +514,97 @@ test('vibedeck-sessions-live keeps recent log_complete sessions active and strea
     assert.equal(row?.ended_at, null);
     assert.ok(got.some((e) => e.type === 'session:update' && e.session_id === 'current-session'));
     assert.equal(got.some((e) => e.type === 'session:end' && e.session_id === 'current-session'), false);
+    req.destroy();
+    res.destroy();
+  } finally {
+    await srv.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live emits rollup:update after canonical session update', { timeout: 30_000 }, async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-rollup-update-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  const srv = await startLocalApiServer({ queuePath });
+  try {
+    const { req, res } = await connectSseClient(`${srv.baseUrl}/functions/vibedeck-sessions-live`);
+    assert.equal(res.statusCode, 200);
+    res.setEncoding('utf8');
+    res.resume();
+
+    let buf = '';
+    const events = [];
+    let resolveSnapshot;
+    let resolveSessionUpdate;
+    let resolveRollupUpdate;
+    const snapshotPromise = new Promise((resolve) => { resolveSnapshot = resolve; });
+    const sessionUpdatePromise = new Promise((resolve) => { resolveSessionUpdate = resolve; });
+    const rollupUpdatePromise = new Promise((resolve) => { resolveRollupUpdate = resolve; });
+    const snapshotTimeout = setTimeout(() => resolveSnapshot(new Error('timeout waiting for snapshot')), 1000);
+    const sessionUpdateTimeout = setTimeout(() => resolveSessionUpdate(new Error('timeout waiting for session:update')), 3000);
+    const rollupUpdateTimeout = setTimeout(() => resolveRollupUpdate(new Error('timeout waiting for rollup:update')), 5000);
+
+    res.on('data', (chunk) => {
+      buf += chunk;
+      const parsed = parseSseEvents(buf);
+      buf = parsed.rest;
+      for (const event of parsed.events) {
+        events.push(event);
+        if (event.type === 'snapshot') resolveSnapshot();
+        if (event.type === 'session:update' && event.session_id === 'rollup-session') resolveSessionUpdate();
+        if (event.type === 'rollup:update') resolveRollupUpdate();
+      }
+    });
+
+    const snapResult = await snapshotPromise;
+    clearTimeout(snapshotTimeout);
+    if (snapResult instanceof Error) throw snapResult;
+
+    const started = new Date(Date.now() - 30_000).toISOString();
+    const observed = new Date().toISOString();
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'codex',
+      session_id: 'rollup-session',
+      started_at: started,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'codex',
+      session_id: 'rollup-session',
+      observed_at: observed,
+      delta_tokens: 1200,
+      cwd: root,
+      model: 'gpt-5.4',
+    });
+
+    const sessionUpdateResult = await sessionUpdatePromise;
+    clearTimeout(sessionUpdateTimeout);
+    if (sessionUpdateResult instanceof Error) throw sessionUpdateResult;
+
+    const rollupUpdateResult = await rollupUpdatePromise;
+    clearTimeout(rollupUpdateTimeout);
+    if (rollupUpdateResult instanceof Error) throw rollupUpdateResult;
+
+    const sessionUpdate = events.find((event) => event.type === 'session:update' && event.session_id === 'rollup-session');
+    assert.ok(sessionUpdate);
+
+    const rollupUpdate = events.find((event) => event.type === 'rollup:update');
+    assert.ok(rollupUpdate);
+    assert.equal(Array.isArray(rollupUpdate.workstreams), true);
+    assert.equal(typeof rollupUpdate.totals, 'object');
+    assert.equal(rollupUpdate.totals.active_sessions, 1);
+    assert.ok((rollupUpdate.totals.active_tokens || 0) >= 1200);
+    assert.ok((rollupUpdate.totals.audit_tokens || 0) >= 1200);
+
     req.destroy();
     res.destroy();
   } finally {

@@ -1,6 +1,7 @@
 'use strict';
 
 function toNumberOrNull(value) {
+  if (typeof value === 'string' && value.trim() === '') return null;
   if (value == null) return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
@@ -9,6 +10,11 @@ function toNumberOrNull(value) {
 function normalizeKey(value) {
   const text = String(value || '').trim();
   return text || 'unknown';
+}
+
+function knownCostQuality(value) {
+  const text = String(value || '').trim();
+  return text || 'stored';
 }
 
 function summarizeCostQuality({ hasUnknownPositiveTokenCost, knownQualities }) {
@@ -33,7 +39,7 @@ function summarizeCanonicalUsageRows(rows) {
     const model = normalizeKey(row?.model);
     const tokens = toNumberOrNull(row?.total_tokens) ?? 0;
     const cost = toNumberOrNull(row?.total_cost_usd);
-    const quality = normalizeKey(row?.cost_quality);
+    const quality = cost != null ? knownCostQuality(row?.cost_quality) : normalizeKey(row?.cost_quality);
     const unknownPositiveTokenCost = tokens > 0 && cost == null;
 
     totalTokens += tokens;

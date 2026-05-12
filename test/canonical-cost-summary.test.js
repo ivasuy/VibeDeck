@@ -55,3 +55,39 @@ test("summarizeCanonicalUsageRows keeps unknown positive-token cost as unknown",
   assert.equal(summary.cost_unknown_count, 1);
   assert.equal(summary.cost_quality, "unknown");
 });
+
+test("summarizeCanonicalUsageRows treats empty-string cost as unknown for positive-token rows", () => {
+  const rows = [
+    {
+      provider: "codex",
+      model: "gpt-5.5",
+      total_tokens: 100,
+      total_cost_usd: "",
+      cost_quality: "pricing_missing",
+    },
+  ];
+
+  const summary = summarizeCanonicalUsageRows(rows);
+  assert.equal(summary.total_cost_usd, null);
+  assert.equal(summary.known_cost_usd, 0);
+  assert.equal(summary.cost_unknown_count, 1);
+  assert.equal(summary.cost_quality, "unknown");
+});
+
+test("summarizeCanonicalUsageRows defaults known-cost quality to stored when missing", () => {
+  const rows = [
+    {
+      provider: "codex",
+      model: "gpt-5.5",
+      total_tokens: 100,
+      total_cost_usd: 1.25,
+      cost_quality: "",
+    },
+  ];
+
+  const summary = summarizeCanonicalUsageRows(rows);
+  assert.equal(summary.total_cost_usd, 1.25);
+  assert.equal(summary.cost_quality, "stored");
+  assert.equal(summary.providers[0].cost_quality, "stored");
+  assert.equal(summary.models[0].cost_quality, "stored");
+});

@@ -51,6 +51,10 @@ vibedeck status              # show provider/configuration state
 vibedeck doctor              # run local health checks
 vibedeck init                # install or refresh provider hooks
 vibedeck uninstall           # remove hooks and local config
+vibedeck readme-sync set    # configure README sync target and token
+vibedeck readme-sync status # show configured README sync settings
+vibedeck readme-sync update # regenerate and upload the README banner immediately
+vibedeck readme-sync unset  # remove README sync configuration and token
 ```
 
 Equivalent local dev entrypoints:
@@ -62,6 +66,23 @@ node bin/vibedeck.js status
 node bin/vibedeck.js doctor
 node bin/vibedeck.js init
 ```
+
+## README Sync
+
+Configure a GitHub README to be updated automatically from canonical local usage after successful syncs:
+
+```bash
+node bin/vibedeck.js readme-sync set --repo owner/repo --token <github_pat> [--branch main] [--path README.md]
+node bin/vibedeck.js readme-sync status
+node bin/vibedeck.js readme-sync update
+node bin/vibedeck.js readme-sync unset
+```
+
+`--token` stores your GitHub personal access token on disk at `~/.vibedeck/github.token` and is not printed in status output.
+
+After a successful `readme-sync set`, every `node bin/vibedeck.js sync` run regenerates `readme-banner.svg`, uploads it to the configured repo path, and updates the managed README marker block through the same GitHub API flow used by manual `readme-sync update`.
+
+The dashboard `/usage` Sync button uses the same backend sync path (`vibedeck sync` via local API), so README updates use the same post-sync path and failure mode (`warning` only; sync remains successful).
 
 ## Build Commands
 

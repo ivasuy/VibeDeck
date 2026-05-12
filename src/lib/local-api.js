@@ -1803,6 +1803,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         rollupScheduled: false,
         closed: false,
         flushScheduled: false,
+        waitingForDrain: false,
+        onDrain: null,
         close(reason) {
           if (this.closed) return;
           this.closed = true;
@@ -1815,6 +1817,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             if (this.onStart) bus.off("session:start", this.onStart);
             if (this.onUpdate) bus.off("session:update", this.onUpdate);
             if (this.onEnd) bus.off("session:end", this.onEnd);
+          } catch {}
+          try {
+            if (this.onDrain) res.off("drain", this.onDrain);
           } catch {}
           try {
             res.end();
@@ -1847,11 +1852,19 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       function flushQueue() {
         client.flushScheduled = false;
         if (client.closed) return;
+        if (client.waitingForDrain) return;
         while (client.queue.length > 0) {
           const payload = client.queue[0];
           const ok = writeChunk(`data: ${stringifySsePayload(payload)}\n\n`);
           if (!ok) {
-            res.once("drain", flushQueue);
+            if (client.waitingForDrain) return;
+            client.waitingForDrain = true;
+            client.onDrain = () => {
+              client.waitingForDrain = false;
+              client.onDrain = null;
+              scheduleFlush();
+            };
+            res.once("drain", client.onDrain);
             return;
           }
           client.queue.shift();
@@ -1931,6 +1944,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
 
       client.heartbeatInterval = setInterval(() => {
         if (client.closed) return;
+        if (client.waitingForDrain) return;
         writeChunk(": heartbeat\n\n");
       }, SSE_HEARTBEAT_MS);
       if (typeof client.heartbeatInterval.unref === "function") client.heartbeatInterval.unref();

@@ -91,6 +91,45 @@ function createMockSseExchange() {
   };
 }
 
+function createBackpressureMockSseExchange() {
+  const writes = [];
+  const req = new EventEmitter();
+  req.method = 'GET';
+  req.headers = { host: 'localhost' };
+  req.destroy = () => {};
+
+  let shouldBlockData = true;
+  const res = new EventEmitter();
+  res.statusCode = null;
+  res.headers = null;
+  res.writeHead = (statusCode, headers) => {
+    res.statusCode = statusCode;
+    res.headers = headers;
+  };
+  res.write = (chunk) => {
+    const str = String(chunk);
+    writes.push(str);
+    if (!str.startsWith('data: ')) return true;
+    return shouldBlockData ? false : true;
+  };
+  res.end = () => {};
+
+  return {
+    req,
+    res,
+    unblock() {
+      shouldBlockData = false;
+      res.emit('drain');
+    },
+    readEvents() {
+      return parseSseEvents(writes.join('')).events;
+    },
+    close() {
+      res.emit('close');
+    },
+  };
+}
+
 async function flushAsyncEvents() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -715,6 +754,52 @@ test('vibedeck-sessions-live drops oldest events when client falls behind', { ti
     res.destroy();
   } finally {
     await srv.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('vibedeck-sessions-live attaches one drain listener while backpressured', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vibedeck-sse-drain-guard-'));
+  const trackerDir = path.join(root, '.vibedeck', 'tracker');
+  const queuePath = path.join(trackerDir, 'queue.jsonl');
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, '', 'utf8');
+  ensureSchema(dbPath);
+
+  try {
+    const exchange = createBackpressureMockSseExchange();
+    const handler = createLocalApiHandler({ queuePath });
+    const handled = await handler(exchange.req, exchange.res, new URL('http://localhost/functions/vibedeck-sessions-live'));
+    assert.equal(handled, true);
+    assert.equal(exchange.res.statusCode, 200);
+
+    const bus = getLiveBus();
+    bus.emit('session:update', {
+      provider: 'codex',
+      session_id: 'bp-initial',
+      observed_at: '2026-05-09T00:00:00.000Z',
+      total_tokens: 1,
+    });
+    await flushAsyncEvents();
+    assert.equal(exchange.res.listenerCount('drain'), 1);
+
+    for (let i = 0; i < 16; i++) {
+      bus.emit('session:update', {
+        provider: 'codex',
+        session_id: `bp-followup-${i}`,
+        observed_at: `2026-05-09T00:01:${String(i).padStart(2, '0')}.000Z`,
+        total_tokens: i + 2,
+      });
+      await flushAsyncEvents();
+    }
+
+    assert.equal(exchange.res.listenerCount('drain'), 1);
+
+    exchange.unblock();
+    await flushAsyncEvents();
+    exchange.close();
+  } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });

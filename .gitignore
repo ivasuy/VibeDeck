@@ -94,6 +94,9 @@ dist/
 build/
 .tmp/
 *.tsbuildinfo
+VibeDeckMac/EmbeddedServer/node
+VibeDeckMac/EmbeddedServer/vibedeck/node_modules/
+VibeDeckMac/VibeDeckMac.xcodeproj/project.xcworkspace/xcuserdata/
 
 # InsForge & AI agent skills
 .insforge

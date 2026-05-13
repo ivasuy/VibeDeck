@@ -60,6 +60,7 @@ bash "$REPO_ROOT/VibeDeckMac/scripts/bundle-node.sh"
 
 echo "==> Generating Xcode project..."
 xcodegen generate --spec "$REPO_ROOT/VibeDeckMac/project.yml"
+ruby "$REPO_ROOT/VibeDeckMac/scripts/patch-pbxproj-icon.rb"
 
 echo "==> Building $APP_NAME.app..."
 xcodebuild \

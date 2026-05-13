@@ -164,6 +164,28 @@ test("embedded mac bundle should use vibedeck.js as the only CLI entrypoint", ()
   );
 });
 
+test("icon patch script should reference the real AppIcon.icon path without hardcoded Xcode object ids", () => {
+  const patchScript = read("VibeDeckMac/scripts/patch-pbxproj-icon.rb");
+  const localBuildScript = read("scripts/build-release-mac.sh");
+
+  assert.ok(
+    patchScript.includes("ICON_RELATIVE_PATH = 'VibeDeckMac/AppIcon.icon'"),
+    "icon patch should point at the repository-relative AppIcon.icon path used by CI"
+  );
+  assert.ok(
+    patchScript.includes("sourceTree = SOURCE_ROOT"),
+    "icon patch should anchor AppIcon.icon from SOURCE_ROOT so group attachment does not affect file resolution"
+  );
+  assert.ok(
+    !patchScript.includes("6E651075DB834A2DD6917AAD"),
+    "icon patch should not rely on generated Xcode object ids"
+  );
+  assert.ok(
+    localBuildScript.includes('ruby "$REPO_ROOT/VibeDeckMac/scripts/patch-pbxproj-icon.rb"'),
+    "local native release script should run the same icon patch as CI"
+  );
+});
+
 test("native app product name should ship as VibeDeck", () => {
   const projectYml = read("VibeDeckMac/project.yml");
   const dmgScript = read("VibeDeckMac/scripts/create-dmg.sh");

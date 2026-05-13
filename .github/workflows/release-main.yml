@@ -1,0 +1,229 @@
+name: release main
+
+on:
+  workflow_run:
+    workflows: ["npm publish"]
+    types: [completed]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  determine:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_build_release: ${{ steps.release-check.outputs.should_build_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify mac version alignment
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          PROJECT_YML="VibeDeckMac/project.yml"
+          MISMATCHED=$(grep -E '^[[:space:]]*MARKETING_VERSION:' "$PROJECT_YML" \
+            | sed -E 's/.*MARKETING_VERSION:[[:space:]]*"([^"]+)".*/\1/' \
+            | sort -u \
+            | grep -v "^$VERSION$" || true)
+          if [ -n "$MISMATCHED" ]; then
+            echo "::error::$PROJECT_YML has MARKETING_VERSION value(s) not matching $VERSION: $MISMATCHED"
+            exit 1
+          fi
+
+      - name: Check whether release already exists
+        id: release-check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "should_build_release=false" >> "$GITHUB_OUTPUT"
+            echo "Release v$VERSION already exists, skipping native asset rebuild."
+          else
+            echo "should_build_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build_release:
+    needs: determine
+    if: ${{ needs.determine.outputs.should_build_release == 'true' }}
+    runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.determine.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dashboard dependencies
+        run: npm ci --prefix dashboard
+
+      - name: Build dashboard
+        run: npm run dashboard:build
+
+      - name: Bundle EmbeddedServer
+        run: bash VibeDeckMac/scripts/bundle-node.sh
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: VibeDeckMac
+        run: xcodegen generate
+
+      - name: Patch pbxproj for icon
+        working-directory: VibeDeckMac
+        run: ruby scripts/patch-pbxproj-icon.rb
+
+      - name: Build VibeDeckMac
+        working-directory: VibeDeckMac
+        run: |
+          xcodebuild \
+            -scheme VibeDeckMac \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            OTHER_SWIFT_FLAGS="\$(inherited) -Xfrontend -solver-expression-time-threshold=120" \
+            clean build
+
+          APP_BIN="$(find build/DerivedData/Build/Products/Release -name 'VibeDeck' -path '*/MacOS/*' -maxdepth 5)"
+          echo "Built binary: $APP_BIN"
+          lipo -info "$APP_BIN"
+          if ! lipo -info "$APP_BIN" 2>&1 | grep -q "x86_64"; then
+            echo "::error::Binary is NOT universal - missing x86_64 slice."
+            exit 1
+          fi
+          echo "Universal binary confirmed (arm64 + x86_64)"
+
+      - name: Ad-hoc sign app
+        working-directory: VibeDeckMac
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeck.app' -maxdepth 1)"
+          APPEX_PATH="$APP_PATH/Contents/PlugIns/VibeDeckWidget.appex"
+          echo "Signing: $APP_PATH"
+
+          find "$APP_PATH/Contents/Resources/EmbeddedServer" -type f \
+            \( -name 'node' -o -name '*.dylib' -o -name '*.so' -o -name '*.node' \) \
+            -exec codesign --force --timestamp=none --sign - {} \;
+
+          if [ -d "$APPEX_PATH" ]; then
+            codesign --force --timestamp=none \
+              --entitlements VibeDeckWidget/VibeDeckWidget.entitlements \
+              --sign - "$APPEX_PATH"
+          fi
+
+          codesign --force --timestamp=none \
+            --entitlements VibeDeckMac/VibeDeckMac.entitlements \
+            --sign - "$APP_PATH"
+
+          codesign --verify --verbose=2 "$APP_PATH"
+
+          if [ -d "$APPEX_PATH" ]; then
+            codesign -d --entitlements - "$APPEX_PATH" 2>&1 | tee /tmp/appex-ents.txt
+            if ! grep -q "com.apple.security.app-sandbox" /tmp/appex-ents.txt; then
+              echo "::error::Widget extension is missing com.apple.security.app-sandbox after signing."
+              exit 1
+            fi
+          fi
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        working-directory: VibeDeckMac
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeck.app' -maxdepth 1)"
+          bash scripts/create-dmg.sh "$APP_PATH"
+
+      - name: Package zipped app artifact
+        working-directory: VibeDeckMac
+        run: |
+          APP_PATH="$(find build/DerivedData/Build/Products/Release -name 'VibeDeck.app' -maxdepth 1)"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "build/VibeDeck-${VERSION}-universal.zip"
+          ls -l "build/VibeDeck-${VERSION}-universal.zip"
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${VERSION}" \
+            VibeDeckMac/build/VibeDeck.dmg \
+            VibeDeckMac/build/VibeDeck-${VERSION}-universal.zip \
+            --title "v${VERSION}" \
+            --generate-notes
+
+  update_homebrew:
+    needs: [determine, build_release]
+    if: ${{ always() && needs.determine.result == 'success' && (needs.build_release.result == 'success' || needs.build_release.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.determine.outputs.version }}
+      HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Validate tap config
+        run: |
+          if [ -z "${HOMEBREW_TAP_REPO}" ]; then
+            echo "::error::HOMEBREW_TAP_REPO is not configured."
+            exit 1
+          fi
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Download published npm tarball
+        run: |
+          curl -L "https://registry.npmjs.org/vibedeck-cli/-/vibedeck-cli-${VERSION}.tgz" -o "/tmp/vibedeck-cli-${VERSION}.tgz"
+          SHA256=$(sha256sum "/tmp/vibedeck-cli-${VERSION}.tgz" | awk '{print $1}')
+          echo "SHA256=$SHA256" >> "$GITHUB_ENV"
+
+      - name: Clone tap repo
+        run: |
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/${HOMEBREW_TAP_REPO}.git" "$RUNNER_TEMP/homebrew-tap"
+
+      - name: Update formula
+        run: |
+          mkdir -p "$RUNNER_TEMP/homebrew-tap/Formula"
+          sed -E "s/^  sha256 \".*\"$/  sha256 \"${SHA256}\"/" packaging/homebrew/vibedeck.rb > "$RUNNER_TEMP/homebrew-tap/Formula/vibedeck.rb"
+
+      - name: Commit and push tap update
+        working-directory: ${{ runner.temp }}/homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/vibedeck.rb
+          if git diff --cached --quiet --exit-code; then
+            echo "No Homebrew tap changes to publish."
+            exit 0
+          fi
+          git commit -m "vibedeck ${VERSION}"
+          git push

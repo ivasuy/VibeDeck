@@ -534,7 +534,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app;
 				PRODUCT_NAME = VibeDeck;
 				SDKROOT = macosx;
@@ -560,7 +560,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app;
 				PRODUCT_NAME = VibeDeck;
 				SDKROOT = macosx;
@@ -585,7 +585,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app.widget;
 				PRODUCT_NAME = VibeDeckWidget;
 				SDKROOT = macosx;
@@ -610,7 +610,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 0.8.1;
+				MARKETING_VERSION = 0.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vasuyadav.vibedeck.app.widget;
 				PRODUCT_NAME = VibeDeckWidget;
 				SDKROOT = macosx;

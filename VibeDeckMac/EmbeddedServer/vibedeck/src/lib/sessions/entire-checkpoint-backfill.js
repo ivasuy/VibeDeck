@@ -63,6 +63,55 @@ function findCandidates(db, { repoRoot, provider, startedAt, endedAt }) {
   return db.prepare(sql).all(...params);
 }
 
+function findCandidatesByRuntimeSessionId(db, { repoRoot, provider, runtimeSessionId }) {
+  const runtimeId = normalizeText(runtimeSessionId);
+  if (!repoRoot || !runtimeId) return [];
+  let sql = `
+    SELECT
+      provider,
+      session_id,
+      branch,
+      model,
+      started_at,
+      COALESCE(ended_at, last_observed_at, updated_at, started_at) AS effective_end_at
+    FROM vibedeck_sessions
+    WHERE repo_root = ?
+      AND (
+        session_id = ?
+        OR session_id LIKE ?
+      )
+  `;
+  const params = [repoRoot, runtimeId, `%${runtimeId}%`];
+  if (provider) {
+    sql += ' AND LOWER(provider) = LOWER(?)';
+    params.push(provider);
+  }
+  return db.prepare(sql).all(...params);
+}
+
+function classifyRuntimeSessionIdMatch(candidates) {
+  const plausible = Array.isArray(candidates) ? candidates : [];
+  if (plausible.length === 0) {
+    return { status: 'unmatched', confidence: 'unmatched', reason: 'no_matching_session', candidate_count: 0, session: null };
+  }
+  if (plausible.length === 1) {
+    return {
+      status: 'linked',
+      confidence: 'exact',
+      reason: null,
+      candidate_count: 1,
+      session: plausible[0],
+    };
+  }
+  return {
+    status: 'ambiguous',
+    confidence: 'ambiguous',
+    reason: 'multiple_candidates',
+    candidate_count: plausible.length,
+    session: null,
+  };
+}
+
 function classifyMatch(candidates, metadata) {
   let plausible = Array.isArray(candidates) ? candidates : [];
   if (plausible.length === 0) {
@@ -221,12 +270,23 @@ async function backfillEntireCheckpointLinks({
       const startedAt = normalizeText(metadata?.started_at);
       const endedAt = normalizeText(metadata?.ended_at);
       const provider = normalizeProvider(metadata?.agent);
+      const metadataRuntimeSessionId = normalizeText(metadata?.session_id);
       const checkpointId = extractCheckpointId(metadata, metadataPath);
       const entireSessionId = normalizeText(metadata?.entire_session_id);
       summary.scanned += 1;
 
-      const candidates = findCandidates(db, { repoRoot, provider, startedAt, endedAt });
-      const match = classifyMatch(candidates, metadata);
+      let candidates = findCandidatesByRuntimeSessionId(db, {
+        repoRoot,
+        provider,
+        runtimeSessionId: metadataRuntimeSessionId,
+      });
+      let match = metadataRuntimeSessionId
+        ? classifyRuntimeSessionIdMatch(candidates)
+        : classifyMatch(candidates, metadata);
+      if (match.status === 'unmatched' && match.reason === 'no_matching_session') {
+        candidates = findCandidates(db, { repoRoot, provider, startedAt, endedAt });
+        match = classifyMatch(candidates, metadata);
+      }
       const timestamp = now().toISOString();
 
       upsertMatchRow(db, {

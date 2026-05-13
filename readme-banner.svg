@@ -34,8 +34,7 @@
 <ellipse cx="450" cy="-20" rx="420" ry="70" fill="rgba(99,102,241,0.06)"/>
 
 <text x="24" y="27" font-size="14" font-weight="700" fill="#e8e8ff" font-family="system-ui,sans-serif" letter-spacing="0.3">VibeDeck</text>
-<text x="108" y="27" font-size="11" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">· AI coding agent usage dashboard</text>
-<text x="876" y="27" text-anchor="end" font-size="10" fill="rgba(168,168,220,0.26)" font-family="system-ui,sans-serif">Updated May 12, 2026</text>
+<text x="876" y="27" text-anchor="end" font-size="10" fill="rgba(168,168,220,0.26)" font-family="system-ui,sans-serif">Updated —</text>
 
 <line x1="24" y1="38" x2="876" y2="38" stroke="url(#gdiv)" stroke-width="0.75"/>
 
@@ -52,23 +51,15 @@
 <line x1="256" y1="48" x2="256" y2="130" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 <line x1="458" y1="48" x2="458" y2="130" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 
-<text x="472" y="79" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">—</text>
-<text x="472" y="95" font-size="17" fill="url(#gmodel)" font-family="'Courier New',Courier,monospace">0</text>
-<text x="558" y="95" font-size="11" fill="rgba(168,168,220,0.5)" font-family="system-ui,sans-serif">0%</text>
-<text x="472" y="97" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">—</text>
-<text x="472" y="113" font-size="17" fill="url(#gmodel)" font-family="'Courier New',Courier,monospace">0</text>
-<text x="558" y="113" font-size="11" fill="rgba(168,168,220,0.5)" font-family="system-ui,sans-serif">0%</text>
-<text x="472" y="115" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">—</text>
-<text x="472" y="131" font-size="17" fill="url(#gmodel)" font-family="'Courier New',Courier,monospace">0</text>
-<text x="558" y="131" font-size="11" fill="rgba(168,168,220,0.5)" font-family="system-ui,sans-serif">0%</text>
-<text x="472" y="133" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">—</text>
-<text x="472" y="149" font-size="17" fill="url(#gmodel)" font-family="'Courier New',Courier,monospace">0</text>
-<text x="558" y="149" font-size="11" fill="rgba(168,168,220,0.5)" font-family="system-ui,sans-serif">0%</text>
+<text x="472" y="73" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>
+<text x="472" y="89" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>
+<text x="472" y="105" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>
+<text x="472" y="121" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>
 
 <line x1="24" y1="138" x2="876" y2="138" stroke="url(#gdiv)" stroke-width="0.75"/>
 <text x="24" y="157" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">ACTIVITY · PAST 52 WEEKS</text>
 
-<text x="42" y="157" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Mon</text>
+<text x="42" y="212" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Mon</text>
 <text x="42" y="244" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Wed</text>
 <text x="42" y="276" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Fri</text>
 <text x="46" y="175" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">May</text>
@@ -448,5 +439,12 @@
 <rect x="862" y="248" width="13" height="13" rx="2" fill="#17162e"/>
 <rect x="862" y="264" width="13" height="13" rx="2" fill="#17162e"/>
 <rect x="862" y="280" width="13" height="13" rx="2" fill="#17162e"/>
-</svg>
 
+<text x="46" y="307" font-size="8" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Less</text>
+<rect x="76" y="297" width="9" height="9" rx="1" fill="#17162e"/>
+<rect x="88" y="297" width="9" height="9" rx="1" fill="#2a2750"/>
+<rect x="100" y="297" width="9" height="9" rx="1" fill="#403f7f"/>
+<rect x="112" y="297" width="9" height="9" rx="1" fill="#5757c8"/>
+<rect x="124" y="297" width="9" height="9" rx="1" fill="#7f7fff"/>
+<text x="138" y="307" font-size="8" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">More</text>
+</svg>

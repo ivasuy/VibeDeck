@@ -139,6 +139,14 @@ widgets.cta.download,dashboard,WidgetsPage,WidgetsPage,cta_download,Download Mac
 widgets.cta.macos_only,dashboard,WidgetsPage,WidgetsPage,cta_macos_only,macOS only,,active
 widgets.menubar.section.title,dashboard,WidgetsPage,WidgetsPage,menubar_section_title,Menu Bar,,active
 widgets.gallery.section.title,dashboard,WidgetsPage,WidgetsPage,gallery_section_title,Desktop Widgets,,active
+widgets.summary.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Summary,,active
+widgets.summary.description,dashboard,WidgetsPage,WidgetCatalogCard,description,Today and rolling totals in one glance.,,active
+widgets.heatmap.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Heatmap,,active
+widgets.heatmap.description,dashboard,WidgetsPage,WidgetCatalogCard,description,GitHub-style activity calendar for recent usage.,,active
+widgets.topModels.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Top Models,,active
+widgets.topModels.description,dashboard,WidgetsPage,WidgetCatalogCard,description,Your highest-usage models ranked by token share.,,active
+widgets.limits.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Usage Limits,,active
+widgets.limits.description,dashboard,WidgetsPage,WidgetCatalogCard,description,Provider rate-limit windows and remaining headroom.,,active
 dashboard.cost_breakdown.title,ui,CostAnalysisModal,CostAnalysisModal,title,Cost Breakdown,,active
 dashboard.cost_breakdown.total_label,ui,CostAnalysisModal,CostAnalysisModal,total_label,Estimated Total Cost,,active
 dashboard.cost_breakdown.close,ui,CostAnalysisModal,CostAnalysisModal,close_label,Close,,active

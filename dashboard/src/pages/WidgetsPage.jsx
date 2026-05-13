@@ -26,17 +26,13 @@ const WIDGET_W = 264;
 const WIDGET_H = 124;
 const ROUNDED_FONT = "ui-rounded, -apple-system, system-ui";
 
-// Model accent palette — mirrors WidgetTheme.modelDot in
-// VibeDeckMac/Widget/Views/WidgetTheme.swift
-const MODEL_COLORS = ["#5A8CF2", "#9973E6", "#4DB8A6", "#E68C59"];
-
-// Source accent palette — mirrors WidgetTheme.sourceColor (SwiftUI system
-// colors, approximated in hex to match rendered appearance)
+// Source accent palette — mirrors WidgetTheme.sourceColor in
+// VibeDeckMac/VibeDeckWidget/Views/WidgetTheme.swift.
 const SOURCE_COLORS = {
-  claude: "#C77DFF", // SwiftUI .purple
-  codex: "#34C759",  // SwiftUI .green
-  cursor: "#FFCC00", // SwiftUI .yellow
-  gemini: "#0A84FF", // SwiftUI .blue
+  claude: "#6E72C9",
+  codex: "#4E529C",
+  cursor: "#656BB5",
+  gemini: "#818CF8",
 };
 
 // Limit bar fill — mirrors WidgetTheme.limitBarColor
@@ -44,6 +40,129 @@ function limitBarFill(fraction) {
   if (fraction >= 0.9) return "#E64D4D"; // red
   if (fraction >= 0.7) return "#D9A633"; // amber
   return "#33B866";                      // green
+}
+
+const PROVIDER_LOGOS = {
+  claude: "/brand-logos/claude-code.svg",
+  codex: "/brand-logos/codex.svg",
+  cursor: "/brand-logos/cursor.svg",
+  gemini: "/brand-logos/gemini.svg",
+  kimi: "/brand-logos/kimi.svg",
+  kiro: "/brand-logos/kiro.svg",
+  copilot: "/brand-logos/copilot.svg",
+  antigravity: "/brand-logos/antigravity.svg",
+};
+
+const MONO_LOGOS = new Set([
+  "/brand-logos/cursor.svg",
+  "/brand-logos/kimi.svg",
+  "/brand-logos/kiro.svg",
+  "/brand-logos/copilot.svg",
+]);
+
+const SUMMARY_TREND = [36, 42, 38, 57, 61, 52, 69, 65, 74, 70, 81, 79, 88, 86];
+
+const TOP_MODELS_MOCK = [
+  { source: "codex", name: "gpt-5.5", tokens: "738.8M", share: 34.8 },
+  { source: "codex", name: "gpt-5.4", tokens: "384.0M", share: 18.1 },
+  { source: "claude", name: "claude-opus-4-7", tokens: "163.7M", share: 7.7 },
+  { source: "gemini", name: "gemini-2.5-pro", tokens: "141.2M", share: 6.6 },
+];
+
+const USAGE_LIMITS_MOCK = [
+  { source: "claude", label: "Claude · 7d", reset: "in 1d", pct: 71 },
+  { source: "claude", label: "Claude · 5h", reset: "in 4h 28m", pct: 42 },
+  { source: "cursor", label: "Cursor", reset: "in 25d", pct: 55 },
+  { source: "gemini", label: "Gemini", reset: "in 1d", pct: 32 },
+];
+
+// Deterministic heatmap cells — 26 weeks × 7 days, matching the native
+// systemMedium heatmap width. Each cell is a native-like level 0...4.
+const HEATMAP_CELLS = (() => {
+  const weeks = 26;
+  const days = 7;
+  const cells = [];
+  for (let w = 0; w < weeks; w++) {
+    for (let d = 0; d < days; d++) {
+      const n = Math.sin((w + 1) * 12.9898 + (d + 1) * 78.233 + 17) * 43758.5453;
+      const bucket = Math.floor(Math.abs(n - Math.floor(n)) * 5);
+      cells.push({ w, d, level: Math.max(0, Math.min(4, bucket)) });
+    }
+  }
+  return cells;
+})();
+
+const HEATMAP_LEVELS_LIGHT = [
+  "rgba(128,128,128,0.10)",
+  "rgba(91,95,199,0.25)",
+  "rgba(91,95,199,0.50)",
+  "rgba(91,95,199,0.75)",
+  "#5B5FC7",
+];
+
+const HEATMAP_LEVELS_DARK = [
+  "rgba(128,128,128,0.16)",
+  "rgba(91,95,199,0.25)",
+  "rgba(91,95,199,0.50)",
+  "rgba(91,95,199,0.75)",
+  "#5B5FC7",
+];
+
+function ProviderLogo({ source, alt, size = 13, className = "" }) {
+  const src = PROVIDER_LOGOS[source];
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      className={cn(
+        "shrink-0 object-contain",
+        MONO_LOGOS.has(src) ? "dark:invert" : "",
+        className,
+      )}
+      style={{ width: size, height: size }}
+      draggable="false"
+    />
+  );
+}
+
+function WidgetCanvas({ children, className = "" }) {
+  return (
+    <div
+      className={cn(
+        "flex h-full w-full flex-col overflow-hidden p-[13px] text-[#171821] dark:text-white",
+        "[background:linear-gradient(135deg,#f6f7fd_0%,#eff1fb_100%)]",
+        "dark:[background:linear-gradient(135deg,#1e1f28_0%,#262734_100%)]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function HeroBlock({ label, value, subline }) {
+  return (
+    <div className="min-w-0 flex-1">
+      <div className="text-[8px] font-semibold uppercase tracking-[0.18em] text-oai-gray-500 dark:text-oai-gray-400">
+        {label}
+      </div>
+      <div
+        className="mt-1 text-[23px] font-bold leading-none text-[#171821] dark:text-white"
+        style={{ fontFamily: ROUNDED_FONT }}
+      >
+        {value}
+      </div>
+      <div
+        className="mt-1 text-[10px] font-semibold leading-none text-oai-gray-500 dark:text-oai-gray-400"
+        style={{ fontFamily: ROUNDED_FONT }}
+      >
+        {subline}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -83,166 +202,176 @@ function PreviewShell({ size = "sm", children }) {
 }
 
 function SummaryWidgetPreview({ size = "sm" }) {
-  // Sparkline curve — extended flat at both ends so it spans the full tile
-  // width (x=0 → x=264) instead of leaving visible gaps at the widget edges.
-  const sparklinePath =
-    "M0,104 L14,104 C26,98 34,100 44,96 S58,88 68,92 80,100 90,94 102,80 112,82 126,92 136,88 150,74 162,76 178,88 188,86 204,72 216,74 236,84 250,80 L264,80";
-  // Closed area: follow the curve then drop to the baseline and back.
-  const areaPath = `${sparklinePath} L264,124 L0,124 Z`;
-  const gradientId = `sparkArea-${size}`;
   return (
     <PreviewShell size={size}>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0A84FF" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#0A84FF" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* TODAY column */}
-        <text x="14" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">TODAY</text>
-        <text x="14" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>203.2M</text>
-        <text x="14" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$129.56 ±0%</text>
-        {/* 7 DAYS column */}
-        <text x="134" y="20" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="700" letterSpacing="0.6">7 DAYS</text>
-        <text x="134" y="46" className="fill-oai-black dark:fill-white" fontSize="22" fontWeight="700" fontFamily={ROUNDED_FONT}>880.9M</text>
-        <text x="134" y="60" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>$673.61</text>
-        {/* Area fill under the curve */}
-        <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
-        {/* Sparkline stroke on top */}
-        <path d={sparklinePath} fill="none" stroke="#0A84FF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <WidgetCanvas>
+        <div className="flex h-full flex-col justify-between">
+          <div className="flex items-start gap-3 pt-[1px]">
+            <HeroBlock label="TODAY" value="203.2M" subline="$129.56  ±0%" />
+            <HeroBlock label="7 DAYS" value="880.9M" subline="$673.61" />
+          </div>
+          <div className="h-8 overflow-hidden">
+            <svg viewBox="0 0 238 32" className="h-full w-full" aria-hidden="true">
+              <defs>
+                <linearGradient id={`summary-spark-${size}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#5B5FC7" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#5B5FC7" stopOpacity="0.03" />
+                </linearGradient>
+              </defs>
+              <path
+                d="M0 32 L0 26 C9 22 18 24 27 20 C36 17 45 19 54 15 C63 12 72 14 81 10 C90 8 99 11 108 7 C117 5 126 8 135 6 C144 4 153 6 162 3 C171 2 180 4 189 2 C198 1 207 3 216 2 C225 1 232 2 238 1 L238 32 Z"
+                fill={`url(#summary-spark-${size})`}
+              />
+              <polyline
+                points={SUMMARY_TREND.map((value, index) => `${(238 / (SUMMARY_TREND.length - 1)) * index},${32 - value * 0.35}`).join(" ")}
+                fill="none"
+                stroke="#5B5FC7"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        </div>
+      </WidgetCanvas>
     </PreviewShell>
   );
 }
 
-// Deterministic heatmap cells — 26 weeks × 7 days, matching Swift
-// HeatmapWidget.weeks for systemMedium. Uses a sin-hash (GLSL classic)
-// because modular PRNG on small seed ranges produces a visible "letter"
-// pattern. Computed once at module load.
-const HEATMAP_CELLS = (() => {
-  const weeks = 26;
-  const days = 7;
-  const cells = [];
-  for (let w = 0; w < weeks; w++) {
-    for (let d = 0; d < days; d++) {
-      const n = Math.sin((w + 1) * 12.9898 + (d + 1) * 78.233 + 17) * 43758.5453;
-      const v = Math.floor(Math.abs(n - Math.floor(n)) * 100);
-      cells.push({ w, d, v });
-    }
-  }
-  return cells;
-})();
-
-// Mirrors WidgetTheme.heatmapLevels — gray base + four steps of accent blue.
-// Empty cells snap to oai-gray-200 / -800 (design tokens); blue stays as
-// the macOS system accent, matching SwiftUI's Color.accentColor.
-function heatmapFill(v, dark) {
-  if (v < 18) return dark ? "#262626" /* oai-gray-800 */ : "#e5e5e5" /* oai-gray-200 */;
-  if (v < 38) return "rgba(10, 132, 255, 0.28)";
-  if (v < 58) return "rgba(10, 132, 255, 0.50)";
-  if (v < 80) return "rgba(10, 132, 255, 0.75)";
-  return "#0A84FF";
-}
-
 function HeatmapWidgetPreview() {
-  // 264×124 tile: cellW 7.5, cellH 8, gap 1.2
-  //   grid width  = 26*7.5 + 25*1.2 = 225   → left margin (264-225)/2 = 19.5
-  //   grid height = 7*8   + 6*1.2  = 63.2  → top margin 10
-  //   footer baseline at y=102 → ~22px clear above the bottom edge
-  const cellW = 7.5;
-  const cellH = 8;
-  const gap = 1.2;
-  const gridX = 19.5;
-  const gridY = 10;
   return (
     <PreviewShell>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        <g transform={`translate(${gridX}, ${gridY})`} className="hidden dark:inline">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`d-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, true)} />
-          ))}
-        </g>
-        <g transform={`translate(${gridX}, ${gridY})`} className="dark:hidden">
-          {HEATMAP_CELLS.map((c) => (
-            <rect key={`l-${c.w}-${c.d}`} x={c.w * (cellW + gap)} y={c.d * (cellH + gap)} width={cellW} height={cellH} rx="1.3" fill={heatmapFill(c.v, false)} />
-          ))}
-        </g>
-        <text x={gridX} y="102" className="fill-oai-black dark:fill-white" fontSize="10" fontWeight="700" fontFamily={ROUNDED_FONT}>10.3B</text>
-        <text x={gridX + 30} y="102" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="9" fontWeight="500">tokens · 202 active days</text>
-      </svg>
+      <WidgetCanvas>
+        <div className="flex h-full flex-col justify-between">
+          <div className="mt-[-2px] mb-[4px] flex flex-1 items-start justify-center">
+            <svg viewBox="0 0 226 60" className="h-full w-full" aria-hidden="true">
+              <g className="dark:hidden">
+                {HEATMAP_CELLS.map((c) => (
+                  <rect
+                    key={`light-${c.w}-${c.d}`}
+                    x={c.w * 8.76}
+                    y={c.d * 8.62}
+                    width="6.8"
+                    height="6.8"
+                    rx="1.1"
+                    fill={HEATMAP_LEVELS_LIGHT[c.level]}
+                  />
+                ))}
+              </g>
+              <g className="hidden dark:inline">
+                {HEATMAP_CELLS.map((c) => (
+                  <rect
+                    key={`dark-${c.w}-${c.d}`}
+                    x={c.w * 8.76}
+                    y={c.d * 8.62}
+                    width="6.8"
+                    height="6.8"
+                    rx="1.1"
+                    fill={HEATMAP_LEVELS_DARK[c.level]}
+                  />
+                ))}
+              </g>
+            </svg>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1.5">
+            <span
+              className="text-[13px] font-bold leading-none text-[#171821] dark:text-white"
+              style={{ fontFamily: ROUNDED_FONT }}
+            >
+              10.3B
+            </span>
+            <span className="text-[10px] leading-none text-oai-gray-500 dark:text-oai-gray-400">
+              tokens · 202 active days
+            </span>
+          </div>
+        </div>
+      </WidgetCanvas>
     </PreviewShell>
   );
 }
 
 function TopModelsWidgetPreview() {
-  // Four rows mirroring ModelBar in TopModelsWidget.swift. Bar fill matches
-  // the dot color (not a neutral track) — this is intentional per Swift.
-  const models = [
-    { name: "claude-opus-4-6",            value: "586.4M", pct: 59 },
-    { name: "claude-sonnet-4-5-20250929", value: "218.7M", pct: 22 },
-    { name: "gpt-5.4",                    value: "80.6M",  pct: 8 },
-    { name: "composer-2-fast",            value: "52.1M",  pct: 5 },
-  ];
-  const rowGap = 22;
-  // Vertically centered: content spans ~78px in a 124px tile.
-  const rowStart = 28;
-  const trackX = 14;
-  const trackW = 236;
   return (
     <PreviewShell>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        {models.map((m, i) => {
-          const y = rowStart + i * rowGap;
-          const color = MODEL_COLORS[i % MODEL_COLORS.length];
-          return (
-            <g key={m.name}>
-              <circle cx="18" cy={y - 3} r="2.5" fill={color} />
-              <text x="26" y={y} className="fill-oai-black dark:fill-white" fontSize="9" fontWeight="500">{m.name}</text>
-              <text x="218" y={y} textAnchor="end" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="9" fontWeight="600" fontFamily={ROUNDED_FONT}>{m.value}</text>
-              <text x="250" y={y} textAnchor="end" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="600" fontFamily={ROUNDED_FONT}>{m.pct}%</text>
-              <rect x={trackX} y={y + 4} width={trackW} height="2.8" rx="1.4" className="fill-oai-gray-200 dark:fill-oai-gray-700" />
-              <rect x={trackX} y={y + 4} width={Math.max(trackW * (m.pct / 100), 4)} height="2.8" rx="1.4" fill={color} />
-            </g>
-          );
-        })}
-      </svg>
+      <WidgetCanvas>
+        <div className="flex h-full flex-col justify-between py-[2px]">
+          {TOP_MODELS_MOCK.map((model) => (
+            <div key={model.name} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <ProviderLogo source={model.source} alt={`${model.source === "claude" ? "Claude" : model.source === "codex" ? "Codex" : model.source === "cursor" ? "Cursor" : "Gemini"} logo`} size={9} />
+                <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[#171821] dark:text-white">
+                  {model.name}
+                </span>
+                <span
+                  className="text-[10px] font-semibold text-oai-gray-500 dark:text-oai-gray-400"
+                  style={{ fontFamily: ROUNDED_FONT }}
+                >
+                  {model.tokens}
+                </span>
+                <span
+                  className="w-8 text-right text-[9px] font-semibold text-oai-gray-400 dark:text-oai-gray-500"
+                  style={{ fontFamily: ROUNDED_FONT }}
+                >
+                  {Math.round(model.share)}%
+                </span>
+              </div>
+              <div className="h-[5px] rounded-full bg-black/8 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${model.share}%`,
+                    minWidth: model.share > 0 ? 4 : 0,
+                    backgroundColor: SOURCE_COLORS[model.source],
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </WidgetCanvas>
     </PreviewShell>
   );
 }
 
 function UsageLimitsWidgetPreview() {
-  // Four rows mirroring LimitRow in UsageLimitsWidget.swift. Bullet color
-  // follows the provider source; bar fill follows limitBarColor(fraction).
-  const rows = [
-    { label: "Claude · 7d",    source: "claude", reset: "in 1d",     pct: 61 },
-    { label: "Claude · 5h",    source: "claude", reset: "in 4h 28m", pct: 4 },
-    { label: "Cursor",         source: "cursor", reset: "in 25d",    pct: 51 },
-    { label: "Codex · weekly", source: "codex",  reset: "in 1d",     pct: 32 },
-  ];
-  const rowGap = 22;
-  const rowStart = 28;
-  const trackX = 14;
-  const trackW = 236;
   return (
     <PreviewShell>
-      <svg viewBox="0 0 264 124" className="h-full w-full" aria-hidden="true">
-        {rows.map((r, i) => {
-          const y = rowStart + i * rowGap;
-          const dot = SOURCE_COLORS[r.source];
-          const fill = limitBarFill(r.pct / 100);
-          return (
-            <g key={r.label}>
-              <circle cx="18" cy={y - 3} r="2.5" fill={dot} />
-              <text x="26" y={y} className="fill-oai-black dark:fill-white" fontSize="9" fontWeight="500">{r.label}</text>
-              <text x="218" y={y} textAnchor="end" className="fill-oai-gray-500 dark:fill-oai-gray-400" fontSize="8" fontWeight="500" fontFamily={ROUNDED_FONT}>{r.reset}</text>
-              <text x="250" y={y} textAnchor="end" className="fill-oai-black dark:fill-white" fontSize="9" fontWeight="700" fontFamily={ROUNDED_FONT}>{r.pct}%</text>
-              <rect x={trackX} y={y + 4} width={trackW} height="2.8" rx="1.4" className="fill-oai-gray-200 dark:fill-oai-gray-700" />
-              <rect x={trackX} y={y + 4} width={Math.max(trackW * (r.pct / 100), 4)} height="2.8" rx="1.4" fill={fill} />
-            </g>
-          );
-        })}
-      </svg>
+      <WidgetCanvas>
+        <div className="flex h-full flex-col justify-between py-[2px]">
+          {USAGE_LIMITS_MOCK.map((limit) => (
+            <div key={limit.label} className="flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <ProviderLogo source={limit.source} alt={`${limit.source === "claude" ? "Claude" : limit.source === "codex" ? "Codex" : limit.source === "cursor" ? "Cursor" : "Gemini"} logo`} size={9} />
+                <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-[#171821] dark:text-white">
+                  {limit.label}
+                </span>
+                <span
+                  className="text-[9px] text-oai-gray-500 dark:text-oai-gray-400"
+                  style={{ fontFamily: ROUNDED_FONT }}
+                >
+                  {limit.reset}
+                </span>
+                <span
+                  className="w-8 text-right text-[10px] font-semibold text-[#171821] dark:text-white"
+                  style={{ fontFamily: ROUNDED_FONT }}
+                >
+                  {limit.pct}%
+                </span>
+              </div>
+              <div className="h-[5px] rounded-full bg-black/8 dark:bg-white/10">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${limit.pct}%`,
+                    minWidth: limit.pct > 0 ? 4 : 0,
+                    backgroundColor: limitBarFill(limit.pct / 100),
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </WidgetCanvas>
     </PreviewShell>
   );
 }

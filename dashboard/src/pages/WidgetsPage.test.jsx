@@ -34,6 +34,28 @@ afterEach(() => {
 });
 
 describe("WidgetsPage menu bar configurator", () => {
+  it("renders concrete widget gallery labels instead of unresolved copy keys", () => {
+    render(<WidgetsPage />);
+
+    expect(screen.getByText("Summary")).toBeTruthy();
+    expect(screen.getByText("Heatmap")).toBeTruthy();
+    expect(screen.getByText("Top Models")).toBeTruthy();
+    expect(screen.getByText("Usage Limits")).toBeTruthy();
+    expect(screen.queryByText("widgets.summary.name")).toBeNull();
+    expect(screen.queryByText("widgets.heatmap.name")).toBeNull();
+    expect(screen.queryByText("widgets.topModels.name")).toBeNull();
+    expect(screen.queryByText("widgets.limits.name")).toBeNull();
+  });
+
+  it("renders provider logos inside the desktop widget previews", () => {
+    render(<WidgetsPage />);
+
+    expect(screen.getAllByRole("img", { name: "Claude logo" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("img", { name: "Codex logo" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("img", { name: "Cursor logo" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("img", { name: "Gemini logo" }).length).toBeGreaterThan(0);
+  });
+
   it("edits the two menu bar preview slots through NativeBridge", async () => {
     const user = userEvent.setup();
     const bridge = installNativeBridge({

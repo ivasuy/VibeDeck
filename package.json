@@ -1,6 +1,6 @@
 {
   "name": "vibedeck-cli",
-  "version": "0.6.1",
+  "version": "0.1.1",
   "description": "Local-first cost and provenance dashboard for AI coding agents.",
   "license": "MIT",
   "bin": {

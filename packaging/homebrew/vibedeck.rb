@@ -1,7 +1,7 @@
 class Vibedeck < Formula
   desc "Local-first usage and provenance dashboard for AI coding agents"
   homepage "https://github.com/ivasuy/vibedeck"
-  url "https://registry.npmjs.org/vibedeck-cli/-/vibedeck-cli-0.6.1.tgz"
+  url "https://registry.npmjs.org/vibedeck-cli/-/vibedeck-cli-0.1.1.tgz"
   sha256 "REPLACE_IN_RELEASE"
   license "MIT"
 

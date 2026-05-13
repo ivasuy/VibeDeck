@@ -11,7 +11,8 @@ const CELL_GAP = 3;
 const MONTH_Y = 175;
 const WEEKDAY_X = 46;
 const WEEKDAY_Y = [184, 200, 216, 232, 248, 264, 280];
-const WEEKDAY_LABEL_Y = [157, 244, 276];
+const WEEKDAY_LABEL_Y = [212, 244, 276];
+const MODEL_ROW_YS = [73, 89, 105, 121];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const HEAT_COLORS = [
   '#17162e',
@@ -106,16 +107,35 @@ function renderTopModelLines(topModels = []) {
   const lines = [];
   for (let i = 0; i < 4; i++) {
     const entry = rows[i];
-    const name = entry?.name || '—';
-    const value = entry?.valueLabel || '0';
-    const percent = entry?.percentLabel || '0%';
-    const y = 79 + i * 18;
-    const rowY = 79 + i * 18;
-    lines.push(`<text x="472" y="${rowY}" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">${escapeXml(name)}</text>`);
-    lines.push(`<text x="472" y="${y + 16}" font-size="17" fill="url(#gmodel)" font-family="'Courier New',Courier,monospace">${escapeXml(value)}</text>`);
-    lines.push(`<text x="558" y="${y + 16}" font-size="11" fill="rgba(168,168,220,0.5)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
+    const y = MODEL_ROW_YS[i];
+    if (entry) {
+      const raw = String(entry.name || '—');
+      const displayName = raw.length > 26 ? raw.slice(0, 24) + '…' : raw;
+      const value = String(entry.valueLabel || '0');
+      const percent = String(entry.percentLabel || '0%');
+      lines.push(`<text x="472" y="${y}" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">${escapeXml(displayName)}</text>`);
+      lines.push(`<text x="700" y="${y}" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">${escapeXml(value)}</text>`);
+      lines.push(`<text x="706" y="${y}" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
+    } else {
+      lines.push(`<text x="472" y="${y}" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>`);
+    }
   }
   return lines;
+}
+
+function renderLegend() {
+  const legendTextY = 307;
+  const squareY = 297;
+  const startX = 76;
+  const gap = 12;
+  const squares = HEAT_COLORS.map(
+    (fill, i) => `<rect x="${startX + i * gap}" y="${squareY}" width="9" height="9" rx="1" fill="${fill}"/>`,
+  ).join('\n');
+  return [
+    `<text x="46" y="${legendTextY}" font-size="8" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Less</text>`,
+    squares,
+    `<text x="${startX + HEAT_COLORS.length * gap + 2}" y="${legendTextY}" font-size="8" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">More</text>`,
+  ].join('\n');
 }
 
 function renderHeatmapWeeks(heatmap) {
@@ -198,7 +218,6 @@ function renderReadmeBannerSvg(data = {}) {
 <ellipse cx="${SVG_WIDTH / 2}" cy="-20" rx="420" ry="70" fill="rgba(99,102,241,0.06)"/>
 
 <text x="${HEADER_X}" y="27" font-size="14" font-weight="700" fill="#e8e8ff" font-family="system-ui,sans-serif" letter-spacing="0.3">VibeDeck</text>
-<text x="108" y="27" font-size="11" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">· AI coding agent usage dashboard</text>
 <text x="876" y="27" text-anchor="end" font-size="10" fill="rgba(168,168,220,0.26)" font-family="system-ui,sans-serif">Updated ${updatedDateLabel}</text>
 
 <line x1="24" y1="38" x2="876" y2="38" stroke="url(#gdiv)" stroke-width="0.75"/>
@@ -226,6 +245,7 @@ ${renderTopModelLines(topModels).join('\n')}
 <text x="42" y="${WEEKDAY_LABEL_Y[2]}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Fri</text>
 ${renderMonthLabels(heatmap)}
 ${renderHeatmapWeeks(heatmap)}
+${renderLegend()}
 </svg>
 `;
 }

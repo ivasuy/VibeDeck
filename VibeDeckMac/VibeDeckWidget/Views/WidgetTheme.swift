@@ -8,11 +8,27 @@ enum WidgetTheme {
     static let brand = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 1.0)
     static let brandStrong = Color(.sRGB, red: 0.310, green: 0.275, blue: 0.659, opacity: 1.0)
     static let brandLight = Color(.sRGB, red: 0.506, green: 0.549, blue: 0.973, opacity: 1.0)
-    static let surfaceTop = Color(.sRGB, red: 0.965, green: 0.969, blue: 0.992, opacity: 0.96)
-    static let surfaceBottom = Color(.sRGB, red: 0.938, green: 0.944, blue: 0.985, opacity: 0.92)
     static let surfaceStroke = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.18)
     static let statusOnline = Color(.sRGB, red: 0.357, green: 0.373, blue: 0.780, opacity: 0.92)
     static let statusWarning = Color(.sRGB, red: 0.933, green: 0.620, blue: 0.243, opacity: 0.92)
+
+    static func surfaceTop(for colorScheme: ColorScheme) -> Color {
+        switch colorScheme {
+        case .dark:
+            return Color(.sRGB, red: 0.118, green: 0.122, blue: 0.157, opacity: 0.98)
+        default:
+            return Color(.sRGB, red: 0.965, green: 0.969, blue: 0.992, opacity: 0.96)
+        }
+    }
+
+    static func surfaceBottom(for colorScheme: ColorScheme) -> Color {
+        switch colorScheme {
+        case .dark:
+            return Color(.sRGB, red: 0.149, green: 0.153, blue: 0.204, opacity: 0.96)
+        default:
+            return Color(.sRGB, red: 0.938, green: 0.944, blue: 0.985, opacity: 0.92)
+        }
+    }
 
     // MARK: - Heatmap palette
     static let heatmapLevels: [Color] = [
@@ -62,8 +78,19 @@ enum WidgetTheme {
     }
 
     static var widgetBackground: some View {
+        WidgetBackgroundView()
+    }
+}
+
+private struct WidgetBackgroundView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
         LinearGradient(
-            colors: [surfaceTop, surfaceBottom],
+            colors: [
+                WidgetTheme.surfaceTop(for: colorScheme),
+                WidgetTheme.surfaceBottom(for: colorScheme),
+            ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )

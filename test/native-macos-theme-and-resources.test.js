@@ -104,6 +104,27 @@ test("widget metadata and strings should stay searchable under the VibeDeck name
   );
 });
 
+test("widget theme should adapt surfaces for dark mode", () => {
+  const widgetTheme = read("VibeDeckMac/VibeDeckWidget/Views/WidgetTheme.swift");
+
+  assert.ok(
+    widgetTheme.includes("ColorScheme"),
+    "widget theme should branch on SwiftUI color scheme"
+  );
+  assert.ok(
+    widgetTheme.includes("surfaceTop(for colorScheme: ColorScheme)"),
+    "widget theme should expose a color-scheme-aware top surface"
+  );
+  assert.ok(
+    widgetTheme.includes("surfaceBottom(for colorScheme: ColorScheme)"),
+    "widget theme should expose a color-scheme-aware bottom surface"
+  );
+  assert.ok(
+    widgetTheme.includes("@Environment(\\.colorScheme)"),
+    "widget background should read the environment color scheme"
+  );
+});
+
 test("top models view should use provider logos instead of rank dots", () => {
   const topModelsView = read("VibeDeckMac/VibeDeckMac/Views/TopModelsView.swift");
 

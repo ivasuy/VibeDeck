@@ -5,11 +5,11 @@ const { resolveNativeArtifactSpec } = require("../src/lib/bootstrap/release-mani
 
 test("release manifest resolves macOS zipped app artifact", () => {
   const spec = resolveNativeArtifactSpec({
-    version: "0.1.1",
+    version: "0.1.2",
     platform: "darwin",
     arch: "arm64",
   });
   assert.equal(spec.kind, "zip");
   assert.match(spec.fileName, /VibeDeck.*\.zip$/);
-  assert.match(spec.url, /v0\.1\.1/);
+  assert.match(spec.url, /v0\.1\.2/);
 });

@@ -17,7 +17,7 @@ test("bootstrap state round-trips under VIBEDECK_HOME", async () => {
   try {
     process.env.VIBEDECK_HOME = tmp;
     await writeBootstrapState({
-      native_app: { installed: true, path: "/Applications/VibeDeck.app", version: "0.1.1" },
+      native_app: { installed: true, path: "/Applications/VibeDeck.app", version: "0.1.2" },
       entire: { installed: true, logged_in: false },
       pending: ["entire_login", "readme_sync"],
     });

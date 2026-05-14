@@ -14,6 +14,7 @@ const FORMULA_PATH = path.join(
 test("homebrew formula installs via npm and exposes a CLI test", () => {
   const formula = fs.readFileSync(FORMULA_PATH, "utf8");
   assert.ok(formula.includes('system "npm", "install"'));
+  assert.match(formula, /bin\.install_symlink libexec\/"bin\/vibedeck"/);
   assert.match(formula, /test do/);
   assert.match(formula, /shell_output\("\#\{bin\}\/vibedeck --help"\)/);
 });

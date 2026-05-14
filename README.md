@@ -81,9 +81,9 @@ npx vibedeck-cli serve
 
 More media:
 
-- [App demo video](https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e)
-- [Dashboard demo video](https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5)
-- [Widgets demo video](https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97)
+- [App demo video] https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e
+- [Dashboard demo video] https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5
+- [Widgets demo video] https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97 
 
 ## Why VibeDeck
 

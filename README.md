@@ -1,4 +1,4 @@
-# <div align="center"><img src="dashboard/public/icon.svg" alt="VibeDeck icon" width="120" height="120" /></div>
+<img width="720" height="1134" alt="App" src="https://github.com/user-attachments/assets/d3e4d7d4-f6c0-4a99-80f2-666721d2a2ee" /># <div align="center"><img src="dashboard/public/icon.svg" alt="VibeDeck icon" width="120" height="120" /></div>
 
 # <div align="center">VibeDeck</div>
 
@@ -63,13 +63,19 @@ npx vibedeck-cli serve
   </tr>
   <tr>
     <td align="center">
-      <video src="https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e" width="100%" autoplay muted loop playsinline controls></video>
+      <a href="https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e">
+        <img width="100%" alt="macOS app demo" src="https://github.com/user-attachments/assets/3f46de8f-cfc8-4083-950c-c1eaf2dcd785" />
+      </a>
     </td>
     <td align="center">
-      <video src="https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5" width="100%" autoplay muted loop playsinline controls></video>
+      <a href="https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5">
+        <img width="100%" alt="Dashboard demo" src="https://github.com/user-attachments/assets/ec8df116-b058-4d37-bdee-0c8afe376b7e" />
+      </a>
     </td>
     <td align="center">
-      <video src="https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97" width="100%" autoplay muted loop playsinline controls></video>
+      <a href="https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97">
+        <img width="100%" alt="Widgets demo" src="https://github.com/user-attachments/assets/dcb9be66-621c-4860-96b2-221a078792a2" />
+      </a>
     </td>
   </tr>
   <tr>

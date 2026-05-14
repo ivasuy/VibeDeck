@@ -55,23 +55,29 @@ npx vibedeck-cli serve
 
 ## Product Showcase
 
-### macOS app
-
-Native macOS shell around the local VibeDeck backend, with release packaging and desktop-first onboarding.
-
-https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e
-
-### Dashboard
-
-Full dashboard for live sessions, branches, usage rollups, Entire checkpoints, diagnostics, and project audit.
-
-https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5
-
-### Widgets
-
-Compact desktop surfaces for glanceable live cost, token, and session activity throughout the day.
-
-https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97
+<table>
+  <tr>
+    <td width="34%" align="center"><strong>macOS app</strong></td>
+    <td width="33%" align="center"><strong>Dashboard</strong></td>
+    <td width="33%" align="center"><strong>Widgets</strong></td>
+  </tr>
+  <tr>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/5e2cb6e6-8226-47c8-9a9e-a59187de6b8e" width="100%" autoplay muted loop playsinline controls></video>
+    </td>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/f1ee0746-e3fa-4bfb-b948-5736c1683fb5" width="100%" autoplay muted loop playsinline controls></video>
+    </td>
+    <td align="center">
+      <video src="https://github.com/user-attachments/assets/80437953-271d-4440-b479-8bf31ace7f97" width="100%" autoplay muted loop playsinline controls></video>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">Native macOS shell around the local VibeDeck backend, with release packaging and desktop-first onboarding.</td>
+    <td align="center">Full dashboard for live sessions, branches, usage rollups, Entire checkpoints, diagnostics, and project audit.</td>
+    <td align="center">Compact desktop surfaces for glanceable live cost, token, and session activity throughout the day.</td>
+  </tr>
+</table>
 
 ## Why VibeDeck
 

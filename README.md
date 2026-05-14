@@ -1,5 +1,3 @@
-<img width="720" height="1134" alt="App" src="https://github.com/user-attachments/assets/d3e4d7d4-f6c0-4a99-80f2-666721d2a2ee" /># <div align="center"><img src="dashboard/public/icon.svg" alt="VibeDeck icon" width="120" height="120" /></div>
-
 # <div align="center">VibeDeck</div>
 
 <div align="center">
@@ -125,19 +123,20 @@ That makes it useful both as a personal command center and as an engineering aud
 
 ## Supported Providers
 
-| | Provider | Supported | Input |
-|---|----------|-----------|-------|
-| <img src="dashboard/public/brand-logos/codex.svg" width="28" /> | Codex CLI | Yes | JSONL rollout logs and session usage |
-| <img src="dashboard/public/brand-logos/claude-code.svg" width="28" /> | Claude Code | Yes | JSONL transcripts and hook-aware local state |
-| <img src="dashboard/public/brand-logos/cursor.svg" width="28" /> | Cursor | Yes | Local SQLite runtime data |
-| <img src="dashboard/public/brand-logos/gemini.svg" width="28" /> | Gemini CLI | Yes | Local JSON session files |
-| <img src="dashboard/public/brand-logos/opencode.svg" width="28" /> | OpenCode | Yes | Local SQLite channel and message tables |
-| <img src="dashboard/public/brand-logos/openclaw.svg" width="28" /> | OpenClaw | Yes | JSONL agent logs |
-| <img src="dashboard/public/brand-logos/kiro.svg" width="28" /> | Kiro / Kiro CLI | Yes | Local chat files and runtime traces |
-| <img src="dashboard/public/brand-logos/kimi.svg" width="28" /> | Kimi Code | Yes | Local provider session data |
-| <img src="dashboard/public/brand-logos/copilot.svg" width="28" /> | GitHub Copilot CLI | Yes | Legacy CLI state and VS Code transcripts |
-| <img src="dashboard/public/brand-logos/hermes.svg" width="28" /> | Hermes Agent | Yes | Local agent runtime files |
-| <img src="dashboard/public/brand-logos/antigravity.svg" width="28" /> | Antigravity | Yes | Local provider runtime state |
+| Icon | Provider | Supported | Input |
+|:---:|----------|-----------|-------|
+| <img src="dashboard/public/brand-logos/codex.svg" width="20" height="20" /> | Codex CLI | Yes | JSONL rollout logs and session usage |
+| <img src="dashboard/public/brand-logos/claude-code.svg" width="20" height="20" /> | Claude Code | Yes | JSONL transcripts and hook-aware local state |
+| <img src="dashboard/public/brand-logos/cursor.svg" width="20" height="20" /> | Cursor | Yes | Local SQLite runtime data |
+| <img src="dashboard/public/brand-logos/gemini.svg" width="20" height="20" /> | Gemini CLI | Yes | Local JSON session files |
+| <img src="dashboard/public/brand-logos/opencode.svg" width="20" height="20" /> | OpenCode | Yes | Local SQLite channel and message tables |
+| <img src="dashboard/public/brand-logos/openclaw.svg" width="20" height="20" /> | OpenClaw | Yes | JSONL agent logs |
+| <img src="dashboard/public/brand-logos/kiro.svg" width="20" height="20" /> | Kiro / Kiro CLI | Yes | Local chat files and runtime traces |
+| <img src="dashboard/public/brand-logos/kimi.svg" width="20" height="20" /> | Kimi Code | Yes | Local provider session data |
+| <img src="dashboard/public/brand-logos/copilot.svg" width="20" height="20" /> | GitHub Copilot CLI | Yes | Legacy CLI state and VS Code transcripts |
+| <img src="dashboard/public/brand-logos/hermes.svg" width="20" height="20" /> | Hermes Agent | Yes | Local agent runtime files |
+| <img src="dashboard/public/brand-logos/antigravity.svg" width="20" height="20" /> | Antigravity | Yes | Local provider runtime state |
+
 Some providers are hook-based. Others are passive readers over local JSONL, SQLite, CSV, or native app state. VibeDeck is designed for mixed-runtime environments rather than single-provider lock-in.
 
 ## What VibeDeck Tracks

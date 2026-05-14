@@ -22,6 +22,7 @@ import { cn } from "../../../lib/cn";
 import { useTheme } from "../../../hooks/useTheme.js";
 import { useLocale } from "../../../hooks/useLocale.js";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
+import { GITHUB_REPO, GITHUB_REPO_API_URL, GITHUB_REPO_URL } from "../../../lib/public-links.js";
 import { isNativeApp, isNativeEmbed } from "../../../lib/native-bridge.js";
 import { SlidePanel } from "../../foundation/SlidePanel.jsx";
 
@@ -225,7 +226,7 @@ function IconButton({ as = "button", title, onClick, href, children, className: 
   );
 }
 
-function StarPill({ repo = "ivasuy/VibeDeck", glassChrome = false }) {
+function StarPill({ repo = GITHUB_REPO, glassChrome = false }) {
   const [stars, setStars] = useState(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -233,7 +234,7 @@ function StarPill({ repo = "ivasuy/VibeDeck", glassChrome = false }) {
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!shouldFetchGithubStars({ prefersReducedMotion, screenshotCapture: false })) return;
-    fetch(`https://api.github.com/repos/${repo}`)
+    fetch(repo === GITHUB_REPO ? GITHUB_REPO_API_URL : `https://api.github.com/repos/${repo}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.stargazers_count === "number") setStars(data.stargazers_count);
@@ -243,7 +244,7 @@ function StarPill({ repo = "ivasuy/VibeDeck", glassChrome = false }) {
 
   return (
     <a
-      href={`https://github.com/${repo}`}
+      href={repo === GITHUB_REPO ? GITHUB_REPO_URL : `https://github.com/${repo}`}
       target="_blank"
       rel="noopener noreferrer"
       aria-label={stars !== null ? `${copy("nav.star")} (${stars})` : copy("nav.star")}

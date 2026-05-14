@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { shouldFetchGithubStars } from "../util/should-fetch-github-stars.js";
+import { GITHUB_REPO, GITHUB_REPO_API_URL, GITHUB_REPO_URL } from "../../../lib/public-links.js";
 
 /**
  * Matrix-themed GitHub Star Component
  */
 export const GithubStar = ({
-  repo = "ivasuy/VibeDeck",
+  repo = GITHUB_REPO,
   isFixed = true,
   size = "default",
   className = "",
@@ -26,7 +27,7 @@ export const GithubStar = ({
     }
     // Attempt to fetch stars from GitHub API
     // Note: This might hit rate limits if not authenticated, but standard for non-sensitive data
-    fetch(`https://api.github.com/repos/${repo}`)
+    fetch(repo === GITHUB_REPO ? GITHUB_REPO_API_URL : `https://api.github.com/repos/${repo}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.stargazers_count === "number") {
@@ -46,7 +47,7 @@ export const GithubStar = ({
 
   return (
     <a
-      href={`https://github.com/${repo}`}
+      href={repo === GITHUB_REPO ? GITHUB_REPO_URL : `https://github.com/${repo}`}
       target="_blank"
       rel="noopener noreferrer"
       className={`${baseClasses} ${positionClasses} ${className}`}

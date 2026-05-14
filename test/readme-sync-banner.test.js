@@ -4,7 +4,11 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { buildReadmeBannerData } = require("../src/lib/readme-sync/banner-data");
+const {
+  buildReadmeBannerData,
+  formatCompactTokenCount,
+  formatUsd,
+} = require("../src/lib/readme-sync/banner-data");
 const { buildMonthAnchors, renderReadmeBannerSvg } = require("../src/lib/readme-sync/render-svg");
 
 test("month anchors are derived from week transitions instead of hardcoded positions", () => {
@@ -34,6 +38,13 @@ test("buildReadmeBannerData uses injected now for heatmap determinism", async ()
   }
 });
 
+test("banner formatters keep billions precise and cost rounded to dollars", () => {
+  assert.equal(formatCompactTokenCount(2_766_071_694), "2.77B");
+  assert.equal(formatCompactTokenCount(768_500_000), "768.5M");
+  assert.equal(formatUsd(1944.08), "$1,944");
+  assert.equal(formatUsd(1944.89), "$1,945");
+});
+
 test("svg renders computed month labels for the visible 52-week window", () => {
   const anchors = buildMonthAnchors({
     to: "2026-05-12",
@@ -45,7 +56,7 @@ test("svg renders computed month labels for the visible 52-week window", () => {
     updatedDateLabel: "May 12, 2026",
     totalTokensLabel: "12.4M",
     totalTokensSubLabel: "12,400,000 tokens total",
-    totalCostLabel: "$184.21",
+    totalCostLabel: "$184",
     topModels: [
       { name: "claude-opus-4-1", valueLabel: "5.2M", percentLabel: "42%" },
       { name: "gpt-5.4", valueLabel: "3.1M", percentLabel: "25%" },

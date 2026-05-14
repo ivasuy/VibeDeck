@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
+import { GITHUB_REPO, GITHUB_REPO_API_URL, GITHUB_REPO_URL } from "../../../lib/public-links.js";
 
 /**
  * Dashboard / marketing header: single row — icon + Star + count (matches Shell header).
  */
-export function HeaderGithubStar({ repo = "ivasuy/VibeDeck" }) {
+export function HeaderGithubStar({ repo = GITHUB_REPO }) {
   const [stars, setStars] = useState(null);
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export function HeaderGithubStar({ repo = "ivasuy/VibeDeck" }) {
       (document.documentElement?.classList.contains("screenshot-capture") ||
         document.body?.classList.contains("screenshot-capture"));
     if (!shouldFetchGithubStars({ prefersReducedMotion, screenshotCapture })) return;
-    fetch(`https://api.github.com/repos/${repo}`)
+    fetch(repo === GITHUB_REPO ? GITHUB_REPO_API_URL : `https://api.github.com/repos/${repo}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && typeof data.stargazers_count === "number") {
@@ -29,7 +30,7 @@ export function HeaderGithubStar({ repo = "ivasuy/VibeDeck" }) {
 
   return (
     <a
-      href={`https://github.com/${repo}`}
+      href={repo === GITHUB_REPO ? GITHUB_REPO_URL : `https://github.com/${repo}`}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex shrink-0 items-center gap-2 px-3 py-1.5 rounded-md border border-oai-gray-200 dark:border-oai-gray-700 bg-oai-gray-50 dark:bg-oai-gray-800 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-700 transition-colors no-underline"

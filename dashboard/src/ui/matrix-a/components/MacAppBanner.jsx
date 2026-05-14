@@ -2,9 +2,9 @@ import React, { useState, useCallback } from "react";
 import { motion } from "motion/react";
 import { ClawdAnimated } from "../../foundation/ClawdAnimated.jsx";
 import { useClawdState } from "../../../hooks/useClawdState.js";
+import { GITHUB_RELEASES_URL } from "../../../lib/public-links.js";
 
 const DISMISS_KEY = "macAppBannerDismissed";
-const RELEASE_URL = "https://github.com/ivasuy/VibeDeck/releases/latest";
 
 /** True when loaded inside the native macOS app (WKWebView with ?app=1) */
 const NATIVE_APP_KEY = "vibedeck_native_app";
@@ -60,7 +60,7 @@ export function MacAppBanner({ todayTokens = 0, isSyncing = false, enterDelay = 
       <path d="M6 2v6m0 0L3.5 5.5M6 8l2.5-2.5M2 10h8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
-  const buttonHref = RELEASE_URL;
+  const buttonHref = GITHUB_RELEASES_URL;
 
   const ButtonTag = motion.a;
   const buttonProps = { href: buttonHref, target: "_blank", rel: "noopener noreferrer" };

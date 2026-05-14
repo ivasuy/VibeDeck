@@ -3,6 +3,7 @@ import { ArrowUpRight, ChevronDown, Download, Monitor } from "lucide-react";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import { isNativeEmbed, nativeAction } from "../lib/native-bridge.js";
+import { GITHUB_RELEASES_URL } from "../lib/public-links.js";
 import { useNativeSettings } from "../hooks/use-native-settings.js";
 import {
   FALLBACK_MENU_BAR_ITEMS,
@@ -662,7 +663,7 @@ function HeaderCta() {
   if (platform === "mac-web") {
     return (
       <a
-        href="https://github.com/ivasuy/VibeDeck/releases/latest"
+        href={GITHUB_RELEASES_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex h-10 items-center gap-2 rounded-lg bg-oai-brand px-4 text-sm font-medium text-white no-underline shadow-[0_10px_24px_rgba(91,95,199,0.22)] transition-colors hover:bg-oai-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500 focus-visible:ring-offset-2 dark:bg-oai-brand-400 dark:text-oai-brand-950 dark:hover:bg-oai-brand-300"

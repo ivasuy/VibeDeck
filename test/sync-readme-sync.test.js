@@ -195,7 +195,7 @@ test("runReadmeSyncUpdate writes banner and pushes README when configured", asyn
       repo_name: "vibedeck",
       branch: "main",
       readme_path: "README.md",
-      svg_path: "readme-banner.svg",
+      svg_path: "github-readme-banner.svg",
     },
     token: "ghp_token",
     buildBannerData: async () => ({ test: true }),
@@ -213,7 +213,7 @@ test("runReadmeSyncUpdate writes banner and pushes README when configured", asyn
   assert.equal(result.repo, "ivasuy/vibedeck");
   assert.equal(result.branch, "main");
   assert.equal(result.readme_path, "README.md");
-  assert.equal(bannerPath.includes("readme-banner.svg"), true);
+  assert.equal(bannerPath.includes("github-readme-banner.svg"), true);
   assert.equal(bannerContent, "<svg />\n");
   assert.deepEqual(updateArgs.config, {
     enabled: true,
@@ -221,7 +221,7 @@ test("runReadmeSyncUpdate writes banner and pushes README when configured", asyn
     repo_name: "vibedeck",
     branch: "main",
     readme_path: "README.md",
-    svg_path: "readme-banner.svg",
+      svg_path: "github-readme-banner.svg",
   });
   assert.equal(updateArgs.token, "ghp_token");
   assert.equal(updateArgs.svg, "<svg />");

@@ -74,7 +74,7 @@ async function runSet(argv) {
     repo_name: repo,
     branch: opts.branch || 'main',
     readme_path: opts.path || 'README.md',
-    svg_path: 'readme-banner.svg',
+    svg_path: 'github-readme-banner.svg',
     marker_start: '<!-- vibedeck:stats:start -->',
     marker_end: '<!-- vibedeck:stats:end -->',
   };

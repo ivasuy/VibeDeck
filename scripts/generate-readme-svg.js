@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate readme-banner.svg from live VibeDeck data.
+ * Generate github-readme-banner.svg from live VibeDeck data.
  *   node scripts/generate-readme-svg.js
  * Falls back to sample data when VibeDeck is not running.
  */
@@ -238,7 +238,7 @@ async function main() {
     };
   }
 
-  const out = path.resolve(__dirname, '..', 'readme-banner.svg');
+  const out = path.resolve(__dirname, '..', 'github-readme-banner.svg');
   fs.writeFileSync(out, buildSVG(data), 'utf8');
   console.log('Written:', out);
 }

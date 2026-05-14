@@ -81,20 +81,20 @@ function formatCompactTokenCount(value) {
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
 
-  const format = (v, suffix) => {
-    const normalized = Number(v.toFixed(1));
+  const format = (v, suffix, decimals = 1) => {
+    const normalized = Number(v.toFixed(decimals));
     return `${sign}${normalized.toString()}${suffix}`;
   };
 
-  if (abs >= 1_000_000_000) return format(abs / 1_000_000_000, 'B');
+  if (abs >= 1_000_000_000) return format(abs / 1_000_000_000, 'B', 2);
   if (abs >= 1_000_000) {
     const asMillions = abs / 1_000_000;
-    const carry = asMillions >= 1000 ? format(asMillions / 1000, 'B') : format(asMillions, 'M');
+    const carry = asMillions >= 1000 ? format(asMillions / 1000, 'B', 2) : format(asMillions, 'M', 1);
     return carry;
   }
   if (abs >= 1_000) {
     const asThousands = abs / 1_000;
-    const carry = asThousands >= 1000 ? format(asThousands / 1000, 'M') : format(asThousands, 'K');
+    const carry = asThousands >= 1000 ? format(asThousands / 1000, 'M', 1) : format(asThousands, 'K', 1);
     return carry;
   }
   return `${sign}${Math.round(abs)}`;
@@ -102,12 +102,11 @@ function formatCompactTokenCount(value) {
 
 function formatUsd(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '$0.00';
-  const rounded = Math.abs(n).toFixed(2);
-  const [intPart, fracPart] = rounded.split('.');
-  const formattedInt = new Intl.NumberFormat('en-US').format(Number(intPart));
+  if (!Number.isFinite(n)) return '$0';
+  const rounded = Math.round(Math.abs(n));
+  const formattedInt = new Intl.NumberFormat('en-US').format(rounded);
   const sign = n < 0 ? '-' : '';
-  return `${sign}$${formattedInt}.${fracPart}`;
+  return `${sign}$${formattedInt}`;
 }
 
 function resolveTopModels(rows, totalBillable) {

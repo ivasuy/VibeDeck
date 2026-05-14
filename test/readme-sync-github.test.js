@@ -2,19 +2,38 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { getRepoFile, putRepoFile } = require('../src/lib/readme-sync/github');
-const { pushBannerAndReadme, upsertManagedReadmeBlock } = require('../src/lib/readme-sync/update-readme');
+const {
+  buildManagedImageUrl,
+  pushBannerAndReadme,
+  upsertManagedReadmeBlock,
+} = require('../src/lib/readme-sync/update-readme');
+
+test('buildManagedImageUrl returns a cache-busted raw GitHub URL', () => {
+  const url = buildManagedImageUrl({
+    owner: 'ivasuy',
+    repo: 'ivasuy',
+    branch: 'main',
+    svgPath: 'github-readme-banner.svg',
+    cacheKey: 'abc123sha',
+  });
+
+  assert.equal(
+    url,
+    'https://raw.githubusercontent.com/ivasuy/ivasuy/main/github-readme-banner.svg?v=abc123sha',
+  );
+});
 
 test('appends managed block when markers are missing', () => {
   const next = upsertManagedReadmeBlock({
     readme: '# Hello\n',
     markerStart: '<!-- vibedeck:stats:start -->',
     markerEnd: '<!-- vibedeck:stats:end -->',
-    imagePath: './readme-banner.svg',
+    imagePath: 'https://raw.githubusercontent.com/ivasuy/ivasuy/main/github-readme-banner.svg?v=abc123sha',
   });
 
   assert.match(next, /# Hello/);
   assert.match(next, /<!-- vibedeck:stats:start -->/);
-  assert.match(next, /!\[VibeDeck Usage\]\(\.\/readme-banner\.svg\)/);
+  assert.match(next, /!\[VibeDeck Usage\]\(https:\/\/raw\.githubusercontent\.com\/ivasuy\/ivasuy\/main\/github-readme-banner\.svg\?v=abc123sha\)/);
 });
 
 test('replaces only the managed block when markers already exist', () => {
@@ -32,7 +51,7 @@ test('replaces only the managed block when markers already exist', () => {
     readme: existing,
     markerStart: '<!-- vibedeck:stats:start -->',
     markerEnd: '<!-- vibedeck:stats:end -->',
-    imagePath: './readme-banner.svg',
+    imagePath: 'https://raw.githubusercontent.com/ivasuy/ivasuy/main/github-readme-banner.svg?v=abc123sha',
   });
 
   assert.doesNotMatch(next, /old block/);
@@ -86,7 +105,7 @@ test('github PUT posts base64 payload and optional sha', async () => {
   await putRepoFile({
     owner: 'ivasuy',
     repo: 'vibedeck',
-    path: 'readme-banner.svg',
+    path: 'github-readme-banner.svg',
     branch: 'main',
     token: 'ghp_token',
     content: 'content',
@@ -106,7 +125,7 @@ test('github PUT posts base64 payload and optional sha', async () => {
     },
   });
 
-  assert.equal(request.url.includes('/vibedeck/contents/readme-banner.svg'), true);
+  assert.equal(request.url.includes('/vibedeck/contents/github-readme-banner.svg'), true);
   assert.equal(request.init.method, 'PUT');
   assert.equal(request.body.content, Buffer.from('content', 'utf8').toString('base64'));
   assert.equal(request.body.sha, 'abc123');
@@ -130,7 +149,7 @@ test('pushBannerAndReadme writes managed README block using chore commit message
       repo_owner: 'ivasuy',
       repo_name: 'vibedeck',
       branch: 'main',
-      svg_path: 'readme-banner.svg',
+      svg_path: 'github-readme-banner.svg',
       readme_path: 'README.md',
       marker_start: '<!-- vibedeck:stats:start -->',
       marker_end: '<!-- vibedeck:stats:end -->',
@@ -145,10 +164,14 @@ test('pushBannerAndReadme writes managed README block using chore commit message
         body: parseBody(init?.body),
       });
 
-      if (target.includes('/contents/readme-banner.svg')) {
+      if (target.includes('/contents/github-readme-banner.svg')) {
         if (init) {
           messages.push(parseBody(init.body)?.message || null);
-          return { ok: true, status: 200, json: async () => ({}) };
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ content: { sha: 'newsvgsha' } }),
+          };
         }
         return { ok: true, status: 200, json: async () => ({ sha: 'svgsha' }) };
       }
@@ -170,4 +193,12 @@ test('pushBannerAndReadme writes managed README block using chore commit message
     .map((entry) => entry.body?.message)
     .filter((message) => message);
   assert.ok(putMessages.includes('chore: update VibeDeck README banner'));
+  const readmePut = requested.find(
+    (entry) => entry.method === 'PUT' && entry.url.includes('/contents/README.md'),
+  );
+  const readmeContent = Buffer.from(readmePut.body.content, 'base64').toString('utf8');
+  assert.match(
+    readmeContent,
+    /https:\/\/raw\.githubusercontent\.com\/ivasuy\/vibedeck\/main\/github-readme-banner\.svg\?v=newsvgsha/,
+  );
 });

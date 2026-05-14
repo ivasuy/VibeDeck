@@ -11,16 +11,16 @@ const FORMULA_PATH = path.join(
   "vibedeck.rb"
 );
 
-test("homebrew formula invokes VibeDeck bootstrap flow", () => {
+test("homebrew formula installs via npm and exposes a CLI test", () => {
   const formula = fs.readFileSync(FORMULA_PATH, "utf8");
-  assert.match(formula, /bin\/"?vibedeck"?/);
-  assert.match(formula, /bootstrap/);
   assert.ok(formula.includes('system "npm", "install"'));
+  assert.match(formula, /test do/);
+  assert.match(formula, /shell_output\("\#\{bin\}\/vibedeck --help"\)/);
 });
 
 test("homebrew formula contains install step", () => {
   const formula = fs.readFileSync(FORMULA_PATH, "utf8");
   assert.match(formula, /def install/);
-  assert.match(formula, /node/);
-  assert.match(formula, /system/);
+  assert.match(formula, /depends_on "node"/);
+  assert.match(formula, /system "npm", "install"/);
 });

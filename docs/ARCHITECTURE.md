@@ -1,16 +1,66 @@
 # Architecture
 
-VibeDeck is a local-first AI coding usage system. It has three main jobs:
+This document is for developers working on the VibeDeck backend, dashboard, native app, and release system.
 
-1. Collect local usage signals from AI coding tools.
-2. Normalize sessions, tokens, models, branches, and costs into SQLite.
-3. Serve those facts to the local dashboard, CLI, macOS app, and widgets.
+VibeDeck has four major architecture layers:
 
-## System-Level Flow
+1. local ingestion from provider runtimes
+2. canonical normalization into SQLite
+3. local serving to dashboard, CLI, macOS app, and widgets
+4. packaging and release automation for npm, GitHub Releases, and Homebrew
 
-The system has two separate flows: local ingestion and local serving. Keeping them separate matters because sync/rebuild work can be heavy, while the dashboard should read from already-normalized local state.
+## High-Level System
 
-### Local Ingestion
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 52, "rankSpacing": 76, "curve": "basis"}} }%%
+flowchart LR
+  subgraph Inputs["Local inputs"]
+    ProviderLogs["Provider logs"]
+    ProviderDBs["Provider DBs"]
+    Hooks["Hook payloads"]
+    Entire["Entire checkpoints"]
+  end
+
+  subgraph Core["VibeDeck core"]
+    Sync["vibedeck sync"]
+    Sessions["Canonical session pipeline"]
+    Pricing["Pricing and cost engine"]
+    SQLite["SQLite canonical DB"]
+    API["Local API"]
+  end
+
+  subgraph Surfaces["Product surfaces"]
+    Dashboard["Dashboard"]
+    CLI["CLI"]
+    Mac["macOS app"]
+    Widget["Widgets"]
+  end
+
+  ProviderLogs --> Sync
+  ProviderDBs --> Sync
+  Hooks --> Sync
+  Entire --> Sync
+  Sync --> Sessions
+  Sessions --> Pricing
+  Pricing --> SQLite
+  Sessions --> SQLite
+  SQLite --> API
+  API --> Dashboard
+  API --> CLI
+  API --> Mac
+  API --> Widget
+```
+
+## Local Runtime Architecture
+
+VibeDeck is intentionally local-first.
+
+- state lives under `~/.vibedeck/`
+- canonical usage state lives in `~/.vibedeck/tracker/vibedeck.sqlite3`
+- the local server binds to `127.0.0.1`
+- dashboard and native UI consume local API routes, not a hosted backend
+
+### Local Ingestion Flow
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 48, "rankSpacing": 72, "curve": "basis"}} }%%
@@ -18,78 +68,72 @@ flowchart LR
   subgraph Sources["Local sources"]
     ProviderLogs["Provider logs"]
     ProviderDBs["Provider DBs"]
-    Hooks["Hook payloads"]
-    EntireStore["Entire checkpoints"]
+    HookPayloads["Hook payloads"]
+    EntireStore["Entire metadata"]
   end
 
   subgraph SyncLayer["Sync layer"]
     Sync["vibedeck sync"]
-    Parsers["Provider parsers"]
-    Events["Session pipeline"]
-    EntireBridge["Entire bridge"]
-    Pricing["Pricing engine"]
+    Rollout["rollout.js parsers"]
+    Events["sessions pipeline"]
+    EntireBridge["entire bridge"]
+    Diagnostics["diagnostics"]
   end
 
   subgraph Storage["Local storage"]
-    SQLite["SQLite canonical DB"]
-    Queues["Queue exports"]
-    Diagnostics["Diagnostics"]
+    SQLite["vibedeck.sqlite3"]
+    Queues["queue.jsonl exports"]
   end
 
   ProviderLogs --> Sync
   ProviderDBs --> Sync
-  Hooks --> Sync
+  HookPayloads --> Sync
   EntireStore --> EntireBridge
-
-  Sync --> Parsers
-  Parsers --> Events
-  Events --> Pricing
-  EntireBridge --> Pricing
-
-  Pricing --> SQLite
+  Sync --> Rollout
+  Rollout --> Events
+  EntireBridge --> Events
   Events --> SQLite
-  EntireBridge --> SQLite
-  Parsers --> Queues
+  Rollout --> Queues
   Sync --> Diagnostics
 ```
 
-### Local Serving
+### Local Serving Flow
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 48, "rankSpacing": 72, "curve": "basis"}} }%%
 flowchart LR
-  subgraph Storage["Local storage"]
-    SQLite["SQLite DB"]
-    Queues["Queue exports"]
+  subgraph Storage["Canonical state"]
+    SQLite["SQLite"]
+    QueueFiles["Queue exports"]
   end
 
   subgraph Backend["Local backend"]
-    API["Local API"]
     ReadModels["Read models"]
+    LocalAPI["local-api.js"]
     LiveSSE["Live SSE"]
   end
 
-  subgraph Clients["Local clients"]
+  subgraph Clients["Clients"]
     Dashboard["Dashboard"]
-    MacApp["macOS app"]
+    Mac["macOS app"]
     Widget["Widget"]
     CLI["CLI"]
   end
 
   SQLite --> ReadModels
-  Queues --> ReadModels
-  ReadModels --> API
-  API --> LiveSSE
-  API --> Dashboard
-  API --> MacApp
-  API --> Widget
-  API --> CLI
+  QueueFiles --> ReadModels
+  ReadModels --> LocalAPI
+  LocalAPI --> LiveSSE
+  LocalAPI --> Dashboard
+  LocalAPI --> Mac
+  LocalAPI --> Widget
+  LocalAPI --> CLI
   LiveSSE --> Dashboard
 ```
 
-The SQLite database is the canonical source for session, branch, live, usage, and Entire checkpoint cost facts. Queue files remain for compatibility and reconciliation.
+The SQLite database is the source of truth. Queue files remain for compatibility and reconciliation, not as the canonical cost source.
 
-## Codebase-Level Architecture
+## Codebase Layout
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 48, "rankSpacing": 72, "curve": "basis"}} }%%
@@ -97,56 +141,53 @@ flowchart TB
   Entry["bin/vibedeck.js"] --> CLI["src/cli.js"]
   CLI --> Commands["src/commands"]
 
-  subgraph Core["src/lib"]
+  subgraph Backend["src/lib"]
     Rollout["rollout.js"]
-    Sessions["sessions"]
-    DBLib["db"]
-    PricingLib["pricing"]
-    EntireLib["Entire helpers"]
-    HookLib["hook-merger"]
+    Sessions["sessions/*"]
+    DB["db/*"]
+    Pricing["pricing/*"]
+    EntireLib["entire-*"]
     LocalAPI["local-api.js"]
   end
 
-  subgraph Surfaces["User surfaces"]
-    Dashboard["dashboard"]
-    Native["VibeDeckMac"]
-    Tests["test"]
+  subgraph Product["User-facing surfaces"]
+    Dashboard["dashboard/"]
+    Native["VibeDeckMac/"]
+    Tests["test/"]
   end
 
   Commands --> Rollout
   Commands --> Sessions
-  Commands --> DBLib
-  Commands --> PricingLib
+  Commands --> DB
+  Commands --> Pricing
   Commands --> EntireLib
-  Commands --> HookLib
-
   Rollout --> Sessions
-  Sessions --> DBLib
-  PricingLib --> DBLib
-  EntireLib --> DBLib
-  LocalAPI --> DBLib
-
+  Sessions --> DB
+  Pricing --> DB
+  EntireLib --> DB
+  LocalAPI --> DB
   Dashboard --> LocalAPI
   Native --> LocalAPI
-  Tests --> Core
+  Tests --> Backend
 ```
 
-Key backend directories:
+Key areas:
 
 | Area | Files |
 | --- | --- |
 | CLI entry | `bin/vibedeck.js`, `src/cli.js`, `src/commands/*` |
-| Provider parsing | `src/lib/rollout.js` and provider-specific helpers under `src/lib/*` |
+| Parsing and compatibility | `src/lib/rollout.js` |
 | Canonical sessions | `src/lib/sessions/*` |
+| SQLite schema and migrations | `src/lib/db/*` |
 | Costing | `src/lib/pricing/*`, `src/lib/cost-estimation.js`, `src/lib/canonical-cost-summary.js` |
-| Entire checkpoints | `src/lib/entire-bridge.js`, `src/lib/entire-checkpoint-usage.js` |
+| Entire checkpoint usage | `src/lib/entire-bridge.js`, `src/lib/entire-checkpoint-usage.js` |
 | Local API | `src/lib/local-api.js` |
 | Dashboard | `dashboard/src/*` |
-| Native app | `VibeDeckMac/*` |
+| Native app and widget | `VibeDeckMac/*` |
 
-## Local Data Model
+## Canonical Data Model
 
-Default root:
+Default local root:
 
 ```text
 ~/.vibedeck/
@@ -165,22 +206,22 @@ Default root:
     app/
 ```
 
-Important SQLite tables:
+Important tables:
 
 | Table | Purpose |
 | --- | --- |
-| `vibedeck_sessions` | One canonical row per provider session. Tracks repo, branch, model, token buckets, cost, timestamps, and live/end state. |
-| `vibedeck_session_events` | Durable event ledger for session start/update/end processing. |
-| `vibedeck_session_buckets` | Time bucket facts for usage pages and cost rollups. |
-| `vibedeck_session_branch_windows` | Branch-window slices when a session spans branch changes. |
+| `vibedeck_sessions` | One canonical row per provider session. Tracks repo, branch, tokens, model, cost, timestamps, and live/end state. |
+| `vibedeck_session_events` | Durable event ledger for start/update/end processing. |
+| `vibedeck_session_buckets` | Time-bucket facts for usage pages. |
+| `vibedeck_session_branch_windows` | Branch-window slices for sessions spanning branch changes. |
 | `vibedeck_attribution_overrides` | Manual branch overrides. |
-| `vibedeck_head_history` | Git HEAD and branch history used to resolve branch attribution. |
-| `vibedeck_repos` | Known repo state, Entire state, suppression, and freshness metadata. |
-| `vibedeck_session_entire_links` | Session-to-Entire link state for historical canonical linkage. |
-| `vibedeck_entire_checkpoint_matches` | Checkpoint matching diagnostics and coverage state. |
-| `vibedeck_skills` | Local skill inventory metadata. |
+| `vibedeck_head_history` | Git HEAD history for branch resolution. |
+| `vibedeck_repos` | Known repo state and freshness metadata. |
+| `vibedeck_session_entire_links` | Session-to-Entire linkage. |
+| `vibedeck_entire_checkpoint_matches` | Checkpoint matching diagnostics. |
+| `vibedeck_skills` | Local skill metadata. |
 
-Schema migrations live in `src/lib/db/migrations/` and are applied by `ensureSchema()`.
+Schema migrations live in `src/lib/db/migrations/`.
 
 ## Ingestion Pipeline
 
@@ -188,99 +229,86 @@ Schema migrations live in `src/lib/db/migrations/` and are applied by `ensureSch
 sequenceDiagram
   participant User
   participant CLI as vibedeck sync
-  participant Parsers as Provider parsers
-  participant Events as Session event pipeline
+  participant Parsers as rollout.js
+  participant Sessions as sessions pipeline
   participant DB as SQLite
   participant Diagnostics as diagnostics/
 
-  User->>CLI: Run sync or serve background sync
-  CLI->>Parsers: Find changed provider files using cursors.json
-  Parsers->>Parsers: Parse incremental token/model/session facts
-  Parsers->>Events: Emit session start/update/end events
-  Events->>DB: Upsert sessions, buckets, branch windows, event ledger
-  Events->>DB: Reap stale historical/live rows when needed
-  CLI->>DB: Backfill Entire checkpoint links when historical matching is needed
-  CLI->>Diagnostics: Write failure and reconciliation reports
+  User->>CLI: run sync
+  CLI->>Parsers: scan changed sources using cursors.json
+  Parsers->>Sessions: emit normalized session events
+  Sessions->>DB: upsert sessions, bucket facts, branch windows
+  Sessions->>DB: mark live or ended state
+  CLI->>DB: backfill Entire linkage when needed
+  CLI->>Diagnostics: write failures and reconciliation data
 ```
 
-Provider parsing is incremental. `cursors.json` records processed file positions and freshness timestamps so sync can resume without rereading every local file each time.
+Important rule: `--rebuild-vibedeck-db` rebuilds canonical session state from local provider data. It is the heavy repair path after parser, session, or costing changes.
 
-`--rebuild-vibedeck-db` intentionally clears canonical VibeDeck tables and rebuilds them from local provider logs. It is useful after parser changes, cost logic changes, or audit repair work.
+## Provider Ingestion Model
 
-## Provider Sources
-
-VibeDeck supports a mix of active and passive providers:
+VibeDeck mixes active hooks and passive local readers:
 
 | Provider family | Typical source |
 | --- | --- |
-| Codex and Every Code | Rollout/session JSONL files. |
-| Claude Code | Project JSONL files under Claude local project state. |
-| Gemini CLI | Session files under Gemini local state. |
-| Cursor | Local config/session token plus usage CSV fetch when available. |
-| OpenCode | Message files and local storage DB. |
-| OpenClaw | VibeDeck hook/plugin signal plus session JSONL fallback. |
-| Kiro and Kiro CLI | SQLite databases and JSONL fallback. |
-| Kimi Code | Passive wire JSONL files. |
-| GitHub Copilot CLI | OTEL JSONL files. |
-| CodeBuddy, Craft, Hermes, oh-my-pi | Local files or SQLite state. |
+| Codex and Every Code | session JSONL and rollout files |
+| Claude Code | project JSONL state |
+| Gemini CLI | local session files |
+| Cursor | local config/session token plus usage CSV when available |
+| OpenCode | local message files and storage DB |
+| OpenClaw | hook/plugin signals plus session JSONL fallback |
+| Kiro and Kiro CLI | SQLite and JSONL fallback |
+| Kimi Code | passive wire JSONL |
+| GitHub Copilot CLI | OTEL JSONL |
+| CodeBuddy, Craft, Hermes, oh-my-pi | local files or SQLite state |
 
-Hook installation is handled by `vibedeck init` through provider-specific config helpers and `src/lib/hook-merger/*`.
+Hook installation is driven by `vibedeck init` and provider-specific helpers under `src/lib/*` and `src/lib/hook-merger/*`.
 
 ## Costing Architecture
 
 ```mermaid
 %%{init: {"flowchart": {"nodeSpacing": 48, "rankSpacing": 72, "curve": "basis"}} }%%
 flowchart TD
-  Tokens["Parsed token buckets\ninput, cache read, cache write,\noutput, reasoning"] --> Model["Model id and provider"]
-  Model --> Pricing["lookupModelPricing()\ncurated overrides + LiteLLM snapshot/cache"]
+  Tokens["Token buckets\ninput, cache read, cache write, output"] --> Model["Model + provider"]
+  Model --> Pricing["lookupModelPricing()"]
   Pricing --> Compute["computeRowCost()"]
-  Compute --> Quality["cost_quality\nstored, token_buckets,\nestimated, unknown, pricing_missing"]
+  Compute --> Quality["cost_quality"]
   Quality --> DB["SQLite rollups"]
-  DB --> ReadModels["Usage, Branches, Live, Entire read models"]
+  DB --> ReadModels["Usage, Branches, Live, Entire"]
 ```
 
-Costing code lives in:
+Costing behavior:
 
-- `src/lib/pricing/index.js`
-- `src/lib/pricing/curated-overrides.json`
-- `src/lib/pricing/seed-snapshot.json`
-- `src/lib/cost-estimation.js`
-- `src/lib/canonical-cost-summary.js`
+- stored provider cost is preserved when authoritative
+- token-bucket cost is computed when model pricing and token buckets exist
+- missing pricing is not silently treated as trustworthy zero
+- read models carry cost quality metadata
+- live views combine historical canonical facts with current live deltas
 
-Pricing behavior:
+## Branch, Project, And Session Umbrella
 
-- Stored provider costs are preserved when they are authoritative.
-- Token-bucket cost is computed when input/output/cache token buckets and model pricing are available.
-- Missing pricing is not silently treated as a trustworthy zero.
-- Cost rollups carry quality metadata so UI surfaces can distinguish known cost from unknown or estimated cost.
-- Codex and Every Code use the same reasoning-output handling as the existing parser semantics.
-
-Dashboard pages should use canonical SQLite-backed read models for cost. Queue exports can be used for compatibility, fallback, and reconciliation, but not as the cost baseline when canonical facts are complete.
-
-## Branch and Project Attribution
-
-VibeDeck resolves sessions into a project/worktree/branch umbrella:
+VibeDeck resolves usage into:
 
 ```text
 project
   worktree or branch
     session
-      model, tokens, cost, time, provider
+      provider, model, tokens, cost, time
 ```
 
-Branch resolution uses several tiers:
+Branch resolution tiers:
 
-- Current repo and `.git` metadata when available.
-- HEAD history captured by `src/lib/sessions/head-watcher.js`.
-- Reflog and branch history fallbacks.
-- Provider cwd and project path decoding.
-- Manual overrides through `vibedeck attribute` or the dashboard.
+- repo and `.git` metadata
+- HEAD history from `src/lib/sessions/head-watcher.js`
+- reflog and branch-window fallbacks
+- provider cwd and project path decoding
+- manual overrides from `vibedeck attribute`
 
-If a repo has no usable `.git`, the UI treats it as no registered git rather than pretending unattributed rows are real branches.
+If a repo has no usable `.git`, the UI should treat it as no registered git rather than a fake branch.
 
-## Live Sessions
+## Live Session Model
 
-Live data is not a separate source of truth. It is a projection over canonical session state.
+Live state is a projection over canonical session rows, not a separate source of truth.
 
 Relevant modules:
 
@@ -290,22 +318,20 @@ Relevant modules:
 - `src/lib/sessions/reaper.js`
 - `src/lib/sessions/writer.js`
 
-Live correctness rules:
+Important rules:
 
-- `last_observed_at` is session activity time.
-- `updated_at` is row mutation time, not activity time.
-- Historical open sessions older than the idle window are reaped.
-- Active totals combine historical canonical session facts with current live token updates.
+- `last_observed_at` is activity time
+- `updated_at` is mutation time
+- stale historical sessions must be reaped
+- active totals must include previous canonical usage plus current live increments
 
-The dashboard receives live snapshots and server-sent events from local API routes under `/functions/vibedeck-sessions-live*`.
+Live API routes are served from `src/lib/local-api.js` under `/functions/vibedeck-sessions-live*`.
 
 ## Entire Checkpoint Usage
 
-Entire is a local checkpoint/file browser integration. It is separate from provider logs: provider logs explain sessions over time, while Entire checkpoint metadata explains what token usage was attached to each saved checkpoint.
+Entire checkpoint usage is derived from child `metadata.json` files, not only the root checkpoint metadata.
 
-Entire checkpoint file browsing is read-only by default. VibeDeck reads checkpoint metadata through `src/lib/entire-bridge.js`.
-
-For checkpoint cost display, VibeDeck reads child session `metadata.json` files listed by the checkpoint root metadata. Each child metadata file can include:
+Each child metadata file can contain:
 
 ```json
 {
@@ -321,62 +347,122 @@ For checkpoint cost display, VibeDeck reads child session `metadata.json` files 
 }
 ```
 
-`src/lib/entire-checkpoint-usage.js` computes per-metadata and per-checkpoint model/cost rollups from those child metadata files. Root checkpoint metadata is not used as the cost source when it lacks model breakdown.
+`src/lib/entire-checkpoint-usage.js` aggregates child metadata rows into per-checkpoint model and cost rollups.
 
-## Local API
+## Local Developer Workflows
 
-`src/lib/local-api.js` serves the dashboard and native app. It exposes read endpoints for:
+### Typical backend workflow
 
-- Usage summary, daily usage, heatmap, model breakdown.
-- Project usage and project umbrella rollups.
-- Branch usage and branch session details.
-- Live session snapshots and live session SSE.
-- Entire checkpoints and checkpoint file previews.
-- Known repos, skills, status, doctor, and sync status.
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 46, "rankSpacing": 70, "curve": "basis"}} }%%
+flowchart LR
+  Edit["Edit src/lib or src/commands"] --> Test["Run focused node tests"]
+  Test --> Sync["Run vibedeck sync"]
+  Sync --> Serve["Run vibedeck serve"]
+  Serve --> Verify["Verify dashboard or native surface"]
+```
 
-Mutation routes are local-auth protected. Examples include:
+### Typical dashboard workflow
 
-- Branch attribution overrides.
-- Local sync trigger.
-- Entire rewind and cleanup.
-- Skills install/uninstall/restore actions.
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 46, "rankSpacing": 70, "curve": "basis"}} }%%
+flowchart LR
+  Edit["Edit dashboard/src"] --> Vitest["Run dashboard tests"]
+  Vitest --> Dev["Run dashboard dev server or build"]
+  Dev --> Serve["Serve through local backend"]
+  Serve --> Verify["Verify live pages and API integration"]
+```
 
-## Dashboard and Native App
+### Typical native workflow
 
-The dashboard is a Vite/React app under `dashboard/`. It is built into `dashboard/dist` and served by `vibedeck serve`.
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 46, "rankSpacing": 70, "curve": "basis"}} }%%
+flowchart LR
+  Edit["Edit VibeDeckMac"] --> Xcodegen["Generate project"]
+  Xcodegen --> Build["Build app"]
+  Build --> Sign["Ad-hoc sign if release path"]
+  Sign --> Verify["Verify app, widget, embedded server"]
+```
 
-The macOS app lives under `VibeDeckMac/`. It embeds or starts the same local Node backend and points the native UI/widget surfaces at the local API.
+## Release Architecture
 
-## Security and Privacy Boundaries
+There are two release paths: local packaging and GitHub automation.
 
-- VibeDeck is local-first and binds the local server to `127.0.0.1`.
-- Local write endpoints require `~/.vibedeck/auth.token`.
-- GitHub README sync is opt-in and stores its token locally.
-- Provider hooks are installed only after `init` consent or explicit `--yes`.
-- Hook mergers preserve non-VibeDeck provider config.
-- Prompt/response content is not uploaded by VibeDeck.
+### Local release build
 
-## Rebuild and Diagnostics
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 48, "rankSpacing": 72, "curve": "basis"}} }%%
+flowchart LR
+  Dashboard["Build dashboard"] --> Bundle["Bundle EmbeddedServer"]
+  Bundle --> Xcodegen["Generate Xcode project"]
+  Xcodegen --> Patch["Patch AppIcon.icon reference"]
+  Patch --> Build["Build VibeDeck.app"]
+  Build --> Sign["Ad-hoc sign"]
+  Sign --> DMG["Create DMG"]
+```
 
-Important diagnostics paths:
+This path is implemented by:
+
+- `scripts/build-release-mac.sh`
+- `VibeDeckMac/scripts/bundle-node.sh`
+- `VibeDeckMac/scripts/patch-pbxproj-icon.rb`
+- `VibeDeckMac/scripts/create-dmg.sh`
+
+### GitHub release automation
+
+```mermaid
+%%{init: {"flowchart": {"nodeSpacing": 52, "rankSpacing": 78, "curve": "basis"}} }%%
+flowchart TD
+  Push["Push to main"] --> NPMPublish["npm-publish.yml"]
+  NPMPublish -->|success| ReleaseMain["release-main.yml"]
+  ReleaseMain --> MacRelease["Build mac app + DMG + zip"]
+  ReleaseMain --> Homebrew["Update homebrew-tap formula"]
+  MacRelease --> GitHubRelease["GitHub Release assets"]
+  NPMPublish --> NPM["npm package publish"]
+```
+
+Current workflow files:
+
+- `.github/workflows/npm-publish.yml`
+- `.github/workflows/release-main.yml`
+- `.github/workflows/release-dmg.yml` as manual fallback
+
+Current release chain:
+
+1. push to `main`
+2. publish `vibedeck-cli` to npm
+3. if npm publish succeeds, build macOS release assets
+4. create GitHub release with `VibeDeck.dmg` and `VibeDeck-<version>-universal.zip`
+5. compute npm tarball SHA and update `ivasuy/homebrew-tap`
+
+Required GitHub secrets and variables:
+
+| Name | Purpose |
+| --- | --- |
+| `NPM_TOKEN` | npm publish from CI |
+| `HOMEBREW_TAP_TOKEN` | push formula updates to the tap repo |
+| `HOMEBREW_TAP_REPO` | target tap repo, for example `ivasuy/homebrew-tap` |
+
+## Security And Privacy Boundaries
+
+- server binds to `127.0.0.1`
+- local write routes require `~/.vibedeck/auth.token`
+- GitHub README sync is opt-in
+- hooks are installed only through explicit init flow
+- prompt and response content is not uploaded by VibeDeck
+
+## Diagnostics And Repair
+
+Important repair tools:
+
+- `vibedeck doctor`
+- `vibedeck status --diagnostics`
+- `vibedeck sync --rebuild-vibedeck-db`
+
+Diagnostics are written under:
 
 ```text
 ~/.vibedeck/tracker/diagnostics/
 ```
 
-Common diagnostic outputs:
-
-- Session event failure JSONL.
-- Canonical reconciliation JSON.
-- Entire checkpoint backfill JSON.
-- Doctor output JSON when `doctor --out` is used.
-
-Recommended health sequence:
-
-```bash
-rtk node bin/vibedeck.js sync --rebuild-vibedeck-db
-rtk node bin/vibedeck.js doctor
-rtk node bin/vibedeck.js serve --port 7690
-```
-
-Use `/usage`, `/branches`, `/entire`, and the live dashboard to verify that totals, cost, models, and branch attribution agree across surfaces.
+Use rebuild when canonical session facts, bucket facts, or historical linkage need to be regenerated from raw local provider data.

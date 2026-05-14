@@ -98,6 +98,7 @@ VibeDeckMac/EmbeddedServer/node
 VibeDeckMac/EmbeddedServer/vibedeck/node_modules/
 VibeDeckMac/VibeDeckMac.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcuserstate
+readme-banner.svg
 
 # InsForge & AI agent skills
 .insforge

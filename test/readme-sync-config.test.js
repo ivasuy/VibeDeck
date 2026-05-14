@@ -37,7 +37,7 @@ test("config and token round-trip under VIBEDECK_HOME", async () => {
       repo_name: "ivasuy",
       branch: "main",
       readme_path: "README.md",
-      svg_path: "readme-banner.svg",
+      svg_path: "github-readme-banner.svg",
       marker_start: "<!-- vibedeck:stats:start -->",
       marker_end: "<!-- vibedeck:stats:end -->",
     });

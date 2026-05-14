@@ -9,8 +9,9 @@ class Vibedeck < Formula
 
   def install
     system "npm", "install", *std_npm_args
-    system bin/"vibedeck", "--help"
-    # Postinstall script in package.json performs the VibeDeck bootstrap flow.
-    system "node", "scripts/npm-postinstall.js"
+  end
+
+  test do
+    assert_match "vibedeck", shell_output("#{bin}/vibedeck --help")
   end
 end

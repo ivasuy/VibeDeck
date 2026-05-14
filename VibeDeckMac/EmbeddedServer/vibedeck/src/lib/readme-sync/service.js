@@ -29,7 +29,8 @@ async function runReadmeSyncUpdate({
 
   const data = await buildBannerData({ now });
   const svg = renderSvg(data);
-  await writeBanner(path.resolve('readme-banner.svg'), `${svg}\n`);
+  const svgPath = resolvedConfig.svg_path || 'github-readme-banner.svg';
+  await writeBanner(path.resolve(svgPath), `${svg}\n`);
   await pushBannerAndReadmeImpl({
     config: resolvedConfig,
     token: resolvedToken,

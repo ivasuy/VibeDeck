@@ -9,6 +9,10 @@
   "engines": {
     "node": ">=22.5"
   },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "execa": "^5.1.1"
+  },
   "files": [
     "bin/",
     "src/",

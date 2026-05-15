@@ -38,10 +38,12 @@ function getRepoState(dbPath, repoRoot) {
   try {
     const aliases = repoRootAliases(repoRoot);
     if (!aliases.length) return null;
-    const placeholders = aliases.map(() => '?').join(', ');
-    return (
-      db.prepare(`SELECT * FROM vibedeck_repos WHERE repo_root IN (${placeholders})`).get(...aliases) || null
-    );
+    const stmt = db.prepare('SELECT * FROM vibedeck_repos WHERE repo_root = ?');
+    for (const alias of aliases) {
+      const row = stmt.get(alias);
+      if (row) return row;
+    }
+    return null;
   } finally {
     db.close();
   }

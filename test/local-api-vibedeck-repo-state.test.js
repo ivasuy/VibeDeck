@@ -90,14 +90,19 @@ test("vibedeck-entire-status resolves cached state through symlink aliases", asy
 
   ensureSchema(dbPath);
   upsertEntireState(dbPath, {
+    repoRoot: repoAlias,
+    entire_state: "active",
+    entire_version: "raw-alias-version",
+  });
+  upsertEntireState(dbPath, {
     repoRoot: await fs.realpath(repoDir),
     entire_state: "active",
-    entire_version: "0.99.0",
+    entire_version: "realpath-version",
   });
 
   const row = getRepoState(dbPath, repoAlias);
   assert.equal(row?.entire_state, "active");
-  assert.equal(row?.entire_version, "0.99.0");
+  assert.equal(row?.entire_version, "raw-alias-version");
 
   const mod = require("../src/lib/local-api");
   const handler = mod.createLocalApiHandler({ queuePath });
@@ -116,5 +121,5 @@ test("vibedeck-entire-status resolves cached state through symlink aliases", asy
   assert.equal(res.statusCode, 200);
   const payload = JSON.parse(res.body.toString("utf8"));
   assert.equal(payload.cached_state, "active");
-  assert.equal(payload.cached_version, "0.99.0");
+  assert.equal(payload.cached_version, "realpath-version");
 });

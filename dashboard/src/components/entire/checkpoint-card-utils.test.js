@@ -67,6 +67,11 @@ describe("checkpoint-card-utils", () => {
     ]);
   });
 
+  it("returns no cards for empty outer input", () => {
+    expect(buildCheckpointCards()).toEqual([]);
+    expect(buildCheckpointCards(null)).toEqual([]);
+  });
+
   it("keeps unmatched and ambiguous usage from rendering as zero-dollar cost", () => {
     expect(usageStatusLabel({ status: "unmatched" })).toBe("Usage not linked");
     expect(usageStatusLabel({ status: "ambiguous" })).toBe("Ambiguous usage");

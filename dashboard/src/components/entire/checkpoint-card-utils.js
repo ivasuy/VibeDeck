@@ -117,7 +117,8 @@ export function summarizeJsonlPayload(payload) {
   };
 }
 
-export function buildCheckpointCards({ checkpoints }) {
+export function buildCheckpointCards(input = {}) {
+  const checkpoints = input?.checkpoints;
   const files = Array.isArray(checkpoints?.files) ? checkpoints.files : [];
   const usageByGroup = checkpoints?.checkpoint_usage && typeof checkpoints.checkpoint_usage === "object"
     ? checkpoints.checkpoint_usage

@@ -100,7 +100,12 @@ describe("CheckpointCard", () => {
 
   it("summarizes captured activity without rendering the raw preview text", async () => {
     const getCheckpointImpl = vi.fn().mockResolvedValue({
-      raw: "{\"type\":\"secret\"}",
+      raw: [
+        JSON.stringify({ type: "assistant", text: "raw assistant text" }),
+        JSON.stringify({ value: { type: "assistant" }, text: "raw assistant text 2" }),
+        JSON.stringify({ type: "user", text: "raw user text" }),
+        "not-json",
+      ].join("\n"),
       parsed: {
         valid_lines: 3,
         invalid_lines: 1,
@@ -137,7 +142,7 @@ describe("CheckpointCard", () => {
     expect(within(activityRegion).getByText(/2 events/i)).toBeTruthy();
     expect(within(activityRegion).getByText("user")).toBeTruthy();
     expect(within(activityRegion).getByText(/1 event/i)).toBeTruthy();
-    expect(screen.queryByText("{\"type\":\"secret\"}")).toBeNull();
+    expect(screen.queryByText("raw assistant text")).toBeNull();
   });
 
   it("shows advanced file list while metadata is loading and preserves raw metadata whitespace", async () => {

@@ -67,6 +67,22 @@ describe("checkpoint-card-utils", () => {
     ]);
   });
 
+  it("prefers checkpoint root metadata over child metadata files", () => {
+    const cards = buildCheckpointCards({
+      checkpoints: {
+        available: true,
+        files: [
+          "06/e2abdc1ec6/0/metadata.json",
+          "06/e2abdc1ec6/metadata.json",
+          "06/e2abdc1ec6/0/prompt.txt",
+        ],
+      },
+    });
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0].metadataPath).toBe("06/e2abdc1ec6/metadata.json");
+  });
+
   it("returns no cards for empty outer input", () => {
     expect(buildCheckpointCards()).toEqual([]);
     expect(buildCheckpointCards(null)).toEqual([]);
@@ -105,6 +121,40 @@ describe("checkpoint-card-utils", () => {
         { label: "attachment", count: 1 },
         { label: "queue-operation", count: 1 },
         { label: "user", count: 1 },
+      ],
+    });
+  });
+
+  it("summarizes jsonl event counts from full raw content when preview is capped", () => {
+    const summary = summarizeJsonlPayload({
+      line_count: 7,
+      raw: [
+        JSON.stringify({ type: "user" }),
+        JSON.stringify({ value: { type: "assistant" } }),
+        JSON.stringify({ type: "assistant" }),
+        JSON.stringify({ value: { type: "tool" } }),
+        "",
+        "not-json",
+        JSON.stringify({ type: "user" }),
+      ].join("\n"),
+      parsed: {
+        valid_lines: 5,
+        invalid_lines: 1,
+        preview: [
+          { line: 1, value: { type: "user" } },
+          { line: 2, value: { type: "assistant" } },
+        ],
+      },
+    });
+
+    expect(summary).toEqual({
+      lineCount: 7,
+      validLines: 5,
+      invalidLines: 1,
+      eventRows: [
+        { label: "assistant", count: 2 },
+        { label: "user", count: 2 },
+        { label: "tool", count: 1 },
       ],
     });
   });

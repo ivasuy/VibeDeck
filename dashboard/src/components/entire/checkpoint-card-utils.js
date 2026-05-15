@@ -10,8 +10,12 @@ function normalizePath(value) {
 }
 
 function basename(value) {
-  const parts = normalizePath(value).split("/").filter(Boolean);
+  const parts = pathParts(value);
   return parts.at(-1) || "";
+}
+
+function pathParts(value) {
+  return normalizePath(value).split("/").filter(Boolean);
 }
 
 function isPromptPath(filePath) {
@@ -28,6 +32,11 @@ function isHashPath(filePath) {
 
 function isMetadataPath(filePath) {
   return basename(filePath).toLowerCase() === "metadata.json";
+}
+
+function isRootMetadataPath(filePath) {
+  const parts = pathParts(filePath);
+  return parts.length === 3 && parts.at(-1)?.toLowerCase() === "metadata.json";
 }
 
 function numberOrNull(value) {
@@ -100,11 +109,27 @@ export function summarizeJsonlPayload(payload) {
   const parsed = payload?.parsed && typeof payload.parsed === "object" ? payload.parsed : {};
   const preview = Array.isArray(parsed.preview) ? parsed.preview : [];
   const counts = new Map();
+  const raw = typeof payload?.raw === "string" ? payload.raw.trim() : "";
 
-  for (const row of preview) {
-    const type = cleanText(row?.value?.type);
-    if (!type) continue;
+  const countType = (value) => {
+    const type = cleanText(value?.value?.type || value?.type);
+    if (!type) return;
     counts.set(type, (counts.get(type) || 0) + 1);
+  };
+
+  if (raw) {
+    for (const line of payload.raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        countType(JSON.parse(line));
+      } catch (_error) {
+        // Invalid JSONL rows are reflected by invalidLines; they do not contribute event types.
+      }
+    }
+  } else {
+    for (const row of preview) {
+      countType(row);
+    }
   }
 
   return {
@@ -138,7 +163,7 @@ export function buildCheckpointCards(input = {}) {
       label: group.label,
       files: normalizedFiles,
       usage,
-      metadataPath: normalizedFiles.find(isMetadataPath) || "",
+      metadataPath: normalizedFiles.find(isRootMetadataPath) || normalizedFiles.find(isMetadataPath) || "",
       promptPath: normalizedFiles.find(isPromptPath) || "",
       jsonlPath: normalizedFiles.find(isJsonlPath) || "",
       hashPath: normalizedFiles.find(isHashPath) || "",

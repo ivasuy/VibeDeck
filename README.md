@@ -21,10 +21,6 @@ VibeDeck tracks AI coding usage across providers, projects, worktrees, branches,
 
 </div>
 
-<p align="center">
-  <img src="./github-readme-banner.svg" alt="VibeDeck usage banner" width="900" />
-</p>
-
 ## Install
 
 ### macOS app
@@ -82,6 +78,26 @@ npx vibedeck-cli serve
     <td align="center">Compact desktop surfaces for glanceable live cost, token, and session activity throughout the day.</td>
   </tr>
 </table>
+
+### README Banner Showcase
+
+Dual-banner README surfaces for profile-level visibility and project-level audit context.
+
+#### GitHub Profile README Banner
+
+<p align="center">
+  <img src="./github-readme-banner.svg" alt="VibeDeck GitHub profile usage banner" width="900" />
+</p>
+
+Profile-ready usage surface with cross-provider model mix, token scale, cost totals, and activity heatmap context.
+
+#### Project README Banner
+
+<!-- vibedeck:project-stats:start -->
+![VibeDeck Project Usage](./project-readme-banner.svg)
+<!-- vibedeck:project-stats:end -->
+
+Repository-local usage surface focused on the active project path, with model split, token mix, cost, and activity snapshot.
 
 ## Why VibeDeck
 
@@ -175,6 +191,14 @@ The product includes a packaged macOS app and desktop widgets, so VibeDeck can l
 ### Canonical local audit ledger
 
 Default local state lives under `~/.vibedeck/`, with canonical usage stored in SQLite and compatibility queue exports preserved alongside it. This keeps VibeDeck local-first while still giving you stable historical rollups and reconciliation surfaces.
+
+### GitHub profile README sync banner
+
+Profile-oriented README surface for cross-provider usage visibility, including model mix, token activity, cost totals, and trend context.
+
+### Project README sync banner
+
+Project-oriented README surface for repository-local usage audit, including per-project model distribution, token mix, cost, and active-day snapshot.
 
 ## Quick Start
 

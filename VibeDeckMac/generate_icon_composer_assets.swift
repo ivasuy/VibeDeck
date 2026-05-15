@@ -16,7 +16,7 @@ let backgroundSVG = """
     </linearGradient>
   </defs>
 
-  <rect x="48" y="48" width="928" height="928" rx="240" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
 </svg>
 """
 

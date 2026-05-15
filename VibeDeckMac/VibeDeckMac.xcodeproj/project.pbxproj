@@ -66,7 +66,7 @@
 		F5BBE5517A8F5D827A1C0EED /* UsageTrendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5375DFB65B81D5B1490AA128 /* UsageTrendChart.swift */; };
 		F799073A0EC11ED475C9E5D6 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 882E3FC66D8617C1D9C55EDE /* APIClient.swift */; };
 		FC79D011D015191DC95637F0 /* BrandLogoResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E94FF86955465993DC542661 /* BrandLogoResolver.swift */; };
-		045FE27BAB04C5583E6D8EBD /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 2D18DA89B4527B17A02B8A00 /* AppIcon.icon */; };
+		04F586D90159F80604B8883D /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 77A6A4EBEF0D787F0D815495 /* AppIcon.icon */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -156,7 +156,7 @@
 		FB99FAEDA9BD765149E147A2 /* VibeDeckWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = VibeDeckWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FE6899F487B3A4F38F7D3824 /* WidgetSnapshotWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotWriter.swift; sourceTree = "<group>"; };
 		FFACBA5D1BE05BDA60EF3BE2 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
-		2D18DA89B4527B17A02B8A00 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = VibeDeckMac/AppIcon.icon; sourceTree = SOURCE_ROOT; };
+		77A6A4EBEF0D787F0D815495 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = VibeDeckMac/AppIcon.icon; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -205,7 +205,7 @@
 				122434145ED2AD7E0368D6B3 /* Utilities */,
 				2D2998DC9B4477FA270BF0A1 /* ViewModels */,
 				57E8BD07D4F90374BC523385 /* Views */,
-				2D18DA89B4527B17A02B8A00 /* AppIcon.icon */,
+				77A6A4EBEF0D787F0D815495 /* AppIcon.icon */,
 			);
 			path = VibeDeckMac;
 			sourceTree = "<group>";
@@ -411,7 +411,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E185D98EFEADE7EC98F1A2A6 /* Assets.xcassets in Resources */,
-				045FE27BAB04C5583E6D8EBD /* AppIcon.icon in Resources */,
+				04F586D90159F80604B8883D /* AppIcon.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

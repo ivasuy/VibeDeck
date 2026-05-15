@@ -4,6 +4,9 @@ import { Button } from "../../ui/openai/components";
 import { cn } from "../../lib/cn";
 import { formatUsdCurrency } from "../../lib/format";
 import { copy } from "../../lib/copy";
+import { safeWriteClipboard } from "../../lib/safe-browser";
+
+const PREVIEW_LIMIT = 12000;
 
 function iconForKind(kind) {
   if (kind === "json") return FileJson;
@@ -36,9 +39,18 @@ function isMetadataPath(filePath) {
   return String(filePath || "").trim().toLowerCase().endsWith("/metadata.json");
 }
 
+function boundedPreview(value, limit = PREVIEW_LIMIT) {
+  const text = value == null ? "" : String(value);
+  if (text.length <= limit) return { text, truncated: false };
+  return { text: text.slice(0, limit), truncated: true };
+}
+
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
   const [tab, setTab] = useState("preview");
+  const [copyStatus, setCopyStatus] = useState("");
   const primitiveFields = useMemo(() => primitiveEntries(file?.parsed), [file?.parsed]);
+  const rawPreview = useMemo(() => boundedPreview(file?.raw), [file?.raw]);
+  const parsedPreview = useMemo(() => boundedPreview(JSON.stringify(file?.parsed, null, 2) ?? ""), [file?.parsed]);
   const Icon = iconForKind(file?.kind);
   const tabs = useMemo(() => (
     file?.kind === "text"
@@ -71,8 +83,17 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
   }, [file?.path, selectedPath]);
 
   useEffect(() => {
+    setCopyStatus("");
+  }, [file?.path, selectedPath]);
+
+  useEffect(() => {
     if (!tabs.some((item) => item.id === tab)) setTab("preview");
   }, [tab, tabs]);
+
+  const onCopy = async () => {
+    const copied = await safeWriteClipboard(file.raw || "");
+    setCopyStatus(copied ? "copied" : "failed");
+  };
 
   if (loading) {
     return (
@@ -131,30 +152,61 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
             </button>
           ))}
         </div>
-        <Button type="button" size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(file.raw || "")}>
-          <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden />
-          Copy
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button type="button" size="sm" variant="secondary" onClick={onCopy}>
+            <Clipboard className="mr-1 h-3.5 w-3.5" aria-hidden />
+            Copy
+          </Button>
+          {copyStatus === "copied" ? (
+            <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Copied</span>
+          ) : copyStatus === "failed" ? (
+            <span className="text-xs font-medium text-red-600 dark:text-red-400">Copy failed</span>
+          ) : null}
+        </div>
       </div>
 
       <div className="min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto rounded-md bg-oai-brand-50/70 p-3 dark:bg-oai-brand-950/30">
           {tab === "raw" ? (
-            <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
-              {file.raw || ""}
-            </pre>
-          ) : tab === "parsed" ? (
-            <pre className="text-xs text-oai-gray-700 dark:text-oai-gray-200">
-              {JSON.stringify(file.parsed, null, 2)}
-            </pre>
-          ) : file.kind === "json" ? (
-            <div className="grid content-start gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {fields.map(([key, value]) => (
-                <div key={key} className="vd-subcard rounded-md bg-oai-black/[0.035] px-3 py-2 text-xs dark:bg-white/[0.07]">
-                  <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">{key}</div>
-                  <div className="mt-1 break-all font-medium text-oai-black dark:text-white">{String(value)}</div>
+            <div className="space-y-2">
+              {rawPreview.truncated ? (
+                <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+                  Preview truncated to 12,000 characters.
                 </div>
-              ))}
+              ) : null}
+              <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
+                {rawPreview.text}
+              </pre>
+            </div>
+          ) : tab === "parsed" ? (
+            <div className="space-y-2">
+              {parsedPreview.truncated ? (
+                <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+                  Preview truncated to 12,000 characters.
+                </div>
+              ) : null}
+              <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
+                {parsedPreview.text}
+              </pre>
+            </div>
+          ) : file.kind === "json" ? (
+            <div className="space-y-3">
+              {file.parse_error ? (
+                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 dark:border-red-900/60 dark:bg-red-950/20">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Parse error</div>
+                  <div className="mt-1 whitespace-pre-wrap break-words text-xs text-red-700 dark:text-red-200">
+                    {String(file.parse_error)}
+                  </div>
+                </div>
+              ) : null}
+              <div className="grid content-start gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {fields.map(([key, value]) => (
+                  <div key={key} className="vd-subcard rounded-md bg-oai-black/[0.035] px-3 py-2 text-xs dark:bg-white/[0.07]">
+                    <div className="uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">{key}</div>
+                    <div className="mt-1 break-all font-medium text-oai-black dark:text-white">{String(value)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : file.kind === "jsonl" ? (
             <div className="space-y-3">

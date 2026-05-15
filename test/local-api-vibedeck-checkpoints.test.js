@@ -147,6 +147,42 @@ test("vibedeck Entire endpoints reject invalid repo paths", async () => {
   }
 });
 
+test("vibedeck checkpoint rejects encoded traversal", async () => {
+  const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-path-"));
+  let readCheckpointCalls = 0;
+  const { mod, restore } = loadLocalApiWithEntireBridgeStub({
+    listCheckpointsCached: async () => ({ available: true, files: [] }),
+    readCheckpoint: async () => {
+      readCheckpointCalls += 1;
+      return { ok: true };
+    },
+    getEntireRepoStatus: async () => ({ state: "not_installed" }),
+  });
+
+  try {
+    const handler = mod.createLocalApiHandler({ queuePath: path.join(repoDir, "queue.jsonl") });
+    const req = createRequest({ method: "GET" });
+    const res = createResponse();
+    const encodedTraversal = encodeURIComponent("06/%2e%2e/metadata.json");
+    const handled = await handler(
+      req,
+      res,
+      new URL(
+        `http://127.0.0.1/functions/vibedeck-checkpoint?repo=${encodeURIComponent(repoDir)}&path=${encodedTraversal}`,
+      ),
+    );
+    assert.equal(handled, true);
+    assert.equal(res.statusCode, 400);
+    assert.deepEqual(JSON.parse(res.body.toString("utf8")), {
+      error: "invalid_checkpoint_path",
+    });
+    assert.equal(readCheckpointCalls, 0);
+  } finally {
+    restore();
+    await fs.rm(repoDir, { recursive: true, force: true });
+  }
+});
+
 test("vibedeck checkpoints aggregate usage from child metadata files", async () => {
   const repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-repo-metadata-usage-"));
   const trackerDir = path.join(repoDir, ".vibedeck", "tracker");

@@ -8,7 +8,77 @@ import { readEntirePrefs, writeEntirePrefs } from "./storage";
 function parseArgv(raw) {
   const text = String(raw || "").trim();
   if (!text) return [];
-  return text.match(/\S+/g) || [];
+
+  const args = [];
+  let current = "";
+  let quote = null;
+  let escaping = false;
+  let tokenStarted = false;
+
+  for (const char of text) {
+    if (escaping) {
+      current += char;
+      escaping = false;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (quote === "'") {
+      if (char === "'") {
+        quote = null;
+      } else {
+        current += char;
+      }
+      tokenStarted = true;
+      continue;
+    }
+
+    if (quote === '"') {
+      if (char === '"') {
+        quote = null;
+      } else if (char === "\\") {
+        escaping = true;
+      } else {
+        current += char;
+      }
+      tokenStarted = true;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (tokenStarted) {
+        args.push(current);
+        current = "";
+        tokenStarted = false;
+      }
+      continue;
+    }
+
+    if (char === "\\") {
+      escaping = true;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      tokenStarted = true;
+      continue;
+    }
+
+    current += char;
+    tokenStarted = true;
+  }
+
+  if (escaping || quote) {
+    throw new Error("Unmatched quote in configure arguments.");
+  }
+
+  if (tokenStarted) {
+    args.push(current);
+  }
+
+  return args;
 }
 
 function commandOutputText(payload) {
@@ -48,10 +118,10 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
 
   const runConfigure = async () => {
     if (!repo || busy) return;
-    setBusy(true);
     setError("");
     try {
       const args = parseArgv(argsText);
+      setBusy(true);
       const result = await postEntireCommand("configure", { repo, args });
       setOutput(commandOutputText(result));
       await onActionSuccess?.();

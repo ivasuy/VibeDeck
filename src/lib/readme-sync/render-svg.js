@@ -102,6 +102,11 @@ function escapeXml(value) {
     .replace(/'/g, '&#39;');
 }
 
+const MODEL_NAME_X = 472;
+const MODEL_VALUE_X = 830;
+const MODEL_PERCENT_X = 836;
+const MODEL_NAME_MAX_CHARS = 32;
+
 function renderTopModelLines(topModels = []) {
   const rows = topModels.slice(0, 4);
   const lines = [];
@@ -110,14 +115,16 @@ function renderTopModelLines(topModels = []) {
     const y = MODEL_ROW_YS[i];
     if (entry) {
       const raw = String(entry.name || '—');
-      const displayName = raw.length > 26 ? raw.slice(0, 24) + '…' : raw;
+      const displayName = raw.length > MODEL_NAME_MAX_CHARS
+        ? raw.slice(0, MODEL_NAME_MAX_CHARS - 2) + '…'
+        : raw;
       const value = String(entry.valueLabel || '0');
       const percent = String(entry.percentLabel || '0%');
-      lines.push(`<text x="472" y="${y}" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">${escapeXml(displayName)}</text>`);
-      lines.push(`<text x="700" y="${y}" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">${escapeXml(value)}</text>`);
-      lines.push(`<text x="706" y="${y}" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
+      lines.push(`<text x="${MODEL_NAME_X}" y="${y}" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">${escapeXml(displayName)}</text>`);
+      lines.push(`<text x="${MODEL_VALUE_X}" y="${y}" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">${escapeXml(value)}</text>`);
+      lines.push(`<text x="${MODEL_PERCENT_X}" y="${y}" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
     } else {
-      lines.push(`<text x="472" y="${y}" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>`);
+      lines.push(`<text x="${MODEL_NAME_X}" y="${y}" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>`);
     }
   }
   return lines;
@@ -196,7 +203,7 @@ function renderReadmeBannerSvg(data = {}) {
     <stop offset="0%" stop-color="#a5b4fc"/>
     <stop offset="100%" stop-color="#6366f1"/>
   </linearGradient>
-  <linearGradient id="gmodel" x1="472" y1="0" x2="558" y2="0" gradientUnits="userSpaceOnUse">
+  <linearGradient id="gmodel" x1="472" y1="0" x2="700" y2="0" gradientUnits="userSpaceOnUse">
     <stop offset="0%" stop-color="#a5b4fc"/>
     <stop offset="100%" stop-color="#818cf8"/>
   </linearGradient>
@@ -238,7 +245,7 @@ function renderReadmeBannerSvg(data = {}) {
 ${renderTopModelLines(topModels).join('\n')}
 
 <line x1="24" y1="138" x2="876" y2="138" stroke="url(#gdiv)" stroke-width="0.75"/>
-<text x="24" y="157" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">ACTIVITY · PAST 52 WEEKS</text>
+<text x="${HEATMAP_LEFT}" y="157" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">ACTIVITY · PAST 52 WEEKS</text>
 
 <text x="42" y="${WEEKDAY_LABEL_Y[0]}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Mon</text>
 <text x="42" y="${WEEKDAY_LABEL_Y[1]}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Wed</text>

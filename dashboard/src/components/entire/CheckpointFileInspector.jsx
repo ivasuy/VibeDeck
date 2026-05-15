@@ -45,6 +45,21 @@ function boundedPreview(value, limit = PREVIEW_LIMIT) {
   return { text: text.slice(0, limit), truncated: true };
 }
 
+function PreviewText({ preview, className = "" }) {
+  return (
+    <div className="space-y-2">
+      {preview.truncated ? (
+        <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+          Preview truncated to 12,000 characters.
+        </div>
+      ) : null}
+      <pre className={cn("whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200", className)}>
+        {preview.text}
+      </pre>
+    </div>
+  );
+}
+
 export function CheckpointFileInspector({ file = null, loading = false, error = "", selectedPath = "", className = "" }) {
   const [tab, setTab] = useState("preview");
   const [copyStatus, setCopyStatus] = useState("");
@@ -168,27 +183,9 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
       <div className="min-h-0 overflow-hidden p-3">
         <div className="h-full min-h-0 overflow-auto rounded-md bg-oai-brand-50/70 p-3 dark:bg-oai-brand-950/30">
           {tab === "raw" ? (
-            <div className="space-y-2">
-              {rawPreview.truncated ? (
-                <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-                  Preview truncated to 12,000 characters.
-                </div>
-              ) : null}
-              <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
-                {rawPreview.text}
-              </pre>
-            </div>
+            <PreviewText preview={rawPreview} />
           ) : tab === "parsed" ? (
-            <div className="space-y-2">
-              {parsedPreview.truncated ? (
-                <div className="text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
-                  Preview truncated to 12,000 characters.
-                </div>
-              ) : null}
-              <pre className="whitespace-pre-wrap break-words text-xs text-oai-gray-700 dark:text-oai-gray-200">
-                {parsedPreview.text}
-              </pre>
-            </div>
+            <PreviewText preview={parsedPreview} />
           ) : file.kind === "json" ? (
             <div className="space-y-3">
               {file.parse_error ? (
@@ -219,10 +216,12 @@ export function CheckpointFileInspector({ file = null, loading = false, error = 
               </pre>
             </div>
           ) : file.kind === "hash" ? (
-            <div className="rounded-lg border border-oai-gray-200 p-4 dark:border-oai-gray-800">
+              <div className="rounded-lg border border-oai-gray-200 p-4 dark:border-oai-gray-800">
               <div className="text-xs uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">{file.parsed?.algorithm || "hash"}</div>
               <div className="mt-2 break-all font-mono text-sm text-oai-black dark:text-white">{file.parsed?.value || file.raw}</div>
             </div>
+          ) : file.kind === "text" ? (
+            <PreviewText preview={rawPreview} className="text-sm leading-6" />
           ) : (
             <pre className="whitespace-pre-wrap text-sm leading-6 text-oai-gray-700 dark:text-oai-gray-200">
               {file.raw || ""}

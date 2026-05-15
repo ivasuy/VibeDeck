@@ -123,6 +123,28 @@ describe("CheckpointFileInspector", () => {
     expect(screen.queryByText(longRaw)).toBeNull();
   });
 
+  it("caps large text previews in the default preview tab", async () => {
+    const longRaw = "y".repeat(12050);
+
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/large.txt",
+          file_name: "large.txt",
+          kind: "text",
+          raw: longRaw,
+          parsed: null,
+          size_bytes: longRaw.length,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(await screen.findByText("Preview truncated to 12,000 characters.")).toBeTruthy();
+    expect(screen.queryByText(longRaw)).toBeNull();
+  });
+
   it("renders unmatched and ambiguous usage states without zero-dollar fallback", () => {
     const { rerender } = render(
       <CheckpointFileInspector

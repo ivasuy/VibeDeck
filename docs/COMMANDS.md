@@ -333,6 +333,8 @@ This command is local-only:
 - it appends or refreshes a managed block using:
 
 ```text
+## Project Usage
+
 <!-- vibedeck:project-stats:start -->
 <!-- vibedeck:project-stats:end -->
 ```

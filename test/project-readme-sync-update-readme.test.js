@@ -8,6 +8,7 @@ const {
   DEFAULT_IMAGE_PATH,
   PROJECT_MARKER_END,
   PROJECT_MARKER_START,
+  PROJECT_USAGE_HEADING,
   buildManagedProjectReadmeBlock,
   upsertManagedProjectReadmeBlock,
   writeManagedProjectReadme,
@@ -15,6 +16,8 @@ const {
 
 test("buildManagedProjectReadmeBlock renders the project managed block", () => {
   const expected = [
+    PROJECT_USAGE_HEADING,
+    "",
     PROJECT_MARKER_START,
     `![VibeDeck Project Usage](${DEFAULT_IMAGE_PATH})`,
     PROJECT_MARKER_END,
@@ -35,6 +38,8 @@ test("upsertManagedProjectReadmeBlock replaces an existing managed project block
   ].join("\n");
   const expected = [
     "# Project",
+    "",
+    PROJECT_USAGE_HEADING,
     "",
     PROJECT_MARKER_START,
     `![VibeDeck Project Usage](${DEFAULT_IMAGE_PATH})`,
@@ -78,6 +83,7 @@ test("writeManagedProjectReadme rewrites README.md in place", async () => {
 
     assert.ok(rewritten.includes(PROJECT_MARKER_START));
     assert.ok(rewritten.includes(PROJECT_MARKER_END));
+    assert.ok(rewritten.includes(PROJECT_USAGE_HEADING));
     assert.equal(rewritten.includes("![Old Usage](./old.svg)"), false);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });

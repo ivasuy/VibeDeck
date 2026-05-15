@@ -11,6 +11,7 @@ const {
   DEFAULT_IMAGE_PATH,
   PROJECT_MARKER_START,
   PROJECT_MARKER_END,
+  PROJECT_USAGE_HEADING,
 } = require('../src/lib/project-readme-sync/update-readme');
 
 function createTempDir() {
@@ -133,6 +134,8 @@ test('runProjectReadmeSync updates managed README block without duplicating mark
     const startCount = (rewritten.match(new RegExp(PROJECT_MARKER_START, 'g')) || []).length;
     const endCount = (rewritten.match(new RegExp(PROJECT_MARKER_END, 'g')) || []).length;
     const expectedBlock = [
+      PROJECT_USAGE_HEADING,
+      '',
       PROJECT_MARKER_START,
       `![VibeDeck Project Usage](${DEFAULT_IMAGE_PATH})`,
       PROJECT_MARKER_END,
@@ -140,6 +143,7 @@ test('runProjectReadmeSync updates managed README block without duplicating mark
 
     assert.equal(startCount, 1);
     assert.equal(endCount, 1);
+    assert.match(rewritten, /## Project Usage/);
     assert.match(rewritten, /VibeDeck Project Usage/);
     assert.equal(rewritten.includes('![Old usage](./old.svg)'), false);
     assert.equal(rewritten.includes(expectedBlock), true);

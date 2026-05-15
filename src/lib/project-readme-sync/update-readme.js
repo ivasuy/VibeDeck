@@ -5,9 +5,12 @@ const fs = require("node:fs/promises");
 const PROJECT_MARKER_START = "<!-- vibedeck:project-stats:start -->";
 const PROJECT_MARKER_END = "<!-- vibedeck:project-stats:end -->";
 const DEFAULT_IMAGE_PATH = "./project-readme-banner.svg";
+const PROJECT_USAGE_HEADING = "## Project Usage";
 
 function buildManagedProjectReadmeBlock({ imagePath = DEFAULT_IMAGE_PATH } = {}) {
   return [
+    PROJECT_USAGE_HEADING,
+    "",
     PROJECT_MARKER_START,
     `![VibeDeck Project Usage](${imagePath})`,
     PROJECT_MARKER_END,
@@ -51,6 +54,7 @@ module.exports = {
   PROJECT_MARKER_START,
   PROJECT_MARKER_END,
   DEFAULT_IMAGE_PATH,
+  PROJECT_USAGE_HEADING,
   buildManagedProjectReadmeBlock,
   upsertManagedProjectReadmeBlock,
   writeManagedProjectReadme,

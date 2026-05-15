@@ -121,7 +121,7 @@ export function EntirePage() {
         setCheckpointsError("");
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : copy("entire.repo.validation.absolute_path");
+      const message = cause instanceof Error ? cause.message : copy("entire.repo.remove.error_fallback");
       setRepoError(message);
     }
   }, [selectedRepo]);

@@ -275,6 +275,27 @@ describe("EntirePage", () => {
     expect(hideKnownRepo).toHaveBeenCalledWith("/Users/dev/workspace/repo-02");
   });
 
+  it("shows a remove fallback message when recent repo removal rejects with a non-Error", async () => {
+    getKnownRepos.mockResolvedValue({
+      repos: [
+        { repo_root: "/Users/dev/workspace/repo-01" },
+        { repo_root: "/Users/dev/workspace/repo-02" },
+      ],
+    });
+    getBranchUsage.mockResolvedValue({ repos: [] });
+    getEntireStatus.mockResolvedValue({ state: "active" });
+    getCheckpoints.mockResolvedValue({ available: true, files: [] });
+    hideKnownRepo.mockRejectedValue("failed");
+
+    render(<EntirePage />);
+
+    expect(await screen.findByRole("button", { name: "Remove recent repo repo-02" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove recent repo repo-02" }));
+
+    expect(await screen.findByText("Unable to remove recent repository.")).toBeTruthy();
+  });
+
   it("does not render the old checkpoint file browser", async () => {
     getKnownRepos.mockResolvedValue({ repos: [{ repo_root: "/Users/dev/repo" }] });
     getBranchUsage.mockResolvedValue({ repos: [] });

@@ -513,6 +513,7 @@ entire.repo.input.placeholder,dashboard,EntirePage,RepoPathSelector,input_placeh
 entire.repo.action.load,dashboard,EntirePage,RepoPathSelector,action_load,Load repo,,active
 entire.repo.action.loading,dashboard,EntirePage,RepoPathSelector,action_loading,Loading…,,active
 entire.repo.validation.absolute_path,dashboard,EntirePage,RepoPathSelector,validation_absolute_path,Enter an absolute repository path.,,active
+entire.repo.remove.error_fallback,dashboard,EntirePage,RepoPathSelector,remove_error_fallback,Unable to remove recent repository.,,active
 entire.repo.suggestions.label,dashboard,EntirePage,RepoPathSelector,suggestions_label,Recent repos,,active
 entire.status.title,dashboard,EntirePage,EntireStatusCard,title,Entire status,,active
 entire.status.loading,dashboard,EntirePage,EntireStatusCard,loading,Loading status…,,active

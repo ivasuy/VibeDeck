@@ -12,35 +12,31 @@ function parseArgv(raw) {
   const args = [];
   let current = "";
   let quote = null;
-  let escaping = false;
   let tokenStarted = false;
 
-  for (const char of text) {
-    if (escaping) {
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+        tokenStarted = true;
+        continue;
+      }
+
+      if (char === "\\") {
+        const next = text[index + 1];
+        if (next === quote || next === "\\") {
+          current += next;
+          index += 1;
+        } else {
+          current += "\\";
+        }
+        tokenStarted = true;
+        continue;
+      }
+
       current += char;
-      escaping = false;
-      tokenStarted = true;
-      continue;
-    }
-
-    if (quote === "'") {
-      if (char === "'") {
-        quote = null;
-      } else {
-        current += char;
-      }
-      tokenStarted = true;
-      continue;
-    }
-
-    if (quote === '"') {
-      if (char === '"') {
-        quote = null;
-      } else if (char === "\\") {
-        escaping = true;
-      } else {
-        current += char;
-      }
       tokenStarted = true;
       continue;
     }
@@ -54,12 +50,6 @@ function parseArgv(raw) {
       continue;
     }
 
-    if (char === "\\") {
-      escaping = true;
-      tokenStarted = true;
-      continue;
-    }
-
     if (char === '"' || char === "'") {
       quote = char;
       tokenStarted = true;
@@ -70,7 +60,7 @@ function parseArgv(raw) {
     tokenStarted = true;
   }
 
-  if (escaping || quote) {
+  if (quote) {
     throw new Error("Unmatched quote in configure arguments.");
   }
 

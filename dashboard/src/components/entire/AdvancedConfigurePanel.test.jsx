@@ -49,6 +49,22 @@ describe("AdvancedConfigurePanel", () => {
     });
   });
 
+  it("preserves literal backslashes in unquoted configure values", async () => {
+    render(<AdvancedConfigurePanel repo="/tmp/project" onActionSuccess={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "--path C:\\tmp\\repo --agent codex" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run configure" }));
+
+    await waitFor(() => {
+      expect(postEntireCommand).toHaveBeenCalledWith("configure", {
+        repo: "/tmp/project",
+        args: ["--path", "C:\\tmp\\repo", "--agent", "codex"],
+      });
+    });
+  });
+
   it("shows a parse error for unmatched quotes and skips the backend call", async () => {
     render(<AdvancedConfigurePanel repo="/tmp/project" onActionSuccess={vi.fn()} />);
 

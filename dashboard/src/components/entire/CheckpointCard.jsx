@@ -32,6 +32,12 @@ function summarizePathList(paths) {
   return entries;
 }
 
+function rawText(value) {
+  if (typeof value === "string") return value;
+  if (value == null) return "";
+  return String(value);
+}
+
 function MetricBlock({ label, value }) {
   return (
     <div className="rounded-2xl border border-[var(--vd-border)] bg-white/70 px-3 py-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-oai-gray-900/55">
@@ -147,9 +153,9 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
     void openSection(kind, path, stateSetter, seqRef);
   };
 
-  const promptSummary = promptState.payload?.raw ? cleanText(promptState.payload.raw) : "";
+  const promptSummary = rawText(promptState.payload?.raw);
   const activitySummary = activityState.payload ? summarizeJsonlPayload(activityState.payload) : null;
-  const advancedSummary = advancedState.payload?.raw ? cleanText(advancedState.payload.raw) : "";
+  const advancedSummary = rawText(advancedState.payload?.raw);
 
   const summaryChips = [
     checkpoint.branch ? cleanText(checkpoint.branch) : "",
@@ -285,6 +291,21 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
 
           {advancedState.open ? (
             <div role="region" aria-label={`Advanced details for ${checkpointId || label}`} className="mt-3 space-y-3 rounded-xl border border-[var(--vd-border)] bg-[var(--vd-tint)] p-3">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Files</div>
+                {fileList.length > 0 ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {fileList.map((filePath) => (
+                      <li key={filePath} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
+                        {filePath}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">No files recorded.</div>
+                )}
+              </div>
+
               {advancedState.loading ? (
                 <div className="flex items-center gap-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -293,32 +314,16 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
               ) : advancedState.error ? (
                 <div className="text-sm text-red-700 dark:text-red-300">{advancedState.error}</div>
               ) : (
-                <>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Files</div>
-                    {fileList.length > 0 ? (
-                      <ul className="mt-2 space-y-1.5">
-                        {fileList.map((filePath) => (
-                          <li key={filePath} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
-                            {filePath}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">No files recorded.</div>
-                    )}
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Metadata</div>
-                    {advancedSummary ? (
-                      <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-white/70 px-3 py-2 text-sm leading-6 text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
-                        {advancedSummary}
-                      </pre>
-                    ) : (
-                      <div className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">No metadata available.</div>
-                    )}
-                  </div>
-                </>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Metadata</div>
+                  {advancedSummary ? (
+                    <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-white/70 px-3 py-2 text-sm leading-6 text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
+                      {advancedSummary}
+                    </pre>
+                  ) : (
+                    <div className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">No metadata available.</div>
+                  )}
+                </div>
               )}
             </div>
           ) : null}

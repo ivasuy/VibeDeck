@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { cleanup, fireEvent, screen, within, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "../../test/test-utils";
 import { CheckpointCard } from "./CheckpointCard.jsx";
@@ -9,6 +9,16 @@ import { CheckpointCard } from "./CheckpointCard.jsx";
 afterEach(() => {
   cleanup();
 });
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("CheckpointCard", () => {
   it("renders accumulated checkpoint metrics and model breakdowns", () => {
@@ -61,7 +71,7 @@ describe("CheckpointCard", () => {
 
   it("keeps prompt collapsed until requested and loads prompt raw text through the injected fetcher", async () => {
     const getCheckpointImpl = vi.fn().mockResolvedValue({
-      raw: "Quality review\nLine two",
+      raw: "  Quality review\nLine two  ",
     });
 
     render(
@@ -83,8 +93,9 @@ describe("CheckpointCard", () => {
     await waitFor(() => {
       expect(getCheckpointImpl).toHaveBeenCalledWith("/Users/dev/repo", "06/e2abdc1ec6/0/prompt.txt");
     });
-    expect(await screen.findByText(/Quality review/i)).toBeTruthy();
-    expect(screen.getByText(/Line two/i)).toBeTruthy();
+    expect(
+      screen.getByText((_, element) => element.tagName.toLowerCase() === "pre" && element.textContent === "  Quality review\nLine two  "),
+    ).toBeTruthy();
   });
 
   it("summarizes captured activity without rendering the raw preview text", async () => {
@@ -129,11 +140,9 @@ describe("CheckpointCard", () => {
     expect(screen.queryByText("{\"type\":\"secret\"}")).toBeNull();
   });
 
-  it("keeps advanced raw details collapsed until requested and shows metadata raw content with the file list", async () => {
-    const getCheckpointImpl = vi.fn().mockResolvedValue({
-      raw: "{\"branch\":\"publish-main\"}",
-      parsed: { branch: "publish-main" },
-    });
+  it("shows advanced file list while metadata is loading and preserves raw metadata whitespace", async () => {
+    const load = deferred();
+    const getCheckpointImpl = vi.fn().mockReturnValue(load.promise);
 
     render(
       <CheckpointCard
@@ -148,15 +157,58 @@ describe("CheckpointCard", () => {
       />,
     );
 
-    expect(screen.queryByText("{\"branch\":\"publish-main\"}")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show advanced details for 06/e2abdc1ec6" }));
+
+    expect(screen.getByText("06/e2abdc1ec6/metadata.json")).toBeTruthy();
+    expect(screen.getByText("06/e2abdc1ec6/0/prompt.txt")).toBeTruthy();
+    expect(screen.getByText("06/e2abdc1ec6/0/full.jsonl")).toBeTruthy();
+    expect(screen.getByText("Loading advanced details...")).toBeTruthy();
+
+    await act(async () => {
+      load.resolve({
+        raw: '  {"branch":"publish-main"}  ',
+        parsed: { branch: "publish-main" },
+      });
+    });
 
     await waitFor(() => {
       expect(getCheckpointImpl).toHaveBeenCalledWith("/Users/dev/repo", "06/e2abdc1ec6/metadata.json");
     });
-    expect(await screen.findByText(/"branch":"publish-main"/i)).toBeTruthy();
+    expect(
+      screen.getByText((_, element) => element.tagName.toLowerCase() === "pre" && element.textContent === '  {"branch":"publish-main"}  '),
+    ).toBeTruthy();
+  });
+
+  it("keeps advanced file list visible when metadata fetch fails", async () => {
+    const load = deferred();
+    const getCheckpointImpl = vi.fn().mockReturnValue(load.promise);
+
+    render(
+      <CheckpointCard
+        repo="/Users/dev/repo"
+        getCheckpointImpl={getCheckpointImpl}
+        card={{
+          id: "06/e2abdc1ec6",
+          label: "06/e2abdc1ec6",
+          metadataPath: "06/e2abdc1ec6/metadata.json",
+          files: ["06/e2abdc1ec6/metadata.json", "06/e2abdc1ec6/0/prompt.txt"],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Show advanced details for 06/e2abdc1ec6" }));
+
     expect(screen.getByText("06/e2abdc1ec6/metadata.json")).toBeTruthy();
     expect(screen.getByText("06/e2abdc1ec6/0/prompt.txt")).toBeTruthy();
-    expect(screen.getByText("06/e2abdc1ec6/0/full.jsonl")).toBeTruthy();
+
+    await act(async () => {
+      load.reject(new Error("metadata failed"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("metadata failed")).toBeTruthy();
+    });
+    expect(screen.getByText("06/e2abdc1ec6/metadata.json")).toBeTruthy();
+    expect(screen.getByText("06/e2abdc1ec6/0/prompt.txt")).toBeTruthy();
   });
 });

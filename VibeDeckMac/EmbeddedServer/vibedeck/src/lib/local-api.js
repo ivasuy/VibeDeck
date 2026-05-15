@@ -19,6 +19,10 @@ const {
   buildCheckpointUsage,
   buildCheckpointUsageIndex,
 } = require("./entire-checkpoint-usage");
+const {
+  normalizeCheckpointPath,
+  isValidCheckpointPath,
+} = require("./entire-checkpoint-paths");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -1747,16 +1751,6 @@ function resolveRepoFromQuery(url) {
   }
 }
 
-function isValidCheckpointPath(filePath) {
-  return (
-    typeof filePath === "string" &&
-    filePath.length > 0 &&
-    !filePath.includes("\0") &&
-    !filePath.startsWith("/") &&
-    !filePath.split("/").includes("..")
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Main handler factory
 // ---------------------------------------------------------------------------
@@ -2295,15 +2289,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "invalid_repo" }, 400);
         return true;
       }
-      const checkpointPath = String(url.searchParams.get("path") || "");
-      if (!isValidCheckpointPath(checkpointPath)) {
-        json(res, { error: "invalid_path" }, 400);
+      const rawCheckpointPath = String(url.searchParams.get("path") || "");
+      if (!isValidCheckpointPath(rawCheckpointPath)) {
+        json(res, { error: "invalid_checkpoint_path" }, 400);
         return true;
       }
+      const checkpointPath = normalizeCheckpointPath(rawCheckpointPath);
       const { readCheckpoint } = require("./entire-bridge");
       try {
         const data = await readCheckpoint(repoRoot, checkpointPath);
-        const isMetadata = String(checkpointPath || "").replace(/\\/g, "/").endsWith("/metadata.json");
+        const isMetadata = checkpointPath.endsWith("/metadata.json");
         if (!isMetadata) {
           json(res, data);
           return true;

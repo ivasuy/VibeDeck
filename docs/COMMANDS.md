@@ -527,7 +527,7 @@ gh run watch
 Manual native release fallback:
 
 ```bash
-gh workflow run release-dmg.yml -f version=0.1.1
+gh workflow run release-dmg.yml -f version=0.1.3
 ```
 
 ## Useful Paths

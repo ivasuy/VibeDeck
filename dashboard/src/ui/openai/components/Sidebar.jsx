@@ -112,6 +112,13 @@ function isActive(pathname, to) {
 
 function SidebarBrand({ collapsed = false }) {
   const shouldReduceMotion = useReducedMotion();
+  const icon = (
+    <>
+      <img src="/icon-light.svg" alt="" className="h-7 w-7 shrink-0 rounded-lg dark:hidden" />
+      <img src="/icon.svg" alt="" className="hidden h-7 w-7 shrink-0 rounded-lg dark:block" />
+    </>
+  );
+
   return (
     <Link
       to="/dashboard"
@@ -121,7 +128,7 @@ function SidebarBrand({ collapsed = false }) {
       )}
       aria-label={copy("brand.name")}
     >
-      <img src="/icon.svg" alt="" className="h-7 w-7 shrink-0 rounded-lg" />
+      {collapsed ? icon : null}
       <AnimatePresence mode="wait">
         {!collapsed && (
           <motion.span
@@ -130,9 +137,10 @@ function SidebarBrand({ collapsed = false }) {
             animate={{ opacity: 1, width: "auto" }}
             exit={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className="truncate text-sm font-semibold font-display overflow-hidden whitespace-nowrap"
+            className="flex min-w-0 overflow-hidden"
           >
-            {copy("brand.name")}
+            <img src="/wordmark.svg" alt="" className="h-7 w-auto max-w-[132px] dark:hidden" />
+            <img src="/wordmark-dark.svg" alt="" className="hidden h-7 w-auto max-w-[132px] dark:block" />
           </motion.span>
         )}
       </AnimatePresence>
@@ -484,10 +492,10 @@ function MobileTopBar({ onOpenDrawer }) {
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
         aria-label={copy("brand.name")}
       >
-        <img src="/icon.svg" alt="" className="h-6 w-6 shrink-0 rounded-lg" />
-        <span className="text-sm font-semibold font-display text-oai-black dark:text-oai-white">
-          {copy("brand.name")}
-        </span>
+        <img src="/icon-light.svg" alt="" className="h-6 w-6 shrink-0 rounded-lg dark:hidden" />
+        <img src="/icon.svg" alt="" className="hidden h-6 w-6 shrink-0 rounded-lg dark:block" />
+        <img src="/wordmark.svg" alt="" className="h-5 w-auto max-w-[108px] dark:hidden" />
+        <img src="/wordmark-dark.svg" alt="" className="hidden h-5 w-auto max-w-[108px] dark:block" />
       </Link>
       <div className="w-10 shrink-0" aria-hidden />
     </div>

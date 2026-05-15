@@ -7,6 +7,8 @@ struct DashboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            VibeDeckBrandHeader()
+
             // Clawd companion replaces the old header + Today card
             ClawdCompanionView(viewModel: viewModel)
 
@@ -96,5 +98,43 @@ struct DashboardView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct VibeDeckBrandHeader: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var wordmarkName: String {
+        colorScheme == .dark ? "VibeDeckWordmarkDark" : "VibeDeckWordmarkLight"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(wordmarkName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 148, height: 38, alignment: .leading)
+                .accessibilityLabel(Strings.appTitle)
+
+            Spacer(minLength: 0)
+
+            Text("Local-first")
+                .font(.caption2)
+                .modifier(FontWeightModifier(weight: .semibold))
+                .foregroundStyle(Color.brand)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(Color.panelFill)
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.panelBorder, lineWidth: 1)
+                        )
+                )
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 2)
     }
 }

@@ -33,11 +33,13 @@ export function MatrixShell({
           <header className="border-b border-matrix-primary/20 pb-3 mb-6 shrink-0">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex min-w-0 items-center gap-3 md:gap-6">
-                <img
-                  src="/icon.svg"
-                  alt=""
+                <span
                   aria-hidden="true"
-                  className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-sm bg-black border border-matrix-primary/30 shadow-[0_0_12px_rgba(0,255,65,0.35)] shrink-0"
+                  className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 shrink-0 rounded-sm border border-matrix-primary/30 bg-current text-matrix-primary shadow-[0_0_12px_rgba(0,255,65,0.35)]"
+                  style={{
+                    WebkitMask: "url('/mark-mono.svg') center / contain no-repeat",
+                    mask: "url('/mark-mono.svg') center / contain no-repeat",
+                  }}
                 />
                 <div className="flex min-w-0 items-baseline gap-2 md:gap-3 uppercase select-none">
                   <span

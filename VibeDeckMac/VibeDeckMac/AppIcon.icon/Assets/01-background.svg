@@ -1,35 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1024" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#1e1b4b"/>
-      <stop offset="60%" stop-color="#312e6a"/>
-      <stop offset="100%" stop-color="#3b3686"/>
-    </linearGradient>
-    <linearGradient id="rim" x1="100" y1="80" x2="940" y2="920" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#a5b4fc"/>
-      <stop offset="100%" stop-color="#6366f1"/>
-    </linearGradient>
-    <linearGradient id="card1" x1="260" y1="250" x2="760" y2="760" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#5b5fc7" stop-opacity="0.06"/>
-    </linearGradient>
-    <linearGradient id="card2" x1="240" y1="230" x2="792" y2="792" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#5b5fc7" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#2a2566"/>
     </linearGradient>
   </defs>
 
-  <rect x="48" y="48" width="928" height="928" rx="220" fill="url(#bg)"/>
-  <rect x="64" y="64" width="896" height="896" rx="204" fill="none" stroke="url(#rim)" stroke-opacity="0.12" stroke-width="3"/>
-
-  <rect x="230" y="302" width="596" height="462" rx="42"
-        fill="url(#card1)" stroke="#6366f1" stroke-opacity="0.12" stroke-width="3"
-        transform="rotate(-2.5 528 533)"/>
-  <rect x="208" y="278" width="620" height="486" rx="46"
-        fill="url(#card2)" stroke="#818cf8" stroke-opacity="0.15" stroke-width="3"
-        transform="rotate(0.8 518 521)"/>
-
-  <line x1="230" y1="560" x2="806" y2="560"
-        stroke="#6366f1" stroke-opacity="0.12" stroke-width="3"
-        stroke-dasharray="8 12"/>
+  <rect x="48" y="48" width="928" height="928" rx="240" fill="url(#bg)"/>
 </svg>

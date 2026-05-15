@@ -1,4 +1,10 @@
-# <div align="center">VibeDeck</div>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./dashboard/public/wordmark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./dashboard/public/wordmark.svg">
+    <img src="./dashboard/public/wordmark.svg" alt="VibeDeck" width="420" />
+  </picture>
+</div>
 
 <div align="center">
 
@@ -26,7 +32,7 @@ VibeDeck tracks AI coding usage across providers, projects, worktrees, branches,
 ### macOS app
 
 - [Download `VibeDeck.dmg`](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck.dmg)
-- [Download the universal app zip](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck-0.1.1-universal.zip)
+- [Download the universal app zip](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck-0.1.3-universal.zip)
 - [View the latest release](https://github.com/ivasuy/VibeDeck/releases/latest)
 
 ### Homebrew
@@ -92,6 +98,10 @@ Dual-banner README surfaces for profile-level visibility and project-level audit
 Profile-ready usage surface with cross-provider model mix, token scale, cost totals, and activity heatmap context.
 
 #### Project README Banner
+
+## Project Usage
+
+## Project Usage
 
 <!-- vibedeck:project-stats:start -->
 ![VibeDeck Project Usage](./project-readme-banner.svg)

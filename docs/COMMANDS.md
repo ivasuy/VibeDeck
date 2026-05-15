@@ -45,25 +45,25 @@ What this does:
 Initialize local hooks and tracker state:
 
 ```bash
-rtk node bin/vibedeck.js init --yes
+node bin/vibedeck.js init --yes
 ```
 
 Build the dashboard once:
 
 ```bash
-rtk npm --prefix dashboard run build
+npm --prefix dashboard run build
 ```
 
 Pull local provider data into the canonical database:
 
 ```bash
-rtk node bin/vibedeck.js sync
+node bin/vibedeck.js sync
 ```
 
 Start the app:
 
 ```bash
-rtk node bin/vibedeck.js serve --no-open
+node bin/vibedeck.js serve --no-open
 ```
 
 Then open:
@@ -77,9 +77,9 @@ http://127.0.0.1:7690
 If `serve` fails, run these in order:
 
 ```bash
-rtk node bin/vibedeck.js status --diagnostics
-rtk node bin/vibedeck.js doctor
-rtk node bin/vibedeck.js sync --rebuild-vibedeck-db
+node bin/vibedeck.js status --diagnostics
+node bin/vibedeck.js doctor
+node bin/vibedeck.js sync --rebuild-vibedeck-db
 ```
 
 Important: commands such as `init`, `sync`, and `serve` write into:
@@ -101,7 +101,7 @@ vibedeck
 Repository-local equivalent:
 
 ```bash
-rtk node bin/vibedeck.js
+node bin/vibedeck.js
 ```
 
 ## Local Dev Loops
@@ -111,27 +111,27 @@ rtk node bin/vibedeck.js
 Initialize local integrations:
 
 ```bash
-rtk node bin/vibedeck.js init
+node bin/vibedeck.js init
 ```
 
 Incrementally sync local provider activity:
 
 ```bash
-rtk node bin/vibedeck.js sync
+node bin/vibedeck.js sync
 ```
 
 Run the local server:
 
 ```bash
-rtk node bin/vibedeck.js serve --port 7690
+node bin/vibedeck.js serve --port 7690
 ```
 
 Useful serve variants:
 
 ```bash
-rtk node bin/vibedeck.js serve --no-open
-rtk node bin/vibedeck.js serve --no-sync
-rtk node bin/vibedeck.js serve --port 7690 --no-open --no-sync
+node bin/vibedeck.js serve --no-open
+node bin/vibedeck.js serve --no-sync
+node bin/vibedeck.js serve --port 7690 --no-open --no-sync
 ```
 
 What `serve` does:
@@ -148,13 +148,13 @@ What `serve` does:
 Run the Vite dev server:
 
 ```bash
-rtk npm --prefix dashboard run dev
+npm --prefix dashboard run dev
 ```
 
 Build the production dashboard:
 
 ```bash
-rtk npm --prefix dashboard run build
+npm --prefix dashboard run build
 ```
 
 The production CLI/native app path expects built assets under:
@@ -168,13 +168,13 @@ dashboard/dist
 Generate the Xcode project:
 
 ```bash
-rtk xcodegen generate --spec VibeDeckMac/project.yml
+xcodegen generate --spec VibeDeckMac/project.yml
 ```
 
 Run a local debug build without signing:
 
 ```bash
-rtk xcodebuild \
+xcodebuild \
   -project VibeDeckMac/VibeDeckMac.xcodeproj \
   -scheme VibeDeckMac \
   -configuration Debug \
@@ -319,6 +319,92 @@ Local token path:
 ~/.vibedeck/github.token
 ```
 
+### `project-readme-sync`
+
+```bash
+vibedeck project-readme-sync
+```
+
+This command is local-only:
+
+- it runs in the current directory
+- it requires a local `README.md`
+- it writes `project-readme-banner.svg` beside that `README.md`
+- it appends or refreshes a managed block using:
+
+```text
+## Project Usage
+
+<!-- vibedeck:project-stats:start -->
+<!-- vibedeck:project-stats:end -->
+```
+
+It does not use a GitHub PAT and does not call the GitHub API.
+
+### Local test flow for `project-readme-sync`
+
+After your normal local backend loop is up, use this sequence to test the feature in a real project directory.
+
+Start VibeDeck and refresh local tracker data:
+
+```bash
+node bin/vibedeck.js sync
+node bin/vibedeck.js serve --no-open
+```
+
+In another shell, move into a project directory that already has a `README.md`:
+
+```bash
+cd /absolute/path/to/project
+```
+
+Run the new command from that project directory:
+
+```bash
+node /absolute/path/to/VibeDeck/src/cli.js project-readme-sync
+```
+
+Expected result:
+
+- `project-readme-banner.svg` is created in the current directory
+- `README.md` gets one managed project banner block at the bottom
+
+Quick verification commands:
+
+```bash
+ls -l README.md project-readme-banner.svg
+rg -n "vibedeck:project-stats|project-readme-banner\\.svg" README.md
+```
+
+Re-run the command to verify idempotence:
+
+```bash
+node /absolute/path/to/VibeDeck/src/cli.js project-readme-sync
+rg -c "vibedeck:project-stats:start" README.md
+rg -c "vibedeck:project-stats:end" README.md
+```
+
+Expected counts after repeated runs:
+
+```text
+1
+1
+```
+
+Failure case test:
+
+```bash
+mkdir -p /tmp/vd-no-readme
+cd /tmp/vd-no-readme
+node /absolute/path/to/VibeDeck/src/cli.js project-readme-sync
+```
+
+Expected error:
+
+```text
+README.md not found in current directory
+```
+
 ### `entire`
 
 ```bash
@@ -338,42 +424,42 @@ vibedeck uninstall --purge
 
 ```bash
 npm test
-rtk node --test test/*.test.js
+node --test test/*.test.js
 ```
 
 ### Focused backend examples
 
 ```bash
-rtk node --test test/local-api-vibedeck-checkpoints.test.js
-rtk node --test test/local-api-vibedeck-branch-usage.test.js
-rtk node --test test/local-api-vibedeck-sessions-live.test.js
-rtk node --test test/release-main-workflow.test.js
-rtk node --test test/release-dmg-workflow.test.js
+node --test test/local-api-vibedeck-checkpoints.test.js
+node --test test/local-api-vibedeck-branch-usage.test.js
+node --test test/local-api-vibedeck-sessions-live.test.js
+node --test test/release-main-workflow.test.js
+node --test test/release-dmg-workflow.test.js
 ```
 
 ### Dashboard tests
 
 ```bash
-rtk npm --prefix dashboard run test
-rtk npm --prefix dashboard run test:watch
-rtk npm --prefix dashboard run lint
-rtk npm --prefix dashboard run typecheck
+npm --prefix dashboard run test
+npm --prefix dashboard run test:watch
+npm --prefix dashboard run lint
+npm --prefix dashboard run typecheck
 ```
 
 Focused dashboard examples:
 
 ```bash
-rtk npm --prefix dashboard run test -- BranchesPage.test.jsx EntirePage.test.jsx CheckpointFileInspector.test.jsx
-rtk npm --prefix dashboard run test -- vibedeck-api.test.ts
+npm --prefix dashboard run test -- BranchesPage.test.jsx EntirePage.test.jsx CheckpointFileInspector.test.jsx
+npm --prefix dashboard run test -- vibedeck-api.test.ts
 ```
 
 ### Native and packaging checks
 
 ```bash
-rtk node --test test/native-macos-theme-and-resources.test.js
-rtk node --test test/bootstrap-release-manifest.test.js
-rtk node --test test/bootstrap-state.test.js
-rtk node --test test/homebrew-formula.test.js
+node --test test/native-macos-theme-and-resources.test.js
+node --test test/bootstrap-release-manifest.test.js
+node --test test/bootstrap-state.test.js
+node --test test/homebrew-formula.test.js
 ```
 
 ## Release And Packaging

@@ -12,7 +12,12 @@ const MONTH_Y = 175;
 const WEEKDAY_X = 46;
 const WEEKDAY_Y = [184, 200, 216, 232, 248, 264, 280];
 const WEEKDAY_LABEL_Y = [212, 244, 276];
-const MODEL_ROW_YS = [73, 89, 105, 121];
+const MODEL_ROW_YS = [73, 97, 121];
+const MODEL_BAR_YS = [77, 101, 125];
+const MODEL_BAR_WIDTH = 358;
+const MODEL_BAR_HEIGHT = 4;
+const MODEL_BAR_GRADIENTS = ['gbar1', 'gbar2', 'gbar3'];
+const MODEL_ROW_COUNT = 3;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const HEAT_COLORS = [
   '#17162e',
@@ -103,16 +108,35 @@ function escapeXml(value) {
 }
 
 const MODEL_NAME_X = 472;
-const MODEL_VALUE_X = 830;
+const MODEL_VALUE_X = 800;
 const MODEL_PERCENT_X = 836;
 const MODEL_NAME_MAX_CHARS = 32;
 
+function parsePercentNumber(rawPercent) {
+  if (rawPercent == null) return 0;
+  const numeric = Number(String(rawPercent).replace(/%/g, ''));
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function renderTokensWithSuffix(value, attrs) {
+  const label = String(value);
+  const m = /^([\$\-]?[\d.,]+)\s*([KMBT])$/i.exec(label.trim());
+  if (!m) {
+    return `<text ${attrs}>${escapeXml(label)}</text>`;
+  }
+  return `<text ${attrs}>${escapeXml(m[1])}<tspan font-size="0.62em" dx="1" font-weight="600">${escapeXml(m[2])}</tspan></text>`;
+}
+
 function renderTopModelLines(topModels = []) {
-  const rows = topModels.slice(0, 4);
+  const rows = topModels.slice(0, MODEL_ROW_COUNT);
   const lines = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < MODEL_ROW_COUNT; i++) {
     const entry = rows[i];
     const y = MODEL_ROW_YS[i];
+    const barY = MODEL_BAR_YS[i];
+    const gradientId = MODEL_BAR_GRADIENTS[i % MODEL_BAR_GRADIENTS.length];
+    lines.push(`<rect x="${MODEL_NAME_X}" y="${barY}" width="${MODEL_BAR_WIDTH}" height="${MODEL_BAR_HEIGHT}" rx="2" fill="rgba(99,102,241,0.12)"/>`);
     if (entry) {
       const raw = String(entry.name || '—');
       const displayName = raw.length > MODEL_NAME_MAX_CHARS
@@ -120,9 +144,13 @@ function renderTopModelLines(topModels = []) {
         : raw;
       const value = String(entry.valueLabel || '0');
       const percent = String(entry.percentLabel || '0%');
+      const pct = parsePercentNumber(percent);
+      const fillWidth = Math.round((pct / 100) * MODEL_BAR_WIDTH);
+      lines.push(`<rect x="${MODEL_NAME_X}" y="${barY}" width="${fillWidth}" height="${MODEL_BAR_HEIGHT}" rx="2" fill="url(#${gradientId})"/>`);
       lines.push(`<text x="${MODEL_NAME_X}" y="${y}" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">${escapeXml(displayName)}</text>`);
-      lines.push(`<text x="${MODEL_VALUE_X}" y="${y}" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">${escapeXml(value)}</text>`);
-      lines.push(`<text x="${MODEL_PERCENT_X}" y="${y}" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
+      const valueAttrs = `x="${MODEL_VALUE_X}" y="${y}" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace"`;
+      lines.push(renderTokensWithSuffix(value, valueAttrs));
+      lines.push(`<text x="${MODEL_PERCENT_X}" y="${y}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">${escapeXml(percent)}</text>`);
     } else {
       lines.push(`<text x="${MODEL_NAME_X}" y="${y}" font-size="10" fill="rgba(168,168,220,0.22)" font-family="system-ui,sans-serif">—</text>`);
     }
@@ -183,7 +211,8 @@ function renderMonthLabels(heatmap) {
 
 function renderReadmeBannerSvg(data = {}) {
   const updatedDateLabel = escapeXml(data.updatedDateLabel || 'Unknown');
-  const totalTokensLabel = escapeXml(data.totalTokensLabel || '0');
+  // Raw label — renderTokensWithSuffix escapes internally so we don't double-escape the tspan
+  const totalTokensLabel = data.totalTokensLabel || '0';
   const totalTokensSubLabel = escapeXml(data.totalTokensSubLabel || '0 tokens total');
   const totalCostLabel = escapeXml(data.totalCostLabel || '$0.00');
   const topModels = Array.isArray(data.topModels) ? data.topModels : [];
@@ -206,6 +235,18 @@ function renderReadmeBannerSvg(data = {}) {
   <linearGradient id="gmodel" x1="472" y1="0" x2="700" y2="0" gradientUnits="userSpaceOnUse">
     <stop offset="0%" stop-color="#a5b4fc"/>
     <stop offset="100%" stop-color="#818cf8"/>
+  </linearGradient>
+  <linearGradient id="gbar1" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+    <stop offset="0%" stop-color="#6366f1"/>
+    <stop offset="100%" stop-color="#818cf8"/>
+  </linearGradient>
+  <linearGradient id="gbar2" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+    <stop offset="0%" stop-color="#4E529C"/>
+    <stop offset="100%" stop-color="#6366f1"/>
+  </linearGradient>
+  <linearGradient id="gbar3" x1="0" y1="0" x2="1" y2="0" gradientUnits="objectBoundingBox">
+    <stop offset="0%" stop-color="#818cf8"/>
+    <stop offset="100%" stop-color="#a5b4fc"/>
   </linearGradient>
   <linearGradient id="gdiv" x1="0" y1="0" x2="${SVG_WIDTH}" y2="0" gradientUnits="userSpaceOnUse">
     <stop offset="0%" stop-color="rgba(99,102,241,0)"/>
@@ -233,7 +274,7 @@ function renderReadmeBannerSvg(data = {}) {
 <text x="268" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOTAL COST</text>
 <text x="472" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOP MODELS</text>
 
-<text x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="'Courier New',Courier,monospace">${totalTokensLabel}</text>
+${renderTokensWithSuffix(totalTokensLabel, 'x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="\'Courier New\',Courier,monospace"')}
 <text x="24" y="114" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">${totalTokensSubLabel}</text>
 
 <text x="268" y="96" font-size="27" font-weight="700" fill="url(#gcost)" font-family="'Courier New',Courier,monospace">${totalCostLabel}</text>

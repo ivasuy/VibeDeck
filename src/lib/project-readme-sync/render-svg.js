@@ -57,6 +57,15 @@ function renderText(value) {
   return escapeXml(value || '');
 }
 
+function renderTokensWithSuffix(value, attrs) {
+  const label = String(value);
+  const m = label.trim().match(/^([\$\-]?[\d.,]+)\s*([KMBT])$/i);
+  if (!m) {
+    return `<text ${attrs}>${escapeXml(label)}</text>`;
+  }
+  return `<text ${attrs}>${escapeXml(m[1])}<tspan font-size="0.62em" dx="1" font-weight="600">${escapeXml(m[2])}</tspan></text>`;
+}
+
 function renderTopModelRows(topModels = [], totalFallback = 0) {
   const entries = Array.isArray(topModels) ? topModels : [];
   const rows = [];
@@ -102,12 +111,13 @@ function renderTopModelRows(topModels = [], totalFallback = 0) {
 function renderProjectReadmeBannerSvg(data = {}) {
   const projectLabel = escapeXml(data.projectLabel || 'Project');
   const updatedDateLabel = escapeXml(data.updatedDateLabel || 'Unknown');
-  const totalTokensLabel = escapeXml(data.totalTokensLabel || '0');
+  // Raw labels for the hero values — renderTokensWithSuffix escapes internally
+  const totalTokensLabel = data.totalTokensLabel || '0';
   const totalTokensSubLabel = escapeXml(data.totalTokensSubLabel || '0 tokens total');
   const totalCostLabel = escapeXml(data.totalCostLabel || '$0.00');
-  const activeDaysLabel = escapeXml(data.activeDaysLabel || '0');
-  const inputTokensLabel = escapeXml(data.inputTokensLabel || '0');
-  const outputTokensLabel = escapeXml(data.outputTokensLabel || '0');
+  const activeDaysLabel = data.activeDaysLabel || '0';
+  const inputTokensLabel = data.inputTokensLabel || '0';
+  const outputTokensLabel = data.outputTokensLabel || '0';
 
   const totalTokensValue = Number(data.totalTokensValue) || Number(data.total_tokens) || 0;
   const topModels = Array.isArray(data.topModels) ? data.topModels : [];
@@ -172,7 +182,7 @@ function renderProjectReadmeBannerSvg(data = {}) {
 <text x="268" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOTAL COST</text>
 <text x="472" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOP MODELS</text>
 
-<text x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="'Courier New',Courier,monospace">${totalTokensLabel}</text>
+${renderTokensWithSuffix(totalTokensLabel, 'x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="\'Courier New\',Courier,monospace"')}
 <text x="24" y="110" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">${totalTokensSubLabel}</text>
 
 <text x="268" y="96" font-size="27" font-weight="700" fill="url(#gcost)" font-family="'Courier New',Courier,monospace">${totalCostLabel}</text>
@@ -189,13 +199,13 @@ ${topModelMarkup}
 <line x1="600" y1="${BOTTOM_SECTION_LINES_Y}" x2="600" y2="212" stroke="rgba(99,102,241,0.12)" stroke-width="0.75"/>
 
 <text x="${ACTIVE_DAYS_X}" y="${BOTTOM_LABEL_Y}" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(168,168,220,0.35)" font-family="system-ui,sans-serif" letter-spacing="1.2">ACTIVE DAYS</text>
-<text x="${ACTIVE_DAYS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">${activeDaysLabel}</text>
+${renderTokensWithSuffix(activeDaysLabel, `x="${ACTIVE_DAYS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace"`)}
 
 <text x="${INPUT_TOKENS_X}" y="${BOTTOM_LABEL_Y}" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(168,168,220,0.35)" font-family="system-ui,sans-serif" letter-spacing="1.2">INPUT TOKENS</text>
-<text x="${INPUT_TOKENS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">${inputTokensLabel}</text>
+${renderTokensWithSuffix(inputTokensLabel, `x="${INPUT_TOKENS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace"`)}
 
 <text x="${OUTPUT_TOKENS_X}" y="${BOTTOM_LABEL_Y}" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(168,168,220,0.35)" font-family="system-ui,sans-serif" letter-spacing="1.2">OUTPUT TOKENS</text>
-<text x="${OUTPUT_TOKENS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">${outputTokensLabel}</text>
+${renderTokensWithSuffix(outputTokensLabel, `x="${OUTPUT_TOKENS_X}" y="${BOTTOM_VALUE_Y}" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace"`)}
 </svg>
 `;
 }

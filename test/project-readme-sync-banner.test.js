@@ -22,12 +22,14 @@ test("renders project banner metadata and required sections", () => {
 
   assert.match(svg, /<text x="24" y="27"[^>]*>ivasuy\/vibedeck-dashboard</);
   assert.match(svg, /May 14, 2026<\/text>/);
-  assert.match(svg, />142.8M<\/text>/);
+  // Tokens with K/M/B/T suffix render the suffix in a smaller tspan, so the assertion
+  // matches the split form (e.g. "142.8" + tspan "M") rather than the inline string.
+  assert.match(svg, />142\.8<tspan[^>]*>M<\/tspan><\/text>/);
   assert.match(svg, />142,832,441 tokens total<\/text>/);
   assert.match(svg, />\$89\.42<\/text>/);
   assert.match(svg, />23<\/text>/);
-  assert.match(svg, />89\.1M<\/text>/);
-  assert.match(svg, />53\.7M<\/text>/);
+  assert.match(svg, />89\.1<tspan[^>]*>M<\/tspan><\/text>/);
+  assert.match(svg, />53\.7<tspan[^>]*>M<\/tspan><\/text>/);
   assert.match(svg, />claude-sonnet-4-6</);
   assert.match(svg, />48%<\/text>/);
   assert.match(svg, /gpt-5\.5/);

@@ -12,7 +12,7 @@
     <stop offset="0%" stop-color="#a5b4fc"/>
     <stop offset="100%" stop-color="#6366f1"/>
   </linearGradient>
-  <linearGradient id="gmodel" x1="472" y1="0" x2="558" y2="0" gradientUnits="userSpaceOnUse">
+  <linearGradient id="gmodel" x1="472" y1="0" x2="700" y2="0" gradientUnits="userSpaceOnUse">
     <stop offset="0%" stop-color="#a5b4fc"/>
     <stop offset="100%" stop-color="#818cf8"/>
   </linearGradient>
@@ -51,21 +51,21 @@
 <line x1="256" y1="48" x2="256" y2="130" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 <line x1="458" y1="48" x2="458" y2="130" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 
-<text x="472" y="73" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.4</text>
-<text x="700" y="73" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">1.44B</text>
-<text x="706" y="73" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">36%</text>
-<text x="472" y="89" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.5</text>
-<text x="700" y="89" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">917M</text>
-<text x="706" y="89" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">23%</text>
-<text x="472" y="105" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">claude-opus-4-7</text>
-<text x="700" y="105" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">339.8M</text>
-<text x="706" y="105" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">8%</text>
-<text x="472" y="121" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.3-codex-spark</text>
-<text x="700" y="121" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">314.6M</text>
-<text x="706" y="121" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">8%</text>
+<text x="472" y="73" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.5</text>
+<text x="830" y="73" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">768.5M</text>
+<text x="836" y="73" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">28%</text>
+<text x="472" y="89" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.4</text>
+<text x="830" y="89" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">596.2M</text>
+<text x="836" y="89" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">21%</text>
+<text x="472" y="105" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.3-codex-spark</text>
+<text x="830" y="105" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">295.3M</text>
+<text x="836" y="105" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">11%</text>
+<text x="472" y="121" font-size="10" fill="url(#gmodel)" font-family="system-ui,sans-serif">gpt-5.3-codex</text>
+<text x="830" y="121" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">248M</text>
+<text x="836" y="121" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">9%</text>
 
 <line x1="24" y1="138" x2="876" y2="138" stroke="url(#gdiv)" stroke-width="0.75"/>
-<text x="24" y="157" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">ACTIVITY · PAST 52 WEEKS</text>
+<text x="46" y="157" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">ACTIVITY · PAST 52 WEEKS</text>
 
 <text x="42" y="212" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Mon</text>
 <text x="42" y="244" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">Wed</text>

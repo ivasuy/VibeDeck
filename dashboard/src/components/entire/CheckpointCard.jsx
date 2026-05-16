@@ -27,6 +27,48 @@ function formatSessionCount(value) {
   return `${number.toLocaleString()} ${number === 1 ? "session" : "sessions"}`;
 }
 
+function checkpointReadout(checkpoint) {
+  if (!checkpoint?.usage) {
+    return {
+      tone: "Needs review",
+      title: "Usage is not linked yet",
+      body: "Entire found checkpoint artifacts, but VibeDeck could not map usage back to this checkpoint. Inspect metadata first, then confirm the checkpoint id in the branch.",
+    };
+  }
+
+  if (checkpoint.statusLabel) {
+    return {
+      tone: checkpoint.statusLabel,
+      title: checkpoint.statusLabel,
+      body: checkpoint.reason || "Usage exists, but this checkpoint needs review before it can be treated as a clean cost record.",
+    };
+  }
+
+  const model = checkpoint.topModel ? ` using ${checkpoint.topModel}` : "";
+  const sessions = checkpoint.sessionCount ? ` across ${formatSessionCount(checkpoint.sessionCount)}` : "";
+  const cost = checkpoint.costLabel ? ` Cost is ${checkpoint.costLabel}.` : "";
+  return {
+    tone: "Ready",
+    title: `Linked checkpoint${model}${sessions}`,
+    body: `This checkpoint has enough metadata to review cost, tokens, prompt context, and captured activity together.${cost}`,
+  };
+}
+
+function ArtifactBadge({ available, label }) {
+  return (
+    <span
+      className={[
+        "rounded-md border px-2 py-1 text-[11px] font-medium",
+        available
+          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+          : "border-[var(--vd-border)] bg-white/60 text-oai-gray-500 dark:bg-oai-gray-950/30 dark:text-oai-gray-400",
+      ].join(" ")}
+    >
+      {label}
+    </span>
+  );
+}
+
 function summarizePathList(paths) {
   const entries = Array.isArray(paths) ? paths.map(cleanText).filter(Boolean) : [];
   return entries;
@@ -40,9 +82,9 @@ function rawText(value) {
 
 function MetricBlock({ label, value }) {
   return (
-    <div className="rounded-2xl border border-[var(--vd-border)] bg-white/70 px-3 py-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-oai-gray-900/55">
+    <div className="min-w-0 rounded-2xl border border-[var(--vd-border)] bg-white/70 px-3 py-2.5 shadow-[0_16px_40px_rgba(15,23,42,0.04)] dark:bg-oai-gray-900/55">
       <div className="text-[11px] font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-oai-black dark:text-white">{value}</div>
+      <div className="mt-1 break-words text-sm font-semibold leading-5 text-oai-black dark:text-white">{value}</div>
     </div>
   );
 }
@@ -58,17 +100,76 @@ function BreakdownRegion({ label, rows, kind }) {
       </div>
       <div className="mt-3 space-y-2">
         {rows.map((row) => (
-          <div key={row.label} className="flex items-start justify-between gap-3 rounded-xl bg-white/70 px-3 py-2.5 dark:bg-oai-gray-900/55">
+          <div key={row.label} className="grid gap-2 rounded-xl bg-white/70 px-3 py-2.5 dark:bg-oai-gray-900/55 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-oai-black dark:text-white">{row.label}</div>
+              <div className="break-words text-sm font-medium leading-5 text-oai-black dark:text-white">{row.label}</div>
               {row.tokens != null ? (
                 <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">{Number(row.tokens).toLocaleString()} tokens</div>
               ) : null}
             </div>
-            <div className="shrink-0 text-right text-sm font-semibold text-oai-black dark:text-white">
+            <div className="text-sm font-semibold text-oai-black dark:text-white sm:text-right">
               {formatRowCost(row.costUsd)}
             </div>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MetadataUsageGrid({ rows }) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  return (
+    <section className="mt-4 rounded-2xl border border-[var(--vd-border)] bg-white/70 p-3 dark:bg-oai-gray-900/55">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Metadata calls</div>
+          <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+            Parsed from checkpoint metadata files so reviewers can inspect usage without opening raw JSON.
+          </p>
+        </div>
+        <span className="rounded-md bg-oai-black/[0.04] px-2 py-1 text-[11px] font-medium text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+          {rows.length} call{rows.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+        {rows.map((row) => (
+          <article key={row.path} className="min-w-0 rounded-xl border border-[var(--vd-border)] bg-[var(--vd-tint)] p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {row.status ? (
+                <span className="rounded-md bg-oai-brand-500/10 px-2 py-0.5 text-[11px] font-semibold text-oai-brand-700 dark:text-oai-brand-300">
+                  {row.status}
+                </span>
+              ) : null}
+              {row.provider ? (
+                <span className="rounded-md bg-oai-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+                  {row.provider}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-2 break-words text-sm font-semibold leading-5 text-oai-black dark:text-white">
+              {row.model || row.label || "Metadata file"}
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+                <div className="text-oai-gray-500 dark:text-oai-gray-400">Tokens</div>
+                <div className="mt-0.5 font-semibold text-oai-black dark:text-white">
+                  {row.tokens != null ? Number(row.tokens).toLocaleString() : "None"}
+                </div>
+              </div>
+              <div className="rounded-lg bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+                <div className="text-oai-gray-500 dark:text-oai-gray-400">Cost</div>
+                <div className="mt-0.5 font-semibold text-oai-black dark:text-white">
+                  {formatRowCost(row.costUsd)}
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 break-all font-mono text-[10px] leading-4 text-oai-gray-500 dark:text-oai-gray-400">
+              {row.label || row.path}
+            </div>
+          </article>
         ))}
       </div>
     </section>
@@ -85,6 +186,7 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
   const fileList = summarizePathList(checkpoint.files);
   const modelRows = Array.isArray(checkpoint.modelRows) ? checkpoint.modelRows : [];
   const providerRows = Array.isArray(checkpoint.providerRows) ? checkpoint.providerRows : [];
+  const metadataRows = Array.isArray(checkpoint.metadataRows) ? checkpoint.metadataRows : [];
 
   const [promptState, setPromptState] = useState({ open: false, loading: false, error: "", payload: null, loadedPath: "" });
   const [activityState, setActivityState] = useState({ open: false, loading: false, error: "", payload: null, loadedPath: "" });
@@ -168,13 +270,14 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
   const providerRegionNeeded = providerRows.length > 1 || modelRows.length === 0;
   const modelRegionLabel = `Model breakdown for ${checkpointId || label}`;
   const providerRegionLabel = `Provider breakdown for ${checkpointId || label}`;
+  const readout = checkpointReadout(checkpoint);
 
   return (
     <section aria-label={`Checkpoint ${label || checkpointId}`} className="vd-card rounded-3xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-4 shadow-glass backdrop-blur-[var(--glass-blur)]">
-      <div className="flex items-start justify-between gap-4">
+      <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(360px,480px)] 2xl:items-start">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-oai-black dark:text-white">{label || checkpointId || "Checkpoint"}</h3>
+            <h3 className="break-words text-base font-semibold leading-6 text-oai-black dark:text-white">{label || checkpointId || "Checkpoint"}</h3>
           </div>
           {summaryChips.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -190,10 +293,40 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
           ) : null}
         </div>
 
-        <div className="grid shrink-0 gap-2 sm:grid-cols-3">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-3">
           <MetricBlock label="Cost" value={checkpoint.costLabel || "No cost"} />
           <MetricBlock label="Tokens" value={checkpoint.totalTokens != null ? formatTokens(checkpoint.totalTokens) : "No tokens"} />
           <MetricBlock label="Status" value={checkpoint.statusLabel || "Usage linked"} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(260px,340px)]">
+        <div className="rounded-2xl border border-[var(--vd-border)] bg-white/75 p-4 dark:bg-oai-gray-900/55">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md bg-oai-brand-500/10 px-2 py-1 text-[11px] font-semibold text-oai-brand-700 dark:text-oai-brand-300">
+              {readout.tone}
+            </span>
+            {checkpoint.confidence ? (
+              <span className="rounded-md bg-oai-black/[0.04] px-2 py-1 text-[11px] font-medium text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
+                {checkpoint.confidence}
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-3 text-sm font-semibold leading-5 text-oai-black dark:text-white">{readout.title}</div>
+          <p className="mt-1 text-sm leading-6 text-oai-gray-600 dark:text-oai-gray-300">{readout.body}</p>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--vd-border)] bg-[var(--vd-tint)] p-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">Inspection coverage</div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ArtifactBadge available={Boolean(promptPath)} label="Prompt" />
+            <ArtifactBadge available={Boolean(jsonlPath)} label="Activity" />
+            <ArtifactBadge available={Boolean(metadataPath)} label="Metadata" />
+            <ArtifactBadge available={fileList.length > 0} label={`${fileList.length} file${fileList.length === 1 ? "" : "s"}`} />
+          </div>
+          <p className="mt-3 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">
+            Start with the prompt for intent, then captured activity for event shape, then metadata when you need raw fields.
+          </p>
         </div>
       </div>
 
@@ -203,6 +336,8 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
           <BreakdownRegion label={providerRegionLabel} rows={providerRows} kind="provider" />
         ) : null}
       </div>
+
+      <MetadataUsageGrid rows={metadataRows} />
 
       <div className="mt-4 space-y-3">
         <section className="rounded-2xl border border-[var(--vd-border)] bg-white/65 p-3 dark:bg-oai-gray-900/50">
@@ -296,7 +431,7 @@ export function CheckpointCard({ repo = "", card, getCheckpointImpl = getCheckpo
                 {fileList.length > 0 ? (
                   <ul className="mt-2 space-y-1.5">
                     {fileList.map((filePath) => (
-                      <li key={filePath} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
+                      <li key={filePath} className="break-all rounded-lg bg-white/70 px-3 py-2 text-sm leading-5 text-oai-black dark:bg-oai-gray-900/55 dark:text-white">
                         {filePath}
                       </li>
                     ))}

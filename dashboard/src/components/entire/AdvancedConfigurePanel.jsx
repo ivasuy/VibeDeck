@@ -4,6 +4,7 @@ import { Button, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
 import { readEntirePrefs, writeEntirePrefs } from "./storage";
+import { EntireCommandOutput } from "./EntireCommandOutput.jsx";
 
 function parseArgv(raw) {
   const text = String(raw || "").trim();
@@ -145,16 +146,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
           </p>
         ) : null}
 
-        {output ? (
-          <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-1.5 dark:border-oai-gray-800 dark:bg-white/[0.08]">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-              {copy("entire.configure.output")}
-            </div>
-            <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
-              <code>{output}</code>
-            </pre>
-          </div>
-        ) : null}
+        <EntireCommandOutput label={copy("entire.configure.output")} output={output} />
       </div>
     </div>
   );

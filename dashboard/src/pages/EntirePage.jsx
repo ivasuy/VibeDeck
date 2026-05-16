@@ -127,8 +127,8 @@ export function EntirePage() {
   }, [selectedRepo]);
 
   return (
-    <PageFrame hideHeader compact maxWidth="max-w-[1760px]">
-      <div className="flex h-full min-h-0 max-h-full flex-col gap-5 overflow-y-auto overflow-x-hidden pr-1">
+    <PageFrame hideHeader compact maxWidth="max-w-[1680px]">
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col gap-5 overflow-hidden">
         <EntireCommandCenter
           repoInput={repoInput}
           onRepoInputChange={setRepoInput}
@@ -142,9 +142,10 @@ export function EntirePage() {
           status={statusData}
           statusLoading={statusLoading}
           statusError={statusError}
+          className="shrink-0 xl:h-[280px]"
         />
 
-        <div className="grid min-h-0 gap-5 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(440px,520px)]">
           <CheckpointTimeline
             repo={selectedRepo}
             checkpoints={checkpointsData}
@@ -155,7 +156,7 @@ export function EntirePage() {
           <EntireControlPanel
             repo={selectedRepo}
             onActionSuccess={refreshSelectedRepo}
-            className="sticky top-5 self-start"
+            className="h-full min-h-0"
           />
         </div>
       </div>

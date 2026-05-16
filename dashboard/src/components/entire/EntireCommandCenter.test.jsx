@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("EntireCommandCenter", () => {
-  it("renders repo command center, recent repos, and active status", () => {
+  it("renders repo controls, recent repos, and active status without a command-center heading", () => {
     const onRecentRepoSelect = vi.fn();
     const onRecentRepoRemove = vi.fn();
 
@@ -32,7 +32,8 @@ describe("EntireCommandCenter", () => {
       />,
     );
 
-    expect(screen.getByText("Repo command center")).toBeTruthy();
+    expect(screen.queryByText("Repo command center")).toBeNull();
+    expect(screen.getByPlaceholderText("/Users/you/project")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Load recent repo project" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Load recent repo other" })).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();

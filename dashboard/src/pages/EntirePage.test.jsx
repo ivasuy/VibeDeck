@@ -55,7 +55,8 @@ describe("EntirePage", () => {
 
     render(<EntirePage />);
 
-    expect(await screen.findByText("Repo command center")).toBeTruthy();
+    expect(screen.queryByText("Repo command center")).toBeNull();
+    expect(await screen.findByPlaceholderText("/Users/you/project")).toBeTruthy();
     expect(screen.getByText("Checkpoint timeline")).toBeTruthy();
     expect(screen.getByText("Controls")).toBeTruthy();
     expect(screen.queryByText("Checkpoint files")).toBeNull();
@@ -186,7 +187,7 @@ describe("EntirePage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show advanced details for 06/e2abdc1ec6" }));
     expect(await screen.findByText("Files")).toBeTruthy();
-    expect(await screen.findByText("Metadata")).toBeTruthy();
+    expect((await screen.findAllByText("Metadata")).length).toBeGreaterThan(0);
   });
 
   it("ignores stale results from earlier repo loads", async () => {
@@ -404,7 +405,7 @@ describe("EntirePage", () => {
     expect(screen.queryByText("12,345")).toBeNull();
     expect(screen.queryByText("Stored cost")).toBeNull();
     expect(await screen.findByText("Usage linked")).toBeTruthy();
-    expect(await screen.findByText("Ambiguous usage")).toBeTruthy();
+    expect((await screen.findAllByText("Ambiguous usage")).length).toBeGreaterThan(0);
     expect(screen.queryByText("$0.00")).toBeNull();
   });
 
@@ -460,7 +461,8 @@ describe("EntirePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load repo" }));
 
     expect(screen.queryByText("Repository")).toBeNull();
-    expect(screen.getByText("Repo command center")).toBeTruthy();
+    expect(screen.queryByText("Repo command center")).toBeNull();
+    expect(screen.getByPlaceholderText("/Users/you/project")).toBeTruthy();
     expect(screen.getByText("Controls")).toBeTruthy();
     expect(screen.getByText("Checkpoint timeline")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Enable" })).toBeTruthy();

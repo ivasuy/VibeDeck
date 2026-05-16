@@ -38,9 +38,9 @@ function MetaRow({ label, value, wrap = false, mono = false, icon: Icon = null }
       </span>
       <span
         className={[
-          wrap ? "max-w-full text-left" : "max-w-[72%] text-right",
+          wrap ? "max-w-full text-left" : "min-w-0 text-right",
           "font-medium text-oai-black dark:text-white",
-          wrap ? "break-all whitespace-normal leading-5" : "truncate",
+          "break-words whitespace-normal leading-5",
           mono ? "font-mono text-[10px]" : "",
         ].join(" ")}
         title={value}
@@ -67,14 +67,21 @@ export function EntireStatusCard({ status = null, loading = false, error = "", c
         <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.empty")}</p>
       ) : (
         <div className="space-y-2.5">
-          <div className="vd-subcard flex items-center justify-between rounded-md border px-3 py-3">
-            <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">
-              <Activity className="h-3.5 w-3.5" aria-hidden />
-              {copy("entire.status.state")}
-            </span>
-            <span className={`inline-flex h-5 items-center rounded-md px-2 text-[11px] font-medium ${stateClass(state)}`}>
-              {label}
-            </span>
+          <div className="rounded-xl border border-[var(--vd-border)] bg-gradient-to-br from-white to-oai-brand-50/60 p-4 dark:from-oai-gray-950/70 dark:to-oai-brand-950/25">
+            <div className="flex items-start justify-between gap-3">
+              <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                <Activity className="h-3.5 w-3.5" aria-hidden />
+                {copy("entire.status.state")}
+              </span>
+              <span className={`inline-flex min-h-6 items-center rounded-md px-2.5 py-1 text-[11px] font-semibold ${stateClass(state)}`}>
+                {label}
+              </span>
+            </div>
+            <p className="mt-3 text-sm leading-6 text-oai-gray-600 dark:text-oai-gray-300">
+              {state === "active"
+                ? "Entire is watching this repository and checkpoint data can be reviewed below."
+                : "Load or enable this repository before relying on checkpoint controls."}
+            </p>
           </div>
           {status?.version ? (
             <MetaRow label={copy("entire.status.version")} value={String(status.version)} icon={Tag} />

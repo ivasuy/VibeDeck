@@ -1,0 +1,1803 @@
+#!/usr/bin/env python3
+"""codex-org — lightweight codex-only autonomous engineering org.
+
+ONE entry script. Subcommands: start, attach, list, orgchart, logs, diff,
+reply, tail, restart, stop. All logic runs in this file; no other deps.
+
+Layout of this script (Ctrl-F any banner below):
+
+  IMPORTS / CONSTANTS
+  TYPES & EXCEPTIONS
+  UTILITIES
+  CONFIG
+  RUN LIFECYCLE & STATE
+  EVENT STREAM (jsonl)
+  SPINNER
+  PRETTY PRINTING — terminal design system
+  USER INTERACTION (file-backed + stdin)
+  CODEX SUBPROCESS & PARSING
+  ROLE CALL
+  MEMORY (per-agent conversation persistence)
+  FAILURE REGISTRY & TASK META
+  GIT / WORKTREE HELPERS
+  PR CREATION
+  ORCHESTRATION — phase loop
+  EXECUTE RUN — main pipeline
+  CLI SUBCOMMANDS
+  ARGPARSE & MAIN
+"""
+from __future__ import annotations
+
+# ════════════════════════════════════════════════════════════════════════════════
+# IMPORTS / CONSTANTS
+# ════════════════════════════════════════════════════════════════════════════════
+import argparse
+import datetime as dt
+import io
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any, Callable
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULTS_PATH = ROOT / "workflow" / "org.defaults.json"
+RUNS_DIR = ROOT / "agent-runs"
+WORKTREES_DIR = ROOT / ".worktrees"
+DOCS_SPECS = ROOT / "docs" / "superpowers" / "specs"
+DOCS_PLANS = ROOT / "docs" / "superpowers" / "plans"
+
+# ════════════════════════════════════════════════════════════════════════════════
+# TYPES & EXCEPTIONS
+# ════════════════════════════════════════════════════════════════════════════════
+
+class ParseError(RuntimeError):
+    def __init__(self, role: str, label: str, payload: dict[str, Any]) -> None:
+        super().__init__(f"PARSE_ERROR role={role} label={label}")
+        self.role = role
+        self.label = label
+        self.payload = payload
+
+# ════════════════════════════════════════════════════════════════════════════════
+# UTILITIES
+# ════════════════════════════════════════════════════════════════════════════════
+
+def now_iso() -> str:
+    return dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+
+def slug(text: str, maxlen: int = 60) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return (s or "run")[:maxlen]
+
+def die(msg: str, code: int = 1) -> None:
+    print(f"error: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+def ensure_dir(p: Path) -> Path:
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+def read_json(p: Path, default: Any = None) -> Any:
+    if not p.exists():
+        return default
+    return json.loads(p.read_text())
+
+def write_json(p: Path, data: Any) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2))
+
+def write_text(p: Path, data: str) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(data)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CONFIG
+# ════════════════════════════════════════════════════════════════════════════════
+
+def load_defaults() -> dict[str, Any]:
+    if not DEFAULTS_PATH.exists():
+        die(f"missing {DEFAULTS_PATH}")
+    return json.loads(DEFAULTS_PATH.read_text())
+
+def build_config(prompt_text: str, preset_key: str = "codex_org_yolo", ceo_mode: str = "technical") -> dict[str, Any]:
+    defaults = load_defaults()
+    preset = defaults.get("org_presets", {}).get(preset_key)
+    if not preset:
+        die(f"missing preset {preset_key!r}")
+    providers = defaults.get("shared", {}).get("providers", {})
+    variants = defaults.get("role_variants", {})
+    roles: dict[str, dict[str, Any]] = {}
+    for role_name, variant_key in preset.get("roles", {}).items():
+        v = variants.get(variant_key)
+        if not v:
+            die(f"missing variant {variant_key!r}")
+        merged = dict(providers.get(v.get("provider", "codex"), {}))
+        merged.update(v)
+        roles[role_name] = merged
+    return {
+        "preset": preset_key,
+        "user_request": prompt_text,
+        "ceo_mode": ceo_mode,
+        "roles": roles,
+        "final_summary_role": preset.get("final_summary_role", "ceo"),
+    }
+
+# ════════════════════════════════════════════════════════════════════════════════
+# RUN LIFECYCLE & STATE
+# ════════════════════════════════════════════════════════════════════════════════
+
+def create_run(config: dict[str, Any]) -> tuple[str, Path]:
+    ensure_dir(RUNS_DIR)
+    h = uuid.uuid4().hex[:8]
+    run_id = f"codex-org-{h}"
+    n = 0
+    while (RUNS_DIR / run_id).exists():
+        n += 1
+        run_id = f"codex-org-{h}-{n:02d}"
+    run_dir = ensure_dir(RUNS_DIR / run_id)
+    ensure_dir(run_dir / "audit")
+    ensure_dir(run_dir / "logs")
+    write_json(run_dir / "compiled-config.json", config)
+    write_text(run_dir / "run-id", run_id)
+    write_text(run_dir / "state.json", json.dumps({"status": "running", "started": now_iso(), "phase_no": 0}))
+    return run_id, run_dir
+
+def resolve_run_dir(run_id: str) -> Path:
+    p = RUNS_DIR / run_id
+    if not p.exists():
+        die(f"no such run: {run_id}")
+    return p
+
+def update_state(run_dir: Path, **patch: Any) -> None:
+    p = run_dir / "state.json"
+    cur = json.loads(p.read_text()) if p.exists() else {}
+    cur.update(patch)
+    cur["updated"] = now_iso()
+    p.write_text(json.dumps(cur, indent=2))
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EVENT STREAM (jsonl)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_event_lock = threading.Lock()
+
+# ════════════════════════════════════════════════════════════════════════════════
+# SPINNER
+# ════════════════════════════════════════════════════════════════════════════════
+
+SPINNER_FRAMES = ["░", "▒", "▓", "█", "▓", "▒"]
+_spinner_lock = threading.Lock()
+_spinner_state: dict[str, Any] = {"active": False, "role": "", "label": "", "started": 0.0,
+                                  "last_act": 0.0, "thread": None, "stop": None, "count": 0}
+
+def _spinner_loop(stop: threading.Event) -> None:
+    if not sys.stdout.isatty():
+        return
+    i = 0
+    while not stop.is_set():
+        st = _spinner_state
+        if st["active"]:
+            elapsed = int(time.time() - st["started"])
+            idle = int(time.time() - st["last_act"])
+            frame = SPINNER_FRAMES[i % len(SPINNER_FRAMES)]
+            tag = c("36", f"{frame} {st['role']}") + " " + c("90", f"{st['label']} {elapsed}s")
+            if idle > 30:
+                tag += " " + c("33", f"(idle {idle}s)")
+            with _event_lock:
+                sys.stdout.write("\r\x1b[K" + tag)
+                sys.stdout.flush()
+        i += 1
+        time.sleep(0.12)
+    with _event_lock:
+        sys.stdout.write("\r\x1b[K"); sys.stdout.flush()
+
+def _spinner_ensure_thread() -> None:
+    if _spinner_state["thread"] is None:
+        stop = threading.Event()
+        _spinner_state["stop"] = stop
+        t = threading.Thread(target=_spinner_loop, args=(stop,), daemon=True)
+        _spinner_state["thread"] = t
+        t.start()
+
+def spinner_start(role: str, label: str) -> None:
+    with _spinner_lock:
+        _spinner_state["count"] = int(_spinner_state.get("count", 0)) + 1
+        _spinner_state.update(active=True, role=role, label=label,
+                              started=time.time(), last_act=time.time())
+    _spinner_ensure_thread()
+
+def spinner_tick() -> None:
+    _spinner_state["last_act"] = time.time()
+
+def spinner_stop() -> None:
+    with _spinner_lock:
+        _spinner_state["count"] = max(0, int(_spinner_state.get("count", 0)) - 1)
+        if _spinner_state["count"] == 0:
+            _spinner_state["active"] = False
+            if sys.stdout.isatty():
+                with _event_lock:
+                    sys.stdout.write("\r\x1b[K"); sys.stdout.flush()
+
+def emit_event(run_dir: Path, kind: str, **fields: Any) -> dict[str, Any]:
+    evt = {"ts": now_iso(), "kind": kind, **fields}
+    p = run_dir / "events.jsonl"
+    with _event_lock:
+        with p.open("a") as f:
+            f.write(json.dumps(evt) + "\n")
+    pretty_print(evt)
+    return evt
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PRETTY PRINTING — terminal design system
+# ────────────────────────────────────────────────────────────────────────────────
+# Single accent per role (desaturated where ANSI allows). No emoji clutter.
+# Typography hierarchy: phase (bold) > role (color) > stream (dim).
+# Heartbeats throttled. Redundant exec_done rc=0 suppressed.
+# ════════════════════════════════════════════════════════════════════════════════
+
+_COLOR = sys.stdout.isatty()
+
+# role → ANSI color code (one accent per role, used everywhere that role appears)
+ROLE_COLOR = {
+    "ceo":         "35",  # magenta
+    "cto":         "36",  # cyan
+    "architect":   "34",  # blue
+    "implementer": "32",  # green
+    "reviewer":    "33",  # yellow
+    "auditor":     "31",  # red
+}
+
+# stream-event glyphs — minimal ASCII/unicode, no emoji
+STREAM_GLYPH = {
+    "thought":   "·",     # reasoning result (the useful summary)
+    "thinking":  "·",     # reasoning started (coalesced out usually)
+    "exec":      "›",     # shell exec start
+    "exec_done": "✓",     # only shown for non-zero exit codes (failures)
+    "plan":      "::",    # todo_list emitted
+    "answer":    "↳",     # agent_message arrived
+    "turn_done": "•",     # turn_done summary
+}
+STREAM_COLOR = {
+    "thought":   "90",     # dim
+    "thinking":  "90",
+    "exec":      "94",     # bright blue dim
+    "exec_done": "31",     # red only when shown (failures)
+    "plan":      "35",     # magenta
+    "answer":    "92",     # bright green dim
+    "turn_done": "90",
+}
+
+# heartbeat throttle: track last-printed ts per role so we don't spam the stream
+_hb_last_print: dict[str, float] = {}
+
+def c(code: str, s: str) -> str:
+    return f"\033[{code}m{s}\033[0m" if _COLOR else s
+
+def _role(name: str) -> str:
+    """Role tag in its assigned color, fixed width for column alignment."""
+    return c(ROLE_COLOR.get(name, "37"), name.upper().ljust(11))
+
+def _status_color(status: str) -> str:
+    if status == "GREEN": return "1;32"
+    if status in ("NEEDS_REVISION", "NEEDS_USER"): return "1;33"
+    if status in ("ERROR", "PARSE_ERROR", "TIMEOUT", "BLOCKED", "FAIL"): return "1;31"
+    return "90"
+
+def _format_event(evt: dict[str, Any]) -> str | None:
+    """Return one-line formatted event for the main stream, or None to suppress it."""
+    ts = evt.get("ts", "")[-8:]
+    kind = evt.get("kind", "")
+    role = evt.get("role", "")
+    task = evt.get("task_id", "")
+    status = evt.get("status", "")
+    msg = evt.get("msg", "")
+    p = c("90", f"[{ts}]")  # timestamp prefix, dim
+
+    if kind == "phase_start":
+        return f"\n{p} {c('1;97','PHASE')} {evt.get('phase_no')}/{evt.get('total')}  {c('1', evt.get('title',''))}\n"
+    if kind == "role_start":
+        return f"{p}   {_role(role)} {c('90','▸ start')}  {c('90', evt.get('label',''))}"
+    if kind == "role_done":
+        return f"{p}   {_role(role)} {c(_status_color(status), '◂ ' + status)}  {c('90', evt.get('label', msg))}"
+    if kind == "task_start":
+        return f"{p}     {c('35','task')}  {c('1', task)}  {c('90', '→ worktree=' + evt.get('worktree_id',''))}"
+    if kind == "task_done":
+        sc = _status_color(status)
+        diff = evt.get('diff','')
+        reason = evt.get('reason','')
+        extras = f"  diff={diff}" if diff else ""
+        if status not in ("GREEN",) and reason:
+            extras += f"  {c('90','reason='+reason[:80])}"
+        return f"{p}     {c('35','task')}  {c('1', task)}  {c(sc, status)}{extras}"
+    if kind == "worktree_create":
+        path = evt.get('path','').split("/.worktrees/",1)[-1]
+        return f"{p}     {c('34','wt')}    {c('90', path)}  {c('90','['+evt.get('branch','?')+']')}"
+    if kind == "merge":
+        return f"{p}   {c('32','merge')}  {evt.get('branch')} {c('90','→')} {evt.get('into','main')}  {c('90','conflicts='+str(evt.get('conflicts',0)))}"
+    if kind == "phase_branch":
+        return f"{p}   {c('34','branch')}  {c('1', evt.get('branch','?'))}  {c('90','(off '+evt.get('base','?')+')')}"
+    if kind == "phase_partial":
+        return f"{p}   {c('1;33','phase-partial')}  {evt.get('msg','')}"
+    if kind == "awaiting_user":
+        return f"{p}   {c('1;43;30',' CEO asks ')} {evt.get('question','')}"
+    if kind == "user_reply":
+        return f"{p}   {c('1;42;30',' you ')} {evt.get('answer','')}"
+    if kind == "run_done":
+        return f"\n{p} {c('1;42;97',' RUN DONE ')}  {msg}\n"
+    if kind == "run_blocked":
+        return f"\n{p} {c('1;41;97',' BLOCKED ')}  {msg}\n"
+    if kind == "parse_error":
+        return (f"{p}   {c('1;41;97',' PARSE-ERROR ')} "
+                f"{_role(evt.get('role',''))} attempt={evt.get('attempt','?')}  "
+                f"{c('31', evt.get('reason',''))}\n"
+                f"            {c('90','log=' + evt.get('log',''))}")
+    if kind == "parse_soft_warn":
+        return f"{p}     {c('33','parse-recovered')}  {_role(evt.get('role',''))} via={evt.get('recovered_via','?')}"
+    if kind == "pr_created":
+        return f"{p}   {c('1;32','PR')}  {evt.get('url','')}  {c('90','['+evt.get('branch','')+']')}"
+    if kind == "pr_failed":
+        return f"{p}   {c('1;33','pr-failed')}  {evt.get('reason','')}"
+    if kind == "task_restart":
+        return f"\n{p} {c('1;46;30',' RESTART ')} task={evt.get('task_id','?')}\n"
+    if kind == "agent_stream":
+        sk = evt.get("stream_kind","")
+        sm = evt.get("msg","") or ""
+        # suppress redundant low-signal events in the main stream
+        if sk == "thinking":
+            return None
+        if sk == "exec_done":
+            # only surface failures; rc=0 is implied by the prior `exec` line
+            if not sm.startswith("rc=0"):
+                glyph = c(STREAM_COLOR.get(sk,"90"), STREAM_GLYPH.get(sk,"·"))
+                return f"{p}     {_role(role)} {glyph}  {c('31', sm[:120])}"
+            return None
+        if sk == "turn_done":
+            return f"{p}     {_role(role)} {c('90','• ' + sm)}"
+        glyph = c(STREAM_COLOR.get(sk,"90"), STREAM_GLYPH.get(sk,"·"))
+        body = c(STREAM_COLOR.get(sk,"90"), sm[:160])
+        # thought/answer/exec all use same indentation level
+        return f"{p}     {_role(role)} {glyph}  {body}"
+    if kind == "heartbeat":
+        idle = int(evt.get("idle_sec", 0))
+        role_k = evt.get("role", "?")
+        # throttle: print at most every 60s per role, and only when idle > 30s
+        now = time.time()
+        last = _hb_last_print.get(role_k, 0)
+        if idle < 30 and now - last < 60:
+            return None
+        _hb_last_print[role_k] = now
+        col = "33" if idle > 120 else "90"
+        return f"{p}     {_role(role_k)} {c(col, '· still working, idle=' + str(idle) + 's')}"
+    # unknown event types — keep visible but quiet
+    return f"{p} {c('90', kind)} {c('90', json.dumps({k:v for k,v in evt.items() if k not in ('ts','kind')})[:160])}"
+
+def pretty_print(evt: dict[str, Any]) -> None:
+    kind = evt.get("kind", "")
+    if kind == "role_done":
+        spinner_stop()
+    line = _format_event(evt)
+    if line is None:
+        return
+    if sys.stdout.isatty() and _spinner_state["active"]:
+        with _event_lock:
+            sys.stdout.write("\r\x1b[K" + line + "\n")
+            sys.stdout.flush()
+    else:
+        print(line, flush=True)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# USER INTERACTION (file-backed + stdin)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def ask_user(run_dir: Path, question: str, foreground: bool) -> str:
+    pq = run_dir / "pending-question.txt"
+    rp = run_dir / "reply.txt"
+    write_text(pq, question)
+    emit_event(run_dir, "awaiting_user", question=question)
+    if foreground and sys.stdin.isatty():
+        try:
+            print(c("1;33", f"\n┌─ CEO asks ──\n│ {question}\n└─ your reply: "), end="", flush=True)
+            ans = sys.stdin.readline().strip()
+        except (EOFError, KeyboardInterrupt):
+            ans = ""
+        if ans:
+            pq.unlink(missing_ok=True)
+            emit_event(run_dir, "user_reply", answer=ans)
+            return ans
+    # poll for reply.txt (attach/reply path)
+    while True:
+        if rp.exists():
+            ans = rp.read_text().strip()
+            rp.unlink(missing_ok=True)
+            pq.unlink(missing_ok=True)
+            emit_event(run_dir, "user_reply", answer=ans)
+            return ans
+        time.sleep(0.5)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CODEX SUBPROCESS & PARSING
+# ════════════════════════════════════════════════════════════════════════════════
+
+def codex_cmd(role: dict[str, Any], workdir: Path) -> list[str]:
+    cmd = ["codex", "-C", str(workdir), "exec", "--color", "never", "--json"]
+    if role.get("model"):
+        cmd += ["--model", str(role["model"])]
+    cmd.append("--dangerously-bypass-approvals-and-sandbox")
+    if role.get("effort"):
+        cmd += ["-c", f"model_reasoning_effort={json.dumps(str(role['effort']))}"]
+    cmd.append("-")
+    return cmd
+
+def render_prompt(role_name: str, role: dict[str, Any], payload: dict[str, Any]) -> str:
+    prompt_path = role.get("prompt")
+    system = (ROOT / prompt_path).read_text() if prompt_path and (ROOT / prompt_path).exists() else ""
+    skills = role.get("required_skills") or []
+    skills_line = (
+        f"Required skills to invoke at start of this turn: {', '.join(skills)}.\n\n"
+        if skills else ""
+    )
+    return (
+        f"{system}\n\n"
+        f"{skills_line}"
+        "Read AGENTS.md and PROJECT.md before acting. Return a single JSON object "
+        "with at minimum a `status` field. Do not wrap in markdown fences.\n\n"
+        f"ROLE: {role_name}\n"
+        f"PAYLOAD:\n{json.dumps(payload, indent=2)}\n"
+    )
+
+def extract_agent_message(stdout: str) -> str:
+    """Extract last agent_message text from codex --json stream. Tolerant of field renames.
+
+    Known shapes:
+      - new (codex 2026+): {"type":"item.completed","item":{"type":"agent_message","text":"..."}}
+      - older:             {"msg":{"type":"agent_message","message":"..."}}
+      - even older:        {"event":{"type":"assistant_message","content":"..."}}
+    """
+    last_msg = ""
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        candidates: list[dict[str, Any]] = []
+        if isinstance(obj.get("item"), dict):
+            candidates.append(obj["item"])
+        if isinstance(obj.get("msg"), dict):
+            candidates.append(obj["msg"])
+        if isinstance(obj.get("event"), dict):
+            candidates.append(obj["event"])
+        candidates.append(obj)
+        for cand in candidates:
+            kind = cand.get("type") or cand.get("kind") or ""
+            if kind in ("agent_message", "assistant_message", "message", "completion"):
+                text = cand.get("text") or cand.get("message") or cand.get("content") or ""
+                if isinstance(text, str) and text.strip():
+                    last_msg = text
+                    break
+    return last_msg
+
+def parse_codex_json(stdout: str) -> tuple[dict[str, Any], str]:
+    """Returns (parsed, kind) where kind ∈ 'clean'|'fenced'|'block'|'none'."""
+    raw = extract_agent_message(stdout)
+    text = raw.strip()
+    if not text:
+        return {"status": "PARSE_ERROR", "reason": "empty agent output", "raw_output": stdout[-2000:]}, "none"
+    # clean JSON
+    try:
+        return json.loads(text), "clean"
+    except Exception:
+        pass
+    # strip markdown fences
+    fenced = re.sub(r"^```(?:json)?\s*", "", text)
+    fenced = re.sub(r"\s*```\s*$", "", fenced).strip()
+    if fenced != text:
+        try:
+            return json.loads(fenced), "fenced"
+        except Exception:
+            pass
+    # last {...} block
+    m = re.search(r"\{[\s\S]*\}", text)
+    if m:
+        try:
+            return json.loads(m.group(0)), "block"
+        except Exception:
+            pass
+    return {"status": "PARSE_ERROR", "reason": "no JSON in agent output", "raw_output": raw[-2000:]}, "none"
+
+def _stream_event_summary(line: str) -> tuple[str, str] | None:
+    """Convert a codex --json stdout line to a short (kind, msg) tuple, or None to skip."""
+    line = line.strip()
+    if not line:
+        return None
+    try:
+        obj = json.loads(line)
+    except Exception:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("type") == "turn.completed":
+        u = obj.get("usage", {})
+        return ("turn_done", f"in={u.get('input_tokens','?')} out={u.get('output_tokens','?')}")
+    item = obj.get("item") if isinstance(obj.get("item"), dict) else None
+    if not item:
+        return None
+    itype = item.get("type", "")
+    if obj.get("type") == "item.started":
+        if itype == "reasoning":
+            return ("thinking", "")
+        if itype == "command_execution":
+            cmd = (item.get("command") or "")[:80]
+            return ("exec", cmd)
+        if itype == "todo_list":
+            return ("plan", "")
+        return None
+    if obj.get("type") == "item.completed":
+        if itype == "reasoning":
+            t = (item.get("text") or "").splitlines()
+            head = next((s for s in t if s.strip()), "")[:80]
+            return ("thought", head)
+        if itype == "command_execution":
+            ec = item.get("exit_code", "?")
+            cmd = (item.get("command") or "")[:60]
+            return ("exec_done", f"rc={ec} {cmd}")
+        if itype == "agent_message":
+            return ("answer", "(JSON returned)")
+    return None
+
+def _run_codex_once(cmd: list[str], prompt: str, workdir: Path, timeout: int, log_path: Path,
+                    on_stream: Callable[[str, str], None] | None = None) -> tuple[int, str, str]:
+    log_f = log_path.open("w")
+    log_f.write(f"$ {' '.join(cmd)}\n\nPROMPT:\n{prompt}\n\nSTDOUT:\n")
+    log_f.flush()
+    try:
+        proc = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd=str(workdir), bufsize=1,
+        )
+    except FileNotFoundError as e:
+        log_f.write(f"\nCMD NOT FOUND: {e}\n"); log_f.close()
+        return 127, "", str(e)
+    assert proc.stdin and proc.stdout and proc.stderr
+    proc.stdin.write(prompt)
+    proc.stdin.close()
+    # bounded buffers: keep only what the parser actually needs (any line containing an
+    # agent_message) plus a tail window for diagnostics. Full output stays on disk.
+    AGENT_MSG_MAX = 32  # cap distinct agent_message lines retained
+    TAIL_MAX = 200      # rolling tail of any-line for fallback regex parse
+    agent_lines: list[str] = []
+    tail: list[str] = []
+    err_buf: list[str] = []
+    line_count = 0
+    last_stream_kind: str | None = None
+    deadline = time.time() + timeout
+    err_thread = threading.Thread(target=lambda: err_buf.extend(proc.stderr.readlines()), daemon=True)
+    err_thread.start()
+    try:
+        while True:
+            if time.time() > deadline:
+                proc.kill()
+                log_f.write(f"\n\nTIMEOUT after {timeout}s\n"); log_f.close()
+                merged = "".join(agent_lines + tail)
+                return -1, merged, f"TIMEOUT after {timeout}s"
+            line = proc.stdout.readline()
+            if not line:
+                if proc.poll() is not None:
+                    break
+                continue
+            line_count += 1
+            log_f.write(line)
+            if line_count % 50 == 0:
+                log_f.flush()
+            if '"agent_message"' in line:
+                agent_lines.append(line)
+                if len(agent_lines) > AGENT_MSG_MAX:
+                    agent_lines.pop(0)
+            tail.append(line)
+            if len(tail) > TAIL_MAX:
+                tail.pop(0)
+            if on_stream:
+                summ = _stream_event_summary(line)
+                if summ:
+                    # coalesce consecutive same-kind low-signal events (e.g. many "thinking"s)
+                    if summ[0] == "thinking" and last_stream_kind == "thinking":
+                        continue
+                    last_stream_kind = summ[0]
+                    on_stream(*summ)
+        proc.wait(timeout=5)
+    finally:
+        err_thread.join(timeout=2)
+    stderr_text = "".join(err_buf)
+    log_f.write(f"\n\nSTDERR:\n{stderr_text}\n\n[lines: {line_count}]\n"); log_f.close()
+    # merge: agent_message lines first (parser priority) + recent tail (regex fallback)
+    merged = "".join(agent_lines + tail)
+    return proc.returncode or 0, merged, stderr_text
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ROLE CALL — high-level invocation: build prompt, exec codex, parse, retry-on-parse-error
+# ════════════════════════════════════════════════════════════════════════════════
+
+def call_role(run_dir: Path, role_name: str, role_cfg: dict[str, Any], payload: dict[str, Any], *,
+              workdir: Path | None = None, label: str = "", timeout: int = 1800) -> dict[str, Any]:
+    workdir = workdir or ROOT
+    label = label or role_name
+    emit_event(run_dir, "role_start", role=role_name, label=label)
+    spinner_start(role_name, label)
+    cmd = codex_cmd(role_cfg, workdir)
+    prompt = render_prompt(role_name, role_cfg, payload)
+    log_path = run_dir / "logs" / f"{label}-{int(time.time()*1000)}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    last_act = {"ts": time.time()}
+    def on_stream(kind: str, msg: str) -> None:
+        last_act["ts"] = time.time()
+        spinner_tick()
+        emit_event(run_dir, "agent_stream", role=role_name, label=label, stream_kind=kind, msg=msg)
+    stop_hb = threading.Event()
+    def heartbeat() -> None:
+        while not stop_hb.is_set():
+            time.sleep(15)
+            if stop_hb.is_set(): break
+            age = int(time.time() - last_act["ts"])
+            emit_event(run_dir, "heartbeat", role=role_name, label=label, idle_sec=age,
+                       log=str(log_path.relative_to(ROOT)))
+    hb_thread = threading.Thread(target=heartbeat, daemon=True)
+    hb_thread.start()
+    try:
+        rc, stdout, stderr = _run_codex_once(cmd, prompt, workdir, timeout, log_path, on_stream=on_stream)
+    finally:
+        stop_hb.set()
+    if rc == -1:
+        emit_event(run_dir, "role_done", role=role_name, status="TIMEOUT", msg=label)
+        return {"status": "TIMEOUT", "error": stderr}
+    if rc != 0:
+        emit_event(run_dir, "role_done", role=role_name, status="ERROR", msg=f"{label} rc={rc}")
+        return {"status": "ERROR", "returncode": rc, "stderr": stderr[-2000:]}
+
+    parsed, kind = parse_codex_json(stdout)
+    if kind in ("fenced", "block"):
+        emit_event(run_dir, "parse_soft_warn", role=role_name, label=label,
+                   recovered_via=kind, log=str(log_path.relative_to(ROOT)))
+    if parsed.get("status") == "PARSE_ERROR":
+        # loud event + one strict retry
+        emit_event(run_dir, "parse_error", role=role_name, label=label,
+                   attempt=1, reason=parsed.get("reason", ""),
+                   log=str(log_path.relative_to(ROOT)),
+                   raw_tail=parsed.get("raw_output", "")[-400:])
+        strict_prompt = prompt + (
+            "\n\nSTRICT RE-ASK: your previous response was not parseable as JSON.\n"
+            "Return EXACTLY one JSON object. No prose before or after. No markdown code fences.\n"
+            "The object MUST have a `status` field.\n"
+        )
+        log2 = run_dir / "logs" / f"{label}-retry-{int(time.time()*1000)}.log"
+        rc2, stdout2, stderr2 = _run_codex_once(cmd, strict_prompt, workdir, timeout, log2, on_stream=on_stream)
+        if rc2 != 0:
+            emit_event(run_dir, "role_done", role=role_name, status="PARSE_ERROR",
+                       msg=f"{label} retry rc={rc2}")
+            return {"status": "PARSE_ERROR", "reason": "retry failed", "stderr": stderr2[-2000:]}
+        parsed2, kind2 = parse_codex_json(stdout2)
+        if parsed2.get("status") == "PARSE_ERROR":
+            emit_event(run_dir, "parse_error", role=role_name, label=label,
+                       attempt=2, reason=parsed2.get("reason", ""),
+                       log=str(log2.relative_to(ROOT)),
+                       raw_tail=parsed2.get("raw_output", "")[-400:])
+            emit_event(run_dir, "role_done", role=role_name, status="PARSE_ERROR", msg=label)
+            raise ParseError(role_name, label, parsed2)
+        parsed = parsed2
+
+    status = str(parsed.get("status", "UNKNOWN")).upper()
+    emit_event(run_dir, "role_done", role=role_name, status=status, msg=label)
+    return parsed
+
+# ════════════════════════════════════════════════════════════════════════════════
+# MEMORY (per-agent conversation persistence)
+# ════════════════════════════════════════════════════════════════════════════════
+
+class Memory:
+    def __init__(self, run_dir: Path | None = None) -> None:
+        self._threads: dict[str, list[dict[str, Any]]] = {}
+        self._run_dir = run_dir
+        self._lock = threading.Lock()
+        if run_dir:
+            mem_dir = run_dir / "memory"
+            if mem_dir.exists():
+                for f in mem_dir.glob("*.json"):
+                    try:
+                        self._threads[f.stem] = json.loads(f.read_text())
+                    except Exception:
+                        pass
+    def get(self, agent_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self._threads.get(agent_id, []))
+    def append(self, agent_id: str, turn: dict[str, Any]) -> None:
+        with self._lock:
+            self._threads.setdefault(agent_id, []).append(turn)
+            data = list(self._threads[agent_id])
+        if self._run_dir:
+            mem_dir = self._run_dir / "memory"
+            mem_dir.mkdir(parents=True, exist_ok=True)
+            (mem_dir / f"{agent_id}.json").write_text(json.dumps(data, indent=2))
+
+# ════════════════════════════════════════════════════════════════════════════════
+# GIT / WORKTREE HELPERS
+# ════════════════════════════════════════════════════════════════════════════════
+
+def git(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], cwd=str(cwd or ROOT), capture_output=True, text=True, check=check)
+
+def is_git_repo() -> bool:
+    try:
+        git("rev-parse", "--git-dir")
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def ensure_branch(name: str) -> None:
+    res = git("rev-parse", "--verify", name, check=False)
+    if res.returncode != 0:
+        git("branch", name)
+
+_git_lock = threading.Lock()
+
+def create_worktree(path: Path, branch: str, base_branch: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _git_lock:
+        # clean stale worktree records (path removed but git still tracks it)
+        git("worktree", "prune", check=False)
+        if path.exists():
+            git("worktree", "remove", "--force", str(path), check=False)
+        res = git("rev-parse", "--verify", branch, check=False)
+        if res.returncode != 0:
+            git("worktree", "add", "-b", branch, str(path), base_branch)
+        else:
+            git("worktree", "add", str(path), branch)
+
+def merge_branch(branch: str, into: str = "main") -> tuple[bool, int]:
+    git("checkout", into)
+    res = git("merge", "--no-ff", "-X", "theirs", branch, "-m", f"Merge {branch}", check=False)
+    if res.returncode != 0:
+        # try to resolve by accepting incoming
+        git("add", "-A", check=False)
+        commit = git("commit", "-m", f"Merge {branch} (auto-resolved)", check=False)
+        return commit.returncode == 0, 1
+    return True, 0
+
+# ════════════════════════════════════════════════════════════════════════════════
+# PR CREATION (gh-backed, soft-fails on no remote / no gh / push refused)
+# ════════════════════════════════════════════════════════════════════════════════
+
+def create_phase_pr(run_dir: Path, branch: str, phase: dict[str, Any], audit_report_path: str) -> dict[str, Any]:
+    if shutil.which("gh") is None:
+        emit_event(run_dir, "pr_failed", reason="gh CLI not installed")
+        return {"created": False, "reason": "no gh"}
+    # need a remote
+    res = git("remote", check=False)
+    if not res.stdout.strip():
+        emit_event(run_dir, "pr_failed", reason="no git remote configured")
+        return {"created": False, "reason": "no remote"}
+    push = git("push", "-u", "origin", branch, check=False)
+    if push.returncode != 0:
+        emit_event(run_dir, "pr_failed", reason=f"push failed: {push.stderr[-300:]}")
+        return {"created": False, "reason": "push failed"}
+    title = f"Phase {phase['no']}: {phase.get('title','')}"
+    body_path = ROOT / audit_report_path if audit_report_path else None
+    cmd = ["gh", "pr", "create", "--base", "main", "--head", branch, "--title", title]
+    if body_path and body_path.exists():
+        cmd += ["--body-file", str(body_path)]
+    else:
+        cmd += ["--body", f"Phase {phase['no']} auto-PR. Audit report missing."]
+    pr = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True)
+    if pr.returncode != 0:
+        emit_event(run_dir, "pr_failed", reason=f"gh pr create rc={pr.returncode}: {pr.stderr[-300:]}")
+        return {"created": False, "reason": "gh failed", "stderr": pr.stderr}
+    url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
+    emit_event(run_dir, "pr_created", url=url, branch=branch)
+    return {"created": True, "url": url, "branch": branch}
+
+# ════════════════════════════════════════════════════════════════════════════════
+# FAILURE REGISTRY & TASK META (durable, restart-friendly)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_failures_lock = threading.Lock()
+
+def record_failure(run_dir: Path, **fields: Any) -> None:
+    p = run_dir / "failures.json"
+    with _failures_lock:
+        cur = read_json(p, [])
+        if not isinstance(cur, list):
+            cur = []
+        fields = {"ts": now_iso(), **fields}
+        tid = fields.get("task_id")
+        if tid:
+            cur = [f for f in cur if f.get("task_id") != tid]
+        cur.append(fields)
+        write_json(p, cur)
+
+def clear_failure(run_dir: Path, task_id: str) -> None:
+    p = run_dir / "failures.json"
+    with _failures_lock:
+        cur = read_json(p, [])
+        if isinstance(cur, list):
+            write_json(p, [f for f in cur if f.get("task_id") != task_id])
+
+def save_task_meta(run_dir: Path, task_id: str, meta: dict[str, Any]) -> None:
+    p = run_dir / "tasks" / f"{task_id}.json"
+    write_json(p, meta)
+
+def load_task_meta(run_dir: Path, task_id: str) -> dict[str, Any] | None:
+    p = run_dir / "tasks" / f"{task_id}.json"
+    return read_json(p, None) if p.exists() else None
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ORCHESTRATION — phase loop
+# ════════════════════════════════════════════════════════════════════════════════
+
+def interactive_intake(run_dir: Path, config: dict[str, Any], mem: Memory, foreground: bool, max_turns: int = 8) -> dict[str, Any]:
+    ceo = config["roles"]["ceo"]
+    answers: list[str] = []
+    for turn in range(1, max_turns + 1):
+        payload = {
+            "run_id": run_dir.name,
+            "role": "ceo",
+            "phase": "interactive_intake",
+            "turn": turn,
+            "user_request": config["user_request"],
+            "ceo_mode": config["ceo_mode"],
+            "answers": answers,
+            "conversation": mem.get("ceo"),
+        }
+        out = call_role(run_dir, "ceo", ceo, payload, label=f"intake-{turn:02d}")
+        mem.append("ceo", {"phase": "interactive_intake", "turn": turn, "out": out})
+        status = str(out.get("status", "")).upper()
+        if status == "GREEN" or out.get("candidate_spec_ready"):
+            return {"status": "GREEN", "ceo_out": out, "answers": answers}
+        if status == "BLOCKED":
+            return {"status": "BLOCKED", "reason": out.get("reason", "")}
+        question = out.get("question") or "continue?"
+        ans = ask_user(run_dir, question, foreground)
+        answers.append(ans)
+    return {"status": "NEEDS_USER", "answers": answers}
+
+def spec_authoring(run_dir: Path, config: dict[str, Any], mem: Memory, intake: dict[str, Any]) -> dict[str, Any]:
+    ceo = config["roles"]["ceo"]
+    payload = {
+        "run_id": run_dir.name,
+        "role": "ceo",
+        "phase": "spec_authoring",
+        "user_request": config["user_request"],
+        "ceo_mode": config["ceo_mode"],
+        "intake": intake.get("ceo_out", {}),
+        "answers": intake.get("answers", []),
+        "conversation": mem.get("ceo"),
+        "spec_target_dir": str(DOCS_SPECS.relative_to(ROOT)),
+    }
+    ensure_dir(DOCS_SPECS)
+    out = call_role(run_dir, "ceo", ceo, payload, label="spec-authoring")
+    mem.append("ceo", {"phase": "spec_authoring", "out": out})
+    return out
+
+def plan_authoring(run_dir: Path, config: dict[str, Any], mem: Memory, phase: dict[str, Any], spec_path: str) -> dict[str, Any]:
+    cto = config["roles"]["cto"]
+    payload = {
+        "run_id": run_dir.name,
+        "role": "cto",
+        "phase": "plan_authoring",
+        "phase_no": phase["no"],
+        "phase_meta": phase,
+        "spec_path": spec_path,
+        "plan_target_dir": str(DOCS_PLANS.relative_to(ROOT)),
+        "conversation": mem.get("cto"),
+    }
+    ensure_dir(DOCS_PLANS)
+    out = call_role(run_dir, "cto", cto, payload, label=f"plan-p{phase['no']:02d}")
+    mem.append("cto", {"phase": "plan_authoring", "phase_no": phase["no"], "out": out})
+    return out
+
+def architect_loop(run_dir: Path, config: dict[str, Any], mem: Memory, phase: dict[str, Any],
+                   spec_path: str, plan_path: str) -> dict[str, Any]:
+    arch = config["roles"]["architect"]
+    cto = config["roles"]["cto"]
+    arch_id = f"architect-p{phase['no']}"
+    iteration = 0
+    review_focus: str | None = None
+    MAX_ITERATIONS = 5
+    while True:
+        iteration += 1
+        a_payload = {
+            "run_id": run_dir.name,
+            "role": "architect",
+            "phase": "review",
+            "phase_no": phase["no"],
+            "phase_meta": phase,
+            "spec_path": spec_path,
+            "implementation_plan_path": plan_path,
+            "iteration": iteration,
+            "max_iterations": MAX_ITERATIONS,
+            "cto_review_focus": review_focus,
+            "conversation": mem.get(arch_id),
+        }
+        a_out = call_role(run_dir, "architect", arch, a_payload, label=f"arch-p{phase['no']}-{iteration:02d}")
+        mem.append(arch_id, {"phase": "review", "iteration": iteration, "out": a_out})
+        c_payload = {
+            "run_id": run_dir.name,
+            "role": "cto",
+            "phase": "architect_review_loop",
+            "phase_no": phase["no"],
+            "phase_meta": phase,
+            "implementation_plan_path": plan_path,
+            "architect_feedback": a_out,
+            "iteration": iteration,
+            "max_iterations": MAX_ITERATIONS,
+            "conversation": mem.get("cto"),
+        }
+        c_out = call_role(run_dir, "cto", cto, c_payload, label=f"cto-loop-p{phase['no']}-{iteration:02d}")
+        mem.append("cto", {"phase": "architect_review_loop", "iteration": iteration, "out": c_out})
+        status = str(c_out.get("status", "")).upper()
+        if c_out.get("loop_done") or status in ("GREEN", "REJECTED"):
+            return {"status": status, "iterations": iteration, "final_cto": c_out, "final_arch": a_out}
+        if iteration >= MAX_ITERATIONS:
+            emit_event(run_dir, "architect_loop_capped", iterations=iteration, msg="max iterations reached; treating last CTO output as GREEN")
+            return {"status": "GREEN", "iterations": iteration, "final_cto": c_out, "final_arch": a_out, "capped": True}
+        review_focus = c_out.get("next_review_focus") or ""
+
+def run_task(run_dir: Path, config: dict[str, Any], mem: Memory, task: dict[str, Any],
+             phase: dict[str, Any], plan_path: str, branch: str) -> dict[str, Any]:
+    impl = config["roles"]["implementer"]
+    rev = config["roles"]["reviewer"]
+    task_id = task["id"]
+    wt_path = WORKTREES_DIR / run_dir.name / task_id
+    # IMPORTANT: git refs can't be both a tip and a namespace. If the phase
+    # branch is `agent/phase-1-foo`, we cannot create `agent/phase-1-foo/<task>`
+    # underneath it. Use a flat suffix instead.
+    task_branch = f"{branch}--task-{task_id}"
+    save_task_meta(run_dir, task_id, {
+        "task": task, "phase": phase, "plan_path": plan_path,
+        "branch": branch, "task_branch": task_branch, "worktree": str(wt_path),
+    })
+    # Self-heal: if the phase branch no longer exists (e.g. user deleted it
+    # between runs, or this is a restart after manual cleanup), recreate it
+    # from main/master/HEAD so `git worktree add ... <phase-branch>` succeeds.
+    with _git_lock:
+        if git("rev-parse", "--verify", branch, check=False).returncode != 0:
+            base = "main"
+            if git("rev-parse", "--verify", "main", check=False).returncode != 0:
+                base = "master" if git("rev-parse", "--verify", "master", check=False).returncode == 0 else "HEAD"
+            bb = git("branch", branch, base, check=False)
+            if bb.returncode == 0:
+                emit_event(run_dir, "phase_branch", branch=branch, base=f"{base} (auto-recreated)")
+            else:
+                err = bb.stderr.strip()[:200]
+                emit_event(run_dir, "task_done", task_id=task_id, status="ERROR", diff="0",
+                           worktree=str(wt_path),
+                           reason=f"phase branch missing and recreate failed: {err}")
+                record_failure(run_dir, task_id=task_id, worktree=str(wt_path), branch=task_branch,
+                               phase_no=phase["no"], reason="phase_branch_missing",
+                               detail=err, stage="worktree", restartable=True)
+                return {"task_id": task_id, "status": "ERROR", "error": err}
+    try:
+        create_worktree(wt_path, task_branch, branch)
+        emit_event(run_dir, "worktree_create", path=str(wt_path), branch=task_branch)
+    except subprocess.CalledProcessError as e:
+        err = e.stderr if hasattr(e,'stderr') else str(e)
+        emit_event(run_dir, "task_done", task_id=task_id, status="ERROR", diff="0",
+                   worktree=str(wt_path), reason=f"worktree create failed: {err[:200]}")
+        record_failure(run_dir, task_id=task_id, worktree=str(wt_path), branch=task_branch,
+                       phase_no=phase["no"], reason="worktree_create_failed", detail=err[-1000:],
+                       stage="worktree", restartable=True)
+        return {"task_id": task_id, "status": "ERROR", "error": err}
+    emit_event(run_dir, "task_start", task_id=task_id, worktree_id=task_id)
+    impl_id = f"impl-{task_id}"
+    rev_id = f"rev-{task_id}"
+    rev_findings: list[Any] = []
+    last_impl_out: dict[str, Any] = {}
+    for revision in range(1, 10):
+        i_payload = {
+            "run_id": run_dir.name,
+            "role": "implementer",
+            "phase_no": phase["no"],
+            "task": task,
+            "worktree_id": task_id,
+            "branch": task_branch,
+            "implementation_plan_path": plan_path,
+            "review_findings": rev_findings,
+            "revision": revision,
+            "conversation": mem.get(impl_id),
+        }
+        i_out = call_role(run_dir, "implementer", impl, i_payload, workdir=wt_path,
+                          label=f"impl-{task_id}-r{revision}")
+        mem.append(impl_id, {"revision": revision, "out": i_out})
+        last_impl_out = i_out
+        if str(i_out.get("status", "")).upper() == "BLOCKED":
+            emit_event(run_dir, "task_done", task_id=task_id, status="BLOCKED", diff="0",
+                       worktree=str(wt_path), reason=i_out.get("reason", "implementer blocked"))
+            record_failure(run_dir, task_id=task_id, worktree=str(wt_path), branch=task_branch,
+                           phase_no=phase["no"], reason="implementer_blocked",
+                           detail=i_out.get("reason", "") or json.dumps(i_out)[:1000],
+                           stage="implementer", revision=revision, restartable=True)
+            return {"task_id": task_id, "status": "BLOCKED", "impl_out": i_out, "task": task}
+        r_payload = {
+            "run_id": run_dir.name,
+            "role": "reviewer",
+            "phase_no": phase["no"],
+            "task": task,
+            "worktree_id": task_id,
+            "branch": task_branch,
+            "implementation_plan_path": plan_path,
+            "implementer_output": i_out,
+            "revision": revision,
+            "conversation": mem.get(rev_id),
+        }
+        r_out = call_role(run_dir, "reviewer", rev, r_payload, workdir=wt_path,
+                          label=f"rev-{task_id}-r{revision}")
+        mem.append(rev_id, {"revision": revision, "out": r_out})
+        r_status = str(r_out.get("status", "")).upper()
+        if r_status == "GREEN":
+            diff = i_out.get("diff_stats", {})
+            emit_event(run_dir, "task_done", task_id=task_id, status="GREEN",
+                       diff=f"+{diff.get('added',0)}/-{diff.get('removed',0)}",
+                       worktree=str(wt_path))
+            clear_failure(run_dir, task_id)
+            return {"task_id": task_id, "status": "GREEN", "impl_out": i_out, "rev_out": r_out,
+                    "worktree": str(wt_path), "branch": task_branch, "task": task}
+        rev_findings = r_out.get("findings", [])
+    emit_event(run_dir, "task_done", task_id=task_id, status="FAIL_MAX_REVISIONS", diff="0",
+               worktree=str(wt_path), reason=f"max revisions exhausted ({revision})")
+    record_failure(run_dir, task_id=task_id, worktree=str(wt_path), branch=task_branch,
+                   phase_no=phase["no"], reason="max_revisions_exhausted",
+                   detail=f"last reviewer findings: {json.dumps(rev_findings)[:1000]}",
+                   stage="reviewer_loop", revision=revision, restartable=True)
+    return {"task_id": task_id, "status": "FAIL", "impl_out": last_impl_out, "task": task}
+
+def dispatch_tasks(run_dir: Path, config: dict[str, Any], mem: Memory, phase: dict[str, Any],
+                   plan_path: str, branch: str, task_graph: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # parallel; one thread per task
+    results: list[dict[str, Any]] = []
+    max_workers = max(1, min(len(task_graph), 4))
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futs = {ex.submit(run_task, run_dir, config, mem, t, phase, plan_path, branch): t for t in task_graph}
+        for fut in as_completed(futs):
+            results.append(fut.result())
+    return results
+
+def phase_audit(run_dir: Path, config: dict[str, Any], mem: Memory, phase: dict[str, Any],
+                plan_path: str, branch: str, task_results: list[dict[str, Any]]) -> dict[str, Any]:
+    auditor = config["roles"]["auditor"]
+    impl = config["roles"]["implementer"]
+    audit_dir = run_dir / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    report_path = audit_dir / f"phase-{phase['no']}-report.md"
+    audit_id = f"audit-p{phase['no']}"
+    worktrees_info = [
+        {
+            "task_id": tr["task_id"],
+            "task": tr.get("task", {}),
+            "branch": tr.get("branch"),
+            "path": tr.get("worktree"),
+            "implementer_output": tr.get("impl_out", {}),
+            "reviewer_output": tr.get("rev_out", {}),
+            "audit_log_path": str((audit_dir / f"{tr['task_id']}.md").relative_to(ROOT)),
+        }
+        for tr in task_results if tr.get("status") == "GREEN"
+    ]
+    for tr in worktrees_info:
+        p = ROOT / tr["audit_log_path"]
+        if not p.exists():
+            p.write_text(f"# Audit log: {tr['task_id']}\n\n")
+    iteration = 0
+    while True:
+        iteration += 1
+        a_payload = {
+            "run_id": run_dir.name,
+            "role": "auditor",
+            "phase": "audit",
+            "phase_no": phase["no"],
+            "phase_meta": phase,
+            "phase_branch": branch,
+            "implementation_plan_path": plan_path,
+            "task_graph": [
+                {"task_id": tr["task_id"], "task": tr.get("task", {}),
+                 "status": tr.get("status"), "branch": tr.get("branch"),
+                 "worktree": tr.get("worktree"),
+                 "impl_out": tr.get("impl_out", {}), "rev_out": tr.get("rev_out", {})}
+                for tr in task_results
+            ],
+            "worktrees": worktrees_info,
+            "audit_log_dir": str(audit_dir.relative_to(ROOT)),
+            "audit_report_path": str(report_path.relative_to(ROOT)),
+            "iteration": iteration,
+            "conversation": mem.get(audit_id),
+        }
+        a_out = call_role(run_dir, "auditor", auditor, a_payload, label=f"audit-p{phase['no']}-{iteration:02d}")
+        mem.append(audit_id, {"iteration": iteration, "out": a_out})
+        status = str(a_out.get("status", "")).upper()
+        if status == "GREEN":
+            # merge task branches into phase branch (idempotent if auditor already did)
+            if not a_out.get("merge_done"):
+                merged_branches = []
+                for wt in worktrees_info:
+                    ok, conflicts = merge_branch(wt["branch"], into=branch)
+                    emit_event(run_dir, "merge", branch=wt["branch"], into=branch, conflicts=conflicts)
+                    if ok:
+                        merged_branches.append(wt["branch"])
+                if not report_path.exists():
+                    report_path.write_text(
+                        f"# Phase {phase['no']} audit report\n\nAuto-generated. Merged: {merged_branches}\n"
+                    )
+            return {"status": "GREEN", "report": str(report_path.relative_to(ROOT)),
+                    "phase_summary": a_out.get("phase_summary", ""),
+                    "deferred_concerns": a_out.get("deferred_concerns", []),
+                    "non_blocking_observations": a_out.get("non_blocking_observations", [])}
+        if status == "NEEDS_REVISION":
+            redflags = a_out.get("redflags", [])
+            for rf in redflags:
+                tid = rf.get("task_id")
+                task_obj = next((t for t in task_results if t["task_id"] == tid), None)
+                if not task_obj:
+                    continue
+                wt_path = Path(task_obj.get("worktree", ""))
+                if not wt_path.exists():
+                    continue
+                impl_id = f"impl-{tid}"
+                rev = mem.get(impl_id)
+                redo_payload = {
+                    "run_id": run_dir.name,
+                    "role": "implementer",
+                    "phase_no": phase["no"],
+                    "task": task_obj.get("task", {}),
+                    "worktree_id": tid,
+                    "branch": task_obj.get("branch"),
+                    "implementation_plan_path": plan_path,
+                    "review_findings": rf.get("findings", []),
+                    "audit_redflag": True,
+                    "revision": len(rev) + 1,
+                    "conversation": rev,
+                }
+                i_out = call_role(run_dir, "implementer", impl, redo_payload, workdir=wt_path,
+                                  label=f"impl-{tid}-audit-r{iteration}")
+                mem.append(impl_id, {"audit_revision": iteration, "out": i_out})
+            # loop continues; auditor re-audits
+            continue
+        if status == "BLOCKED":
+            return {"status": "BLOCKED", "reason": a_out.get("reason", "")}
+        if iteration >= 5:
+            return {"status": "FAIL", "reason": "max audit iterations"}
+
+def ceo_phase_close(run_dir: Path, config: dict[str, Any], mem: Memory, phase: dict[str, Any],
+                    spec_path: str, plan_path: str, audit: dict[str, Any], branch: str) -> dict[str, Any]:
+    ceo = config["roles"]["ceo"]
+    payload = {
+        "run_id": run_dir.name,
+        "role": "ceo",
+        "phase": "phase_close",
+        "phase_no": phase["no"],
+        "phase_meta": phase,
+        "spec_path": spec_path,
+        "implementation_plan_path": plan_path,
+        "audit_report_path": audit.get("report"),
+        "audit_summary": audit.get("phase_summary", ""),
+        "deferred_concerns": audit.get("deferred_concerns", []),
+        "non_blocking_observations": audit.get("non_blocking_observations", []),
+        "pr": audit.get("pr", {}),
+        "branch": branch,
+        "project_md_path": "PROJECT.md",
+        "conversation": mem.get("ceo"),
+    }
+    out = call_role(run_dir, "ceo", ceo, payload, label=f"phase-close-p{phase['no']}")
+    mem.append("ceo", {"phase": "phase_close", "phase_no": phase["no"], "out": out})
+    return out
+
+def ceo_final(run_dir: Path, config: dict[str, Any], mem: Memory) -> dict[str, Any]:
+    ceo = config["roles"]["ceo"]
+    payload = {
+        "run_id": run_dir.name,
+        "role": "ceo",
+        "phase": "final",
+        "conversation": mem.get("ceo"),
+    }
+    out = call_role(run_dir, "ceo", ceo, payload, label="final")
+    return out
+
+# ════════════════════════════════════════════════════════════════════════════════
+# EXECUTE RUN — main pipeline
+# ════════════════════════════════════════════════════════════════════════════════
+
+def execute_run(run_dir: Path, config: dict[str, Any], foreground: bool = True) -> dict[str, Any]:
+    try:
+        return _execute_run_inner(run_dir, config, foreground)
+    except ParseError as e:
+        emit_event(run_dir, "run_blocked", msg=f"PARSE_ERROR role={e.role} label={e.label} — see parse_error event for log path")
+        update_state(run_dir, status="blocked", reason="parse_error", parse_error_role=e.role, parse_error_label=e.label)
+        return {"status": "BLOCKED", "reason": "parse_error", "role": e.role, "label": e.label}
+
+def _execute_run_inner(run_dir: Path, config: dict[str, Any], foreground: bool) -> dict[str, Any]:
+    mem = Memory(run_dir)
+    if not is_git_repo():
+        emit_event(run_dir, "run_blocked", msg="not a git repo; run `git init` first")
+        update_state(run_dir, status="blocked", reason="not_a_git_repo")
+        return {"status": "BLOCKED"}
+    head_check = git("rev-parse", "--verify", "HEAD", check=False)
+    if head_check.returncode != 0:
+        emit_event(run_dir, "run_blocked",
+                   msg="repo has no commits yet; run `git add -A && git commit -m init` first (or `git commit --allow-empty -m init`)")
+        update_state(run_dir, status="blocked", reason="no_initial_commit")
+        return {"status": "BLOCKED"}
+    if shutil.which("codex") is None:
+        emit_event(run_dir, "run_blocked", msg="codex CLI not found in PATH")
+        update_state(run_dir, status="blocked", reason="no_codex_cli")
+        return {"status": "BLOCKED"}
+    # 1. intake
+    update_state(run_dir, status="intake")
+    intake = interactive_intake(run_dir, config, mem, foreground)
+    if intake["status"] != "GREEN":
+        emit_event(run_dir, "run_blocked", msg=f"intake {intake['status']}")
+        update_state(run_dir, status="blocked", reason="intake_failed")
+        return {"status": "BLOCKED", "intake": intake}
+    # 2. spec authoring
+    update_state(run_dir, status="spec_authoring")
+    spec_out = spec_authoring(run_dir, config, mem, intake)
+    spec_path = spec_out.get("spec_path") or str(DOCS_SPECS.relative_to(ROOT) / f"{slug(config['user_request'])}.md")
+    phases = spec_out.get("phases") or []
+    if not phases:
+        emit_event(run_dir, "run_blocked", msg="ceo returned no phases")
+        update_state(run_dir, status="blocked", reason="no_phases")
+        return {"status": "BLOCKED"}
+    total_phases = len(phases)
+    update_state(run_dir, status="phases", total_phases=total_phases, spec_path=spec_path)
+    # 3. per-phase loop
+    for phase in phases:
+        emit_event(run_dir, "phase_start", phase_no=phase["no"], total=total_phases, title=phase.get("title",""))
+        update_state(run_dir, phase_no=phase["no"])
+        plan_out = plan_authoring(run_dir, config, mem, phase, spec_path)
+        if str(plan_out.get("status","")).upper() != "GREEN":
+            emit_event(run_dir, "run_blocked", msg=f"plan failed phase {phase['no']}")
+            update_state(run_dir, status="blocked", reason="plan_failed")
+            return {"status": "BLOCKED"}
+        plan_path = plan_out.get("implementation_plan_path") or str(DOCS_PLANS.relative_to(ROOT) / f"phase-{phase['no']}-{slug(phase.get('title','phase'))}.md")
+        branch = plan_out.get("branch") or f"agent/phase-{phase['no']}-{slug(phase.get('title','phase'))}"
+        task_graph = plan_out.get("task_graph") or []
+        loop_out = architect_loop(run_dir, config, mem, phase, spec_path, plan_path)
+        if loop_out["status"] not in ("GREEN", "REJECTED"):
+            update_state(run_dir, status="blocked", reason="architect_loop_failed")
+            return {"status": "BLOCKED"}
+        # ensure phase branch exists (off main if possible, else current HEAD)
+        base = "main"
+        res = git("rev-parse", "--verify", "main", check=False)
+        if res.returncode != 0:
+            res = git("rev-parse", "--verify", "master", check=False)
+            base = "master" if res.returncode == 0 else "HEAD"
+        ver = git("rev-parse", "--verify", branch, check=False)
+        if ver.returncode != 0:
+            bb = git("branch", branch, base, check=False)
+            if bb.returncode != 0:
+                emit_event(run_dir, "run_blocked",
+                           msg=f"failed to create phase branch {branch} off {base}: {bb.stderr.strip()[:200]}")
+                update_state(run_dir, status="blocked", reason="phase_branch_create_failed")
+                return {"status": "BLOCKED"}
+            emit_event(run_dir, "phase_branch", branch=branch, base=base)
+        if not task_graph:
+            emit_event(run_dir, "run_blocked", msg=f"no tasks phase {phase['no']}")
+            update_state(run_dir, status="blocked", reason="no_tasks")
+            return {"status": "BLOCKED"}
+        task_results = dispatch_tasks(run_dir, config, mem, phase, plan_path, branch, task_graph)
+        green = [t for t in task_results if t.get("status") == "GREEN"]
+        if not green:
+            emit_event(run_dir, "run_blocked",
+                       msg=f"phase {phase['no']} aborted: 0 of {len(task_results)} tasks GREEN — auditor skipped")
+            update_state(run_dir, status="blocked", reason="all_tasks_failed",
+                         failed_tasks=[t.get("task_id") for t in task_results])
+            return {"status": "BLOCKED", "task_results": task_results}
+        if len(green) < len(task_results):
+            emit_event(run_dir, "phase_partial",
+                       msg=f"phase {phase['no']}: {len(green)}/{len(task_results)} GREEN — auditor will audit only green tasks")
+        audit = phase_audit(run_dir, config, mem, phase, plan_path, branch, task_results)
+        if audit["status"] != "GREEN":
+            emit_event(run_dir, "run_blocked", msg=f"audit failed phase {phase['no']}")
+            update_state(run_dir, status="blocked", reason="audit_failed")
+            return {"status": "BLOCKED", "audit": audit}
+        pr = create_phase_pr(run_dir, branch, phase, audit.get("report", ""))
+        audit["pr"] = pr
+        ceo_phase_close(run_dir, config, mem, phase, spec_path, plan_path, audit, branch)
+    # 4. final
+    update_state(run_dir, status="finalizing")
+    final = ceo_final(run_dir, config, mem)
+    emit_event(run_dir, "run_done", msg=final.get("final_summary", ""))
+    update_state(run_dir, status="done", ended=now_iso())
+    return {"status": "DONE", "final": final}
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CLI STREAM / ATTACH HELPERS
+# ════════════════════════════════════════════════════════════════════════════════
+
+def tail_events(run_dir: Path, follow: bool = True) -> None:
+    p = run_dir / "events.jsonl"
+    if not p.exists():
+        p.touch()
+    with p.open() as f:
+        # print existing
+        for line in f:
+            try:
+                pretty_print(json.loads(line))
+            except Exception:
+                pass
+        if not follow:
+            return
+        # follow
+        while True:
+            line = f.readline()
+            if not line:
+                state = read_json(run_dir / "state.json", {})
+                if state.get("status") in ("done", "blocked"):
+                    return
+                # check pending question (for attach to prompt reply)
+                pq = run_dir / "pending-question.txt"
+                rp = run_dir / "reply.txt"
+                if pq.exists() and not rp.exists() and sys.stdin.isatty():
+                    q = pq.read_text().strip()
+                    print(c("1;33", f"\n┌─ CEO asks ──\n│ {q}\n└─ your reply: "), end="", flush=True)
+                    try:
+                        ans = sys.stdin.readline().strip()
+                    except (EOFError, KeyboardInterrupt):
+                        ans = ""
+                    if ans:
+                        rp.write_text(ans)
+                time.sleep(0.4)
+                continue
+            try:
+                pretty_print(json.loads(line))
+            except Exception:
+                pass
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CLI SUBCOMMANDS
+# ════════════════════════════════════════════════════════════════════════════════
+
+def cmd_start(args: argparse.Namespace) -> int:
+    config = build_config(args.prompt, ceo_mode=args.ceo_mode)
+    run_id, run_dir = create_run(config)
+    print(c("1;36", f"run started: {run_id}"))
+    print(c("90", f"  dir: {run_dir.relative_to(ROOT)}"))
+    print(c("90", f"  events: {(run_dir / 'events.jsonl').relative_to(ROOT)}"))
+    print(c("90", f"  detach with Ctrl-C; reattach: codex-org attach {run_id}\n"))
+    if args.detach:
+        # spawn self as background
+        log_out = (run_dir / "run.out").open("a")
+        log_err = (run_dir / "run.err").open("a")
+        subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "_serve", run_id],
+            stdout=log_out, stderr=log_err, stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print(c("32", f"detached. attach: codex-org attach {run_id}"))
+        return 0
+    try:
+        execute_run(run_dir, config, foreground=True)
+    except KeyboardInterrupt:
+        print(c("33", "\n[detached] run continues in background — but no background loop started in foreground mode. exiting."))
+    return 0
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    # internal: re-enter for background mode
+    run_dir = resolve_run_dir(args.run_id)
+    config = read_json(run_dir / "compiled-config.json", {})
+    execute_run(run_dir, config, foreground=False)
+    return 0
+
+def cmd_attach(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    print(c("1;36", f"attached to {args.run_id}"))
+    try:
+        tail_events(run_dir, follow=True)
+    except KeyboardInterrupt:
+        print(c("33", "\n[detached]"))
+    return 0
+
+def cmd_list(args: argparse.Namespace) -> int:
+    if not RUNS_DIR.exists():
+        print("(no runs)")
+        return 0
+    rows = []
+    for d in sorted(RUNS_DIR.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        state = read_json(d / "state.json", {})
+        rows.append((d.name, state.get("status","?"), state.get("phase_no",0), state.get("started","?")))
+    if args.json:
+        print(json.dumps([{"run_id":r[0],"status":r[1],"phase":r[2],"started":r[3]} for r in rows], indent=2))
+        return 0
+    for r in rows:
+        print(f"{r[0]}  {c('36',r[1])}  phase={r[2]}  started={r[3]}")
+    return 0
+
+def _parse_ts(s: str) -> float:
+    try:
+        return dt.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S").timestamp()
+    except Exception:
+        return 0.0
+
+def cmd_orgchart(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    state = read_json(run_dir / "state.json", {})
+    events: list[dict[str, Any]] = []
+    p = run_dir / "events.jsonl"
+    if p.exists():
+        with p.open() as f:
+            for line in f:
+                try:
+                    events.append(json.loads(line))
+                except Exception:
+                    pass
+    role_last: dict[str, dict[str, Any]] = {}
+    role_start_open: dict[str, dict[str, Any]] = {}
+    task_last: dict[str, dict[str, Any]] = {}
+    worktrees: list[dict[str, Any]] = []
+    for e in events:
+        k = e.get("kind")
+        if k == "role_start":
+            role_start_open[e.get("role","?")] = e
+        elif k == "role_done":
+            role_last[e.get("role","?")] = e
+            role_start_open.pop(e.get("role","?"), None)
+        elif k == "task_done":
+            task_last[e.get("task_id","?")] = e
+        elif k == "worktree_create":
+            worktrees.append(e)
+    failures = read_json(run_dir / "failures.json", [])
+    run_done = state.get("status") in ("done","blocked","stopped")
+    stall_threshold = 600  # 10 min
+    now = time.time()
+
+    print(c("1;36", f"orgchart  run={args.run_id}  status={state.get('status','?')}  phase={state.get('phase_no',0)}/{state.get('total_phases','?')}"))
+    print(c("90", "─" * 70))
+    print(c("1","roles (last event per role):"))
+    for role in ("ceo","cto","architect","implementer","reviewer","auditor"):
+        e = role_last.get(role, {})
+        active = role_start_open.get(role)
+        if active and not run_done:
+            age = int(now - _parse_ts(active.get("ts","")))
+            mark = c("33", f"STALLED ({age}s)") if age > stall_threshold else c("36", f"ACTIVE ({age}s)")
+            print(f"  {role:12} {mark:30} label={active.get('label','-')}")
+        else:
+            stcol = "32" if e.get("status")=="GREEN" else "31" if e.get("status") in ("ERROR","PARSE_ERROR","TIMEOUT") else "90"
+            print(f"  {role:12} {c(stcol, e.get('status','-')):20} last={e.get('ts','-')}  {e.get('msg','')}")
+
+    print(c("1","\nworktrees:"))
+    if not worktrees:
+        print("  (none)")
+    for w in worktrees:
+        tid = Path(w.get("path","")).name
+        td = task_last.get(tid, {})
+        stcol = "32" if td.get("status")=="GREEN" else "31" if td.get("status","").startswith("FAIL") or td.get("status") in ("BLOCKED","ERROR") else "90"
+        print(f"  {tid:30} {c(stcol, td.get('status','-')):20} branch={w.get('branch','?')}  {w.get('path','?')}")
+
+    if failures:
+        print(c("1;31","\nFAILED TASKS (restartable):"))
+        for f in failures:
+            print(c("31", f"  task={f.get('task_id','?')}  phase={f.get('phase_no','?')}  stage={f.get('stage','?')}  reason={f.get('reason','?')}"))
+            print(c("90", f"    worktree: {f.get('worktree','?')}"))
+            print(c("90", f"    branch:   {f.get('branch','?')}"))
+            print(c("90", f"    at:       {f.get('ts','?')}"))
+            if f.get("detail"):
+                print(c("90", f"    detail:   {f['detail'][:200]}"))
+            if f.get("restartable"):
+                print(c("32", f"    restart:  scripts/codex-org restart {args.run_id} --task {f.get('task_id','')}"))
+    return 0
+
+def cmd_logs(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    logs = sorted((run_dir / "logs").glob("*.log"))
+    if args.role:
+        logs = [l for l in logs if args.role in l.name]
+    if args.task:
+        logs = [l for l in logs if args.task in l.name]
+    head_n = args.head
+    tail_n = args.tail
+    for l in logs:
+        size = l.stat().st_size
+        print(c("1;36", f"=== {l.name}  ({size} bytes) ==="))
+        if head_n or tail_n:
+            if head_n:
+                with l.open() as f:
+                    for i, line in enumerate(f):
+                        if i >= head_n: break
+                        sys.stdout.write(line)
+            if tail_n:
+                # cheap tail: read last ~64KB and split
+                with l.open("rb") as f:
+                    f.seek(0, 2); end = f.tell()
+                    f.seek(max(0, end - 65536))
+                    chunk = f.read().decode("utf-8", errors="replace")
+                lines = chunk.splitlines(keepends=True)[-tail_n:]
+                if head_n and lines:
+                    print(c("90", "...\n"), end="")
+                sys.stdout.write("".join(lines))
+        else:
+            # default: stream line-by-line, no full slurp
+            with l.open() as f:
+                for line in f:
+                    sys.stdout.write(line)
+        print()
+    return 0
+
+def cmd_diff(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    wt = WORKTREES_DIR / args.run_id / args.task
+    if not wt.exists():
+        die(f"no worktree at {wt}")
+    res = git("diff", "main...HEAD", cwd=wt, check=False)
+    print(res.stdout)
+    return 0
+
+def cmd_reply(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    pq = run_dir / "pending-question.txt"
+    if not pq.exists():
+        die("no pending question for this run")
+    (run_dir / "reply.txt").write_text(args.text)
+    print(c("32", f"replied: {args.text}"))
+    return 0
+
+def _format_codex_log_line(line: str, role_hint: str = "") -> str | None:
+    """Convert a single codex --json stdout line to a clean human-readable line.
+
+    Used by `tail` to render the per-agent deep view nicely instead of raw JSON.
+    Returns None to suppress (e.g. low-signal item.started events).
+    """
+    line = line.rstrip("\n")
+    if not line.strip():
+        return None
+    try:
+        obj = json.loads(line)
+    except Exception:
+        # non-JSON header lines from the log file itself (the `$ cmd` line etc.)
+        return c("90", line)
+    if not isinstance(obj, dict):
+        return c("90", line)
+    typ = obj.get("type", "")
+    item = obj.get("item") if isinstance(obj.get("item"), dict) else None
+    role_tag = c(ROLE_COLOR.get(role_hint, "37"), role_hint.upper().ljust(11)) if role_hint else ""
+
+    if typ == "turn.completed":
+        u = obj.get("usage", {})
+        return f"  {role_tag} {c('90', '• turn complete  in=' + str(u.get('input_tokens','?')) + '  out=' + str(u.get('output_tokens','?')) + '  cached=' + str(u.get('cached_input_tokens','?')) + '  reasoning=' + str(u.get('reasoning_output_tokens','?')))}"
+
+    if typ == "item.started" and item:
+        it = item.get("type", "")
+        if it == "reasoning":
+            return f"  {role_tag} {c('90', '· thinking…')}"
+        if it == "command_execution":
+            cmd = (item.get("command") or "").strip()
+            return f"  {role_tag} {c('94', '› ')}{c('90', cmd[:200])}"
+        if it == "todo_list":
+            items = item.get("items", [])
+            done = sum(1 for x in items if x.get("completed"))
+            return f"  {role_tag} {c('35','::')} plan {c('90', f'({done}/{len(items)} done)')}"
+        return None
+
+    if typ == "item.completed" and item:
+        it = item.get("type", "")
+        if it == "reasoning":
+            text = (item.get("text") or "").strip()
+            # first non-empty line, italicized via dim
+            head = next((s for s in text.splitlines() if s.strip()), "")
+            head = head.strip("*# ").strip()
+            return f"  {role_tag} {c('90', '· ' + head[:160])}"
+        if it == "command_execution":
+            ec = item.get("exit_code", "?")
+            cmd = (item.get("command") or "").strip()[:120]
+            col = "31" if ec != 0 else "92"
+            sym = "✗" if ec != 0 else "✓"
+            return f"  {role_tag} {c(col, sym + ' ')}{c('90', f'rc={ec}  ')}{c('90', cmd)}"
+        if it == "agent_message":
+            text = (item.get("text") or "").strip()
+            # try render as JSON if it parses; otherwise show first 240 chars
+            try:
+                parsed = json.loads(text)
+                summary = f"status={parsed.get('status','?')}"
+                if "question" in parsed:
+                    summary += f"  question={parsed['question'][:80]}"
+                elif "summary" in parsed:
+                    summary += f"  summary={parsed['summary'][:80]}"
+                return f"  {role_tag} {c('92','↳ answered  ')}{c('90', summary)}"
+            except Exception:
+                return f"  {role_tag} {c('92','↳ answered  ')}{c('90', text[:200])}"
+        if it == "todo_list":
+            items = item.get("items", [])
+            done = sum(1 for x in items if x.get("completed"))
+            return f"  {role_tag} {c('35','::')} plan {c('90', f'({done}/{len(items)} done)')}"
+        return None
+
+    return None  # ignore other event types
+
+def cmd_tail(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    logs_dir = run_dir / "logs"
+    if not logs_dir.exists():
+        die("no logs yet")
+    needle = args.role or args.task or args.label
+    candidates = sorted(logs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if needle:
+        candidates = [p for p in candidates if needle in p.name]
+    if not candidates:
+        die(f"no log matched '{needle}'")
+    log_path = candidates[0]
+    # derive role hint from log filename (e.g. "intake-01-..." has no role,
+    # but "impl-foo-r1-..." starts with role-ish prefix; we extract first token)
+    role_hint = ""
+    name = log_path.name
+    for r in ROLE_COLOR:
+        if r in name or name.startswith(r[:4]):
+            role_hint = r; break
+    if "intake" in name or "spec-authoring" in name or "phase-close" in name or "final" in name:
+        role_hint = "ceo"
+    elif name.startswith("plan-") or "cto-loop" in name:
+        role_hint = "cto"
+    elif name.startswith("arch-"):
+        role_hint = "architect"
+    elif name.startswith("impl-"):
+        role_hint = "implementer"
+    elif name.startswith("rev-"):
+        role_hint = "reviewer"
+    elif name.startswith("audit-"):
+        role_hint = "auditor"
+
+    header = c("1;36", f"━━ tail  {log_path.relative_to(ROOT)}  ━━")
+    if role_hint:
+        header += "  " + c(ROLE_COLOR.get(role_hint, "37"), f"[{role_hint}]")
+    header += "  " + c("90", "(Ctrl-C to stop, --raw for unparsed)")
+    print(header)
+    print(c("90", "─" * 78))
+
+    def emit(line: str) -> None:
+        if args.raw:
+            print(line, end="" if line.endswith("\n") else "\n", flush=True)
+            return
+        out = _format_codex_log_line(line.rstrip("\n"), role_hint=role_hint)
+        if out is not None:
+            print(out, flush=True)
+
+    with log_path.open() as f:
+        for line in f:
+            emit(line)
+        while True:
+            line = f.readline()
+            if not line:
+                newer = sorted(logs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if needle:
+                    newer = [p for p in newer if needle in p.name]
+                if newer and newer[0] != log_path:
+                    log_path = newer[0]
+                    print()
+                    print(c("1;36", f"━━ switching to newer  {log_path.name}  ━━"))
+                    print(c("90", "─" * 78), flush=True)
+                    f.close()
+                    f = log_path.open()
+                    continue
+                time.sleep(0.5)
+                continue
+            emit(line)
+
+def cmd_restart(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    config = read_json(run_dir / "compiled-config.json", {})
+    if not config:
+        die("compiled-config.json missing — cannot restart")
+    failures = read_json(run_dir / "failures.json", [])
+    failure = next((f for f in failures if f.get("task_id") == args.task), None)
+    meta = load_task_meta(run_dir, args.task)
+    if not meta:
+        die(f"no saved task meta for {args.task} (run_dir/tasks/{args.task}.json missing)")
+    if not failure:
+        print(c("33", f"warn: no failure record for {args.task}; restarting anyway"))
+    mem = Memory(run_dir)
+    # recompute the canonical task branch name in case persisted meta is stale
+    expected_task_branch = f"{meta.get('branch','?')}--task-{args.task}"
+    print(c("1;36", f"restarting task={args.task} run={args.run_id}"))
+    print(c("90", f"  worktree:     {meta.get('worktree','?')}"))
+    print(c("90", f"  phase branch: {meta.get('branch','?')}"))
+    print(c("90", f"  task branch:  {expected_task_branch}"))
+    emit_event(run_dir, "task_restart", task_id=args.task, run_id=args.run_id)
+    try:
+        result = run_task(run_dir, config, mem,
+                          meta["task"], meta["phase"], meta["plan_path"], meta["branch"])
+    except ParseError as e:
+        print(c("1;31", f"PARSE_ERROR role={e.role} label={e.label} — see logs"))
+        return 2
+    status = result.get("status", "?")
+    if status == "GREEN":
+        print(c("1;32", f"\n✓ task {args.task} now GREEN. failures registry cleared for this task."))
+        print(c("90", "  re-run auditor manually or re-launch run to merge: not auto-merged on restart."))
+        return 0
+    print(c("1;31", f"\n✗ task {args.task} still failed: {status}"))
+    return 1
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    run_dir = resolve_run_dir(args.run_id)
+    update_state(run_dir, status="stopped", stopped=now_iso())
+    print(c("33", "marked stopped (in-flight role calls will finish; no force-kill)"))
+    return 0
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ARGPARSE & MAIN
+# ════════════════════════════════════════════════════════════════════════════════
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="codex-org", description="codex-only autonomous org")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("start", help="start a new run (foreground stream)")
+    s.add_argument("prompt", help="user prompt")
+    s.add_argument("--ceo-mode", choices=["product","technical"], default="technical")
+    s.add_argument("--detach", action="store_true", help="run in background")
+    s.set_defaults(func=cmd_start)
+
+    a = sub.add_parser("attach", help="attach to a running run")
+    a.add_argument("run_id")
+    a.set_defaults(func=cmd_attach)
+
+    l = sub.add_parser("list", help="list runs")
+    l.add_argument("--json", action="store_true")
+    l.set_defaults(func=cmd_list)
+
+    o = sub.add_parser("orgchart", help="snapshot org state")
+    o.add_argument("run_id")
+    o.set_defaults(func=cmd_orgchart)
+
+    lg = sub.add_parser("logs", help="show role/task logs (streams; use --head/--tail for huge logs)")
+    lg.add_argument("run_id")
+    lg.add_argument("--role")
+    lg.add_argument("--task")
+    lg.add_argument("--head", type=int, default=0, help="print first N lines per log (default: all)")
+    lg.add_argument("--tail", type=int, default=0, help="print last N lines per log")
+    lg.set_defaults(func=cmd_logs)
+
+    d = sub.add_parser("diff", help="show worktree diff for a task")
+    d.add_argument("run_id")
+    d.add_argument("--task", required=True)
+    d.set_defaults(func=cmd_diff)
+
+    r = sub.add_parser("reply", help="off-band reply to pending question")
+    r.add_argument("run_id")
+    r.add_argument("text")
+    r.set_defaults(func=cmd_reply)
+
+    tl = sub.add_parser("tail", help="live-follow one agent's codex log (parsed, human-readable)")
+    tl.add_argument("run_id")
+    tl.add_argument("--role", help="filter by role (ceo, cto, architect, implementer, reviewer, auditor)")
+    tl.add_argument("--task", help="filter by task id substring")
+    tl.add_argument("--label", help="filter by exact label substring (e.g. plan-p01, impl-foo-r1)")
+    tl.add_argument("--raw", action="store_true", help="print unparsed log content (full codex --json stream)")
+    tl.set_defaults(func=cmd_tail)
+
+    rs = sub.add_parser("restart", help="restart a failed task in an existing run")
+    rs.add_argument("run_id")
+    rs.add_argument("--task", required=True, help="task id (see `orgchart` failed tasks section)")
+    rs.set_defaults(func=cmd_restart)
+
+    st = sub.add_parser("stop", help="mark a run as stopped")
+    st.add_argument("run_id")
+    st.set_defaults(func=cmd_stop)
+
+    sv = sub.add_parser("_serve", help=argparse.SUPPRESS)
+    sv.add_argument("run_id")
+    sv.set_defaults(func=cmd_serve)
+
+    return p
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+if __name__ == "__main__":
+    sys.exit(main())

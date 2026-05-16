@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# bootstrap-codex-org: install codex-org into an existing project.
+#
+# Usage:
+#   scripts/bootstrap-codex-org <target-dir>
+#
+# Idempotent. Preserves existing files. Only adds what's missing.
+
+set -euo pipefail
+
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+usage() {
+  cat <<EOF
+bootstrap-codex-org
+
+Usage:
+  scripts/bootstrap-codex-org <target-dir>
+
+Installs:
+  AGENTS.md                    (prepended if exists)
+  PROJECT.md                   (created if missing)
+  prompts/{ceo,cto,architect,implementer,reviewer,auditor}.md
+  workflow/org.defaults.json
+  scripts/codex-org
+  scripts/bootstrap-codex-org
+  .codex/config.toml           (only if missing; never overwritten)
+  .codex/config-profiles.toml  (only if missing)
+  .codex/agents/{ceo,cto,implementer,reviewer}.toml
+  docs/superpowers/{specs,plans}/  (empty dirs)
+  agent-runs/                  (scaffold)
+  .worktrees/                  (scaffold)
+  .gitignore entries: agent-runs/  .worktrees/  docs/superpowers/  workflow/*
+
+Never touched: README.md, existing files under any installed dir.
+
+All agent behavior is inlined into prompts/<role>.md — no external skill files
+are required. The skills/ directory in the source repo is not copied.
+EOF
+}
+
+case "${1:-}" in
+  -h|--help|"") usage; [[ -z "${1:-}" ]] && exit 1 || exit 0 ;;
+esac
+
+TARGET="$1"
+[[ -d "$TARGET" ]] || { echo "target dir does not exist: $TARGET" >&2; exit 1; }
+TARGET="$(cd "$TARGET" && pwd)"
+
+[[ "$TARGET" == "$SRC" ]] && { echo "refusing to bootstrap into source itself" >&2; exit 1; }
+
+echo "▶ source: $SRC"
+echo "▶ target: $TARGET"
+echo
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+copy_if_missing() {
+  local rel="$1"
+  local src="$SRC/$rel"
+  local dst="$TARGET/$rel"
+  if [[ -e "$dst" ]]; then
+    echo "  keep   $rel (exists)"
+    return
+  fi
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  [[ -x "$src" ]] && chmod +x "$dst" || true
+  echo "  add    $rel"
+}
+
+copy_tree_if_missing() {
+  local rel="$1"
+  local src="$SRC/$rel"
+  [[ -d "$src" ]] || return 0
+  local rp
+  while IFS= read -r f; do
+    rp="${f#$src/}"
+    copy_if_missing "$rel/$rp"
+  done < <(find "$src" -type f)
+}
+
+prepend_md() {
+  local rel="$1"
+  local src="$SRC/$rel"
+  local dst="$TARGET/$rel"
+  mkdir -p "$(dirname "$dst")"
+  if [[ ! -f "$dst" ]]; then
+    cp "$src" "$dst"
+    echo "  add    $rel"
+    return
+  fi
+  if grep -qF "$(head -1 "$src")" "$dst" 2>/dev/null && head -5 "$dst" | grep -qF "$(sed -n '3p' "$src" | head -c40)" 2>/dev/null; then
+    echo "  keep   $rel (already starts with starter content)"
+    return
+  fi
+  local tmp; tmp="$(mktemp)"
+  {
+    cat "$src"
+    printf '\n\n<!-- existing project content preserved below -->\n\n'
+    cat "$dst"
+  } > "$tmp"
+  mv "$tmp" "$dst"
+  echo "  merge  $rel (starter prepended)"
+}
+
+ensure_gitignore() {
+  local gi="$TARGET/.gitignore"
+  touch "$gi"
+  # Top-level entries
+  for entry in "agent-runs/*" "!agent-runs/.gitkeep" \
+               ".worktrees/*" "!.worktrees/.gitkeep" \
+               "docs/superpowers/specs/*" "!docs/superpowers/specs/.gitkeep" \
+               "docs/superpowers/plans/*" "!docs/superpowers/plans/.gitkeep" \
+               "workflow/*" "!workflow/org.defaults.json"; do
+    if ! grep -Fqx "$entry" "$gi"; then
+      printf '%s\n' "$entry" >> "$gi"
+      echo "  add    .gitignore: $entry"
+    fi
+  done
+}
+
+# ── install ───────────────────────────────────────────────────────────────────
+
+echo "── markdown contracts"
+prepend_md AGENTS.md
+[[ -f "$TARGET/PROJECT.md" ]] && echo "  keep   PROJECT.md (exists)" || {
+  cat > "$TARGET/PROJECT.md" <<'EOF'
+# PROJECT.md
+
+User-facing changelog of changes made by the codex-org. CEO appends one block per shipped phase.
+
+## Status
+(initial)
+EOF
+  echo "  add    PROJECT.md"
+}
+
+echo
+echo "── scripts"
+mkdir -p "$TARGET/scripts"
+copy_if_missing "scripts/codex-org"
+copy_if_missing "scripts/bootstrap-codex-org"
+
+echo
+echo "── prompts"
+copy_tree_if_missing prompts
+
+echo
+echo "── workflow"
+copy_tree_if_missing workflow
+
+echo
+echo "── .codex (only added if absent — never overwrites your codex config)"
+copy_if_missing ".codex/config.toml"
+copy_if_missing ".codex/config-profiles.toml"
+copy_tree_if_missing ".codex/agents"
+
+echo
+echo "── docs scaffold"
+mkdir -p "$TARGET/docs/superpowers/specs" "$TARGET/docs/superpowers/plans"
+touch "$TARGET/docs/superpowers/specs/.gitkeep" "$TARGET/docs/superpowers/plans/.gitkeep"
+echo "  add    docs/superpowers/{specs,plans}/.gitkeep"
+
+echo
+echo "── runtime scaffold"
+mkdir -p "$TARGET/agent-runs" "$TARGET/.worktrees"
+touch "$TARGET/agent-runs/.gitkeep" "$TARGET/.worktrees/.gitkeep"
+echo "  add    agent-runs/.gitkeep .worktrees/.gitkeep"
+
+echo
+echo "── .gitignore"
+ensure_gitignore
+
+echo
+echo "✓ bootstrap complete."
+echo
+echo "Next steps in $TARGET :"
+echo "  1. cd $TARGET"
+echo "  2. ensure git repo: git init -b main && git add -A && git commit -m init  (if not already)"
+echo "  3. (optional) git remote add origin <url>   # for gh pr create"
+echo "  4. codex login                              # if not authed"
+echo "  5. scripts/codex-org start \"<your prompt>\""
+echo
+echo "Re-run this command anytime; it only adds missing files."

@@ -41,6 +41,7 @@ test("ensureSchema creates all vibedeck_* tables on a fresh DB", () => {
       "vibedeck_session_branch_windows",
       "vibedeck_session_entire_links",
       "vibedeck_entire_checkpoint_matches",
+      "vibedeck_branch_usage_facts",
       "vibedeck_repos",
       "vibedeck_skills",
       "vibedeck_head_history",

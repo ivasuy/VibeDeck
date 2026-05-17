@@ -23,8 +23,12 @@
   ],
   "scripts": {
     "dashboard:build": "npm --prefix dashboard run build",
-    "test": "node --test test/*.test.js",
+    "test": "node scripts/run-tests.js",
     "postinstall": "node scripts/npm-postinstall.js"
   },
-  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800"
+  "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
+  "devDependencies": {
+    "@sourcegraph/scip-typescript": "^0.4.0",
+    "esbuild": "^0.28.0"
+  }
 }

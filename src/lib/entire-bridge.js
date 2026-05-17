@@ -263,7 +263,12 @@ async function _runEntire(args, { cwd, timeoutMs = 30000 } = {}) {
   _validateArgvStrings(args, { name: 'args' });
   try {
     const r = await execa('entire', args, { cwd, timeout: timeoutMs, reject: false });
-    return { exitCode: r.exitCode, stdout: String(r.stdout), stderr: String(r.stderr) };
+    const exitCode = Number.isInteger(r.exitCode)
+      ? r.exitCode
+      : Number.isInteger(r.code)
+        ? r.code
+        : 0;
+    return { exitCode, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
   } catch (err) {
     return { exitCode: -1, stdout: '', stderr: String(err.shortMessage || err.message) };
   }

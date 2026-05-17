@@ -3,13 +3,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { DatabaseSync } = require('node:sqlite');
 const {
-  resolveUsageCost,
   createCostAccumulator,
   addCostToAccumulator,
   finalizeCostAccumulator,
 } = require('./cost-estimation');
+const { readBranchUsageFactRows } = require('./sessions/branch-usage-facts');
 
 function repoRootExists(repoRoot) {
   if (typeof repoRoot !== 'string' || !repoRoot.trim()) return false;
@@ -103,6 +102,22 @@ function normalizePathString(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function userFacingLocalPath(value) {
+  const normalized = normalizePathString(value);
+  if (!normalized) return null;
+  const alternate = normalized.startsWith('/private/var/')
+    ? `/var/${normalized.slice('/private/var/'.length)}`
+    : normalized.startsWith('/private/tmp/')
+      ? `/tmp/${normalized.slice('/private/tmp/'.length)}`
+      : null;
+  if (!alternate) return normalized;
+  try {
+    return fs.realpathSync(alternate) === normalized ? alternate : normalized;
+  } catch {
+    return normalized;
+  }
+}
+
 function stripTrailingDotGit(repoCommonDir) {
   const normalized = normalizePathString(repoCommonDir);
   if (!normalized) return null;
@@ -189,15 +204,22 @@ function listGitBranches(repoRoot) {
   }
 }
 
-function createUsageEntry({ project_key, project_ref, repo_root }) {
+function isArchivedProjectState(projectState) {
+  return projectState === 'git_missing' || projectState === 'cwd_missing';
+}
+
+function createUsageEntry({ project_key, project_ref, repo_root, project_state }) {
   const cleanProjectKey = normalizePathString(project_key) || 'unknown';
   const cleanProjectRef = normalizePathString(project_ref) || cleanProjectKey;
   const cleanRepoRoot = normalizePathString(repo_root);
+  const cleanProjectState = normalizePathString(project_state);
 
   return {
     project_key: cleanProjectKey,
     project_ref: cleanProjectRef,
     repo_root: cleanRepoRoot,
+    project_state: cleanProjectState,
+    archived: isArchivedProjectState(cleanProjectState),
     total_tokens: 0,
     billable_total_tokens: 0,
     last_seen_at: null,
@@ -215,6 +237,10 @@ function ensureUsageEntry(map, key, descriptor) {
   const entry = map.get(key);
   if (!entry.repo_root && descriptor.repo_root) entry.repo_root = descriptor.repo_root;
   if (!entry.project_ref && descriptor.project_ref) entry.project_ref = descriptor.project_ref;
+  if (!entry.project_state && descriptor.project_state) {
+    entry.project_state = descriptor.project_state;
+    entry.archived = isArchivedProjectState(descriptor.project_state);
+  }
   if (descriptor.project_key && (!entry.project_key || entry.project_key === entry.project_ref)) {
     entry.project_key = descriptor.project_key;
   }
@@ -370,6 +396,8 @@ function finalizeUsageEntry(entry) {
     project_key: entry.project_key,
     project_ref: entry.project_ref,
     repo_root: entry.repo_root,
+    project_state: entry.project_state,
+    archived: Boolean(entry.archived),
     total_tokens: String(entry.total_tokens),
     billable_total_tokens: String(entry.billable_total_tokens),
     estimated_total_cost_usd: formatCost(totalCost.total_cost_usd),
@@ -399,146 +427,196 @@ function compareProjectUsageEntries(a, b, sortMode) {
   return String(a?.project_key || '').localeCompare(String(b?.project_key || ''));
 }
 
+function toFiniteNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function toBooleanFlag(value) {
+  return value === true || value === 1 || value === '1';
+}
+
+function factCost(row) {
+  return {
+    total_cost_usd: toFiniteNumber(row?.total_cost_usd),
+    cost_estimated: toBooleanFlag(row?.cost_estimated),
+    cost_quality:
+      typeof row?.cost_quality === 'string' && row.cost_quality.trim()
+        ? row.cost_quality.trim()
+        : row?.total_cost_usd == null
+          ? 'partial_unknown'
+          : 'mixed_known',
+  };
+}
+
+function factProjectRef(row) {
+  return (
+    userFacingLocalPath(row?.project_ref) ||
+    userFacingLocalPath(row?.repo_root) ||
+    userFacingLocalPath(row?.cwd)
+  );
+}
+
+function factProjectState(row) {
+  return normalizePathString(row?.project_state) || null;
+}
+
+function isGitFactRow(row) {
+  return String(factProjectState(row) || '').startsWith('git_');
+}
+
+function factProjectRepoRoot(row, projectRef) {
+  if (!isGitFactRow(row)) return null;
+  return normalizePathString(projectRef) || userFacingLocalPath(row?.repo_root);
+}
+
+function factWorktreeKey(row, projectRef) {
+  if (isGitFactRow(row)) {
+    return userFacingLocalPath(row?.repo_root) || normalizePathString(projectRef);
+  }
+  return normalizePathString(projectRef);
+}
+
+function factWorktreeProjectKey(row, worktreeKey) {
+  if (typeof row?.project_key === 'string' && row.project_key.trim() && !isGitFactRow(row)) {
+    return row.project_key.trim();
+  }
+  return path.basename(worktreeKey || '') || normalizePathString(row?.project_key) || 'unknown';
+}
+
+function factProjectKey(row, fallbackRef) {
+  return normalizePathString(row?.project_key) || localProjectKeyForDepth(fallbackRef, 1);
+}
+
+function factActivityAt(row) {
+  return row?.last_observed_at || row?.first_observed_at || null;
+}
+
+function filterFactRowsForProjectUsage(rows, { from = '', to = '', timeZoneContext = null } = {}) {
+  return rows.filter((row) => {
+    const day = projectUsageDayKey(factActivityAt(row), timeZoneContext);
+    if (!day) return false;
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+    return true;
+  });
+}
+
+function buildFactProjectKeyResolver(projectRowsByRef) {
+  const refs = Array.from(projectRowsByRef.keys()).filter(Boolean);
+  const disambiguatedLabels = buildLocalProjectKeyMap(refs);
+  const refsByFactKey = new Map();
+
+  for (const [projectRef, rows] of projectRowsByRef) {
+    const key = factProjectKey(rows[0], projectRef);
+    if (!refsByFactKey.has(key)) refsByFactKey.set(key, new Set());
+    refsByFactKey.get(key).add(projectRef);
+  }
+
+  return (projectRef, row) => {
+    const key = factProjectKey(row, projectRef);
+    if ((refsByFactKey.get(key)?.size || 0) > 1) {
+      return disambiguatedLabels.get(projectRef) || key;
+    }
+    return key;
+  };
+}
+
 function readProjectUsageEntries(
   dbPath,
   { from = '', to = '', timeZoneContext = null, sourceFilter = null } = {},
 ) {
   if (!fs.existsSync(dbPath)) return [];
-  const clauses = ['repo_root IS NOT NULL', "repo_root <> ''"];
-  const params = [];
 
-  if (sourceFilter && sourceFilter.size > 0) {
-    const placeholders = Array.from(sourceFilter, () => '?').join(', ');
-    clauses.push(`LOWER(COALESCE(provider, '')) IN (${placeholders})`);
-    params.push(...sourceFilter);
+  const filteredRows = filterFactRowsForProjectUsage(
+    readBranchUsageFactRows(dbPath, { sourceFilter, includeArchived: false }),
+    { from, to, timeZoneContext },
+  );
+  if (filteredRows.length === 0) return [];
+
+  const rowsByProjectRef = new Map();
+  for (const row of filteredRows) {
+    const projectRef = factProjectRef(row);
+    if (!projectRef) continue;
+    if (!rowsByProjectRef.has(projectRef)) rowsByProjectRef.set(projectRef, []);
+    rowsByProjectRef.get(projectRef).push(row);
+  }
+  if (rowsByProjectRef.size === 0) return [];
+
+  const projectKeyFor = buildFactProjectKeyResolver(rowsByProjectRef);
+  const gitBranchesByWorktree = new Map();
+  for (const row of filteredRows) {
+    const worktreeKey = factWorktreeKey(row, factProjectRef(row));
+    if (isGitFactRow(row) && worktreeKey && !gitBranchesByWorktree.has(worktreeKey)) {
+      gitBranchesByWorktree.set(worktreeKey, listGitBranches(worktreeKey));
+    }
   }
 
-  const db = new DatabaseSync(dbPath, { readOnly: true });
-  try {
-    const rows = db.prepare(`
-      SELECT
-        repo_root,
-        repo_common_dir,
-        parent_repo,
-        provider,
-        branch,
-        model,
-        COALESCE(total_tokens, 0) AS total_tokens,
-        total_cost_usd,
-        last_observed_at,
-        input_tokens,
-        cached_input_tokens,
-        cache_creation_input_tokens,
-        output_tokens,
-        reasoning_output_tokens,
-        cost_estimated,
-        cost_quality,
-        COALESCE(last_observed_at, ended_at, updated_at, started_at) AS activity_at
-      FROM vibedeck_sessions
-      WHERE ${clauses.join(' AND ')}
-    `).all(...params);
-    const filteredRows = rows
-      .filter((row) => repoRootExists(row?.repo_root))
-      .filter((row) => {
-        const day = projectUsageDayKey(row?.activity_at, timeZoneContext);
-        if (!day) return false;
-        if (from && day < from) return false;
-        if (to && day > to) return false;
-        return true;
-      });
-    if (filteredRows.length === 0) return [];
+  const projects = new Map();
+  for (const row of filteredRows) {
+    const projectRef = factProjectRef(row);
+    if (!projectRef) continue;
+    const projectState = factProjectState(row);
+    const projectKey = projectKeyFor(projectRef, row);
+    const projectRepoRoot = factProjectRepoRoot(row, projectRef);
+    const worktreeKey = factWorktreeKey(row, projectRef);
+    if (!worktreeKey) continue;
 
-    const projectRoots = Array.from(
-      new Set(
-        filteredRows
-          .map((row) => deriveProjectRoot(row?.parent_repo, row?.repo_common_dir, row?.repo_root))
-          .filter(Boolean),
-      ),
-    );
-    const projectLabels = buildLocalProjectKeyMap(projectRoots);
-    const gitBranchesByWorktree = new Map();
-    for (const row of filteredRows) {
-      const repoRoot = normalizePathString(row?.repo_root);
-      if (repoRoot && !gitBranchesByWorktree.has(repoRoot)) {
-        gitBranchesByWorktree.set(repoRoot, listGitBranches(repoRoot));
-      }
+    if (!projects.has(projectRef)) {
+      projects.set(projectRef, {
+        project: ensureUsageEntry(new Map(), projectRef, {
+          project_key: projectKey,
+          project_ref: projectRef,
+          repo_root: projectRepoRoot,
+          project_state: projectState,
+          git_branches: [],
+        }),
+        worktrees: new Map(),
+      });
     }
 
-    const projects = new Map();
-    for (const row of filteredRows) {
-      const repoRoot = normalizePathString(row?.repo_root);
-      if (!repoRoot) continue;
-      const projectRoot = deriveProjectRoot(row?.parent_repo, row?.repo_common_dir, row?.repo_root) || repoRoot;
-      const projectKey = projectLabels.get(projectRoot) || projectRoot;
-      const worktreeKey = repoRoot;
-      if (!projects.has(projectRoot)) {
-        projects.set(projectRoot, {
-          project: ensureUsageEntry(new Map(), projectRoot, {
-            project_key: projectKey,
-            project_ref: projectRoot,
-            repo_root: projectRoot,
-            git_branches: [],
-          }),
-          worktrees: new Map(),
-        });
-      }
-
-      const descriptor = projects.get(projectRoot);
-      const projectEntry = descriptor.project;
-      const worktreeEntry = ensureUsageEntry(descriptor.worktrees, worktreeKey, {
-        project_key: path.basename(repoRoot),
-        project_ref: repoRoot,
-        repo_root: repoRoot,
-        git_branches: gitBranchesByWorktree.get(repoRoot) || [],
-      });
-
-      const branchName = typeof row?.branch === 'string' && row.branch.trim() ? row.branch.trim() : null;
-      const lastSeenAt = normalizeIsoTimestamp(row?.activity_at);
-      const costResult = resolveUsageCost({
-        source: row?.provider,
-        model: row?.model,
-        total_tokens: Number(row?.total_tokens || 0),
-        input_tokens: Number(row?.input_tokens || 0),
-        cached_input_tokens: Number(row?.cached_input_tokens || 0),
-        cache_creation_input_tokens: Number(row?.cache_creation_input_tokens || 0),
-        output_tokens: Number(row?.output_tokens || 0),
-        reasoning_output_tokens: Number(row?.reasoning_output_tokens || 0),
-        stored_cost_usd: row?.total_cost_usd,
-        stored_cost_is_authoritative: row?.total_cost_usd != null && Number(row?.cost_estimated || 0) === 0,
-      });
-
-      const group = {
-        provider: row?.provider,
-        model: row?.model,
-        total_tokens: Number(row?.total_tokens || 0),
-        billable_total_tokens: Number(row?.total_tokens || 0),
-        session_count: 1,
-        last_seen_at: lastSeenAt,
-        branches: branchName ? [branchName] : [],
-        costResult,
-      };
-      addUsageGroup(projectEntry, group);
-      addUsageGroup(worktreeEntry, group);
-      for (const gitBranch of gitBranchesByWorktree.get(repoRoot) || []) {
-        projectEntry._gitBranches.add(gitBranch);
-      }
-    }
-
-    return Array.from(projects.values()).map(({ project, worktrees }) => {
-      const finalizedProject = finalizeUsageEntry(project);
-      const finalizedWorktrees = Array.from(worktrees.values())
-        .map((entry) => finalizeUsageEntry(entry))
-        .sort((a, b) => Number(b.total_tokens) - Number(a.total_tokens));
-
-      return {
-        ...finalizedProject,
-        worktree_count: finalizedWorktrees.length,
-        worktrees: finalizedWorktrees,
-      };
+    const descriptor = projects.get(projectRef);
+    const projectEntry = descriptor.project;
+    const worktreeEntry = ensureUsageEntry(descriptor.worktrees, worktreeKey, {
+      project_key: factWorktreeProjectKey(row, worktreeKey),
+      project_ref: worktreeKey,
+      repo_root: isGitFactRow(row) ? worktreeKey : null,
+      project_state: projectState,
+      git_branches: gitBranchesByWorktree.get(worktreeKey) || [],
     });
-  } finally {
-    db.close();
+
+    const branchName = typeof row?.branch === 'string' && row.branch.trim() ? row.branch.trim() : null;
+    const lastSeenAt = normalizeIsoTimestamp(factActivityAt(row));
+    const group = {
+      provider: row?.provider,
+      model: row?.model,
+      total_tokens: Number(row?.total_tokens || 0),
+      billable_total_tokens: Number(row?.total_tokens || 0),
+      session_count: 1,
+      last_seen_at: lastSeenAt,
+      branches: branchName ? [branchName] : [],
+      costResult: factCost(row),
+    };
+    addUsageGroup(projectEntry, group);
+    addUsageGroup(worktreeEntry, group);
+    for (const gitBranch of gitBranchesByWorktree.get(worktreeKey) || []) {
+      projectEntry._gitBranches.add(gitBranch);
+    }
   }
+
+  return Array.from(projects.values()).map(({ project, worktrees }) => {
+    const finalizedProject = finalizeUsageEntry(project);
+    const finalizedWorktrees = Array.from(worktrees.values())
+      .map((entry) => finalizeUsageEntry(entry))
+      .sort((a, b) => Number(b.total_tokens) - Number(a.total_tokens));
+
+    return {
+      ...finalizedProject,
+      worktree_count: finalizedWorktrees.length,
+      worktrees: finalizedWorktrees,
+    };
+  });
 }
 
 module.exports = {

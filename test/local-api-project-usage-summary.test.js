@@ -8,6 +8,7 @@ const { test } = require("node:test");
 
 const { ensureSchema } = require("../src/lib/db");
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const { rebuildAllBranchUsageFacts } = require("../src/lib/sessions/branch-usage-facts");
 
 async function writeJsonLines(filePath, rows) {
   await fs.promises.writeFile(
@@ -256,6 +257,7 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -270,6 +272,86 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
     assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:55:00.000Z");
     assert.equal(body.entries[0].total_tokens, "525");
     assert.equal(body.entries.some((entry) => entry.project_ref === missingRepo), false);
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage reads default-visible git and non-git projects from canonical branch facts", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    const repoRoot = path.join(tmp, "Projects", "repo");
+    const scratchDir = path.join(tmp, "Projects", "scratch");
+    const missingDir = path.join(tmp, "Projects", "gone");
+    initGitRepo(repoRoot, ["main"]);
+    await fs.promises.mkdir(scratchDir, { recursive: true });
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "git-existing",
+        started_at: "2026-05-10T09:00:00.000Z",
+        ended_at: "2026-05-10T09:15:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: "main",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 100,
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "non-git-existing",
+        started_at: "2026-05-10T10:00:00.000Z",
+        ended_at: "2026-05-10T10:15:00.000Z",
+        cwd: scratchDir,
+        repo_root: null,
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 80,
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "cwd-missing",
+        started_at: "2026-05-10T11:00:00.000Z",
+        ended_at: "2026-05-10T11:15:00.000Z",
+        cwd: missingDir,
+        repo_root: null,
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 60,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    assert.deepEqual(
+      body.entries.map((entry) => entry.project_key).sort(),
+      ["repo", "scratch"],
+    );
+    assert.equal(body.entries.some((entry) => entry.project_ref === missingDir), false);
+    const scratch = body.entries.find((entry) => entry.project_ref === scratchDir);
+    assert.ok(scratch, "non-git existing folder must be present by folder ref");
+    assert.equal(scratch.project_state, "non_git_existing");
+    assert.equal(scratch.archived, false);
+    assert.deepEqual(scratch.branches, ["No branch"]);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -322,6 +404,7 @@ test("project usage skips remote queue rows when a matching live local repo has 
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -429,6 +512,7 @@ test("project usage recent sort uses latest session activity instead of latest s
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -513,6 +597,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -527,8 +612,8 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     assert.equal(entry.cost_estimated, true);
     assert.equal(entry.cost_quality, "mixed_known");
     assert.match(entry.estimated_total_cost_usd, /^\d+\.\d+$/);
-    assert.equal(entry.branch_count, 2);
-    assert.deepEqual(entry.branches, ["feature/project-cards", "main"]);
+    assert.equal(entry.branch_count, 1);
+    assert.deepEqual(entry.branches, ["Unknown branch"]);
 
     assert.deepEqual(
       entry.providers.map((provider) => provider.provider),
@@ -643,6 +728,7 @@ test("project usage applies DB-backed from, to, and source filters without break
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const filtered = await callEndpoint(
       queuePath,
@@ -720,6 +806,7 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,

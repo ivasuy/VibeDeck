@@ -456,10 +456,11 @@ function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id } 
   return groups.length;
 }
 
-function rebuildAllBranchUsageFacts(dbPath, { provider = null } = {}) {
+function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null } = {}) {
   if (!isNonEmptyString(dbPath)) {
     throw new TypeError('rebuildAllBranchUsageFacts: dbPath must be a non-empty string');
   }
+  const progress = typeof onProgress === 'function' ? onProgress : null;
   const db = new DatabaseSync(dbPath);
   try {
     const rows = provider
@@ -469,8 +470,16 @@ function rebuildAllBranchUsageFacts(dbPath, { provider = null } = {}) {
     db.exec('BEGIN IMMEDIATE');
     try {
       let rebuilt = 0;
-      for (const row of rows) {
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
         rebuilt += rebuildBranchUsageFactsForSession(db, { dbPath, provider: row.provider, session_id: row.session_id });
+        progress?.({
+          index: index + 1,
+          total: rows.length,
+          provider: row.provider,
+          session_id: row.session_id,
+          factsRebuilt: rebuilt,
+        });
       }
       db.exec('COMMIT');
       return rebuilt;
@@ -483,9 +492,10 @@ function rebuildAllBranchUsageFacts(dbPath, { provider = null } = {}) {
   }
 }
 
-function repairMissingProjectAttribution(dbPath, { provider = null } = {}) {
+function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null } = {}) {
   if (!isNonEmptyString(dbPath) || !fs.existsSync(dbPath)) return 0;
 
+  const progress = typeof onProgress === 'function' ? onProgress : null;
   const db = new DatabaseSync(dbPath);
   try {
     const rows = provider
@@ -521,7 +531,8 @@ function repairMissingProjectAttribution(dbPath, { provider = null } = {}) {
 
     db.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of rows) {
+      for (let index = 0; index < rows.length; index++) {
+        const row = rows[index];
         if (isNonEmptyString(row.cwd)) {
           let repo = null;
           try {
@@ -542,6 +553,13 @@ function repairMissingProjectAttribution(dbPath, { provider = null } = {}) {
           dbPath,
           provider: row.provider,
           session_id: row.session_id,
+        });
+        progress?.({
+          index: index + 1,
+          total: rows.length,
+          provider: row.provider,
+          session_id: row.session_id,
+          cwd: row.cwd || null,
         });
       }
       db.exec('COMMIT');

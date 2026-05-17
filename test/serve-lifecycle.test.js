@@ -37,3 +37,32 @@ test('serve startup lifecycle reporter prints visible startup phases', () => {
   assert.match(logs, /Dashboard ready: http:\/\/127\.0\.0\.1:7690/);
 });
 
+test('serve startup lifecycle reporter prints real provider progress with current file proof', () => {
+  const { createServeLifecycleReporter } = require('../src/commands/serve');
+  let logs = '';
+  const reporter = createServeLifecycleReporter({
+    stdout: {
+      write(chunk) {
+        logs += chunk;
+      },
+    },
+  });
+
+  reporter.provider('Codex', 'found 3 session files');
+  reporter.providerProgress('Codex', {
+    index: 2,
+    total: 3,
+    unit: 'files',
+    filePath: '/Users/example/.codex/sessions/2026/05/17/session-abc.jsonl',
+    eventsAggregated: 19,
+    bucketsQueued: 4,
+  });
+  reporter.providerDone('Codex', 'scanned 3 files · 19 events · 4 buckets');
+
+  assert.match(logs, /Codex: found 3 session files/);
+  assert.match(logs, /Codex: 2\/3 files/);
+  assert.match(logs, /session-abc\.jsonl/);
+  assert.match(logs, /19 events/);
+  assert.match(logs, /4 buckets/);
+  assert.match(logs, /Codex: scanned 3 files · 19 events · 4 buckets/);
+});

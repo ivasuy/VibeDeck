@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { test } = require('node:test');
 
-test('serve shutdown prints cleanup phases and only closes the server once on first interrupt', () => {
+test('serve shutdown prints cleanup phases and only closes the server once on first interrupt', async () => {
   const { createServeShutdownHandler } = require('../src/commands/serve');
   const server = new EventEmitter();
   let closeCalls = 0;
@@ -40,6 +40,7 @@ test('serve shutdown prints cleanup phases and only closes the server once on fi
   });
 
   shutdown();
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(closeCalls, 1);
   assert.equal(closeAllCalls, 1);
@@ -98,4 +99,61 @@ test('serve shutdown warns on repeated interrupt then force exits on the next in
     assert.equal(socket.ended, true);
     assert.equal(socket.destroyed, true);
   }
+});
+
+test('serve shutdown prints concrete resource cleanup proof for open sockets', async () => {
+  const { createServeShutdownHandler } = require('../src/commands/serve');
+  const server = new EventEmitter();
+  const socket = new EventEmitter();
+  socket.remoteAddress = '127.0.0.1';
+  socket.remotePort = 54231;
+  socket.ended = false;
+  socket.destroyed = false;
+  socket.end = () => {
+    socket.ended = true;
+    socket.emit('close');
+  };
+  socket.destroy = () => {
+    socket.destroyed = true;
+  };
+  const sockets = new Set([socket]);
+  let logs = '';
+  let exitCalls = 0;
+
+  server.closeAllConnections = () => {};
+  server.close = (callback) => {
+    callback?.();
+  };
+
+  const shutdown = createServeShutdownHandler({
+    server,
+    sockets,
+    syncInterval: { closed: false },
+    reaperInterval: { closed: false },
+    clearIntervalFn(interval) {
+      interval.closed = true;
+    },
+    stopHeadWatcherFn: async () => {},
+    setTimeoutFn: () => ({ unref() {} }),
+    exitFn: () => {
+      exitCalls += 1;
+    },
+    stdout: {
+      write(chunk) {
+        logs += chunk;
+      },
+    },
+  });
+
+  shutdown();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(exitCalls, 1);
+  assert.equal(socket.ended, true);
+  assert.match(logs, /background sync timer cleared/);
+  assert.match(logs, /session reaper timer cleared/);
+  assert.match(logs, /branch watcher stopped/);
+  assert.match(logs, /connection 1: 127\.0\.0\.1:54231 ending/);
+  assert.match(logs, /connection 1: 127\.0\.0\.1:54231 closed/);
+  assert.match(logs, /dashboard server closed/);
 });

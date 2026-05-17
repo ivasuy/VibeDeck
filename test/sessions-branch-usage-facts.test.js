@@ -9,6 +9,7 @@ const { test } = require('node:test');
 const { ensureSchema } = require('../src/lib/db');
 const {
   rebuildBranchUsageFactsForSession,
+  rebuildAllBranchUsageFacts,
   readBranchUsageFactRows,
   repairMissingProjectAttribution,
 } = require('../src/lib/sessions/branch-usage-facts');
@@ -103,6 +104,95 @@ function insertEvent(db, row) {
     ...row,
   });
 }
+
+test('rebuildAllBranchUsageFacts reports session-level rebuild progress', () => {
+  const fixture = makeDb();
+  try {
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 's1',
+        started_at: '2026-05-17T10:00:00.000Z',
+        ended_at: '2026-05-17T10:05:00.000Z',
+        cwd: fixture.dir,
+        repo_root: null,
+        model: 'gpt-5.3-codex',
+        total_tokens: 100,
+        last_observed_at: '2026-05-17T10:05:00.000Z',
+      });
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 's2',
+        started_at: '2026-05-17T10:10:00.000Z',
+        ended_at: '2026-05-17T10:15:00.000Z',
+        cwd: fixture.dir,
+        repo_root: null,
+        model: 'claude-opus-4-1',
+        total_tokens: 200,
+        last_observed_at: '2026-05-17T10:15:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+
+    const progress = [];
+    rebuildAllBranchUsageFacts(fixture.dbPath, {
+      onProgress(payload) {
+        progress.push(payload);
+      },
+    });
+
+    assert.equal(progress.length, 2);
+    assert.deepEqual(
+      progress.map((row) => [row.index, row.total, row.provider, row.session_id]),
+      [
+        [1, 2, 'codex', 's1'],
+        [2, 2, 'claude', 's2'],
+      ],
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('repairMissingProjectAttribution reports attribution repair progress', () => {
+  const fixture = makeDb();
+  try {
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'needs-repair',
+        started_at: '2026-05-17T11:00:00.000Z',
+        ended_at: '2026-05-17T11:05:00.000Z',
+        cwd: fixture.dir,
+        repo_root: null,
+        model: 'gpt-5.3-codex',
+        total_tokens: 100,
+        last_observed_at: '2026-05-17T11:05:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+
+    const progress = [];
+    repairMissingProjectAttribution(fixture.dbPath, {
+      onProgress(payload) {
+        progress.push(payload);
+      },
+    });
+
+    assert.equal(progress.length, 1);
+    assert.equal(progress[0].index, 1);
+    assert.equal(progress[0].total, 1);
+    assert.equal(progress[0].provider, 'codex');
+    assert.equal(progress[0].session_id, 'needs-repair');
+    assert.equal(progress[0].cwd, fixture.dir);
+  } finally {
+    fixture.cleanup();
+  }
+});
 
 test('branch facts split a cross-branch session by event time instead of wall-clock time', () => {
   const tmp = makeDb();

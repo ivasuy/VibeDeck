@@ -27,8 +27,35 @@ function getLocalServerUrl(port) {
 }
 
 function createServeLifecycleReporter({ stdout = process.stdout, enabled = true } = {}) {
+  let activeProgress = false;
+  let lastInlineProgressAt = 0;
+
   function write(line = "") {
     if (!enabled) return;
+    clearProgressLine();
+    stdout.write(`${line}\n`);
+  }
+
+  function supportsInlineProgress() {
+    return Boolean(enabled && stdout && stdout.isTTY);
+  }
+
+  function clearProgressLine() {
+    if (!activeProgress || !supportsInlineProgress()) return;
+    stdout.write("\r\u001b[K");
+    activeProgress = false;
+  }
+
+  function writeProgress(line, { force = false } = {}) {
+    if (!enabled) return;
+    if (supportsInlineProgress()) {
+      const now = Date.now();
+      if (!force && activeProgress && now - lastInlineProgressAt < 120) return;
+      lastInlineProgressAt = now;
+      stdout.write(`\r\u001b[K${line}`);
+      activeProgress = true;
+      return;
+    }
     stdout.write(`${line}\n`);
   }
 
@@ -39,10 +66,52 @@ function createServeLifecycleReporter({ stdout = process.stdout, enabled = true 
     provider(name, message) {
       write(`  ${name}: ${message}`);
     },
+    providerProgress(name, payload = {}) {
+      writeProgress(`  ${name}: ${formatProviderProgress(payload)}`, {
+        force: Number(payload.index) === Number(payload.total),
+      });
+    },
+    providerDone(name, message) {
+      write(`  ${name}: ${message}`);
+    },
     ready(url) {
       write(`Dashboard ready: ${url}`);
     },
   };
+}
+
+function formatLifecycleNumber(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return Math.trunc(n).toLocaleString("en-US");
+}
+
+function formatLifecyclePath(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const normalized = value.trim().split(path.sep).filter(Boolean);
+  if (normalized.length === 0) return path.basename(value.trim());
+  const tail = normalized.slice(-4).join(path.sep);
+  return normalized.length > 4 ? `.../${tail}` : tail;
+}
+
+function formatProviderProgress(payload = {}) {
+  const unit = payload.unit || "items";
+  const index = formatLifecycleNumber(payload.index || payload.recordsProcessed || payload.filesProcessed || 0);
+  const total = formatLifecycleNumber(payload.total || 0);
+  const parts = [`${index}/${total} ${unit}`];
+  const current =
+    formatLifecyclePath(payload.filePath)
+    || formatLifecyclePath(payload.current)
+    || formatLifecyclePath(payload.session_id)
+    || payload.current
+    || payload.session_id
+    || null;
+  if (current) parts.push(current);
+  const events = Number(payload.eventsAggregated);
+  if (Number.isFinite(events)) parts.push(`${formatLifecycleNumber(events)} events`);
+  const buckets = Number(payload.bucketsQueued);
+  if (Number.isFinite(buckets)) parts.push(`${formatLifecycleNumber(buckets)} buckets`);
+  return parts.join(" · ");
 }
 
 function createServeShutdownHandler({
@@ -59,6 +128,7 @@ function createServeShutdownHandler({
 } = {}) {
   let shuttingDown = false;
   let repeatInterrupts = 0;
+  let finished = false;
 
   function write(line = "") {
     stdout.write(`${line}\n`);
@@ -73,6 +143,7 @@ function createServeShutdownHandler({
     try {
       server?.closeAllConnections?.();
     } catch (_e) {}
+    finished = true;
     exitFn(0);
   }
 
@@ -92,19 +163,42 @@ function createServeShutdownHandler({
     write("Shutting down VibeDeck...");
     write("Stopping background sync...");
     try {
-      if (syncInterval) clearIntervalFn(syncInterval);
+      if (syncInterval) {
+        clearIntervalFn(syncInterval);
+        write("  background sync timer cleared");
+      } else {
+        write("  no background sync timer");
+      }
     } catch (_e) {}
     try {
-      if (reaperInterval) clearIntervalFn(reaperInterval);
+      if (reaperInterval) {
+        clearIntervalFn(reaperInterval);
+        write("  session reaper timer cleared");
+      } else {
+        write("  no session reaper timer");
+      }
     } catch (_e) {}
-    write("Stopping branch watcher...");
     try {
-      Promise.resolve(stopHeadWatcherFn(headWatcher)).catch(() => {});
+      write("Stopping branch watcher...");
     } catch (_e) {}
+    const watcherStopped = Promise.resolve()
+      .then(() => stopHeadWatcherFn(headWatcher))
+      .then(
+        () => write("  branch watcher stopped"),
+        (err) => write(`  branch watcher stop warning: ${err?.message || err}`),
+      );
 
     write(`Closing ${(sockets && sockets.size) || 0} open connection(s)...`);
+    let socketIndex = 0;
     for (const socket of sockets || []) {
+      socketIndex += 1;
+      const label = describeSocket(socket);
+      const prefix = `  connection ${socketIndex}: ${label}`;
       try {
+        if (typeof socket.once === "function") {
+          socket.once("close", () => write(`${prefix} closed`));
+        }
+        write(`${prefix} ending`);
         socket.end?.();
       } catch (_e) {}
     }
@@ -113,28 +207,56 @@ function createServeShutdownHandler({
     } catch (_e) {}
 
     write("Closing dashboard server...");
+    async function completeShutdown() {
+      if (finished) return;
+      finished = true;
+      await watcherStopped;
+      write("  dashboard server closed");
+      write("Shutdown complete.");
+      exitFn(0);
+    }
+
     try {
-      server?.close?.(() => {
+      if (typeof server?.close === "function") {
+        server.close(() => {
+          completeShutdown().catch(() => {
+            write("Shutdown complete.");
+            exitFn(0);
+          });
+        });
+      } else {
+        completeShutdown().catch(() => {
+          write("Shutdown complete.");
+          exitFn(0);
+        });
+      }
+    } catch (_e) {
+      completeShutdown().catch(() => {
         write("Shutdown complete.");
         exitFn(0);
       });
-    } catch (_e) {
-      write("Shutdown complete.");
-      exitFn(0);
       return;
     }
 
     const timer = setTimeoutFn(() => {
+      if (finished) return;
       for (const socket of sockets || []) {
         try {
           socket.destroy?.();
         } catch (_e) {}
       }
+      finished = true;
       write("Shutdown complete.");
       exitFn(0);
     }, 3000);
     if (timer && typeof timer.unref === "function") timer.unref();
   };
+}
+
+function describeSocket(socket) {
+  const address = socket?.remoteAddress || "local";
+  const port = socket?.remotePort;
+  return port ? `${address}:${port}` : String(address);
 }
 
 async function cmdServe(argv) {

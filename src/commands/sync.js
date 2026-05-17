@@ -55,6 +55,7 @@ const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
+const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { maybeRunPostSyncReadmeUpdate } = require("../lib/readme-sync/service");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
@@ -648,6 +649,8 @@ async function cmdSync(argv) {
       );
     }
     await recoverActiveSessionMetadata(dbPath);
+    repairMissingProjectAttribution(dbPath);
+    rebuildAllBranchUsageFacts(dbPath);
     await runEntireCheckpointBackfill({
       dbPath,
       trackerDir,
@@ -779,6 +782,7 @@ function clearCanonicalVibedeckTables(dbPath) {
     db.exec('BEGIN');
     try {
       db.exec(`
+        DELETE FROM vibedeck_branch_usage_facts;
         DELETE FROM vibedeck_session_branch_windows;
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;

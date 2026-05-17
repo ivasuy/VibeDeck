@@ -89,6 +89,26 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
           99, 0, 0, 'stored',
           '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z'
         );
+
+        INSERT INTO vibedeck_branch_usage_facts (
+          provider, session_id, scope_key, project_state, project_key, project_ref,
+          cwd, repo_root, repo_common_dir, parent_repo, branch, attribution_branch,
+          branch_kind, branch_resolution_tier, confidence, model,
+          first_observed_at, last_observed_at, event_count, total_tokens,
+          input_tokens, cached_input_tokens, cache_creation_input_tokens,
+          output_tokens, reasoning_output_tokens, conversation_count,
+          total_cost_usd, cost_estimated, cost_quality, token_reconciled,
+          cost_reconciled, created_at, updated_at
+        ) VALUES (
+          'codex', 'stale-session', 'unattributed:codex:stale-session', 'unattributed', 'Unattributed', NULL,
+          NULL, NULL, NULL, NULL, 'Unattributed', NULL,
+          'unattributed', 'D', 'unattributed', 'gpt-5.4',
+          '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z', 1, 999,
+          999, 0, 0,
+          0, 0, 1,
+          9.99, 0, 'stored', 0,
+          1, '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z'
+        );
       `);
     } finally {
       db.close();
@@ -123,8 +143,16 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
           total_tokens: row.total_tokens,
         }));
       const events = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events').get();
+      const facts = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_branch_usage_facts').get();
+      const windows = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_branch_windows').get();
+      const staleFacts = db
+        .prepare("SELECT COUNT(*) AS n FROM vibedeck_branch_usage_facts WHERE session_id = 'stale-session'")
+        .get();
       assert.deepEqual(sessions, [{ provider: 'codex', session_id: rolloutPath, total_tokens: 3 }]);
       assert.ok(Number(events.n) > 0);
+      assert.ok(Number(facts.n) > 0);
+      assert.equal(Number(windows.n), 0);
+      assert.equal(Number(staleFacts.n), 0);
     } finally {
       db.close();
     }

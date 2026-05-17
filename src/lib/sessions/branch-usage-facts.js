@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
 const { findBranchAt } = require('./head-history');
+const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
 const { resolveUsageCost } = require('../cost-estimation');
 
@@ -339,6 +340,30 @@ function readUpdateEvents(db, { provider, session_id }) {
     .all(provider, session_id);
 }
 
+function persistSessionRepoMetadata(db, { provider, session_id, repo } = {}) {
+  if (!repo || typeof repo !== 'object') return 0;
+  if (!isNonEmptyString(provider) || !isNonEmptyString(session_id)) return 0;
+  if (!isNonEmptyString(repo.repo_root)) return 0;
+
+  const now = new Date().toISOString();
+  return db
+    .prepare(
+      `
+      UPDATE vibedeck_sessions
+      SET repo_root = ?, repo_common_dir = ?, parent_repo = ?, updated_at = ?
+      WHERE provider = ? AND session_id = ?
+      `,
+    )
+    .run(
+      repo.repo_root.trim(),
+      isNonEmptyString(repo.repo_common_dir) ? repo.repo_common_dir.trim() : null,
+      isNonEmptyString(repo.parent_repo) ? repo.parent_repo.trim() : null,
+      now,
+      provider,
+      session_id,
+    ).changes;
+}
+
 function insertFacts(db, session, groups) {
   const now = new Date().toISOString();
   const stmt = db.prepare(
@@ -453,25 +478,29 @@ function repairMissingProjectAttribution(dbPath, { provider = null } = {}) {
       ? db
           .prepare(
             `
-            SELECT s.provider, s.session_id
+            SELECT s.provider, s.session_id, s.cwd, s.repo_root
             FROM vibedeck_sessions s
             LEFT JOIN vibedeck_branch_usage_facts f
               ON f.provider = s.provider AND f.session_id = s.session_id
             WHERE s.provider = ?
+              AND s.cwd IS NOT NULL
+              AND TRIM(s.cwd) <> ''
             GROUP BY s.provider, s.session_id
-            HAVING COUNT(f.provider) = 0
+            HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
             `,
           )
           .all(provider)
       : db
           .prepare(
             `
-            SELECT s.provider, s.session_id
+            SELECT s.provider, s.session_id, s.cwd, s.repo_root
             FROM vibedeck_sessions s
             LEFT JOIN vibedeck_branch_usage_facts f
               ON f.provider = s.provider AND f.session_id = s.session_id
+            WHERE s.cwd IS NOT NULL
+              AND TRIM(s.cwd) <> ''
             GROUP BY s.provider, s.session_id
-            HAVING COUNT(f.provider) = 0
+            HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
             `,
           )
           .all();
@@ -479,6 +508,22 @@ function repairMissingProjectAttribution(dbPath, { provider = null } = {}) {
     db.exec('BEGIN IMMEDIATE');
     try {
       for (const row of rows) {
+        if (isNonEmptyString(row.cwd)) {
+          let repo = null;
+          try {
+            repo = resolveRepo(row.cwd);
+          } catch {
+            repo = null;
+          }
+          if (repo && isNonEmptyString(repo.repo_root)) {
+            persistSessionRepoMetadata(db, {
+              provider: row.provider,
+              session_id: row.session_id,
+              repo,
+            });
+          }
+        }
+
         rebuildBranchUsageFactsForSession(db, {
           dbPath,
           provider: row.provider,

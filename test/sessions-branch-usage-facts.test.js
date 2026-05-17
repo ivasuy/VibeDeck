@@ -7,7 +7,11 @@ const { DatabaseSync } = require('node:sqlite');
 const { test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
-const { rebuildBranchUsageFactsForSession, readBranchUsageFactRows } = require('../src/lib/sessions/branch-usage-facts');
+const {
+  rebuildBranchUsageFactsForSession,
+  readBranchUsageFactRows,
+  repairMissingProjectAttribution,
+} = require('../src/lib/sessions/branch-usage-facts');
 const { recordTransition } = require('../src/lib/sessions/head-history');
 
 function makeDb() {
@@ -587,6 +591,69 @@ test('token reconciliation never writes negative totals when event sum exceeds s
     assert.ok(rows.every((row) => row.total_tokens >= 0));
     assert.equal(rows.reduce((sum, row) => sum + row.total_tokens, 0), 0);
     assert.ok(rows.some((row) => row.token_reconciled === 1));
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('repairMissingProjectAttribution backfills session repo metadata and rebuilds git facts', () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    const nestedCwd = path.join(repoRoot, 'subdir', 'deep');
+    initGitRepo(repoRoot);
+    fs.mkdirSync(nestedCwd, { recursive: true });
+    const expectedRepoRoot = fs.realpathSync(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'repair-metadata',
+        started_at: '2026-05-10T19:00:00.000Z',
+        ended_at: '2026-05-10T19:05:00.000Z',
+        cwd: nestedCwd,
+        repo_root: null,
+        repo_common_dir: null,
+        parent_repo: null,
+        branch: 'main',
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 11,
+        total_cost_usd: 0.11,
+        last_observed_at: '2026-05-10T19:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+    } finally {
+      db.close();
+    }
+
+    const repaired = repairMissingProjectAttribution(tmp.dbPath);
+    assert.equal(repaired, 1);
+
+    const checkDb = new DatabaseSync(tmp.dbPath, { readOnly: true });
+    try {
+      const session = checkDb
+        .prepare(
+          'SELECT repo_root, repo_common_dir, parent_repo FROM vibedeck_sessions WHERE provider = ? AND session_id = ?',
+        )
+        .get('codex', 'repair-metadata');
+      assert.equal(session.repo_root, expectedRepoRoot);
+      assert.ok(typeof session.repo_common_dir === 'string' && session.repo_common_dir.trim() !== '');
+
+      const fact = checkDb
+        .prepare(
+          "SELECT project_state, repo_root FROM vibedeck_branch_usage_facts WHERE provider = 'codex' AND session_id = 'repair-metadata'",
+        )
+        .get();
+      assert.ok(fact);
+      assert.equal(fact.project_state, 'git_existing');
+      assert.equal(fact.repo_root, expectedRepoRoot);
+    } finally {
+      checkDb.close();
+    }
   } finally {
     tmp.cleanup();
   }

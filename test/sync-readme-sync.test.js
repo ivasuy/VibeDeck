@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 
-const { maybeRunPostSyncReadmeUpdate, runReadmeSyncUpdate } = require("../src/lib/readme-sync/service");
+const { runReadmeSyncUpdate } = require("../src/lib/readme-sync/service");
 
 const rolloutPath = path.resolve(__dirname, "../src/lib/rollout.js");
 const progressPath = path.resolve(__dirname, "../src/lib/progress.js");
@@ -16,7 +16,6 @@ const reaperPath = path.resolve(__dirname, "../src/lib/sessions/reaper.js");
 const idleTimeoutPath = path.resolve(__dirname, "../src/lib/sessions/idle-timeout.js");
 const pipelinePath = path.resolve(__dirname, "../src/lib/sessions/pipeline.js");
 const reconciliationPath = path.resolve(__dirname, "../src/lib/sessions/reconciliation.js");
-const readmeSyncServicePath = path.resolve(__dirname, "../src/lib/readme-sync/service.js");
 const readmeSyncFsPath = path.resolve(__dirname, "../src/lib/fs.js");
 
 function resetModuleCache(entries) {
@@ -29,19 +28,19 @@ function resetModuleCache(entries) {
   }
 }
 
-function stubModule(path, exports) {
-  const original = require.cache[path];
-  require.cache[path] = {
+function stubModule(modulePath, exports) {
+  const original = require.cache[modulePath];
+  require.cache[modulePath] = {
     exports,
-    filename: path,
-    id: path,
+    filename: modulePath,
+    id: modulePath,
     loaded: true,
     children: [],
   };
-  return { path, original };
+  return { path: modulePath, original };
 }
 
-function buildSyncModuleStubs({ trackerDir, readmeSyncResult, onReadmeSyncRun = async () => readmeSyncResult }) {
+function buildSyncModuleStubs({ trackerDir }) {
   const zeroResult = {
     filesProcessed: 0,
     eventsAggregated: 0,
@@ -142,47 +141,8 @@ function buildSyncModuleStubs({ trackerDir, readmeSyncResult, onReadmeSyncRun = 
     reconcileCanonicalUsage: () => ({}),
   }));
 
-  stubbed.push(stubModule(readmeSyncServicePath, {
-    maybeRunPostSyncReadmeUpdate: async (...args) => {
-      const result = await onReadmeSyncRun(...args);
-      return { ...readmeSyncResult, ...(result || {}) };
-    },
-  }));
-
   return stubbed;
 }
-
-test("disabled config skips the updater", async () => {
-  const result = await maybeRunPostSyncReadmeUpdate({
-    config: { enabled: false },
-    token: null,
-    updateImpl: async () => {
-      throw new Error("should not run");
-    },
-  });
-
-  assert.deepEqual(result, {
-    attempted: false,
-    ok: true,
-    skipped: "disabled",
-    warning: null,
-  });
-});
-
-test("github failures are downgraded to warnings", async () => {
-  const result = await maybeRunPostSyncReadmeUpdate({
-    config: { enabled: true },
-    token: "ghp_token",
-    updateImpl: async () => {
-      throw new Error("GitHub PUT failed (401)");
-    },
-  });
-
-  assert.equal(result.attempted, true);
-  assert.equal(result.ok, false);
-  assert.equal(result.skipped, null);
-  assert.match(result.warning, /GitHub PUT failed/);
-});
 
 test("runReadmeSyncUpdate writes banner and pushes README when configured", async () => {
   let bannerPath = null;
@@ -221,35 +181,22 @@ test("runReadmeSyncUpdate writes banner and pushes README when configured", asyn
     repo_name: "vibedeck",
     branch: "main",
     readme_path: "README.md",
-      svg_path: "github-readme-banner.svg",
+    svg_path: "github-readme-banner.svg",
   });
   assert.equal(updateArgs.token, "ghp_token");
   assert.equal(updateArgs.svg, "<svg />");
 });
 
-test("cmdSync invokes post-sync README updater through sync command path", async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-readme-hook-"));
+test("cmdSync does not import or invoke the readme-sync service", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-readme-decoupled-"));
   const prevHome = process.env.HOME;
   const trackerDir = path.join(tmp, ".vibedeck", "tracker");
 
   let out = "";
+  let err = "";
   const prevStdout = process.stdout.write;
-  let readmeHookCalled = 0;
-
-  const serviceResult = {
-    attempted: true,
-    ok: true,
-    skipped: null,
-    warning: null,
-  };
-  const stubs = buildSyncModuleStubs({
-    trackerDir,
-    readmeSyncResult: serviceResult,
-    onReadmeSyncRun: async () => {
-      readmeHookCalled += 1;
-      return serviceResult;
-    },
-  });
+  const prevStderr = process.stderr.write;
+  const stubs = buildSyncModuleStubs({ trackerDir });
   const syncModule = require.resolve("../src/commands/sync");
 
   try {
@@ -258,52 +205,16 @@ test("cmdSync invokes post-sync README updater through sync command path", async
       out += String(chunk || "");
       return true;
     };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
 
     delete require.cache[syncModule];
     const { cmdSync } = require(syncModule);
     await cmdSync([]);
   } finally {
     process.stdout.write = prevStdout;
-    if (prevHome === undefined) delete process.env.HOME;
-    else process.env.HOME = prevHome;
-    resetModuleCache(stubs);
-    delete require.cache[syncModule];
-    await fs.rm(tmp, { recursive: true, force: true });
-  }
-
-  assert.equal(readmeHookCalled, 1);
-  assert.match(out, /- README banner updated on GitHub/);
-});
-
-test("cmdSync keeps sync success when readme update returns warning", async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-readme-fail-"));
-  const prevHome = process.env.HOME;
-  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
-
-  let err = "";
-  const prevStderr = process.stderr.write;
-  const stubs = buildSyncModuleStubs({
-    trackerDir,
-    readmeSyncResult: {
-      attempted: true,
-      ok: false,
-      skipped: null,
-      warning: "GitHub PUT failed (401)",
-    },
-  });
-
-  const syncModule = require.resolve("../src/commands/sync");
-
-  try {
-    process.env.HOME = tmp;
-    process.stderr.write = (chunk) => {
-      err += String(chunk || "");
-      return true;
-    };
-    delete require.cache[syncModule];
-    const { cmdSync } = require(syncModule);
-    await assert.doesNotReject(() => cmdSync([]));
-  } finally {
     process.stderr.write = prevStderr;
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
@@ -312,5 +223,6 @@ test("cmdSync keeps sync success when readme update returns warning", async () =
     await fs.rm(tmp, { recursive: true, force: true });
   }
 
-  assert.match(err, /README sync warning: GitHub PUT failed \(401\)/);
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
 });

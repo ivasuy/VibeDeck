@@ -57,7 +57,6 @@ const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
-const { maybeRunPostSyncReadmeUpdate } = require("../lib/readme-sync/service");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
 
@@ -815,14 +814,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       } catch (_e) {
         // ignore
       }
-    }
-
-    const readmeSyncResult = await maybeRunPostSyncReadmeUpdate();
-    if (!opts.auto && readmeSyncResult.attempted && readmeSyncResult.ok) {
-      process.stdout.write("- README banner updated on GitHub\n");
-    }
-    if (readmeSyncResult.warning && !opts.auto) {
-      process.stderr.write(`README sync warning: ${readmeSyncResult.warning}\n`);
     }
 
     if (!opts.auto) {

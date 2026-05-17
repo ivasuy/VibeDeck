@@ -48,6 +48,22 @@ function projectShape(row, provider, sessionId) {
   });
 }
 
+function mergeProjectRow(event, session) {
+  const eventCwd = isNonEmptyString(event?.cwd) ? event.cwd : null;
+  const eventRepoRoot = isNonEmptyString(event?.repo_root) ? event.repo_root : null;
+  const eventRepoCommonDir = isNonEmptyString(event?.repo_common_dir) ? event.repo_common_dir : null;
+  const eventParentRepo = isNonEmptyString(event?.parent_repo) ? event.parent_repo : null;
+  const hasEventProjectEvidence = Boolean(eventCwd || eventRepoRoot || eventRepoCommonDir || eventParentRepo);
+  if (!hasEventProjectEvidence) return session;
+
+  return {
+    cwd: eventCwd ?? session?.cwd ?? null,
+    repo_root: eventRepoRoot ?? session?.repo_root ?? null,
+    repo_common_dir: eventRepoCommonDir ?? session?.repo_common_dir ?? null,
+    parent_repo: eventParentRepo ?? session?.parent_repo ?? null,
+  };
+}
+
 function eventBranch(dbPath, project, observedAt) {
   if (!dbPath || !project || project.branch_kind !== 'unknown_git') return null;
   if (!isNonEmptyString(project.repo_root) || !isNonEmptyString(observedAt)) return null;
@@ -132,7 +148,7 @@ function buildEventGroups(session, events, { dbPath, provider, session_id }) {
   const groups = new Map();
 
   for (const event of events) {
-    const project = projectShape(event, provider, session_id);
+    const project = projectShape(mergeProjectRow(event, session), provider, session_id);
     const observedAt = isNonEmptyString(event.observed_at)
       ? event.observed_at
       : session.last_observed_at || session.ended_at || session.started_at;
@@ -215,10 +231,36 @@ function reconcileGroupTokens(groups, session) {
   const delta = sessionTotal - current;
   if (delta === 0) return;
 
-  const target = maxTokenGroupIndex(groups);
-  if (target < 0) return;
-  groups[target].total_tokens += delta;
-  groups[target].token_reconciled = 1;
+  if (delta > 0) {
+    const target = maxTokenGroupIndex(groups);
+    if (target < 0) return;
+    groups[target].total_tokens += delta;
+    groups[target].token_reconciled = 1;
+    return;
+  }
+
+  let remaining = Math.abs(delta);
+  const indices = groups
+    .map((group, index) => ({ index, total_tokens: Math.max(0, toInteger(group.total_tokens)) }))
+    .sort((a, b) => b.total_tokens - a.total_tokens)
+    .map((entry) => entry.index);
+
+  for (const index of indices) {
+    if (remaining <= 0) break;
+    const available = Math.max(0, toInteger(groups[index].total_tokens));
+    if (available === 0) continue;
+    const take = Math.min(available, remaining);
+    groups[index].total_tokens = available - take;
+    groups[index].token_reconciled = 1;
+    remaining -= take;
+  }
+
+  for (const group of groups) {
+    if (group.total_tokens < 0) {
+      group.total_tokens = 0;
+      group.token_reconciled = 1;
+    }
+  }
 }
 
 function allocateStoredSessionCost(groups, session) {
@@ -501,9 +543,16 @@ function readBranchUsageFactRows(
       clauses.push('branch = @branch');
       params.branch = branch;
     }
-    if (isNonEmptyString(sourceFilter)) {
-      clauses.push('provider = @sourceFilter');
-      params.sourceFilter = sourceFilter;
+    const providerFilters = sourceFilterValues(sourceFilter);
+    if (providerFilters.length === 1) {
+      clauses.push('LOWER(provider) = @sourceFilter_0');
+      params.sourceFilter_0 = providerFilters[0];
+    } else if (providerFilters.length > 1) {
+      const filterExpr = providerFilters.map((_, index) => `@sourceFilter_${index}`).join(', ');
+      clauses.push(`LOWER(provider) IN (${filterExpr})`);
+      providerFilters.forEach((name, index) => {
+        params[`sourceFilter_${index}`] = name;
+      });
     }
 
     const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -529,3 +578,25 @@ module.exports = {
   readBranchUsageFactRows,
   branchUsageDisplayBranch,
 };
+    function sourceFilterValues(value) {
+      if (isNonEmptyString(value)) return [value.trim().toLowerCase()];
+      if (Array.isArray(value)) {
+        return Array.from(
+          new Set(
+            value
+              .filter((entry) => isNonEmptyString(entry))
+              .map((entry) => entry.trim().toLowerCase()),
+          ),
+        );
+      }
+      if (value instanceof Set) {
+        return Array.from(
+          new Set(
+            Array.from(value)
+              .filter((entry) => isNonEmptyString(entry))
+              .map((entry) => entry.trim().toLowerCase()),
+          ),
+        );
+      }
+      return [];
+    }

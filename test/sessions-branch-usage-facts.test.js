@@ -384,3 +384,210 @@ test('token reconciliation assigns delta to the largest group', () => {
     tmp.cleanup();
   }
 });
+
+test('events missing cwd/repo fallback to session project attribution for event-time branch splits', () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-10T16:00:00.000Z',
+    });
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'feature/live',
+      transitioned_at: '2026-05-10T16:05:00.000Z',
+    });
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'missing-event-project',
+        started_at: '2026-05-10T16:00:00.000Z',
+        ended_at: '2026-05-10T16:30:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'feature/live',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: 1,
+        last_observed_at: '2026-05-10T16:30:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'missing-event-project',
+        event_key: 'e1',
+        observed_at: '2026-05-10T16:02:00.000Z',
+        cwd: null,
+        repo_root: null,
+        model: 'gpt-5.4',
+        delta_tokens: 80,
+        input_tokens: 70,
+        output_tokens: 10,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'missing-event-project',
+        event_key: 'e2',
+        observed_at: '2026-05-10T16:20:00.000Z',
+        cwd: null,
+        repo_root: null,
+        model: 'gpt-5.4',
+        delta_tokens: 20,
+        input_tokens: 15,
+        output_tokens: 5,
+      });
+
+      rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: 'missing-event-project',
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.deepEqual(rows.map((row) => ({ branch: row.branch, total_tokens: row.total_tokens })), [
+      { branch: 'main', total_tokens: 80 },
+      { branch: 'feature/live', total_tokens: 20 },
+    ]);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('readBranchUsageFactRows supports sourceFilter string and set', () => {
+  const tmp = makeDb();
+  try {
+    const codexDir = path.join(tmp.dir, 'codex-proj');
+    const claudeDir = path.join(tmp.dir, 'claude-proj');
+    fs.mkdirSync(codexDir, { recursive: true });
+    fs.mkdirSync(claudeDir, { recursive: true });
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'source-codex',
+        started_at: '2026-05-10T17:00:00.000Z',
+        ended_at: '2026-05-10T17:05:00.000Z',
+        cwd: codexDir,
+        repo_root: null,
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        last_observed_at: '2026-05-10T17:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 'source-claude',
+        started_at: '2026-05-10T17:10:00.000Z',
+        ended_at: '2026-05-10T17:15:00.000Z',
+        cwd: claudeDir,
+        repo_root: null,
+        model: 'claude-sonnet-4',
+        total_tokens: 20,
+        total_cost_usd: 0.2,
+        last_observed_at: '2026-05-10T17:15:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+
+      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'source-codex' });
+      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'source-claude' });
+    } finally {
+      db.close();
+    }
+
+    const stringFiltered = readBranchUsageFactRows(tmp.dbPath, { sourceFilter: 'codex' });
+    assert.deepEqual(stringFiltered.map((row) => row.provider), ['codex']);
+
+    const setFiltered = readBranchUsageFactRows(tmp.dbPath, { sourceFilter: new Set(['codex']) });
+    assert.deepEqual(setFiltered.map((row) => row.provider), ['codex']);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('token reconciliation never writes negative totals when event sum exceeds session total', () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-10T18:00:00.000Z',
+    });
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'overcount',
+        started_at: '2026-05-10T18:00:00.000Z',
+        ended_at: '2026-05-10T18:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 0,
+        total_cost_usd: 0,
+        last_observed_at: '2026-05-10T18:10:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'overcount',
+        event_key: 'e1',
+        observed_at: '2026-05-10T18:01:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.4',
+        delta_tokens: 30,
+        input_tokens: 20,
+        output_tokens: 10,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'overcount',
+        event_key: 'e2',
+        observed_at: '2026-05-10T18:02:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-4o',
+        delta_tokens: 20,
+        input_tokens: 15,
+        output_tokens: 5,
+      });
+
+      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'overcount' });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every((row) => row.total_tokens >= 0));
+    assert.equal(rows.reduce((sum, row) => sum + row.total_tokens, 0), 0);
+    assert.ok(rows.some((row) => row.token_reconciled === 1));
+  } finally {
+    tmp.cleanup();
+  }
+});

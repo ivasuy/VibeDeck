@@ -13,6 +13,7 @@ shared.confidence.high,shared,*,Shared,confidence_high,high,,active
 shared.confidence.medium,shared,*,Shared,confidence_medium,medium,,active
 shared.confidence.low,shared,*,Shared,confidence_low,low,,active
 shared.confidence.unattributed,shared,*,Shared,confidence_unattributed,unattributed,,active
+shared.badge.decommissioned,shared,*,Shared,badge_decommissioned,Decommissioned,,active
 brand.name,shared,*,Shared,brand_name,VibeDeck,,active
 error.boundary.title,shared,*,ErrorBoundary,title,Something went wrong,,active
 error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to render,,active

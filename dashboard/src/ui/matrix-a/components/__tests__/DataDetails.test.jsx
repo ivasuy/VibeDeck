@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,6 +18,7 @@ const copyMap = {
   "dashboard.projects.cost_label": "Cost",
   "dashboard.projects.providers_label": "Providers",
   "dashboard.projects.models_label": "Models",
+  "shared.badge.decommissioned": "Decommissioned",
 };
 
 function copy(key) {
@@ -29,6 +30,42 @@ afterEach(() => {
 });
 
 describe("DataDetails project tab", () => {
+  it("shows a daily loading skeleton instead of the install-sync empty state", () => {
+    render(
+      <DataDetails
+        copy={copy}
+        dailyLoading
+        dailyEmptyPrefix="Run"
+        installSyncCmd="vibedeck sync"
+        dailyEmptySuffix="to load data"
+        dailyBreakdownRows={[]}
+        dailyBreakdownColumns={[]}
+      />,
+    );
+
+    expect(screen.getByText("Loading usage details...")).toBeInTheDocument();
+    expect(screen.queryByText("vibedeck sync")).toBeNull();
+  });
+
+  it("shows a project loading skeleton instead of an empty project tab", async () => {
+    const user = userEvent.setup();
+    render(
+      <DataDetails
+        copy={copy}
+        projectLoading
+        projectEntries={[]}
+        dailyBreakdownRows={[]}
+        dailyBreakdownColumns={[]}
+      />,
+    );
+
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "Project Usage" }));
+    });
+
+    expect(screen.getByText("Loading project usage...")).toBeInTheDocument();
+  });
+
   it("renders each project as a metric card with provider model progress rows", async () => {
     const user = userEvent.setup();
     render(
@@ -38,6 +75,8 @@ describe("DataDetails project tab", () => {
           {
             project_key: "VibeDeck",
             project_ref: "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+            archived: true,
+            project_state: "git_missing",
             branch_count: 9,
             git_branch_count: 2,
             total_tokens: "242400602",
@@ -75,9 +114,12 @@ describe("DataDetails project tab", () => {
       />,
     );
 
-    await user.click(screen.getByRole("tab", { name: "Project Usage" }));
+    await act(async () => {
+      await user.click(screen.getByRole("tab", { name: "Project Usage" }));
+    });
 
     expect(screen.getByText("VibeDeck")).toBeInTheDocument();
+    expect(screen.getByText("Decommissioned")).toBeInTheDocument();
     expect(screen.getByText("Branches")).toBeInTheDocument();
     expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("242,400,602")).toBeInTheDocument();

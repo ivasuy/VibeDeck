@@ -210,7 +210,7 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     const handled = await handler(
       req,
       res,
-      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1&include_git_branches=1'),
     );
 
     assert.equal(handled, true);
@@ -257,6 +257,57 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
       ['high', 'low', 'medium', 'unattributed'],
     );
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('branch usage summary does not shell out to git branches by default', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-no-git-hot-path-'));
+  const cp = require('node:child_process');
+  const originalExecFileSync = cp.execFileSync;
+  try {
+    const repoRoot = path.join(root, 'repo');
+    initGitRepo(repoRoot, ['main', 'feature-unused']);
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'tracked-main',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-4o',
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    let gitBranchCalls = 0;
+    cp.execFileSync = (cmd, args, ...rest) => {
+      if (cmd === 'git' && Array.isArray(args) && args.includes('branch')) gitBranchCalls += 1;
+      return originalExecFileSync(cmd, args, ...rest);
+    };
+    delete require.cache[require.resolve('../src/lib/branch-usage')];
+    const { queryBranchUsage } = require('../src/lib/branch-usage');
+
+    const payload = queryBranchUsage(dbPath, { includeSessions: false, includeArchived: true });
+    assert.equal(gitBranchCalls, 0);
+    assert.deepEqual(payload.repos[0].git_branches, []);
+    assert.equal(payload.repos[0].git_branch_count, 0);
+    assert.deepEqual(payload.repos[0].branches.map((row) => row.branch), ['main']);
+  } finally {
+    cp.execFileSync = originalExecFileSync;
+    delete require.cache[require.resolve('../src/lib/branch-usage')];
     await fs.rm(root, { recursive: true, force: true });
   }
 });
@@ -540,7 +591,12 @@ test('GET /functions/vibedeck-branch-usage includes non-git folders and hides ar
       new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1'),
     );
     const archivedBody = JSON.parse(archivedRes.body.toString('utf8'));
-    assert.ok(archivedBody.repos.some((repo) => repo.project_ref === deletedRepo));
+    const archivedRepo = archivedBody.repos.find((repo) => repo.project_ref === deletedRepo);
+    assert.ok(archivedRepo);
+    assert.equal(archivedRepo.archived, true);
+    assert.equal(archivedRepo.project_state, 'git_missing');
+    assert.deepEqual(archivedRepo.git_branches, []);
+    assert.equal(archivedRepo.git_branch_count, 0);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
@@ -600,7 +656,7 @@ test('GET /functions/vibedeck-branch-usage uses branch fact cost when stored cos
     );
 
     const body = JSON.parse(res.body.toString('utf8'));
-    const branch = body.repos[0].branches.find((entry) => entry.branch === 'Unknown branch');
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
     const pricingMatch = lookupModelPricing('gpt-5.4');
     assert.equal(pricingMatch.hit, true);
     const approximateRate = pickApproximateTokenRate(pricingMatch.value);
@@ -668,7 +724,7 @@ test('GET /functions/vibedeck-branch-usage ignores stale zero branch window cost
     );
 
     const body = JSON.parse(res.body.toString('utf8'));
-    const branch = body.repos[0].branches.find((entry) => entry.branch === 'Unknown branch');
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
     const pricingMatch = lookupModelPricing('gpt-5.4');
     assert.equal(pricingMatch.hit, true);
     const approximateRate = pickApproximateTokenRate(pricingMatch.value);

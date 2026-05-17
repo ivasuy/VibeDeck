@@ -404,6 +404,7 @@ export function DashboardPage({
   const {
     daily: dailyBreakdownDaily,
     loading: dailyBreakdownLoading,
+    error: dailyBreakdownError,
     refresh: refreshDailyBreakdown,
   } = useUsageData({
     baseUrl,
@@ -437,6 +438,7 @@ export function DashboardPage({
   const {
     entries: projectUsageEntries,
     loading: projectUsageLoading,
+    error: projectUsageError,
     refresh: refreshProjectUsage,
   } = useProjectUsageSummary({
     baseUrl,
@@ -1211,6 +1213,8 @@ export function DashboardPage({
       projectUsageEntries={projectUsageEntries}
       projectUsageLimit={projectUsageLimit}
       setProjectUsageLimit={setProjectUsageLimit}
+      projectUsageLoading={projectUsageLoading}
+      projectUsageError={projectUsageError}
       topModels={topModels}
       signedIn={signedIn}
       publicMode={publicMode}
@@ -1275,6 +1279,8 @@ export function DashboardPage({
       sortIconFor={sortIconFor}
       pagedDetails={pagedDetails}
       dailyBreakdownRows={sortedDailyBreakdownRows}
+      dailyBreakdownLoading={dailyBreakdownLoading}
+      dailyBreakdownError={dailyBreakdownError}
       dailyBreakdownColumns={dailyBreakdownColumns}
       dailyBreakdownAriaSortFor={dailyAriaSortFor}
       dailyBreakdownSortIconFor={dailySortIconFor}

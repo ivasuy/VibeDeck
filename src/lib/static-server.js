@@ -23,11 +23,25 @@ const MIME_TYPES = {
   ".webmanifest": "application/manifest+json",
 };
 
+function isVercelLocalScript(pathname) {
+  return pathname === "/_vercel/insights/script.js" || pathname === "/_vercel/speed-insights/script.js";
+}
+
 /**
  * Serve a static file from baseDir. Returns true if served, false otherwise.
  * For SPA: caller should fall back to index.html when this returns false.
  */
 async function serveStaticFile(baseDir, pathname, res) {
+  if (isVercelLocalScript(pathname)) {
+    res.writeHead(200, {
+      "Content-Type": MIME_TYPES[".js"],
+      "Content-Length": 0,
+      "Cache-Control": "no-cache",
+    });
+    res.end("");
+    return true;
+  }
+
   const safePath = path.normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   const filePath = path.join(baseDir, safePath);
 

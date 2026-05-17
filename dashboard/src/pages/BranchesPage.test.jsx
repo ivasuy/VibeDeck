@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
 import { render } from "../test/test-utils";
@@ -140,20 +140,32 @@ function makePayload(repos) {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   getBranchUsage.mockReset();
   getBranchUsage.mockResolvedValue(SAMPLE_PAYLOAD);
 });
 
 afterEach(() => {
+  window.sessionStorage.clear();
   cleanup();
 });
 
 describe("BranchesPage", () => {
+  it("shows full-page branch skeletons instead of zero totals while the first load is pending", () => {
+    getBranchUsage.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<BranchesPage />);
+
+    expect(screen.getAllByText("Loading branch totals...").length).toBeGreaterThan(0);
+    expect(screen.getByText("Loading branch usage...")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+  });
+
   it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
     render(<BranchesPage />);
 
     expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
-    expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
+    expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: false, includeArchived: true, limit: 100 });
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
     expect(screen.queryByText("/repo-a")).toBeNull();
@@ -168,6 +180,15 @@ describe("BranchesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
     expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    await waitFor(() => {
+      expect(getBranchUsage).toHaveBeenLastCalledWith({
+        includeSessions: true,
+        includeArchived: true,
+        limit: 100,
+        repo: "/repo-a",
+        branch: "feature-a",
+      });
+    });
     expect(screen.queryByText("s-001")).toBeNull();
     expect(screen.queryByText("s-002")).toBeNull();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
@@ -190,6 +211,28 @@ describe("BranchesPage", () => {
     expect(screen.getAllByText("$9.10").length).toBeGreaterThan(0);
     expect(screen.queryByText("$9.10 est.")).toBeNull();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+
+  it("reopens cached branch session details instantly without refetching the same drawer payload", async () => {
+    getBranchUsage.mockResolvedValueOnce(SAMPLE_PAYLOAD);
+    getBranchUsage.mockResolvedValueOnce(SAMPLE_PAYLOAD);
+
+    render(<BranchesPage />);
+
+    expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
+    expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    await waitFor(() => expect(getBranchUsage).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: copy("branches.drawer.close") }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
+
+    expect(screen.getByRole("dialog", { name: "Session details" })).toBeTruthy();
+    expect(screen.queryByText("Loading branch usage...")).toBeNull();
+    expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
+    expect(getBranchUsage).toHaveBeenCalledTimes(2);
   });
 
   it("switches projects and applies the branch filter locally", async () => {
@@ -285,7 +328,7 @@ describe("BranchesPage", () => {
     });
   });
 
-  it("shows a no git registered state instead of unattributed branch rows", async () => {
+  it("shows tracked no-git branch rows instead of hiding non-git project usage", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/repo-no-git",
@@ -293,7 +336,7 @@ describe("BranchesPage", () => {
         git_branch_count: 0,
         branches: [
           {
-            branch: "unattributed",
+            branch: "No branch",
             attribution_branch: null,
             total_tokens: 1000,
             total_cost_usd: 2.5,
@@ -312,10 +355,65 @@ describe("BranchesPage", () => {
     const branchSelect = await screen.findByRole("combobox", {
       name: copy("branches.branch.select_label"),
     });
-    expect(branchSelect).toBeDisabled();
-    expect(screen.getByText("No git registered")).toBeTruthy();
-    expect(screen.queryByText("unattributed")).toBeNull();
-    expect(screen.queryByText("$2.50")).toBeNull();
+    expect(branchSelect.disabled).toBe(true);
+    expect(screen.getAllByText("No branch").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$2.50").length).toBeGreaterThan(0);
+  });
+
+  it("uses tracked branch rows for the branch selector and labels decommissioned projects", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-decommissioned",
+        project_state: "git_missing",
+        archived: true,
+        git_branches: ["feature-unused", "main", "release"],
+        git_branch_count: 3,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 100,
+            total_cost_usd: 1,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+          {
+            branch: "Unknown branch",
+            attribution_branch: null,
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T10:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const branchSelect = await screen.findByRole("combobox", {
+      name: copy("branches.branch.select_label"),
+    });
+    const options = Array.from(branchSelect.querySelectorAll("option")).map((option) => option.textContent);
+
+    expect(options).toEqual(["main", "Unknown branch"]);
+    expect(options).not.toContain("feature-unused");
+    expect(screen.getByText("Decommissioned")).toBeTruthy();
+    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+
+    fireEvent.change(branchSelect, { target: { value: "Unknown branch" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("feature-unused")).toBeNull();
+      expect(screen.getAllByText("Unknown branch").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("$0.50").length).toBeGreaterThan(0);
+    });
   });
 
   it("disambiguates duplicate repo basenames in the project selector", async () => {
@@ -423,7 +521,8 @@ describe("BranchesPage", () => {
 
   it("paginates branch rows at ten rows per page", async () => {
     const branches = Array.from({ length: 12 }, (_, index) => ({
-      branch: `branch-${String(index + 1).padStart(2, "0")}`,
+      branch: index === 0 ? "main" : `main~${index}`,
+      attribution_branch: "main",
       total_tokens: 100 + index,
       total_cost_usd: 0.25 + index,
       session_count: 1,
@@ -443,17 +542,19 @@ describe("BranchesPage", () => {
 
     render(<BranchesPage />);
 
-    expect(await screen.findByText("branch-01")).toBeTruthy();
-    expect(screen.getByText("branch-10")).toBeTruthy();
-    expect(screen.queryByText("branch-11")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("main~9")).toBeTruthy();
+    expect(within(screen.getByRole("table")).queryByText("main~10")).toBeNull();
     expect(screen.getByText("1-10 of 12")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
 
     await waitFor(() => {
-      expect(screen.queryByText("branch-01")).toBeNull();
-      expect(screen.getByText("branch-11")).toBeTruthy();
-      expect(screen.getByText("branch-12")).toBeTruthy();
+      expect(within(screen.getByRole("table")).queryByText("main")).toBeNull();
+      expect(screen.getByText("main~10")).toBeTruthy();
+      expect(screen.getByText("main~11")).toBeTruthy();
       expect(screen.getByText("11-12 of 12")).toBeTruthy();
     });
   });

@@ -6,6 +6,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { findBranchAt } = require('./head-history');
 const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
+const { normalizeBranchName } = require('./branch-name');
 const { resolveUsageCost } = require('../cost-estimation');
 
 function isNonEmptyString(value) {
@@ -28,8 +29,9 @@ function roundCost(value) {
 }
 
 function branchUsageDisplayBranch({ branch, project }) {
-  if (branch && typeof branch === 'string' && branch.trim()) {
-    return { branch: branch.trim(), branch_kind: 'known', confidence: 'high' };
+  const normalizedBranch = normalizeBranchName(branch);
+  if (normalizedBranch) {
+    return { branch: normalizedBranch, branch_kind: 'known', confidence: 'high' };
   }
   return {
     branch: project.branch,
@@ -65,14 +67,26 @@ function mergeProjectRow(event, session) {
   };
 }
 
-function eventBranch(dbPath, project, observedAt) {
+function headHistoryBranch(dbPath, project, observedAt) {
   if (!dbPath || !project || project.branch_kind !== 'unknown_git') return null;
   if (!isNonEmptyString(project.repo_root) || !isNonEmptyString(observedAt)) return null;
   try {
-    return findBranchAt(dbPath, { worktree_root: project.repo_root, when: observedAt });
+    return normalizeBranchName(findBranchAt(dbPath, { worktree_root: project.repo_root, when: observedAt }));
   } catch {
     return null;
   }
+}
+
+function factBranch({ dbPath, project, observedAt, event, session }) {
+  if (!project || project.branch_kind !== 'unknown_git') return null;
+
+  const eventBranch = normalizeBranchName(event?.branch);
+  if (eventBranch) return eventBranch;
+
+  const historyBranch = headHistoryBranch(dbPath, project, observedAt);
+  if (historyBranch) return historyBranch;
+
+  return normalizeBranchName(session?.branch);
 }
 
 function eventTokenTotal(event) {
@@ -108,7 +122,7 @@ function baseTimestamps(session) {
 function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
   const project = projectShape(session, provider, session_id);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
-  const resolvedBranch = eventBranch(dbPath, project, when);
+  const resolvedBranch = factBranch({ dbPath, project, observedAt: when, event: null, session });
   const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
   const times = baseTimestamps(session);
 
@@ -122,7 +136,7 @@ function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
     repo_common_dir: project.repo_common_dir,
     parent_repo: project.parent_repo,
     branch: display.branch,
-    attribution_branch: resolvedBranch,
+    attribution_branch: display.branch_kind === 'known' ? display.branch : null,
     branch_kind: display.branch_kind,
     branch_resolution_tier: session.branch_resolution_tier || null,
     confidence: display.confidence,
@@ -153,7 +167,7 @@ function buildEventGroups(session, events, { dbPath, provider, session_id }) {
     const observedAt = isNonEmptyString(event.observed_at)
       ? event.observed_at
       : session.last_observed_at || session.ended_at || session.started_at;
-    const resolvedBranch = eventBranch(dbPath, project, observedAt);
+    const resolvedBranch = factBranch({ dbPath, project, observedAt, event, session });
     const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
     const model = isNonEmptyString(event.model)
       ? event.model.trim()
@@ -173,7 +187,7 @@ function buildEventGroups(session, events, { dbPath, provider, session_id }) {
         repo_common_dir: project.repo_common_dir,
         parent_repo: project.parent_repo,
         branch: display.branch,
-        attribution_branch: resolvedBranch,
+        attribution_branch: display.branch_kind === 'known' ? display.branch : null,
         branch_kind: display.branch_kind,
         branch_resolution_tier: event.branch_resolution_tier || session.branch_resolution_tier || null,
         confidence: display.confidence,
@@ -586,7 +600,7 @@ function readBranchUsageFactRows(
     }
     if (isNonEmptyString(branch)) {
       clauses.push('branch = @branch');
-      params.branch = branch;
+      params.branch = normalizeBranchName(branch) || branch.trim();
     }
     const providerFilters = sourceFilterValues(sourceFilter);
     if (providerFilters.length === 1) {
@@ -622,6 +636,7 @@ module.exports = {
   repairMissingProjectAttribution,
   readBranchUsageFactRows,
   branchUsageDisplayBranch,
+  normalizeBranchName,
 };
     function sourceFilterValues(value) {
       if (isNonEmptyString(value)) return [value.trim().toLowerCase()];

@@ -84,18 +84,37 @@ function svgHeatmap(weeks) {
     out.push(`<text x="${HMX - 4}" y="${HMY + d * COL_W + CELL - 1}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${lbl}</text>`);
   });
 
-  // Month labels (one per column where month changes)
+  // Month labels — anchor weeks to Sunday so each column = one calendar week,
+  // collect month transitions, then drop any label whose month spans fewer than
+  // MIN_SPAN columns (prevents the leading/trailing partial month from colliding
+  // with its neighbour, e.g. May/Jun jammed at x=46/x=62).
+  const MIN_SPAN = 3;
   const now = new Date();
+  const currentSunday = new Date(now);
+  currentSunday.setHours(0, 0, 0, 0);
+  currentSunday.setDate(currentSunday.getDate() - currentSunday.getDay());
+
+  const colDate = w => {
+    const d = new Date(currentSunday);
+    d.setDate(d.getDate() - (WEEKS - 1 - w) * 7);
+    return d;
+  };
+
+  const transitions = [];
   let prevM = -1;
   for (let w = 0; w < WEEKS; w++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - (WEEKS - 1 - w) * 7);
-    const m = d.getMonth();
+    const m = colDate(w).getMonth();
     if (m !== prevM) {
+      transitions.push({ w, month: m });
       prevM = m;
-      out.push(`<text x="${HMX + w * COL_W}" y="${HMY - 9}" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${MONTHS[m]}</text>`);
     }
   }
+
+  transitions.forEach((t, i) => {
+    const nextW = i + 1 < transitions.length ? transitions[i + 1].w : WEEKS;
+    if (nextW - t.w < MIN_SPAN) return;
+    out.push(`<text x="${HMX + t.w * COL_W}" y="${HMY - 9}" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${MONTHS[t.month]}</text>`);
+  });
 
   // Cells
   for (let w = 0; w < WEEKS; w++) {

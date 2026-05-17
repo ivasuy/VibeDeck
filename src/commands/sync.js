@@ -65,6 +65,17 @@ const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
 const CLAUDE_MEM_OBSERVER_REINCLUDE_KEY = "claudeMemObserverReinclude_2026_05_v3";
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
+let autoBranchFactsRebuilt = false;
+
+function shouldRunFullBranchFactRebuild({
+  auto = false,
+  rebuildVibedeckDb = false,
+  autoBranchFactsRebuilt = false,
+} = {}) {
+  if (rebuildVibedeckDb) return true;
+  if (!auto) return true;
+  return !autoBranchFactsRebuilt;
+}
 
 async function cmdSync(argv) {
   const opts = parseArgs(argv);
@@ -650,7 +661,15 @@ async function cmdSync(argv) {
     }
     await recoverActiveSessionMetadata(dbPath);
     repairMissingProjectAttribution(dbPath);
-    rebuildAllBranchUsageFacts(dbPath);
+    const runFullBranchFactRebuild = shouldRunFullBranchFactRebuild({
+      auto: opts.auto,
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+      autoBranchFactsRebuilt,
+    });
+    if (runFullBranchFactRebuild) {
+      rebuildAllBranchUsageFacts(dbPath);
+      if (opts.auto) autoBranchFactsRebuilt = true;
+    }
     await runEntireCheckpointBackfill({
       dbPath,
       trackerDir,
@@ -1123,6 +1142,7 @@ async function runEntireCheckpointBackfill({
 module.exports = {
   cmdSync,
   createSessionEventProcessor,
+  shouldRunFullBranchFactRebuild,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   reincludeClaudeMemObserverFiles,

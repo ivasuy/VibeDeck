@@ -248,7 +248,7 @@ function buildFactsBySessionKey(branchFacts) {
   return factsBySessionKey;
 }
 
-function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys) {
+function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, visibleSessionKeys = null) {
   const byBranch = new Map();
 
   function addContribution({ branch, provider, model, tokens, cost, session, sourceRow }) {
@@ -283,7 +283,9 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys) 
     const branchEntry = byBranch.get(branch);
     const sessionMs = toMs(liveSortIso(session)) || 0;
     const sourceMs = toMs(sortTime(sourceRow)) || 0;
-    branchEntry.sessions.set(key, session);
+    if (!visibleSessionKeys || visibleSessionKeys.has(key)) {
+      branchEntry.sessions.set(key, session);
+    }
     branchEntry.audit_session_keys.add(key);
     branchEntry.audit_total_tokens += tokens;
     branchEntry.audit_known_cost_usd += cost.known_cost_usd;
@@ -650,13 +652,17 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       const endedMs = toMs(row?.ended_at);
       return Number.isFinite(endedMs) && endedMs >= recentCutoff;
     });
+    const scopePayloadRows = [...new Map(
+      [...scopeActiveRows, ...scopeRecentEnded].map((row) => [sessionKey(row), row]),
+    ).values()].sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || '')));
     const activeTokens = scopeActiveRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
     const auditTokens = auditRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
     const activeCost = sumCost(scopeActiveRows);
     const auditCost = sumCost(auditRows);
     const breakdowns = buildBreakdowns(auditRows, scopeActiveRows);
     const activeSessionKeys = new Set(scopeActiveRows.map((row) => sessionKey(row)));
-    const branchGroups = buildEffectiveBranchGroups(auditRows, factsBySessionKey, activeSessionKeys);
+    const visibleSessionKeys = new Set(scopePayloadRows.map((row) => sessionKey(row)));
+    const branchGroups = buildEffectiveBranchGroups(auditRows, factsBySessionKey, activeSessionKeys, visibleSessionKeys);
     const updatedMs = auditRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0);
 
     workstreams.push({
@@ -667,8 +673,8 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       repo_root: scope.repo_root,
       cwd: scope.cwd,
       branches: Array.from(new Set(branchGroups.map((row) => row.branch))).sort((a, b) => a.localeCompare(b)),
-      sessions: auditRows.sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''))),
-      primary_session: scopeActiveRows[0] || auditRows[0] || null,
+      sessions: scopePayloadRows,
+      primary_session: scopeActiveRows[0] || scopePayloadRows[0] || auditRows[0] || null,
       active_session_count: scopeActiveRows.length,
       recently_completed_count: scopeRecentEnded.length,
       audit_session_count: auditRows.length,

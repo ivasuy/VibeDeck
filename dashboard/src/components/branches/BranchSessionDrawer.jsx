@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CircleDollarSign, Cpu, Layers3, Tag, X } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { SlidePanel } from "../../ui/foundation";
@@ -6,6 +6,8 @@ import { copy } from "../../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "../live/ConfidenceBadge";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
+
+const INITIAL_SESSION_RENDER_LIMIT = 40;
 
 function formatTimestamp(value) {
   if (!value) return "—";
@@ -67,11 +69,20 @@ function SessionMetric({ icon: Icon, label, value }) {
   );
 }
 
-export function BranchSessionDrawer({ row = null, onClose }) {
+export function BranchSessionDrawer({ row = null, loading = false, error = "", onClose }) {
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
   const models = Array.isArray(row?.models) ? row.models : [];
   const hasModels = models.length !== 0;
   const titleId = "branch-session-drawer-title";
+  const [visibleLimit, setVisibleLimit] = useState(INITIAL_SESSION_RENDER_LIMIT);
+  const visibleSessions = useMemo(
+    () => sessions.slice(0, visibleLimit),
+    [sessions, visibleLimit],
+  );
+
+  useEffect(() => {
+    setVisibleLimit(INITIAL_SESSION_RENDER_LIMIT);
+  }, [row?.repo_root, row?.branch]);
 
   return (
     <SlidePanel
@@ -157,11 +168,15 @@ export function BranchSessionDrawer({ row = null, onClose }) {
             </div>
           ) : null}
 
-          {sessions.length === 0 ? (
+          {loading ? (
+            <SessionDrawerSkeleton />
+          ) : error ? (
+            <p className="text-sm text-red-700 dark:text-red-300">{copy("branches.error", { error })}</p>
+          ) : sessions.length === 0 ? (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.drawer.empty")}</p>
           ) : (
             <div className="grid gap-3">
-              {sessions.map((session, index) => (
+              {visibleSessions.map((session, index) => (
                 <article
                   key={`${String(session?.provider || "unknown")}:${String(session?.session_id || index)}`}
                   className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
@@ -213,10 +228,48 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                   </div>
                 </article>
               ))}
+              {visibleSessions.length < sessions.length ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="justify-self-center"
+                  onClick={() => setVisibleLimit((current) => current + INITIAL_SESSION_RENDER_LIMIT)}
+                >
+                  Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, sessions.length - visibleSessions.length)} more sessions
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
       </div>
     </SlidePanel>
+  );
+}
+
+function SessionDrawerSkeleton() {
+  return (
+    <div aria-busy="true" className="grid gap-3">
+      <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">Loading branch usage...</p>
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="h-4 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            </div>
+            <div className="h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((slot) => (
+              <div key={slot} className="h-12 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

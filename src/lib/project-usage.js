@@ -2,22 +2,12 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const {
   createCostAccumulator,
   addCostToAccumulator,
   finalizeCostAccumulator,
 } = require('./cost-estimation');
 const { readBranchUsageFactRows } = require('./sessions/branch-usage-facts');
-
-function repoRootExists(repoRoot) {
-  if (typeof repoRoot !== 'string' || !repoRoot.trim()) return false;
-  try {
-    return fs.statSync(repoRoot.trim()).isDirectory();
-  } catch {
-    return false;
-  }
-}
 
 function normalizeIsoTimestamp(value) {
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -32,7 +22,8 @@ function normalizeIsoTimestamp(value) {
   return new Date(parsed).toISOString();
 }
 
-function getZonedParts(date, { timeZone, offsetMinutes } = {}) {
+function getZonedParts(date, context = {}) {
+  const { timeZone, offsetMinutes } = context || {};
   const dt = date instanceof Date ? date : new Date(date);
   if (!Number.isFinite(dt.getTime())) return null;
 
@@ -181,27 +172,6 @@ function buildLocalProjectKeyMap(projectRoots) {
   }
 
   return labels;
-}
-
-function listGitBranches(repoRoot) {
-  if (!repoRootExists(repoRoot)) return [];
-  try {
-    const out = execFileSync('git', ['-C', repoRoot, 'branch', '--format=%(refname:short)'], {
-      encoding: 'utf8',
-      timeout: 2000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-    return Array.from(
-      new Set(
-        String(out || '')
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean),
-      ),
-    ).sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  }
 }
 
 function isArchivedProjectState(projectState) {
@@ -466,6 +436,13 @@ function isGitFactRow(row) {
   return String(factProjectState(row) || '').startsWith('git_');
 }
 
+function isTrackedGitBranchFact(row, branchName) {
+  if (!isGitFactRow(row)) return false;
+  if (typeof branchName !== 'string' || !branchName.trim()) return false;
+  const kind = String(row?.branch_kind || '').trim();
+  return kind === 'known' || kind === 'tag';
+}
+
 function factProjectRepoRoot(row, projectRef) {
   if (!isGitFactRow(row)) return null;
   return normalizePathString(projectRef) || userFacingLocalPath(row?.repo_root);
@@ -530,7 +507,7 @@ function readProjectUsageEntries(
   if (!fs.existsSync(dbPath)) return [];
 
   const filteredRows = filterFactRowsForProjectUsage(
-    readBranchUsageFactRows(dbPath, { sourceFilter, includeArchived: false }),
+    readBranchUsageFactRows(dbPath, { sourceFilter, includeArchived: true }),
     { from, to, timeZoneContext },
   );
   if (filteredRows.length === 0) return [];
@@ -545,14 +522,6 @@ function readProjectUsageEntries(
   if (rowsByProjectRef.size === 0) return [];
 
   const projectKeyFor = buildFactProjectKeyResolver(rowsByProjectRef);
-  const gitBranchesByWorktree = new Map();
-  for (const row of filteredRows) {
-    const worktreeKey = factWorktreeKey(row, factProjectRef(row));
-    if (isGitFactRow(row) && worktreeKey && !gitBranchesByWorktree.has(worktreeKey)) {
-      gitBranchesByWorktree.set(worktreeKey, listGitBranches(worktreeKey));
-    }
-  }
-
   const projects = new Map();
   for (const row of filteredRows) {
     const projectRef = factProjectRef(row);
@@ -583,7 +552,7 @@ function readProjectUsageEntries(
       project_ref: worktreeKey,
       repo_root: isGitFactRow(row) ? worktreeKey : null,
       project_state: projectState,
-      git_branches: gitBranchesByWorktree.get(worktreeKey) || [],
+      git_branches: [],
     });
 
     const branchName = typeof row?.branch === 'string' && row.branch.trim() ? row.branch.trim() : null;
@@ -600,8 +569,9 @@ function readProjectUsageEntries(
     };
     addUsageGroup(projectEntry, group);
     addUsageGroup(worktreeEntry, group);
-    for (const gitBranch of gitBranchesByWorktree.get(worktreeKey) || []) {
-      projectEntry._gitBranches.add(gitBranch);
+    if (isTrackedGitBranchFact(row, branchName)) {
+      projectEntry._gitBranches.add(branchName);
+      worktreeEntry._gitBranches.add(branchName);
     }
   }
 

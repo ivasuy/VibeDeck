@@ -61,6 +61,7 @@ export function LiveWorkbenchOverview({
   status = "idle",
   limits = null,
   canonicalIncomplete = false,
+  initialLoading = false,
 }) {
   const model = useMemo(() => {
     const active = (Array.isArray(sessions) ? sessions : []).filter(isActiveRow);
@@ -109,6 +110,10 @@ export function LiveWorkbenchOverview({
   const activeProjectCount = Number(totals?.active_projects ?? workstreams.length ?? 0) || 0;
   const costDisplay = formatUsdCurrency(auditCost.toFixed(2), { decimals: 2 });
   const hasAttributionNeeds = model.attributionGaps > 0;
+
+  if (initialLoading) {
+    return <LiveWorkbenchOverviewSkeleton />;
+  }
 
   return (
     <section className="vd-card rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
@@ -188,6 +193,29 @@ export function LiveWorkbenchOverview({
           Canonical backfill is incomplete. Live audit totals may exclude older sessions until rebuild finishes.
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function LiveWorkbenchOverviewSkeleton() {
+  return (
+    <section className="vd-card rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900" aria-busy="true">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+            Live control center
+          </div>
+          <div className="mt-4 h-14 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          <div className="mt-3 h-5 w-28 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+        </div>
+        <div className="h-8 w-32 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800" />
+      </div>
+      <div className="mt-6 h-2 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800" />
+      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        {[0, 1, 2, 3, 4, 5].map((index) => (
+          <div key={index} className="h-16 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+        ))}
+      </div>
     </section>
   );
 }

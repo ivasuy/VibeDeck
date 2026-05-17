@@ -181,6 +181,53 @@ test("rollups include historical plus active cost for projects with active sessi
   }
 });
 
+test("workstream payload keeps audit totals but only embeds active and recent sessions", () => {
+  const rows = [
+    {
+      provider: "codex",
+      session_id: "active",
+      started_at: "2026-05-12T01:00:00.000Z",
+      ended_at: null,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "main",
+      model: "gpt-5.5",
+      total_tokens: 100,
+      total_cost_usd: 0.1,
+      last_observed_at: "2026-05-12T01:10:00.000Z",
+    },
+    ...Array.from({ length: 5 }, (_, index) => ({
+      provider: "codex",
+      session_id: `old-${index}`,
+      started_at: `2026-05-11T0${index}:00:00.000Z`,
+      ended_at: `2026-05-11T0${index}:20:00.000Z`,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: index % 2 === 0 ? "main" : "release",
+      model: "gpt-5.5",
+      total_tokens: 1000,
+      total_cost_usd: 1,
+      last_observed_at: `2026-05-11T0${index}:20:00.000Z`,
+    })),
+  ];
+
+  const payload = buildLiveAuditRollups(rows, {
+    now: new Date("2026-05-12T01:15:00.000Z"),
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  assert.equal(payload.sessions.length, 1);
+  assert.equal(payload.workstreams.length, 1);
+  assert.equal(payload.workstreams[0].active_session_count, 1);
+  assert.equal(payload.workstreams[0].audit_session_count, 6);
+  assert.equal(payload.workstreams[0].audit_total_tokens, 5100);
+  assert.deepEqual(payload.workstreams[0].sessions.map((row) => row.session_id), ["active"]);
+  assert.ok(payload.workstreams[0].branch_groups.every((group) =>
+    group.sessions.every((session) => session.session_id === "active"),
+  ));
+});
+
 test("stored canonical zero cost remains authoritative and is not re-estimated", () => {
   const tmp = makeDb();
   try {

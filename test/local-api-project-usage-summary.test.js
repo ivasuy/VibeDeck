@@ -266,18 +266,21 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
 
     assert.deepEqual(
       body.entries.map((entry) => entry.project_key),
-      ["VibeDeck", "acme/public-alpha"],
+      ["VibeDeck", "SWE-AF"],
     );
     assert.equal(body.entries[0].project_ref, liveRepo);
     assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:55:00.000Z");
     assert.equal(body.entries[0].total_tokens, "525");
-    assert.equal(body.entries.some((entry) => entry.project_ref === missingRepo), false);
+    const missingEntry = body.entries.find((entry) => entry.project_ref === missingRepo);
+    assert.ok(missingEntry);
+    assert.equal(missingEntry.archived, true);
+    assert.equal(missingEntry.project_state, "git_missing");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
 
-test("project usage reads default-visible git and non-git projects from canonical branch facts", async () => {
+test("project usage reads tracked existing and decommissioned projects from canonical branch facts", async () => {
   const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
   try {
     const trackerDir = path.join(tmp, "tracker");
@@ -344,9 +347,13 @@ test("project usage reads default-visible git and non-git projects from canonica
 
     assert.deepEqual(
       body.entries.map((entry) => entry.project_key).sort(),
-      ["repo", "scratch"],
+      ["gone", "repo", "scratch"],
     );
-    assert.equal(body.entries.some((entry) => entry.project_ref === missingDir), false);
+    const missing = body.entries.find((entry) => entry.project_ref === missingDir);
+    assert.ok(missing, "deleted cwd-only project must remain visible as historical usage");
+    assert.equal(missing.project_state, "cwd_missing");
+    assert.equal(missing.archived, true);
+    assert.deepEqual(missing.branches, ["No branch"]);
     const scratch = body.entries.find((entry) => entry.project_ref === scratchDir);
     assert.ok(scratch, "non-git existing folder must be present by folder ref");
     assert.equal(scratch.project_state, "non_git_existing");
@@ -413,12 +420,8 @@ test("project usage skips remote queue rows when a matching live local repo has 
     assert.equal(body.entries[0].project_ref, repoRoot);
     assert.equal(body.entries[0].repo_root, repoRoot);
     assert.equal(body.entries[0].total_tokens, "125");
-    assert.equal(body.entries[0].git_branch_count, 3);
-    assert.deepEqual(body.entries[0].git_branches, [
-      "entire/checkpoints/v1",
-      "main",
-      "publish-main",
-    ]);
+    assert.equal(body.entries[0].git_branch_count, 1);
+    assert.deepEqual(body.entries[0].git_branches, ["main"]);
     assert.deepEqual(
       body.entries[0].top_models.map((model) => model.model),
       ["gpt-5"],
@@ -612,8 +615,8 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     assert.equal(entry.cost_estimated, true);
     assert.equal(entry.cost_quality, "mixed_known");
     assert.match(entry.estimated_total_cost_usd, /^\d+\.\d+$/);
-    assert.equal(entry.branch_count, 1);
-    assert.deepEqual(entry.branches, ["Unknown branch"]);
+    assert.equal(entry.branch_count, 2);
+    assert.deepEqual(entry.branches, ["feature/project-cards", "main"]);
 
     assert.deepEqual(
       entry.providers.map((provider) => provider.provider),
@@ -820,6 +823,58 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     assert.equal(body.entries[0].providers[0].provider, "codex");
     assert.equal(body.entries[0].providers[0].total_tokens, "120");
   } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage reads tracked branches without shelling out to git branch by default", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-no-git-hot-path-"));
+  const cp = require("node:child_process");
+  const originalExecFileSync = cp.execFileSync;
+  try {
+    const repoRoot = path.join(tmp, "repo");
+    initGitRepo(repoRoot, ["main", "feature-unused"]);
+    const dbPath = path.join(tmp, "vibedeck.sqlite3");
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "tracked-main",
+        started_at: "2026-05-10T00:00:00.000Z",
+        ended_at: "2026-05-10T00:10:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: "main",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-4o",
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    let gitBranchCalls = 0;
+    cp.execFileSync = (cmd, args, ...rest) => {
+      if (cmd === "git" && Array.isArray(args) && args.includes("branch")) gitBranchCalls += 1;
+      return originalExecFileSync(cmd, args, ...rest);
+    };
+    delete require.cache[require.resolve("../src/lib/project-usage")];
+    const { readProjectUsageEntries } = require("../src/lib/project-usage");
+
+    const entries = readProjectUsageEntries(dbPath);
+    assert.equal(gitBranchCalls, 0);
+    assert.equal(entries.length, 1);
+    assert.deepEqual(entries[0].branches, ["main"]);
+    assert.deepEqual(entries[0].git_branches, ["main"]);
+    assert.deepEqual(entries[0].worktrees[0].git_branches, ["main"]);
+  } finally {
+    cp.execFileSync = originalExecFileSync;
+    delete require.cache[require.resolve("../src/lib/project-usage")];
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });

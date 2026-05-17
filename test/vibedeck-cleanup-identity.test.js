@@ -9,6 +9,7 @@ const SKIP_DIRS = new Set([
   ".git",
   ".claude",
   ".dual-graph",
+  ".worktrees",
   "node_modules",
   "dashboard/node_modules",
   "dashboard/dist",

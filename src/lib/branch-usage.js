@@ -56,6 +56,10 @@ function repoRootExists(repoRoot) {
   }
 }
 
+function isArchivedProjectState(projectState) {
+  return projectState === 'git_missing' || projectState === 'cwd_missing';
+}
+
 function listGitBranches(repoRoot) {
   if (!repoRootExists(repoRoot)) return [];
   try {
@@ -123,6 +127,7 @@ function queryBranchUsage(
     sourceFilter = null,
     includeArchived = false,
     includeUnattributed = false,
+    includeGitBranches = false,
   } = {},
 ) {
   if (!fs.existsSync(dbPath)) return emptyResult();
@@ -241,12 +246,13 @@ function queryBranchUsage(
   return {
     repos: Array.from(repos.values()).map((repoEntry) => {
       const gitBranches =
-        repoEntry.project_state === 'git_existing' && repoRootExists(repoEntry.repo_root)
+        includeGitBranches && repoEntry.project_state === 'git_existing' && repoRootExists(repoEntry.repo_root)
           ? listGitBranches(repoEntry.repo_root)
           : [];
       return {
         repo_root: repoEntry.repo_root,
         project_state: repoEntry.project_state,
+        archived: isArchivedProjectState(repoEntry.project_state),
         project_key: repoEntry.project_key,
         project_ref: repoEntry.project_ref,
         git_branches: gitBranches,

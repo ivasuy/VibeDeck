@@ -24,9 +24,12 @@ function isActiveRow(row) {
   return isActiveLiveSession(row);
 }
 
-function streamNote(status) {
+function streamNote(status, { initialLoading = false } = {}) {
+  if (status === "reconnecting") return "Reconnecting live stream; showing last data.";
   if (status === "degraded") return copy("live.stream.degraded");
-  if (status === "connecting") return copy("live.stream.connecting");
+  if (status === "connecting") {
+    return initialLoading ? copy("live.stream.connecting") : "Refreshing live stream; showing last data.";
+  }
   return null;
 }
 
@@ -82,10 +85,11 @@ export function LiveSessionList({
   onSelectSession,
   streamStatus = "idle",
   streamError = null,
+  initialLoading = false,
   className = "",
   embedded = false,
 }) {
-  const hint = streamNote(streamStatus);
+  const hint = streamNote(streamStatus, { initialLoading });
   const emptyState = emptyStateCopy(streamStatus);
   const fallbackWorkstreams = React.useMemo(() => buildLiveWorkstreams(sessions), [sessions]);
   const workstreams = Array.isArray(backendWorkstreams) && backendWorkstreams.length > 0
@@ -116,7 +120,7 @@ export function LiveSessionList({
         </span>
       </div>
 
-      {streamError ? (
+      {streamError && streamStatus !== "reconnecting" ? (
         <div className="flex items-start gap-2 border-b border-red-200/60 bg-red-500/5 px-5 py-3 text-xs text-red-700 dark:border-red-900/40 dark:text-red-300">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>{copy("live.stream.error", { error: streamError })}</span>
@@ -127,7 +131,9 @@ export function LiveSessionList({
         </div>
       ) : null}
 
-      {visibleWorkstreams.length === 0 ? (
+      {initialLoading ? (
+        <LiveSessionListSkeleton />
+      ) : visibleWorkstreams.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-5 py-12 text-center">
           <h3 className="text-sm font-semibold text-oai-black dark:text-white">{emptyState.title}</h3>
           <p className="mt-1 text-sm text-oai-gray-500 dark:text-oai-gray-400">{emptyState.subtitle}</p>
@@ -244,5 +250,36 @@ export function LiveSessionList({
     <Card className={`flex h-[520px] min-h-0 flex-col overflow-hidden ${className}`} bodyClassName="flex min-h-0 flex-1 flex-col p-0">
       {content}
     </Card>
+  );
+}
+
+function LiveSessionListSkeleton() {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4" aria-busy="true">
+      <div className="mb-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+        Loading live workstreams...
+      </div>
+      <div className="grid gap-3">
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            className="grid min-h-[132px] gap-3 rounded-md border border-oai-gray-200 bg-white px-5 py-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <div className="h-4 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="h-3 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              </div>
+              <div className="h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
+              {[0, 1, 2, 3].map((slot) => (
+                <div key={slot} className="h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

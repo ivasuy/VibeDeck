@@ -180,6 +180,87 @@ test('branch facts split a cross-branch session by event time instead of wall-cl
   }
 });
 
+test('branch facts use event branch labels when head history is missing and normalize ancestry suffixes', () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'event-branch-fallback',
+        started_at: '2026-05-10T10:00:00.000Z',
+        ended_at: '2026-05-10T10:30:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'release/0.1.3',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: 1.0,
+        last_observed_at: '2026-05-10T10:20:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'event-branch-fallback',
+        event_key: 'e1',
+        observed_at: '2026-05-10T10:02:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'release/0.1.3~1',
+        model: 'gpt-5.4',
+        delta_tokens: 90,
+        input_tokens: 80,
+        output_tokens: 10,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'event-branch-fallback',
+        event_key: 'e2',
+        observed_at: '2026-05-10T10:20:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'release/0.1.3~2',
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 8,
+        output_tokens: 2,
+      });
+      rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: 'event-branch-fallback',
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.deepEqual(rows.map((row) => ({
+      branch: row.branch,
+      attribution_branch: row.attribution_branch,
+      branch_kind: row.branch_kind,
+      total_tokens: row.total_tokens,
+      total_cost_usd: row.total_cost_usd,
+    })), [
+      {
+        branch: 'release/0.1.3',
+        attribution_branch: 'release/0.1.3',
+        branch_kind: 'known',
+        total_tokens: 100,
+        total_cost_usd: 1,
+      },
+    ]);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('branch facts preserve non-git projects and hide missing folders by default', () => {
   const tmp = makeDb();
   try {
@@ -270,11 +351,74 @@ test('sessions with no update events fall back to one fact and rebuild is idempo
 
     const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].branch, 'Unknown branch');
+    assert.equal(rows[0].branch, 'main');
+    assert.equal(rows[0].attribution_branch, 'main');
+    assert.equal(rows[0].branch_kind, 'known');
     assert.equal(rows[0].total_tokens, 33);
     assert.equal(rows[0].total_cost_usd, 0.66);
     assert.equal(rows[0].event_count, 0);
     assert.equal(rows[0].session_id, 'fallback');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('branch facts normalize remote branch labels but preserve tag ancestry labels', () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'remote-branch',
+        started_at: '2026-05-10T13:00:00.000Z',
+        ended_at: '2026-05-10T13:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'remotes/origin/main',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 20,
+        total_cost_usd: 0.2,
+        last_observed_at: '2026-05-10T13:10:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'tag-history',
+        started_at: '2026-05-10T14:00:00.000Z',
+        ended_at: '2026-05-10T14:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'tags/v0.1.1~73',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 30,
+        total_cost_usd: 0.3,
+        last_observed_at: '2026-05-10T14:10:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+
+      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'remote-branch' });
+      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'tag-history' });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true })
+      .map((row) => ({ session_id: row.session_id, branch: row.branch, attribution_branch: row.attribution_branch }))
+      .sort((a, b) => a.session_id.localeCompare(b.session_id));
+    assert.deepEqual(rows, [
+      { session_id: 'remote-branch', branch: 'main', attribution_branch: 'main' },
+      { session_id: 'tag-history', branch: 'tags/v0.1.1~73', attribution_branch: 'tags/v0.1.1~73' },
+    ]);
   } finally {
     tmp.cleanup();
   }

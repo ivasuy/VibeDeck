@@ -45,6 +45,8 @@ export type BranchUsageParams = {
   branch?: string;
   limit?: number;
   includeSessions?: boolean;
+  includeArchived?: boolean;
+  includeGitBranches?: boolean;
 };
 
 export type SyncStatus = {
@@ -99,11 +101,13 @@ export function getSyncStatus(fetchImpl: FetchImpl = fetch) {
 }
 
 export function getBranchUsage(params: BranchUsageParams = {}, fetchImpl: FetchImpl = fetch) {
-  const { includeSessions, ...rest } = params;
+  const { includeSessions, includeArchived, includeGitBranches, ...rest } = params;
   return fetchImpl(
     query("vibedeck-branch-usage", {
       ...rest,
       include_sessions: includeSessions ? "1" : undefined,
+      include_archived: includeArchived ? "1" : undefined,
+      include_git_branches: includeGitBranches ? "1" : undefined,
     }),
     readOptions,
   ).then(jsonOrThrow);

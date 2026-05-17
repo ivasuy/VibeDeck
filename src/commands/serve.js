@@ -26,6 +26,63 @@ function getLocalServerUrl(port) {
   return `http://${LOCAL_BIND_HOST}:${port}`;
 }
 
+function createServeShutdownHandler({
+  server,
+  syncInterval = null,
+  reaperInterval = null,
+  headWatcher = null,
+  sockets = new Set(),
+  clearIntervalFn = clearInterval,
+  stopHeadWatcherFn = stopHeadWatcher,
+  setTimeoutFn = setTimeout,
+  exitFn = process.exit,
+  stdout = process.stdout,
+} = {}) {
+  let shuttingDown = false;
+
+  return function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+
+    stdout.write("\nShutting down...\n");
+    try {
+      if (syncInterval) clearIntervalFn(syncInterval);
+    } catch (_e) {}
+    try {
+      if (reaperInterval) clearIntervalFn(reaperInterval);
+    } catch (_e) {}
+    try {
+      Promise.resolve(stopHeadWatcherFn(headWatcher)).catch(() => {});
+    } catch (_e) {}
+
+    for (const socket of sockets || []) {
+      try {
+        socket.end?.();
+      } catch (_e) {}
+    }
+    try {
+      server?.closeAllConnections?.();
+    } catch (_e) {}
+
+    try {
+      server?.close?.(() => exitFn(0));
+    } catch (_e) {
+      exitFn(0);
+      return;
+    }
+
+    const timer = setTimeoutFn(() => {
+      for (const socket of sockets || []) {
+        try {
+          socket.destroy?.();
+        } catch (_e) {}
+      }
+      exitFn(0);
+    }, 3000);
+    if (timer && typeof timer.unref === "function") timer.unref();
+  };
+}
+
 async function cmdServe(argv) {
   const opts = parseArgs(argv);
 
@@ -162,6 +219,11 @@ async function cmdServe(argv) {
       }
     }
   });
+  const sockets = new Set();
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
 
   // 4. Listen (kill stale process on same port if needed)
   const port = opts.port;
@@ -197,18 +259,13 @@ async function cmdServe(argv) {
   });
 
   // 5. Graceful shutdown
-  const shutdown = () => {
-    process.stdout.write("\nShutting down...\n");
-    try {
-      if (syncInterval) clearInterval(syncInterval);
-    } catch (_e) {}
-    try {
-      if (reaperInterval) clearInterval(reaperInterval);
-    } catch (_e) {}
-    stopHeadWatcher(headWatcher).catch(() => {});
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3000);
-  };
+  const shutdown = createServeShutdownHandler({
+    server,
+    syncInterval,
+    reaperInterval,
+    headWatcher,
+    sockets,
+  });
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
@@ -286,6 +343,7 @@ function parseArgs(argv) {
 
 module.exports = {
   cmdServe,
+  createServeShutdownHandler,
   buildPortInUseHint,
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,

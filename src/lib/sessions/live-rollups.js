@@ -248,12 +248,34 @@ function buildFactsBySessionKey(branchFacts) {
   return factsBySessionKey;
 }
 
+function projectSessionToFact(session, fact) {
+  const total = fact?.total_cost_usd == null ? null : Number(fact.total_cost_usd);
+  const finiteCost = Number.isFinite(total) ? total : null;
+  const branch = safeBranch(fact?.branch);
+  const attribution = text(fact?.attribution_branch) || branch;
+  return {
+    ...session,
+    branch,
+    attribution_branch: attribution,
+    branch_kind: text(fact?.branch_kind) || session?.branch_kind || null,
+    branch_resolution_tier: text(fact?.branch_resolution_tier) || session?.branch_resolution_tier || null,
+    confidence: text(fact?.confidence) || session?.confidence || null,
+    model: text(fact?.model) || session?.model || null,
+    total_tokens: Number(fact?.total_tokens || 0) || 0,
+    total_cost_usd: finiteCost,
+    estimated_total_cost_usd: finiteCost,
+    cost_estimated: Boolean(Number(fact?.cost_estimated || 0)),
+    cost_quality: text(fact?.cost_quality) || (finiteCost == null ? 'partial_unknown' : 'stored'),
+  };
+}
+
 function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, visibleSessionKeys = null) {
   const byBranch = new Map();
 
-  function addContribution({ branch, provider, model, tokens, cost, session, sourceRow }) {
+  function addContribution({ branch, provider, model, tokens, cost, session, displaySession, sourceRow }) {
     const key = sessionKey(session);
     const active = activeSessionKeys.has(key);
+    const sessionForDisplay = displaySession || session;
 
     if (!byBranch.has(branch)) {
       byBranch.set(branch, {
@@ -284,7 +306,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
     const sessionMs = toMs(liveSortIso(session)) || 0;
     const sourceMs = toMs(sortTime(sourceRow)) || 0;
     if (!visibleSessionKeys || visibleSessionKeys.has(key)) {
-      branchEntry.sessions.set(key, session);
+      branchEntry.sessions.set(key, sessionForDisplay);
     }
     branchEntry.audit_session_keys.add(key);
     branchEntry.audit_total_tokens += tokens;
@@ -323,6 +345,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
           tokens: Number(fact?.total_tokens || 0) || 0,
           cost: factCost(fact),
           session,
+          displaySession: projectSessionToFact(session, fact),
           sourceRow: fact,
         });
       }

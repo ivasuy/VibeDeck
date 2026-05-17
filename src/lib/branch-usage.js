@@ -2,13 +2,12 @@
 
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
-const { DatabaseSync } = require('node:sqlite');
 const {
-  resolveUsageCost,
   createCostAccumulator,
   addCostToAccumulator,
   finalizeCostAccumulator,
 } = require('./cost-estimation');
+const { readBranchUsageFactRows } = require('./sessions/branch-usage-facts');
 
 function emptyResult() {
   return {
@@ -42,6 +41,10 @@ function toFiniteNumber(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function toBooleanFlag(value) {
+  return value === true || value === 1 || value === '1';
 }
 
 function repoRootExists(repoRoot) {
@@ -78,188 +81,178 @@ function attributionBranchName(value) {
   return String(value || '').replace(/~\d+$/, '');
 }
 
+function factCost(row) {
+  const totalCostUsd = toFiniteNumber(row?.total_cost_usd);
+  return {
+    total_cost_usd: totalCostUsd,
+    cost_estimated: toBooleanFlag(row?.cost_estimated),
+    cost_quality:
+      typeof row?.cost_quality === 'string' && row.cost_quality.trim()
+        ? row.cost_quality.trim()
+        : totalCostUsd == null
+          ? 'partial_unknown'
+          : 'mixed_known',
+  };
+}
+
+function projectRef(row) {
+  return row?.project_ref || row?.repo_root || row?.cwd || null;
+}
+
+function projectKey(row) {
+  if (typeof row?.project_key === 'string' && row.project_key.trim()) return row.project_key.trim();
+  const ref = projectRef(row);
+  if (typeof ref !== 'string' || !ref.trim()) return 'unknown';
+  return ref.split(/[\\/]+/).filter(Boolean).pop() || ref;
+}
+
+function repoGroupKey(row) {
+  if (typeof row?.scope_key === 'string' && row.scope_key.trim()) return row.scope_key.trim();
+  return [row?.project_state || 'unknown', projectRef(row) || '', row?.repo_root || '', row?.cwd || ''].join('\u241f');
+}
+
 function queryBranchUsage(
   dbPath,
-  { from = null, to = null, repo = null, branch = null, limit = 100, includeSessions = false } = {},
+  {
+    from = null,
+    to = null,
+    repo = null,
+    branch = null,
+    limit = 100,
+    includeSessions = false,
+    sourceFilter = null,
+    includeArchived = false,
+    includeUnattributed = false,
+  } = {},
 ) {
   if (!fs.existsSync(dbPath)) return emptyResult();
 
-  const db = new DatabaseSync(dbPath, { readOnly: true });
-  try {
-    const clauses = ["repo_root IS NOT NULL", "repo_root <> ''"];
-    const params = {};
+  const requestedLimit = clampLimit(limit);
+  const rows = readBranchUsageFactRows(dbPath, {
+    from,
+    to,
+    repo,
+    branch,
+    limit: requestedLimit,
+    sourceFilter,
+    includeArchived,
+    includeUnattributed,
+  });
 
-    if (from) {
-      clauses.push('activity_at >= @from');
-      params.from = from;
+  const repos = new Map();
+  const totalsCost = createCostAccumulator();
+  const totals = {
+    total_tokens: 0,
+    total_cost_usd: 0,
+    cost_estimated: false,
+    cost_quality: 'zero_tokens',
+    session_count: 0,
+  };
+
+  for (const row of rows) {
+    const rowCost = factCost(row);
+    const rowTokens = Number(row.total_tokens || 0);
+    const rowLastSeen = row.last_observed_at || row.first_observed_at || null;
+    const repoKey = repoGroupKey(row);
+
+    totals.total_tokens += rowTokens;
+    totals.session_count += 1;
+    addCostToAccumulator(totalsCost, rowCost);
+
+    if (!repos.has(repoKey)) {
+      repos.set(repoKey, {
+        repo_root: row.repo_root || null,
+        project_state: row.project_state || null,
+        project_key: projectKey(row),
+        project_ref: projectRef(row),
+        branches: new Map(),
+      });
     }
-    if (to) {
-      clauses.push('activity_at <= @to');
-      params.to = to;
+
+    const repoEntry = repos.get(repoKey);
+    const branchName = row.branch || 'unattributed';
+    const branchKind = row.branch_kind || 'unknown';
+    const branchKey = `${branchName}\u241f${branchKind}`;
+
+    if (!repoEntry.branches.has(branchKey)) {
+      repoEntry.branches.set(branchKey, {
+        branch: branchName,
+        attribution_branch: row.attribution_branch || attributionBranchName(branchName),
+        branch_kind: branchKind,
+        total_tokens: 0,
+        total_cost_usd: null,
+        cost_estimated: false,
+        cost_quality: 'zero_tokens',
+        session_count: 0,
+        last_seen_at: rowLastSeen,
+        confidence: confidenceShape(),
+        models: new Map(),
+        _cost: createCostAccumulator(),
+        sessions: includeSessions ? [] : undefined,
+      });
     }
-    if (repo) {
-      clauses.push('repo_root = @repo');
-      params.repo = repo;
+
+    const branchEntry = repoEntry.branches.get(branchKey);
+    branchEntry.total_tokens += rowTokens;
+    branchEntry.session_count += 1;
+    addCostToAccumulator(branchEntry._cost, rowCost);
+    if (String(rowLastSeen || '') > String(branchEntry.last_seen_at || '')) {
+      branchEntry.last_seen_at = rowLastSeen;
     }
-    if (branch) {
-      clauses.push('branch = @branch');
-      params.branch = branch;
+    branchEntry.confidence[normalizeConfidence(row.confidence)] += 1;
+
+    const modelName = row.model || 'unknown';
+    if (!branchEntry.models.has(modelName)) {
+      branchEntry.models.set(modelName, {
+        model: modelName,
+        total_tokens: 0,
+        total_cost_usd: null,
+        cost_estimated: false,
+        cost_quality: 'zero_tokens',
+        session_count: 0,
+        _cost: createCostAccumulator(),
+      });
     }
 
-    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const modelEntry = branchEntry.models.get(modelName);
+    modelEntry.total_tokens += rowTokens;
+    modelEntry.session_count += 1;
+    addCostToAccumulator(modelEntry._cost, rowCost);
 
-    const requestedLimit = clampLimit(limit);
-    const rows = db
-      .prepare(
-        `
-        WITH source_rows AS (
-          SELECT
-            s.provider,
-            s.session_id,
-            w.window_start AS started_at,
-            w.window_end AS ended_at,
-            COALESCE(w.window_end, s.last_observed_at, s.ended_at, w.window_start, s.started_at) AS activity_at,
-            s.repo_root,
-            COALESCE(w.branch, 'unattributed') AS branch,
-            s.branch_resolution_tier,
-            s.confidence,
-            s.model,
-            COALESCE(w.prorated_tokens, 0) AS total_tokens,
-            w.prorated_cost_usd AS total_cost_usd,
-            s.total_cost_usd AS session_total_cost_usd
-          FROM vibedeck_session_branch_windows w
-          JOIN vibedeck_sessions s
-            ON s.provider = w.provider AND s.session_id = w.session_id
-
-          UNION ALL
-
-          SELECT
-            s.provider,
-            s.session_id,
-            s.started_at,
-            COALESCE(s.ended_at, s.last_observed_at, s.started_at) AS ended_at,
-            COALESCE(s.last_observed_at, s.ended_at, s.started_at) AS activity_at,
-            s.repo_root,
-            COALESCE(s.branch, 'unattributed') AS branch,
-            s.branch_resolution_tier,
-            s.confidence,
-            s.model,
-            COALESCE(s.total_tokens, 0) AS total_tokens,
-            s.total_cost_usd AS total_cost_usd,
-            s.total_cost_usd AS session_total_cost_usd
-          FROM vibedeck_sessions s
-          WHERE NOT EXISTS (
-            SELECT 1 FROM vibedeck_session_branch_windows w
-            WHERE w.provider = s.provider AND w.session_id = s.session_id
-          )
-        )
-        SELECT * FROM source_rows
-        ${where}
-        ORDER BY started_at DESC
-      `,
-      )
-      .all(params)
-      .filter((row) => repoRootExists(row.repo_root));
-
-    const repos = new Map();
-    const totalsCost = createCostAccumulator();
-    const totals = {
-      total_tokens: 0,
-      total_cost_usd: 0,
-      cost_estimated: false,
-      cost_quality: 'zero_tokens',
-      session_count: 0,
-    };
-
-    for (const row of rows) {
-      const storedCostUsd = toFiniteNumber(row.total_cost_usd);
-      const sessionStoredCostUsd = toFiniteNumber(row.session_total_cost_usd);
-      const resolvedCost = resolveUsageCost({
-        source: row.provider,
+    if (includeSessions) {
+      branchEntry.sessions.push({
+        provider: row.provider,
+        session_id: row.session_id,
+        started_at: row.first_observed_at,
+        ended_at: row.last_observed_at,
         model: row.model,
         total_tokens: row.total_tokens,
-        total_cost_usd: row.total_cost_usd,
-        stored_cost_is_authoritative:
-          !(storedCostUsd === 0 && sessionStoredCostUsd == null && Number(row.total_tokens || 0) > 0),
+        total_cost_usd: rowCost.total_cost_usd,
+        cost_estimated: rowCost.cost_estimated,
+        cost_quality: rowCost.cost_quality,
+        confidence: row.confidence,
+        branch_resolution_tier: row.branch_resolution_tier,
       });
-
-      totals.total_tokens += Number(row.total_tokens || 0);
-      totals.session_count += 1;
-      addCostToAccumulator(totalsCost, resolvedCost);
-
-      if (!repos.has(row.repo_root)) repos.set(row.repo_root, new Map());
-      const branches = repos.get(row.repo_root);
-
-      if (!branches.has(row.branch)) {
-        branches.set(row.branch, {
-          branch: row.branch,
-          attribution_branch: attributionBranchName(row.branch),
-          total_tokens: 0,
-          total_cost_usd: null,
-          cost_estimated: false,
-          cost_quality: 'zero_tokens',
-          session_count: 0,
-          last_seen_at: row.activity_at,
-          confidence: confidenceShape(),
-          models: new Map(),
-          _cost: createCostAccumulator(),
-          sessions: includeSessions ? [] : undefined,
-        });
-      }
-
-      const entry = branches.get(row.branch);
-      entry.total_tokens += Number(row.total_tokens || 0);
-      entry.session_count += 1;
-      addCostToAccumulator(entry._cost, resolvedCost);
-      if (String(row.activity_at || '') > String(entry.last_seen_at || '')) {
-        entry.last_seen_at = row.activity_at;
-      }
-      entry.confidence[normalizeConfidence(row.confidence)] += 1;
-
-      if (!entry.models.has(row.model || 'unknown')) {
-        entry.models.set(row.model || 'unknown', {
-          model: row.model || 'unknown',
-          total_tokens: 0,
-          total_cost_usd: null,
-          cost_estimated: false,
-          cost_quality: 'zero_tokens',
-          session_count: 0,
-          _cost: createCostAccumulator(),
-        });
-      }
-      const modelEntry = entry.models.get(row.model || 'unknown');
-      modelEntry.total_tokens += Number(row.total_tokens || 0);
-      modelEntry.session_count += 1;
-      addCostToAccumulator(modelEntry._cost, resolvedCost);
-
-      if (includeSessions) {
-        entry.sessions.push({
-          provider: row.provider,
-          session_id: row.session_id,
-          started_at: row.started_at,
-          ended_at: row.ended_at,
-          model: row.model,
-          total_tokens: row.total_tokens,
-          total_cost_usd: resolvedCost.total_cost_usd,
-          cost_estimated: resolvedCost.cost_estimated,
-          cost_quality: resolvedCost.cost_quality,
-          confidence: row.confidence,
-          branch_resolution_tier: row.branch_resolution_tier,
-        });
-      }
     }
+  }
 
-    Object.assign(totals, finalizeCostAccumulator(totalsCost));
+  Object.assign(totals, finalizeCostAccumulator(totalsCost));
 
-    return {
-      repos: Array.from(repos.entries()).map(([repo_root, branches]) => {
-        const gitBranches = listGitBranches(repo_root);
-        return {
-          repo_root,
-          git_branches: gitBranches,
-          git_branch_count: gitBranches.length,
-          branches: Array.from(branches.values())
-            .map((branchEntry) => {
+  return {
+    repos: Array.from(repos.values()).map((repoEntry) => {
+      const gitBranches =
+        repoEntry.project_state === 'git_existing' && repoRootExists(repoEntry.repo_root)
+          ? listGitBranches(repoEntry.repo_root)
+          : [];
+      return {
+        repo_root: repoEntry.repo_root,
+        project_state: repoEntry.project_state,
+        project_key: repoEntry.project_key,
+        project_ref: repoEntry.project_ref,
+        git_branches: gitBranches,
+        git_branch_count: gitBranches.length,
+        branches: Array.from(repoEntry.branches.values())
+          .map((branchEntry) => {
             const branchCost = finalizeCostAccumulator(branchEntry._cost);
             return {
               ...branchEntry,
@@ -280,17 +273,14 @@ function queryBranchUsage(
                 })
                 .sort((a, b) => b.total_tokens - a.total_tokens),
             };
-            })
-            .map(({ _cost, ...branchEntry }) => branchEntry)
-            .sort((a, b) => b.total_tokens - a.total_tokens)
-            .slice(0, requestedLimit),
-        };
-      }),
-      totals,
-    };
-  } finally {
-    db.close();
-  }
+          })
+          .map(({ _cost, ...branchEntry }) => branchEntry)
+          .sort((a, b) => b.total_tokens - a.total_tokens)
+          .slice(0, requestedLimit),
+      };
+    }),
+    totals,
+  };
 }
 
 module.exports = { queryBranchUsage };

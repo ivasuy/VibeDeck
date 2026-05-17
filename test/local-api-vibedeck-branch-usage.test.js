@@ -12,6 +12,8 @@ const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('../src/lib/db');
 const { lookupModelPricing } = require('../src/lib/pricing');
+const { rebuildAllBranchUsageFacts } = require('../src/lib/sessions/branch-usage-facts');
+const { recordTransition } = require('../src/lib/sessions/head-history');
 
 function createRequest({ method = 'GET', headers = {}, body } = {}) {
   const req = new EventEmitter();
@@ -55,6 +57,37 @@ function insertSession(db, row) {
       @model, @total_tokens, @total_cost_usd, @started_at, @started_at
     )
   `).run(row);
+}
+
+function insertEvent(db, row) {
+  db.prepare(`
+    INSERT INTO vibedeck_session_events (
+      provider, session_id, event_key, kind, observed_at,
+      started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence,
+      model, delta_tokens, input_tokens, cached_input_tokens,
+      cache_creation_input_tokens, output_tokens, reasoning_output_tokens,
+      conversation_count, total_tokens, created_at
+    ) VALUES (
+      @provider, @session_id, @event_key, 'update', @observed_at,
+      NULL, NULL, NULL,
+      @cwd, @repo_root, NULL, NULL,
+      @branch, @branch_resolution_tier, @confidence,
+      @model, @delta_tokens, @input_tokens, 0,
+      0, @output_tokens, 0,
+      1, @total_tokens, @observed_at
+    )
+  `).run({
+    branch: null,
+    branch_resolution_tier: null,
+    confidence: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: null,
+    delta_tokens: null,
+    ...row,
+  });
 }
 
 function initGitRepo(repoRoot, branches = ['main']) {
@@ -106,6 +139,18 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
 
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
     ensureSchema(dbPath);
+    recordTransition(dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-10T00:00:00.000Z',
+    });
+    recordTransition(dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'feature/live',
+      transitioned_at: '2026-05-10T01:30:00.000Z',
+    });
 
     const db = new DatabaseSync(dbPath);
     try {
@@ -154,6 +199,7 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -170,9 +216,13 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     assert.equal(handled, true);
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.body.toString('utf8'));
+    const expectedRepoRoot = fssync.realpathSync(repoRoot);
     assert.equal(body.totals.total_tokens, 125040);
     assert.equal(body.repos.length, 1);
-    assert.equal(body.repos[0].repo_root, repoRoot);
+    assert.equal(body.repos[0].repo_root, expectedRepoRoot);
+    assert.equal(body.repos[0].project_state, 'git_existing');
+    assert.equal(body.repos[0].project_ref, expectedRepoRoot);
+    assert.equal(body.repos[0].project_key, path.basename(repoRoot));
     assert.equal(body.repos[0].git_branch_count, 3);
     assert.deepEqual(body.repos[0].git_branches, ['feature/live', 'main', 'release']);
     assert.equal(body.repos[0].branches.length, 2);
@@ -180,6 +230,8 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     const featureBranch = body.repos[0].branches.find((entry) => entry.branch === 'feature/live');
     assert.ok(mainBranch);
     assert.ok(featureBranch);
+    assert.equal(mainBranch.branch_kind, 'known');
+    assert.equal(featureBranch.branch_kind, 'known');
     assert.equal(mainBranch.sessions.length, 2);
     assert.ok(mainBranch.total_cost_usd > 0);
     assert.deepEqual(
@@ -274,6 +326,7 @@ test('GET /functions/vibedeck-branch-usage does not undercount when more than 10
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -292,18 +345,30 @@ test('GET /functions/vibedeck-branch-usage does not undercount when more than 10
   }
 });
 
-test('GET /functions/vibedeck-branch-usage prefers branch windows when a session was split', async () => {
+test('GET /functions/vibedeck-branch-usage reads branch facts rather than branch windows', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-windows-'));
   try {
     const trackerDir = path.join(root, 'tracker');
     const repoRoot = path.join(root, 'repo');
     await fs.mkdir(trackerDir, { recursive: true });
-    await fs.mkdir(repoRoot, { recursive: true });
+    initGitRepo(repoRoot, ['main', 'feature']);
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
     ensureSchema(dbPath);
+    recordTransition(dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-10T00:00:00.000Z',
+    });
+    recordTransition(dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'feature',
+      transitioned_at: '2026-05-10T00:30:00.000Z',
+    });
 
     const db = new DatabaseSync(dbPath);
     try {
@@ -321,16 +386,41 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
         total_tokens: 100,
         total_cost_usd: 1.0,
       });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'split',
+        event_key: 'main-usage',
+        observed_at: '2026-05-10T00:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.2',
+        delta_tokens: 90,
+        input_tokens: 80,
+        output_tokens: 10,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'split',
+        event_key: 'feature-usage',
+        observed_at: '2026-05-10T00:40:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.2',
+        delta_tokens: 10,
+        input_tokens: 8,
+        output_tokens: 2,
+      });
       db.prepare(`
         INSERT INTO vibedeck_session_branch_windows
           (provider, session_id, branch, window_start, window_end, prorated_tokens, prorated_cost_usd)
         VALUES
-          ('codex', 'split', 'main', '2026-05-10T00:00:00.000Z', '2026-05-10T00:30:00.000Z', 60, 0.6),
-          ('codex', 'split', 'feature', '2026-05-10T00:30:00.000Z', '2026-05-10T01:00:00.000Z', 40, 0.4)
+          ('codex', 'split', 'main', '2026-05-10T00:00:00.000Z', '2026-05-10T00:30:00.000Z', 50, 0.5),
+          ('codex', 'split', 'feature', '2026-05-10T00:30:00.000Z', '2026-05-10T01:00:00.000Z', 50, 0.5)
       `).run();
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -346,21 +436,24 @@ test('GET /functions/vibedeck-branch-usage prefers branch windows when a session
 
     const body = JSON.parse(res.body.toString('utf8'));
     const branches = body.repos[0].branches;
-    assert.equal(branches.find((b) => b.branch === 'main').total_tokens, 60);
-    assert.equal(branches.find((b) => b.branch === 'feature').total_tokens, 40);
+    assert.equal(branches.find((b) => b.branch === 'main').total_tokens, 90);
+    assert.equal(branches.find((b) => b.branch === 'feature').total_tokens, 10);
+    assert.equal(body.totals.total_tokens, 100);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('GET /functions/vibedeck-branch-usage hides deleted repo roots', async () => {
+test('GET /functions/vibedeck-branch-usage includes non-git folders and hides archived rows by default', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-stale-repo-'));
   try {
     const trackerDir = path.join(root, 'tracker');
     const liveRepo = path.join(root, 'live-repo');
+    const nonGitFolder = path.join(root, 'notes-app');
     const deletedRepo = path.join(root, 'deleted-repo');
     await fs.mkdir(trackerDir, { recursive: true });
     await fs.mkdir(liveRepo, { recursive: true });
+    await fs.mkdir(nonGitFolder, { recursive: true });
     const queuePath = path.join(trackerDir, 'queue.jsonl');
     await fs.writeFile(queuePath, '', 'utf8');
 
@@ -397,9 +490,24 @@ test('GET /functions/vibedeck-branch-usage hides deleted repo roots', async () =
         total_tokens: 900,
         total_cost_usd: null,
       });
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 'non-git',
+        started_at: '2026-05-10T02:00:00.000Z',
+        ended_at: '2026-05-10T02:20:00.000Z',
+        cwd: nonGitFolder,
+        repo_root: null,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'low',
+        model: 'claude-sonnet-4',
+        total_tokens: 25,
+        total_cost_usd: 0.25,
+      });
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -410,14 +518,35 @@ test('GET /functions/vibedeck-branch-usage hides deleted repo roots', async () =
     await handler(req, res, new URL('http://127.0.0.1/functions/vibedeck-branch-usage'));
 
     const body = JSON.parse(res.body.toString('utf8'));
-    assert.deepEqual(body.repos.map((repo) => repo.repo_root), [liveRepo]);
-    assert.equal(body.totals.total_tokens, 100);
+    const expectedLiveRepo = fssync.realpathSync(liveRepo);
+    const expectedNonGitFolder = fssync.realpathSync(nonGitFolder);
+    assert.deepEqual(body.repos.map((repo) => repo.project_ref).sort(), [expectedLiveRepo, expectedNonGitFolder].sort());
+    assert.equal(body.totals.total_tokens, 125);
+
+    const nonGit = body.repos.find((repo) => repo.project_ref === expectedNonGitFolder);
+    assert.ok(nonGit);
+    assert.equal(nonGit.repo_root, null);
+    assert.equal(nonGit.project_state, 'non_git_existing');
+    assert.deepEqual(nonGit.git_branches, []);
+    assert.equal(nonGit.git_branch_count, 0);
+    assert.equal(nonGit.branches[0].branch, 'No branch');
+    assert.equal(nonGit.branches[0].branch_kind, 'no_git');
+
+    const archivedReq = createRequest({ method: 'GET' });
+    const archivedRes = createResponse();
+    await handler(
+      archivedReq,
+      archivedRes,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1'),
+    );
+    const archivedBody = JSON.parse(archivedRes.body.toString('utf8'));
+    assert.ok(archivedBody.repos.some((repo) => repo.project_ref === deletedRepo));
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
 
-test('GET /functions/vibedeck-branch-usage estimates branch window cost when stored cost is null', async () => {
+test('GET /functions/vibedeck-branch-usage uses branch fact cost when stored cost is null', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-null-cost-'));
   try {
     const trackerDir = path.join(root, 'tracker');
@@ -456,6 +585,7 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -470,11 +600,11 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
     );
 
     const body = JSON.parse(res.body.toString('utf8'));
-    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'Unknown branch');
     const pricingMatch = lookupModelPricing('gpt-5.4');
     assert.equal(pricingMatch.hit, true);
     const approximateRate = pickApproximateTokenRate(pricingMatch.value);
-    const expectedCostUsd = (60000 * approximateRate) / 1_000_000;
+    const expectedCostUsd = (100000 * approximateRate) / 1_000_000;
 
     assertClose(branch.total_cost_usd, expectedCostUsd);
     assertClose(branch.models[0].total_cost_usd, expectedCostUsd);
@@ -484,7 +614,7 @@ test('GET /functions/vibedeck-branch-usage estimates branch window cost when sto
   }
 });
 
-test('GET /functions/vibedeck-branch-usage estimates stale zero branch window cost when source session cost is null', async () => {
+test('GET /functions/vibedeck-branch-usage ignores stale zero branch window cost', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-window-stale-zero-cost-'));
   try {
     const trackerDir = path.join(root, 'tracker');
@@ -523,6 +653,7 @@ test('GET /functions/vibedeck-branch-usage estimates stale zero branch window co
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -537,11 +668,11 @@ test('GET /functions/vibedeck-branch-usage estimates stale zero branch window co
     );
 
     const body = JSON.parse(res.body.toString('utf8'));
-    const branch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    const branch = body.repos[0].branches.find((entry) => entry.branch === 'Unknown branch');
     const pricingMatch = lookupModelPricing('gpt-5.4');
     assert.equal(pricingMatch.hit, true);
     const approximateRate = pickApproximateTokenRate(pricingMatch.value);
-    const expectedCostUsd = (60000 * approximateRate) / 1_000_000;
+    const expectedCostUsd = (100000 * approximateRate) / 1_000_000;
 
     assertClose(branch.total_cost_usd, expectedCostUsd);
     assert.equal(branch.cost_estimated, true);
@@ -569,6 +700,12 @@ test('GET /functions/vibedeck-branch-usage uses last_observed_at for open-sessio
 
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
     ensureSchema(dbPath);
+    recordTransition(dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'feature/live',
+      transitioned_at: '2026-05-12T01:00:00.000Z',
+    });
 
     const db = new DatabaseSync(dbPath);
     try {
@@ -609,6 +746,7 @@ test('GET /functions/vibedeck-branch-usage uses last_observed_at for open-sessio
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -624,13 +762,74 @@ test('GET /functions/vibedeck-branch-usage uses last_observed_at for open-sessio
 
     assert.equal(res.statusCode, 200);
     const payload = JSON.parse(res.body.toString('utf8'));
-    const repo = payload.repos.find((row) => row.repo_root === repoRoot);
+    const repo = payload.repos.find((row) => row.repo_root === fssync.realpathSync(repoRoot));
     assert.ok(repo);
     const branch = repo.branches.find((row) => row.branch === 'feature/live');
     assert.ok(branch);
     assert.equal(branch.total_tokens, 2000);
     assert.equal(branch.total_cost_usd, 2.5);
     assert.equal(branch.last_seen_at, '2026-05-12T01:15:00.000Z');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage passes include_unattributed to branch facts', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-unattributed-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'cursor',
+        session_id: 'unattributed',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:05:00.000Z',
+        cwd: null,
+        repo_root: null,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-4o',
+        total_tokens: 12,
+        total_cost_usd: null,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const defaultReq = createRequest({ method: 'GET' });
+    const defaultRes = createResponse();
+    await handler(defaultReq, defaultRes, new URL('http://127.0.0.1/functions/vibedeck-branch-usage'));
+    assert.deepEqual(JSON.parse(defaultRes.body.toString('utf8')).repos, []);
+
+    const includedReq = createRequest({ method: 'GET' });
+    const includedRes = createResponse();
+    await handler(
+      includedReq,
+      includedRes,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_unattributed=1'),
+    );
+
+    const body = JSON.parse(includedRes.body.toString('utf8'));
+    assert.equal(body.repos.length, 1);
+    assert.equal(body.repos[0].project_state, 'unattributed');
+    assert.equal(body.repos[0].project_key, 'Unattributed');
+    assert.equal(body.repos[0].branches[0].branch, 'Unattributed');
+    assert.equal(body.repos[0].branches[0].branch_kind, 'unattributed');
+    assert.equal(body.totals.total_tokens, 12);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

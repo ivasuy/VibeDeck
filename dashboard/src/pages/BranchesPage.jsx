@@ -73,30 +73,101 @@ function repoParentBasename(repoRoot) {
   return parts.length > 1 ? parts[parts.length - 2] : "";
 }
 
+const GENERIC_PROJECT_CONTEXT = new Set([
+  "users",
+  "downloads",
+  "documents",
+  "desktop",
+  "projects",
+  "project",
+  "library",
+  "cloudstorage",
+  "onedrive",
+  "tmp",
+  "temp",
+  "private",
+  "var",
+  "folders",
+]);
+
+function repoOptionTitle(repoEntry) {
+  const values = [
+    repoEntry?.repo_root,
+    repoEntry?.project_ref,
+    ...(Array.isArray(repoEntry?.workspace_paths) ? repoEntry.workspace_paths : []),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  return Array.from(new Set(values)).join("\n");
+}
+
+function usefulParentContext(repoRoot) {
+  const parts = repoPathSegments(repoRoot);
+  if (parts.length <= 1) return "";
+  const parents = parts.slice(0, -1);
+
+  if (parts[parts.length - 1] === "T" && parents.includes("folders")) return "temp";
+
+  const immediate = parents[parents.length - 1] || "";
+  const previous = parents[parents.length - 2] || "";
+  const immediateLower = immediate.toLowerCase();
+
+  if (immediate && !GENERIC_PROJECT_CONTEXT.has(immediateLower)) {
+    if (immediate.length <= 3 && previous && !GENERIC_PROJECT_CONTEXT.has(previous.toLowerCase())) {
+      return `${previous}/${immediate}`;
+    }
+    return immediate;
+  }
+
+  for (let index = parents.length - 2; index >= 0; index -= 1) {
+    const part = parents[index];
+    if (parents[index - 1]?.toLowerCase() === "users") continue;
+    if (part && !GENERIC_PROJECT_CONTEXT.has(part.toLowerCase())) return part;
+  }
+  return "";
+}
+
 function buildRepoOptionLabels(repos) {
   const basenameCounts = new Map();
   const labels = new Map();
+  const labelCounts = new Map();
 
   for (const repoEntry of repos || []) {
     const repoRoot = repoOptionValue(repoEntry);
-    const basename = repoBasename(repoRoot);
+    const basename = String(repoEntry?.project_key || repoBasename(repoRoot)).trim() || repoBasename(repoRoot);
     basenameCounts.set(basename, (basenameCounts.get(basename) || 0) + 1);
   }
 
   for (const repoEntry of repos || []) {
     const repoRoot = repoOptionValue(repoEntry);
-    const basename = repoBasename(repoRoot);
+    const basename = String(repoEntry?.project_key || repoBasename(repoRoot)).trim() || repoBasename(repoRoot);
     let label = basename;
-    if (basenameCounts.get(basename) > 1) {
-      if (repoEntry?.archived) {
-        const parent = repoParentBasename(repoRoot);
-        const projectName = String(repoEntry?.project_key || basename).trim() || basename;
-        label = parent ? `${projectName} · ${parent}` : projectName;
-      } else {
-        label = repoRoot || "—";
-      }
+    if (repoEntry?.workspace_family && repoEntry?.workspace_context && repoEntry?.archived) {
+      label = `${basename} · ${repoEntry.workspace_context}`;
+    } else if (basenameCounts.get(basename) > 1) {
+      const parent = usefulParentContext(repoRoot);
+      label = parent ? `${basename} · ${parent}` : basename;
     }
-    labels.set(repoRoot, repoEntry?.archived ? `${label} (${copy("shared.badge.decommissioned")})` : label);
+    const finalLabel = repoEntry?.archived ? `${label} (${copy("shared.badge.decommissioned")})` : label;
+    labels.set(repoRoot, {
+      baseLabel: label,
+      label: repoEntry?.archived ? `${label} (${copy("shared.badge.decommissioned")})` : label,
+      title: repoOptionTitle(repoEntry) || repoRoot || undefined,
+      archived: Boolean(repoEntry?.archived),
+      fallbackContext: repoParentBasename(repoRoot),
+    });
+    labelCounts.set(finalLabel, (labelCounts.get(finalLabel) || 0) + 1);
+  }
+
+  for (const [repoRoot, meta] of labels.entries()) {
+    if ((labelCounts.get(meta.label) || 0) <= 1) continue;
+    const fallback = String(meta.fallbackContext || "").trim();
+    if (!fallback) continue;
+    const nextBase = meta.baseLabel.includes(" · ") ? meta.baseLabel : `${meta.baseLabel} · ${fallback}`;
+    labels.set(repoRoot, {
+      ...meta,
+      label: meta.archived ? `${nextBase} (${copy("shared.badge.decommissioned")})` : nextBase,
+    });
   }
 
   return labels;
@@ -400,9 +471,10 @@ export function BranchesPage() {
                 >
                   {repos.map((repoEntry) => {
                     const repoRoot = repoOptionValue(repoEntry);
+                    const optionMeta = repoOptionLabels.get(repoRoot);
                     return (
-                      <option key={repoRoot} value={repoRoot} title={repoRoot || undefined}>
-                        {repoOptionLabels.get(repoRoot) || "—"}
+                      <option key={repoRoot} value={repoRoot} title={optionMeta?.title || repoRoot || undefined}>
+                        {optionMeta?.label || "—"}
                       </option>
                     );
                   })}

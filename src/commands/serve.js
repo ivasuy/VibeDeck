@@ -26,6 +26,25 @@ function getLocalServerUrl(port) {
   return `http://${LOCAL_BIND_HOST}:${port}`;
 }
 
+function createServeLifecycleReporter({ stdout = process.stdout, enabled = true } = {}) {
+  function write(line = "") {
+    if (!enabled) return;
+    stdout.write(`${line}\n`);
+  }
+
+  return {
+    phase(message) {
+      write(message);
+    },
+    provider(name, message) {
+      write(`  ${name}: ${message}`);
+    },
+    ready(url) {
+      write(`Dashboard ready: ${url}`);
+    },
+  };
+}
+
 function createServeShutdownHandler({
   server,
   syncInterval = null,
@@ -39,22 +58,51 @@ function createServeShutdownHandler({
   stdout = process.stdout,
 } = {}) {
   let shuttingDown = false;
+  let repeatInterrupts = 0;
+
+  function write(line = "") {
+    stdout.write(`${line}\n`);
+  }
+
+  function forceExit() {
+    for (const socket of sockets || []) {
+      try {
+        socket.destroy?.();
+      } catch (_e) {}
+    }
+    try {
+      server?.closeAllConnections?.();
+    } catch (_e) {}
+    exitFn(0);
+  }
 
   return function shutdown() {
-    if (shuttingDown) return;
+    if (shuttingDown) {
+      repeatInterrupts += 1;
+      if (repeatInterrupts === 1) {
+        write("Shutdown already in progress. Press Ctrl+C again to force exit.");
+        return;
+      }
+      forceExit();
+      return;
+    }
     shuttingDown = true;
 
-    stdout.write("\nShutting down...\n");
+    write("");
+    write("Shutting down VibeDeck...");
+    write("Stopping background sync...");
     try {
       if (syncInterval) clearIntervalFn(syncInterval);
     } catch (_e) {}
     try {
       if (reaperInterval) clearIntervalFn(reaperInterval);
     } catch (_e) {}
+    write("Stopping branch watcher...");
     try {
       Promise.resolve(stopHeadWatcherFn(headWatcher)).catch(() => {});
     } catch (_e) {}
 
+    write(`Closing ${(sockets && sockets.size) || 0} open connection(s)...`);
     for (const socket of sockets || []) {
       try {
         socket.end?.();
@@ -64,9 +112,14 @@ function createServeShutdownHandler({
       server?.closeAllConnections?.();
     } catch (_e) {}
 
+    write("Closing dashboard server...");
     try {
-      server?.close?.(() => exitFn(0));
+      server?.close?.(() => {
+        write("Shutdown complete.");
+        exitFn(0);
+      });
     } catch (_e) {
+      write("Shutdown complete.");
       exitFn(0);
       return;
     }
@@ -77,6 +130,7 @@ function createServeShutdownHandler({
           socket.destroy?.();
         } catch (_e) {}
       }
+      write("Shutdown complete.");
       exitFn(0);
     }, 3000);
     if (timer && typeof timer.unref === "function") timer.unref();
@@ -85,6 +139,7 @@ function createServeShutdownHandler({
 
 async function cmdServe(argv) {
   const opts = parseArgs(argv);
+  const lifecycle = createServeLifecycleReporter();
 
   // 0. First-time setup: if tracker dir doesn't exist, run init first
   const { trackerDir } = await resolveTrackerPaths();
@@ -99,12 +154,14 @@ async function cmdServe(argv) {
   }
 
   // 0.1 Ensure Plan 2 DB schema exists before serving local API.
+  lifecycle.phase("Preparing local database...");
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
   ensureSchema(dbPath);
 
   // 0.2 Ensure local-auth token exists so write endpoints don't 500 on first hit
   // when the user runs `vibedeck serve` before `vibedeck init`.
   ensureAuthToken(path.join(path.dirname(trackerDir), "auth.token"));
+  lifecycle.phase("Starting branch watcher...");
   const headWatcher = startHeadWatcher({ dbPath, repos: "active" });
   await headWatcher.ready;
 
@@ -116,6 +173,7 @@ async function cmdServe(argv) {
   if (typeof reaperInterval.unref === "function") reaperInterval.unref();
 
   try {
+    lifecycle.phase("Refreshing local runtime...");
     const { installLocalTrackerApp } = require("./init");
     await installLocalTrackerApp({ appDir: path.join(trackerDir, "app") });
   } catch (e) {
@@ -124,11 +182,10 @@ async function cmdServe(argv) {
 
   // 1. Optional sync
   if (opts.sync) {
-    process.stdout.write("Syncing local data...\n");
+    lifecycle.phase("Syncing provider logs...");
     try {
       const { cmdSync } = require("./sync");
-      await cmdSync(["--auto"]);
-      process.stdout.write("Sync done.\n");
+      await cmdSync(["--auto"], { lifecycle });
     } catch (e) {
       process.stdout.write(`Sync warning: ${e?.message || e}\n`);
     }
@@ -184,6 +241,7 @@ async function cmdServe(argv) {
   }
 
   // 3. Create handler
+  lifecycle.phase("Starting dashboard server...");
   const handleApi = createLocalApiHandler({ queuePath, syncEnabled: opts.sync });
 
   const server = http.createServer(async (req, res) => {
@@ -230,6 +288,7 @@ async function cmdServe(argv) {
   await ensurePortFree(port);
   server.listen(port, LOCAL_BIND_HOST, () => {
     const url = getLocalServerUrl(port);
+    lifecycle.ready(url);
     process.stdout.write(
       [
         "",
@@ -344,6 +403,7 @@ function parseArgs(argv) {
 module.exports = {
   cmdServe,
   createServeShutdownHandler,
+  createServeLifecycleReporter,
   buildPortInUseHint,
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,

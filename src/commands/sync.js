@@ -77,7 +77,7 @@ function shouldRunFullBranchFactRebuild({
   return !autoBranchFactsRebuilt;
 }
 
-async function cmdSync(argv) {
+async function cmdSync(argv, { lifecycle = null } = {}) {
   const opts = parseArgs(argv);
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
@@ -140,6 +140,7 @@ async function cmdSync(argv) {
       { source: "every-code", sessionsDir: path.join(codeHome, "sessions") },
     ];
 
+    lifecycle?.provider?.("Codex", "scanning sessions");
     const rolloutFiles = [];
     const seenSessions = new Set();
     for (const entry of sources) {
@@ -208,6 +209,7 @@ async function cmdSync(argv) {
     openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
     openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
 
+    lifecycle?.provider?.("Claude", "scanning projects");
     const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
     await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
     let claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
@@ -331,6 +333,7 @@ async function cmdSync(argv) {
     await migrateCursorUnknownBuckets({ cursors, queuePath });
 
     let cursorResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    lifecycle?.provider?.("Cursor", "checking local usage");
     if (isCursorInstalled({ home })) {
       const cursorAuth = extractCursorSessionToken({ home });
       if (cursorAuth) {
@@ -659,6 +662,7 @@ async function cmdSync(argv) {
         }`,
       );
     }
+    lifecycle?.phase?.("Rebuilding branch/project indexes...");
     await recoverActiveSessionMetadata(dbPath);
     repairMissingProjectAttribution(dbPath);
     const runFullBranchFactRebuild = shouldRunFullBranchFactRebuild({

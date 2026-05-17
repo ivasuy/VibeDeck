@@ -192,10 +192,7 @@ export function PulseIndicator({
 export function ShimmerLoader({ className = "" }) {
   return (
     <div
-      className={`animate-pulse bg-gradient-to-r from-oai-gray-100 via-oai-gray-50 to-oai-gray-100 bg-[length:200%_100%] ${className}`}
-      style={{
-        animation: "shimmer 1.5s infinite",
-      }}
+      className={`shimmer ${className}`}
     />
   );
 }

@@ -330,6 +330,20 @@ test('GET /functions/vibedeck-branch-usage folds deleted worktree cwd rows under
     try {
       insertSession(db, {
         provider: 'codex',
+        session_id: 'parent-repo-session',
+        started_at: '2026-05-10T00:20:00.000Z',
+        ended_at: '2026-05-10T00:30:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-5.5',
+        total_tokens: 223,
+        total_cost_usd: 0.23,
+      });
+      insertSession(db, {
+        provider: 'codex',
         session_id: 'deleted-worktree-session',
         started_at: '2026-05-10T00:00:00.000Z',
         ended_at: '2026-05-10T00:10:00.000Z',
@@ -362,16 +376,25 @@ test('GET /functions/vibedeck-branch-usage folds deleted worktree cwd rows under
     const body = JSON.parse(res.body.toString('utf8'));
     const expectedRepoRoot = fssync.realpathSync(repoRoot);
     assert.equal(body.repos.length, 1);
+    assert.equal(
+      body.repos.filter((repo) => repo.repo_root === expectedRepoRoot).length,
+      1,
+      'same visible repo_root must not appear twice',
+    );
     assert.equal(body.repos[0].project_ref, expectedRepoRoot);
     assert.equal(body.repos[0].repo_root, expectedRepoRoot);
     assert.equal(body.repos[0].project_key, 'project-starter');
     assert.equal(body.repos[0].project_state, 'git_existing');
     assert.equal(body.repos[0].archived, false);
-    assert.equal(body.repos[0].branches.length, 1);
-    assert.equal(body.repos[0].branches[0].branch, 'P1-T1-parser-module');
-    assert.equal(body.repos[0].branches[0].branch_kind, 'historical_worktree');
-    assert.equal(body.repos[0].branches[0].historical_worktree, true);
-    assert.equal(body.repos[0].branches[0].sessions[0].session_id, 'deleted-worktree-session');
+    assert.equal(body.repos[0].branches.length, 2);
+    const worktreeBranch = body.repos[0].branches.find((entry) => entry.branch === 'P1-T1-parser-module');
+    const mainBranch = body.repos[0].branches.find((entry) => entry.branch === 'main');
+    assert.ok(worktreeBranch);
+    assert.ok(mainBranch);
+    assert.equal(worktreeBranch.branch_kind, 'historical_worktree');
+    assert.equal(worktreeBranch.historical_worktree, true);
+    assert.equal(worktreeBranch.sessions[0].session_id, 'deleted-worktree-session');
+    assert.equal(mainBranch.sessions[0].session_id, 'parent-repo-session');
 
     const filteredReq = createRequest({ method: 'GET' });
     const filteredRes = createResponse();
@@ -382,8 +405,306 @@ test('GET /functions/vibedeck-branch-usage folds deleted worktree cwd rows under
     const filteredBody = JSON.parse(filteredRes.body.toString('utf8'));
     assert.equal(filteredBody.repos.length, 1);
     assert.equal(filteredBody.repos[0].repo_root, expectedRepoRoot);
+    assert.equal(filteredBody.repos[0].branches.length, 1);
     assert.equal(filteredBody.repos[0].branches[0].branch, 'P1-T1-parser-module');
     assert.equal(filteredBody.repos[0].branches[0].sessions[0].session_id, 'deleted-worktree-session');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage groups generated workspace clones under one project umbrella', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-workspace-family-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      for (const [session_id, cwd] of [
+        ['workspace-root', '/workspaces/agentfield'],
+        ['workspace-a', '/workspaces/agentfield-45b4eb41'],
+        ['workspace-b', '/workspaces/agentfield-f2f6db087fd1'],
+        ['workspace-c', '/workspaces/agentfield-6370d2e1f23e'],
+        ['workspace-smoke', '/workspaces/agentfield-official-smoke'],
+      ]) {
+        insertSession(db, {
+          provider: 'codex',
+          session_id,
+          started_at: '2026-05-10T00:00:00.000Z',
+          ended_at: '2026-05-10T00:10:00.000Z',
+          cwd,
+          repo_root: null,
+          branch: null,
+          branch_resolution_tier: 'D',
+          confidence: 'low',
+          model: 'gpt-5.4',
+          total_tokens: 100,
+          total_cost_usd: 0.1,
+        });
+      }
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1&include_sessions=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.repos.length, 1);
+    assert.equal(body.repos[0].project_key, 'agentfield');
+    assert.equal(body.repos[0].workspace_family, true);
+    assert.equal(body.repos[0].workspace_context, 'workspaces');
+    assert.equal(body.repos[0].archived, true);
+    assert.deepEqual(
+      body.repos[0].branches.map((entry) => entry.branch).sort(),
+      [
+        'workspace',
+        'workspace-45b4eb41',
+        'workspace-6370d2e1f23e',
+        'workspace-f2f6db087fd1',
+        'workspace-official-smoke',
+      ],
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage folds generated workspace clones into a matching active repo', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-workspace-active-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'agentfield');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['main']);
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'active-agentfield',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'workspace-agentfield',
+        started_at: '2026-05-10T00:20:00.000Z',
+        ended_at: '2026-05-10T00:30:00.000Z',
+        cwd: '/workspaces/agentfield-45b4eb41',
+        repo_root: null,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 200,
+        total_cost_usd: 0.2,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'workspace-agentfield-root',
+        started_at: '2026-05-10T00:40:00.000Z',
+        ended_at: '2026-05-10T00:50:00.000Z',
+        cwd: '/workspaces/agentfield',
+        repo_root: null,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 300,
+        total_cost_usd: 0.3,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1&include_sessions=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    const expectedRepoRoot = fssync.realpathSync(repoRoot);
+    assert.equal(body.repos.length, 1);
+    assert.equal(body.repos[0].repo_root, expectedRepoRoot);
+    assert.equal(body.repos[0].project_ref, expectedRepoRoot);
+    assert.equal(body.repos[0].project_state, 'git_existing');
+    assert.equal(body.repos[0].archived, false);
+    assert.equal(body.repos[0].workspace_family, true);
+    assert.deepEqual(
+      body.repos[0].branches.map((entry) => entry.branch).sort(),
+      ['main', 'workspace', 'workspace-45b4eb41'],
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage merges archived git and cwd rows for the same old path', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-missing-same-ref-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const deletedProject = path.join(root, 'vasu-portfolio-v2');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'deleted-git',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        cwd: deletedProject,
+        repo_root: deletedProject,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 'deleted-cwd',
+        started_at: '2026-05-10T00:20:00.000Z',
+        ended_at: '2026-05-10T00:30:00.000Z',
+        cwd: deletedProject,
+        repo_root: null,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'low',
+        model: 'claude-opus-4-7',
+        total_tokens: 200,
+        total_cost_usd: 0.2,
+      });
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1&include_sessions=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.repos.length, 1);
+    assert.equal(body.repos[0].project_ref, deletedProject);
+    assert.equal(body.repos[0].archived, true);
+    assert.deepEqual(
+      body.repos[0].branches.map((entry) => entry.branch).sort(),
+      ['No branch', 'main'],
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('GET /functions/vibedeck-branch-usage keeps name-similar folders separate when no workspace pattern proves a link', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-no-guessing-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    await fs.mkdir(trackerDir, { recursive: true });
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      for (const [session_id, cwd] of [
+        ['cursor-sm', '/workspaces/cursor-sm'],
+        ['cursor-nested-sm', '/workspaces/cursor/sm'],
+        ['sm', '/workspaces/sm'],
+      ]) {
+        insertSession(db, {
+          provider: 'codex',
+          session_id,
+          started_at: '2026-05-10T00:00:00.000Z',
+          ended_at: '2026-05-10T00:10:00.000Z',
+          cwd,
+          repo_root: null,
+          branch: null,
+          branch_resolution_tier: 'D',
+          confidence: 'low',
+          model: 'gpt-5.4',
+          total_tokens: 100,
+          total_cost_usd: 0.1,
+        });
+      }
+    } finally {
+      db.close();
+    }
+    rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_archived=1'),
+    );
+
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.repos.length, 3);
+    assert.deepEqual(
+      body.repos.map((repo) => repo.project_ref).sort(),
+      ['/workspaces/cursor-sm', '/workspaces/cursor/sm', '/workspaces/sm'],
+    );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

@@ -419,10 +419,12 @@ describe("BranchesPage", () => {
     });
   });
 
-  it("disambiguates duplicate repo basenames in the project selector", async () => {
+  it("disambiguates duplicate repo basenames without exposing absolute paths in labels", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/work/acme/app",
+        project_ref: "/work/acme/app",
+        project_key: "app",
         git_branches: ["feature-acme"],
         git_branch_count: 1,
         branches: [
@@ -440,6 +442,8 @@ describe("BranchesPage", () => {
       },
       {
         repo_root: "/tmp/sandbox/app",
+        project_ref: "/tmp/sandbox/app",
+        project_key: "app",
         git_branches: ["feature-sandbox"],
         git_branch_count: 1,
         branches: [
@@ -462,10 +466,15 @@ describe("BranchesPage", () => {
     const projectSelect = await screen.findByRole("combobox", {
       name: copy("branches.project.select_label"),
     });
-    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    const options = screen.getAllByRole("option");
+    const labels = options.map((option) => option.textContent);
 
-    expect(options).toContain("/work/acme/app");
-    expect(options).toContain("/tmp/sandbox/app");
+    expect(labels).toContain("app · acme");
+    expect(labels).toContain("app · sandbox");
+    expect(labels).not.toContain("/work/acme/app");
+    expect(labels).not.toContain("/tmp/sandbox/app");
+    expect(options.find((option) => option.textContent === "app · acme")?.getAttribute("title")).toContain("/work/acme/app");
+    expect(options.find((option) => option.textContent === "app · sandbox")?.getAttribute("title")).toContain("/tmp/sandbox/app");
     expect(projectSelect.value).toBe("/work/acme/app");
     expect(screen.getAllByText("feature-acme").length).toBeGreaterThan(0);
     expect(screen.queryByText("feature-sandbox")).toBeNull();
@@ -528,6 +537,161 @@ describe("BranchesPage", () => {
     expect(options).toContain("app · archive-two (Decommissioned)");
     expect(options).not.toContain("/Users/dev/archive-one/app (Decommissioned)");
     expect(options).not.toContain("/tmp/archive-two/app (Decommissioned)");
+  });
+
+  it("hides generic parent folder names for decommissioned project labels", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/Projects/vasu-portfolio-v2",
+        project_key: "vasu-portfolio-v2",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Library/CloudStorage/OneDrive-BayesFintechInc/Documents/vasu-portfolio-v2",
+        project_key: "vasu-portfolio-v2",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const option = screen.getByRole("option", { name: "vasu-portfolio-v2 (Decommissioned)" });
+
+    expect(option).toBeTruthy();
+    expect(option.textContent).not.toContain("Projects");
+    expect(option.getAttribute("title")).toContain("/Users/dev/Downloads/Projects/vasu-portfolio-v2");
+    expect(screen.getByRole("option", { name: "vasu-portfolio-v2 · OneDrive-BayesFintechInc (Decommissioned)" })).toBeTruthy();
+  });
+
+  it("labels generated workspace umbrellas compactly and keeps full paths as metadata", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/workspaces/agentfield",
+        project_key: "agentfield",
+        project_state: "cwd_missing",
+        archived: true,
+        workspace_family: true,
+        workspace_context: "workspaces",
+        workspace_paths: ["/workspaces/agentfield-45b4eb41", "/workspaces/agentfield-f2f6db087fd1"],
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "workspace-45b4eb41",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const option = screen.getByRole("option", { name: "agentfield · workspaces (Decommissioned)" });
+
+    expect(option).toBeTruthy();
+    expect(option.textContent).not.toContain("/workspaces");
+    expect(option.getAttribute("title")).toContain("/workspaces/agentfield-45b4eb41");
+  });
+
+  it("uses generic parent folders only as a last resort when compact labels would collide", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/Projects/cursor-sm",
+        project_key: "cursor-sm",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/cursor-sm",
+        project_key: "cursor-sm",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+
+    expect(screen.getByRole("option", { name: "cursor-sm · Projects (Decommissioned)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "cursor-sm · Downloads (Decommissioned)" })).toBeTruthy();
   });
 
   it("filters branch drawer sessions and model summary by selected date", async () => {

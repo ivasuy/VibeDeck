@@ -160,9 +160,60 @@ function historicalWorktreeDescriptor(row) {
   return null;
 }
 
+function workspaceFamilyDescriptor(row) {
+  const candidates = [row?.repo_root, row?.project_ref, row?.cwd].filter((value) => typeof value === 'string' && value.trim());
+  for (const candidate of candidates) {
+    const parts = pathParts(candidate);
+    if (parts.length < 2) continue;
+    const leaf = parts[parts.length - 1];
+
+    const parent = parts[parts.length - 2];
+    const isGeneratedRoot = parent === 'workspaces' || parent === 'tmp';
+    if (!isGeneratedRoot) continue;
+
+    const hashMatch = leaf.match(/^(.+)-([0-9a-f]{7,})$/i);
+    const smokeMatch = leaf.match(/^(.+)-(official-smoke)$/i);
+    const base = hashMatch?.[1] || smokeMatch?.[1] || leaf;
+    const suffix = hashMatch?.[2] || smokeMatch?.[2] || '';
+    if (!base) continue;
+    const familyRoot = fromPathParts([...parts.slice(0, parts.length - 1), base]);
+    return {
+      base,
+      suffix,
+      branch: suffix ? `workspace-${suffix}` : 'workspace',
+      context: parent,
+      familyRoot,
+      sourcePath: candidate,
+    };
+  }
+  return null;
+}
+
 function rowWithDisplayAttribution(row) {
   const descriptor = historicalWorktreeDescriptor(row);
-  if (!descriptor) return row;
+  if (!descriptor) {
+    const workspace = workspaceFamilyDescriptor(row);
+    if (!workspace) return row;
+
+    const branch = displayBranchIsUnknown(row) ? workspace.branch : row.branch;
+    const branchKind = displayBranchIsUnknown(row) ? 'workspace_clone' : row.branch_kind;
+    return {
+      ...row,
+      scope_key: `workspace:${workspace.familyRoot}`,
+      project_state: 'cwd_missing',
+      project_key: workspace.base,
+      project_ref: workspace.familyRoot,
+      repo_root: null,
+      cwd: row.cwd,
+      branch,
+      attribution_branch: branchKind === 'workspace_clone' ? branch : row.attribution_branch,
+      branch_kind: branchKind,
+      workspace_family: true,
+      workspace_base: workspace.base,
+      workspace_context: workspace.context,
+      workspace_source_path: workspace.sourcePath,
+    };
+  }
 
   const parentRoot = safeRealpath(descriptor.parent);
   const parentExists = repoRootExists(parentRoot);
@@ -174,7 +225,7 @@ function rowWithDisplayAttribution(row) {
 
   return {
     ...row,
-    scope_key: `${projectState === 'git_existing' ? 'repo' : 'cwd'}:${parentRoot}`,
+    scope_key: `${projectState === 'git_existing' ? 'git' : projectState === 'git_missing' ? 'git-missing' : 'cwd'}:${parentRoot}`,
     project_state: projectState,
     project_key: path.basename(parentRoot || descriptor.parent),
     project_ref: parentRoot,
@@ -185,6 +236,56 @@ function rowWithDisplayAttribution(row) {
     branch_kind: branchKind,
     historical_worktree: true,
   };
+}
+
+function activeProjectRank(row) {
+  if (row?.project_state === 'git_existing') return 3;
+  if (row?.project_state === 'non_git_existing') return 2;
+  return 0;
+}
+
+function activeProjectShape(row) {
+  return {
+    rank: activeProjectRank(row),
+    scope_key: row.scope_key,
+    project_state: row.project_state,
+    project_key: projectKey(row),
+    project_ref: projectRef(row),
+    repo_root: row.repo_root || null,
+    repo_common_dir: row.repo_common_dir || null,
+    parent_repo: row.parent_repo || null,
+  };
+}
+
+function prepareDisplayRows(rawRows) {
+  const rows = (Array.isArray(rawRows) ? rawRows : []).map((row) => rowWithDisplayAttribution(row));
+  const activeByProjectKey = new Map();
+
+  for (const row of rows) {
+    const rank = activeProjectRank(row);
+    if (rank <= 0 || row.workspace_family) continue;
+    const key = projectKey(row);
+    const current = activeByProjectKey.get(key);
+    if (!current || rank > current.rank) {
+      activeByProjectKey.set(key, activeProjectShape(row));
+    }
+  }
+
+  return rows.map((row) => {
+    if (!row?.workspace_family) return row;
+    const active = activeByProjectKey.get(row.workspace_base || projectKey(row));
+    if (!active) return row;
+    return {
+      ...row,
+      scope_key: active.scope_key,
+      project_state: active.project_state,
+      project_key: active.project_key,
+      project_ref: active.project_ref,
+      repo_root: active.repo_root,
+      repo_common_dir: active.repo_common_dir,
+      parent_repo: active.parent_repo,
+    };
+  });
 }
 
 function factCost(row) {
@@ -213,8 +314,20 @@ function projectKey(row) {
 }
 
 function repoGroupKey(row) {
+  const ref = projectRef(row);
+  if (row?.project_state === 'git_existing' && ref) return `git:${ref}`;
+  if (row?.project_state === 'non_git_existing' && ref) return `cwd:${ref}`;
+  if ((row?.project_state === 'git_missing' || row?.project_state === 'cwd_missing') && ref) return `missing:${ref}`;
   if (typeof row?.scope_key === 'string' && row.scope_key.trim()) return row.scope_key.trim();
-  return [row?.project_state || 'unknown', projectRef(row) || '', row?.repo_root || '', row?.cwd || ''].join('\u241f');
+  return [row?.project_state || 'unknown', ref || '', row?.repo_root || '', row?.cwd || ''].join('\u241f');
+}
+
+function projectStateRank(state) {
+  if (state === 'git_existing') return 4;
+  if (state === 'non_git_existing') return 3;
+  if (state === 'git_missing') return 2;
+  if (state === 'cwd_missing') return 1;
+  return 0;
 }
 
 function isNonEmptyString(value) {
@@ -238,8 +351,7 @@ function rowMatchesBranch(row, branch) {
 }
 
 function displayFilterRows(rawRows, { repo = null, branch = null } = {}) {
-  return rawRows
-    .map((row) => rowWithDisplayAttribution(row))
+  return prepareDisplayRows(rawRows)
     .filter((row) => rowMatchesRepo(row, repo) && rowMatchesBranch(row, branch));
 }
 
@@ -355,7 +467,7 @@ function queryBranchUsage(
     includeUnattributed,
   };
   let rows = displayFilterRows(readBranchUsageFactRows(dbPath, readOptions), { repo, branch });
-  if ((isNonEmptyString(repo) || isNonEmptyString(branch)) && rows.length === 0) {
+  if (isNonEmptyString(repo) || isNonEmptyString(branch)) {
     rows = displayFilterRows(
       readBranchUsageFactRows(dbPath, {
         from,
@@ -394,11 +506,25 @@ function queryBranchUsage(
         project_state: row.project_state || null,
         project_key: projectKey(row),
         project_ref: projectRef(row),
+        workspace_family: Boolean(row.workspace_family),
+        workspace_context: row.workspace_context || null,
+        workspace_paths: new Set(),
         branches: new Map(),
       });
     }
 
     const repoEntry = repos.get(repoKey);
+    if (projectStateRank(row.project_state) > projectStateRank(repoEntry.project_state)) {
+      repoEntry.repo_root = row.repo_root || null;
+      repoEntry.project_state = row.project_state || null;
+      repoEntry.project_key = projectKey(row);
+      repoEntry.project_ref = projectRef(row);
+    }
+    if (row.workspace_family) {
+      repoEntry.workspace_family = true;
+      repoEntry.workspace_context = repoEntry.workspace_context || row.workspace_context || null;
+      if (row.workspace_source_path) repoEntry.workspace_paths.add(row.workspace_source_path);
+    }
     const branchName = row.branch || 'unattributed';
     const branchKind = row.branch_kind || 'unknown';
     const branchKey = `${branchName}\u241f${branchKind}`;
@@ -470,6 +596,9 @@ function queryBranchUsage(
         archived: isArchivedProjectState(repoEntry.project_state),
         project_key: repoEntry.project_key,
         project_ref: repoEntry.project_ref,
+        workspace_family: repoEntry.workspace_family || undefined,
+        workspace_context: repoEntry.workspace_context || undefined,
+        workspace_paths: repoEntry.workspace_paths.size > 0 ? Array.from(repoEntry.workspace_paths).sort() : undefined,
         git_branches: gitBranches,
         git_branch_count: gitBranches.length,
         branches: Array.from(repoEntry.branches.values())

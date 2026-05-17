@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getUsageLimits } from "../lib/api";
+import { readLastGood, writeLastGood } from "../lib/last-good-cache";
 
 interface ProviderStatusState {
   configured: boolean;
@@ -34,10 +35,20 @@ function hasProviderCooldown(snapshot: UsageLimitsData | null) {
   });
 }
 
+const USAGE_LIMITS_CACHE_KEY = "usage.limits";
+
 export function useUsageLimits(options?: { initialRefresh?: boolean }) {
-  const [data, setData] = useState<UsageLimitsData | null>(null);
+  const [data, setData] = useState<UsageLimitsData | null>(() =>
+    readLastGood<UsageLimitsData>(USAGE_LIMITS_CACHE_KEY),
+  );
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() =>
+    !readLastGood<UsageLimitsData>(USAGE_LIMITS_CACHE_KEY),
+  );
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [stale, setStale] = useState(() =>
+    Boolean(readLastGood<UsageLimitsData>(USAGE_LIMITS_CACHE_KEY)),
+  );
   const initialRefresh = Boolean(options?.initialRefresh);
   const dataRef = useRef<UsageLimitsData | null>(null);
 
@@ -46,31 +57,51 @@ export function useUsageLimits(options?: { initialRefresh?: boolean }) {
   }, [data]);
 
   const refresh = useCallback(async (refreshOptions?: { force?: boolean }) => {
+    const hasCurrentData = Boolean(dataRef.current);
+    setIsLoading(!hasCurrentData);
+    setIsRefreshing(hasCurrentData);
     try {
       const shouldForceRefresh =
         (refreshOptions?.force ?? true) && !hasProviderCooldown(dataRef.current);
       const res = await getUsageLimits(shouldForceRefresh ? { refresh: true } : {});
-      setData(res && typeof res === "object" ? res as UsageLimitsData : null);
+      const nextData = res && typeof res === "object" ? res as UsageLimitsData : null;
+      setData(nextData);
+      if (nextData) writeLastGood(USAGE_LIMITS_CACHE_KEY, nextData);
       setError(null);
+      setStale(false);
     } catch (err) {
       setError((err as Error)?.message || String(err));
+      if (hasCurrentData) setStale(true);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const hasCurrentData = Boolean(dataRef.current);
+      if (!hasCurrentData) setIsLoading(true);
+      else setIsRefreshing(true);
       try {
         const shouldForceRefresh = initialRefresh && !hasProviderCooldown(dataRef.current);
         const res = await getUsageLimits(shouldForceRefresh ? { refresh: true } : {});
         if (cancelled) return;
-        setData(res && typeof res === "object" ? res as UsageLimitsData : null);
+        const nextData = res && typeof res === "object" ? res as UsageLimitsData : null;
+        setData(nextData);
+        if (nextData) writeLastGood(USAGE_LIMITS_CACHE_KEY, nextData);
         setError(null);
+        setStale(false);
       } catch (err) {
         if (cancelled) return;
         setError((err as Error)?.message || String(err));
+        if (hasCurrentData) setStale(true);
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     })();
     return () => {
@@ -78,5 +109,13 @@ export function useUsageLimits(options?: { initialRefresh?: boolean }) {
     };
   }, [initialRefresh]);
 
-  return { data, error, isLoading, refresh };
+  return {
+    data,
+    error,
+    isLoading,
+    isRefreshing,
+    hasData: Boolean(data),
+    stale,
+    refresh,
+  };
 }

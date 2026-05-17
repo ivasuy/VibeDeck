@@ -93,6 +93,101 @@ function Metric({ icon: Icon, label, value }) {
   );
 }
 
+function formatSessionCount(value) {
+  const count = Number(value || 0);
+  const safe = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
+  return `${toDisplayNumber(safe)} session${safe === 1 ? "" : "s"}`;
+}
+
+function inferProviderFromModel(row) {
+  const explicit = String(row?.provider || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  const model = String(row?.model || "").trim().toLowerCase();
+  if (model.includes("claude") || model.includes("anthropic")) return "claude";
+  if (model.includes("gemini")) return "gemini";
+  if (model.includes("cursor")) return "cursor";
+  if (model.includes("copilot")) return "copilot";
+  if (model.includes("kiro")) return "kiro";
+  if (model.includes("kimi")) return "kimi";
+  if (model.includes("gpt") || model.includes("codex") || model.startsWith("o")) return "codex";
+  return "unknown";
+}
+
+function breakdownCost(row, prefix) {
+  const unknown = Number(row?.[`${prefix}_cost_unknown_count`] ?? 0);
+  if (unknown > 0) return null;
+  return row?.[`${prefix}_total_cost_usd`] ?? row?.total_cost_usd;
+}
+
+function BreakdownCard({ title, rows, labelKey, iconForRow }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const list = Array.isArray(rows) ? rows : [];
+  const visibleRows = expanded ? list : list.slice(0, 6);
+  if (list.length === 0) return null;
+
+  return (
+    <section className="rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Layers3 className="h-4 w-4 shrink-0 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+          <h3 className="truncate text-sm font-semibold text-oai-black dark:text-white">{title}</h3>
+        </div>
+        <span className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          {toDisplayNumber(list.length)} row{list.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="grid gap-2">
+        {visibleRows.map((row, index) => {
+          const label = String(row?.[labelKey] || "unknown");
+          const activeCost = breakdownCost(row, "active");
+          const auditCost = breakdownCost(row, "audit");
+          return (
+            <div
+              key={`${title}:${label}:${index}`}
+              className="vd-card-solid grid gap-3 rounded-md border border-oai-gray-200 bg-white px-3 py-2.5 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40 lg:grid-cols-[minmax(150px,1fr)_repeat(5,minmax(84px,auto))]"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                {iconForRow ? iconForRow(row) : null}
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-oai-black dark:text-white">{label}</div>
+                  <div className="mt-0.5 text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                    {formatSessionCount(row?.session_count)}
+                  </div>
+                </div>
+              </div>
+              <BreakdownMetric label="Audit tokens" value={toDisplayNumber(row?.audit_total_tokens ?? row?.total_tokens ?? 0)} />
+              <BreakdownMetric label="Live tokens" value={toDisplayNumber(row?.active_total_tokens ?? 0)} />
+              <BreakdownMetric label="Audit cost" value={formatCost(auditCost)} />
+              <BreakdownMetric label="Live cost" value={formatCost(activeCost)} />
+              <BreakdownMetric label="Sessions" value={formatSessionCount(row?.session_count)} />
+            </div>
+          );
+        })}
+      </div>
+      {list.length > visibleRows.length ? (
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          className="mt-3"
+          onClick={() => setExpanded(true)}
+        >
+          Show all {toDisplayNumber(list.length)} rows
+        </Button>
+      ) : null}
+    </section>
+  );
+}
+
+function BreakdownMetric({ label, value }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-oai-gray-400 dark:text-oai-gray-500">{label}</div>
+      <div className="mt-0.5 font-semibold tabular-nums text-oai-gray-800 dark:text-oai-gray-100">{value}</div>
+    </div>
+  );
+}
+
 function SessionRow({ session, workstream, primary = false, selected = false, onSelectSession }) {
   const key = liveSessionKey(session);
   const active = isActiveLiveSession(session);
@@ -183,6 +278,8 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
   const activeCost = workstream && Number(workstream?.active_cost_unknown_count || 0) > 0
     ? null
     : workstream?.active_total_cost_usd;
+  const providerRows = Array.isArray(workstream?.providers) ? workstream.providers : [];
+  const modelRows = Array.isArray(workstream?.models) ? workstream.models : [];
   const branchGroups = sortDrawerBranchGroups(workstream?.branch_groups).map((group) => ({
     ...group,
     sessions: sortDrawerSessions(group?.sessions),
@@ -233,6 +330,33 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
             <Metric icon={CircleDollarSign} label="Audit cost" value={formatCost(auditCost)} />
             <Metric icon={Radio} label="Live tokens" value={toDisplayNumber(workstream.active_total_tokens ?? 0)} />
             <Metric icon={CircleDollarSign} label="Live cost" value={formatCost(activeCost)} />
+          </div>
+
+          <div className="mb-4 grid gap-4">
+            <BreakdownCard
+              title="Model breakdown"
+              rows={modelRows}
+              labelKey="model"
+              iconForRow={(row) => {
+                const provider = inferProviderFromModel(row);
+                return (
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center"
+                    aria-label={`Model provider ${provider}`}
+                  >
+                    <ProviderIcon provider={provider} size={16} className="shrink-0" />
+                  </span>
+                );
+              }}
+            />
+            <BreakdownCard
+              title="Provider breakdown"
+              rows={providerRows}
+              labelKey="provider"
+              iconForRow={(row) => (
+                <ProviderIcon provider={row?.provider} size={16} className="shrink-0" />
+              )}
+            />
           </div>
 
           <div className="grid gap-4">

@@ -55,8 +55,8 @@ const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
+const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
-const { maybeRunPostSyncReadmeUpdate } = require("../lib/readme-sync/service");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
 
@@ -64,8 +64,38 @@ const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
 const CLAUDE_MEM_OBSERVER_REINCLUDE_KEY = "claudeMemObserverReinclude_2026_05_v3";
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
+let autoBranchFactsRebuilt = false;
 
-async function cmdSync(argv) {
+function shouldRunFullBranchFactRebuild({
+  auto = false,
+  rebuildVibedeckDb = false,
+  autoBranchFactsRebuilt = false,
+} = {}) {
+  if (rebuildVibedeckDb) return true;
+  if (!auto) return true;
+  return !autoBranchFactsRebuilt;
+}
+
+function createSyncLifecycleProgressCallback({
+  provider,
+  unit = "items",
+  lifecycle = null,
+  progress = null,
+  renderProgress = null,
+} = {}) {
+  return (payload = {}) => {
+    if (progress?.enabled && typeof renderProgress === "function") {
+      progress.update(renderProgress(payload));
+    }
+    lifecycle?.providerProgress?.(provider, { ...payload, unit });
+  };
+}
+
+function providerDoneSummary({ action = "read", count = 0, unit = "items", events = 0, buckets = 0 } = {}) {
+  return `${action} ${formatNumber(count)} ${unit} · ${formatNumber(events)} events · ${formatNumber(buckets)} buckets`;
+}
+
+async function cmdSync(argv, { lifecycle = null } = {}) {
   const opts = parseArgs(argv);
   const home = os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
@@ -82,7 +112,10 @@ async function cmdSync(argv) {
 
   const lockPath = path.join(trackerDir, "sync.lock");
   const lock = await openLock(lockPath, { quietIfLocked: opts.auto });
-  if (!lock) return;
+  if (!lock) {
+    lifecycle?.providerDone?.("Sync", "another sync is already running; using current local data");
+    return;
+  }
 
   let progress = null;
   try {
@@ -128,6 +161,7 @@ async function cmdSync(argv) {
       { source: "every-code", sessionsDir: path.join(codeHome, "sessions") },
     ];
 
+    lifecycle?.provider?.("Codex", `discovering ${formatNumber(sources.length)} session director${sources.length === 1 ? "y" : "ies"}`);
     const rolloutFiles = [];
     const seenSessions = new Set();
     for (const entry of sources) {
@@ -138,6 +172,7 @@ async function cmdSync(argv) {
         rolloutFiles.push({ path: filePath, source: entry.source });
       }
     }
+    lifecycle?.provider?.("Codex", `found ${formatNumber(rolloutFiles.length)} session file${rolloutFiles.length === 1 ? "" : "s"}`);
 
     await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles });
 
@@ -161,16 +196,29 @@ async function cmdSync(argv) {
       queuePath,
       projectQueuePath,
       onSessionEvent,
-      onProgress: (p) => {
-        if (!progress?.enabled) return;
-        const pct = p.total > 0 ? p.index / p.total : 1;
-        progress.update(
-          `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+      onProgress: createSyncLifecycleProgressCallback({
+        provider: "Codex",
+        unit: "files",
+        lifecycle,
+        progress,
+        renderProgress: (p) => {
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          return `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
             p.bucketsQueued,
-          )}`,
-        );
-      },
+          )}`;
+        },
+      }),
     });
+    lifecycle?.providerDone?.(
+      "Codex",
+      providerDoneSummary({
+        action: "scanned",
+        count: parseResult.filesProcessed,
+        unit: "files",
+        events: parseResult.eventsAggregated,
+        buckets: parseResult.bucketsQueued,
+      }),
+    );
 
     let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (openclawFiles.length > 0) {
@@ -196,7 +244,9 @@ async function cmdSync(argv) {
     openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
     openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
 
+    lifecycle?.provider?.("Claude", "discovering project transcripts");
     const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
+    lifecycle?.provider?.("Claude", `found ${formatNumber(claudeFiles.length)} project file${claudeFiles.length === 1 ? "" : "s"}`);
     await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
     let claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     if (claudeFiles.length > 0) {
@@ -211,18 +261,31 @@ async function cmdSync(argv) {
         queuePath,
         projectQueuePath,
         onSessionEvent,
-        onProgress: (p) => {
-          if (!progress?.enabled) return;
-          const pct = p.total > 0 ? p.index / p.total : 1;
-          progress.update(
-            `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+        onProgress: createSyncLifecycleProgressCallback({
+          provider: "Claude",
+          unit: "files",
+          lifecycle,
+          progress,
+          renderProgress: (p) => {
+            const pct = p.total > 0 ? p.index / p.total : 1;
+            return `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
               p.bucketsQueued,
-            )}`,
-          );
-        },
+            )}`;
+          },
+        }),
         source: "claude",
       });
     }
+    lifecycle?.providerDone?.(
+      "Claude",
+      providerDoneSummary({
+        action: "scanned",
+        count: claudeResult.filesProcessed,
+        unit: "files",
+        events: claudeResult.eventsAggregated,
+        buckets: claudeResult.bucketsQueued,
+      }),
+    );
 
     const geminiFiles = await listGeminiSessionFiles(geminiTmpDir);
     let geminiResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
@@ -319,6 +382,7 @@ async function cmdSync(argv) {
     await migrateCursorUnknownBuckets({ cursors, queuePath });
 
     let cursorResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    lifecycle?.provider?.("Cursor", "checking local usage");
     if (isCursorInstalled({ home })) {
       const cursorAuth = extractCursorSessionToken({ home });
       if (cursorAuth) {
@@ -328,6 +392,7 @@ async function cmdSync(argv) {
           }
           const csvText = await fetchCursorUsageCsv({ cookie: cursorAuth.cookie });
           const records = parseCursorCsv(csvText);
+          lifecycle?.provider?.("Cursor", `fetched ${formatNumber(records.length)} usage record${records.length === 1 ? "" : "s"}`);
           if (records.length > 0) {
             if (progress?.enabled) {
               progress.start(
@@ -339,15 +404,18 @@ async function cmdSync(argv) {
               cursors,
               queuePath,
               onSessionEvent,
-              onProgress: (p) => {
-                if (!progress?.enabled) return;
-                const pct = p.total > 0 ? p.index / p.total : 1;
-                progress.update(
-                  `Parsing Cursor ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(
+              onProgress: createSyncLifecycleProgressCallback({
+                provider: "Cursor",
+                unit: "records",
+                lifecycle,
+                progress,
+                renderProgress: (p) => {
+                  const pct = p.total > 0 ? p.index / p.total : 1;
+                  return `Parsing Cursor ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(
                     p.total,
-                  )} records | buckets ${formatNumber(p.bucketsQueued)}`,
-                );
-              },
+                  )} records | buckets ${formatNumber(p.bucketsQueued)}`;
+                },
+              }),
               source: "cursor",
             });
           }
@@ -355,8 +423,25 @@ async function cmdSync(argv) {
           if (!opts.auto) {
             process.stderr.write(`Cursor sync: ${err.message}\n`);
           }
+          lifecycle?.providerDone?.("Cursor", `warning: ${err.message}`);
         }
+      } else {
+        lifecycle?.providerDone?.("Cursor", "installed but not signed in");
       }
+    } else {
+      lifecycle?.providerDone?.("Cursor", "not installed");
+    }
+    if (cursorResult.recordsProcessed > 0 || cursorResult.eventsAggregated > 0 || cursorResult.bucketsQueued > 0) {
+      lifecycle?.providerDone?.(
+        "Cursor",
+        providerDoneSummary({
+          action: "read",
+          count: cursorResult.recordsProcessed,
+          unit: "records",
+          events: cursorResult.eventsAggregated,
+          buckets: cursorResult.bucketsQueued,
+        }),
+      );
     }
 
     // ── Kiro (SQLite-based, with JSONL fallback) ──
@@ -647,7 +732,45 @@ async function cmdSync(argv) {
         }`,
       );
     }
+    lifecycle?.phase?.("Rebuilding branch/project indexes...");
+    lifecycle?.provider?.("Indexes", "recovering active session metadata");
     await recoverActiveSessionMetadata(dbPath);
+    lifecycle?.providerDone?.("Indexes", "active session metadata recovered");
+    lifecycle?.provider?.("Indexes", "repairing missing project attribution");
+    const repairedAttribution = repairMissingProjectAttribution(dbPath, {
+      onProgress: createSyncLifecycleProgressCallback({
+        provider: "Indexes",
+        unit: "sessions",
+        lifecycle,
+      }),
+    });
+    lifecycle?.providerDone?.(
+      "Indexes",
+      `missing project attribution repaired for ${formatNumber(repairedAttribution)} session${repairedAttribution === 1 ? "" : "s"}`,
+    );
+    const runFullBranchFactRebuild = shouldRunFullBranchFactRebuild({
+      auto: opts.auto,
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+      autoBranchFactsRebuilt,
+    });
+    if (runFullBranchFactRebuild) {
+      lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
+      const branchFactsRebuilt = rebuildAllBranchUsageFacts(dbPath, {
+        onProgress: createSyncLifecycleProgressCallback({
+          provider: "Indexes",
+          unit: "sessions",
+          lifecycle,
+        }),
+      });
+      lifecycle?.providerDone?.(
+        "Indexes",
+        `branch usage facts rebuilt across ${formatNumber(branchFactsRebuilt)} branch row${branchFactsRebuilt === 1 ? "" : "s"}`,
+      );
+      if (opts.auto) autoBranchFactsRebuilt = true;
+    } else {
+      lifecycle?.providerDone?.("Indexes", "branch usage facts already current");
+    }
+    lifecycle?.provider?.("Indexes", "backfilling checkpoint links");
     await runEntireCheckpointBackfill({
       dbPath,
       trackerDir,
@@ -655,6 +778,7 @@ async function cmdSync(argv) {
       rebuild: opts.rebuildVibedeckDb,
       auto: opts.auto,
     });
+    lifecycle?.providerDone?.("Indexes", "checkpoint links backfilled");
     if (opts.rebuildVibedeckDb) {
       if (!opts.auto) process.stderr.write("Rebuild phase: closing historical idle sessions\n");
       const closure = reapOrphanedSessions(dbPath, {
@@ -677,6 +801,11 @@ async function cmdSync(argv) {
       if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
     }
 
+    if (!opts.auto) {
+      const { warmSkillMetadataIndex } = require("../lib/skills-warmup");
+      await warmSkillMetadataIndex({ lifecycle });
+    }
+
     cursors.updatedAt = new Date().toISOString();
     await writeJson(cursorsPath, cursors);
 
@@ -690,14 +819,6 @@ async function cmdSync(argv) {
       } catch (_e) {
         // ignore
       }
-    }
-
-    const readmeSyncResult = await maybeRunPostSyncReadmeUpdate();
-    if (!opts.auto && readmeSyncResult.attempted && readmeSyncResult.ok) {
-      process.stdout.write("- README banner updated on GitHub\n");
-    }
-    if (readmeSyncResult.warning && !opts.auto) {
-      process.stderr.write(`README sync warning: ${readmeSyncResult.warning}\n`);
     }
 
     if (!opts.auto) {
@@ -779,6 +900,7 @@ function clearCanonicalVibedeckTables(dbPath) {
     db.exec('BEGIN');
     try {
       db.exec(`
+        DELETE FROM vibedeck_branch_usage_facts;
         DELETE FROM vibedeck_session_branch_windows;
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
@@ -1118,7 +1240,9 @@ async function runEntireCheckpointBackfill({
 
 module.exports = {
   cmdSync,
+  createSyncLifecycleProgressCallback,
   createSessionEventProcessor,
+  shouldRunFullBranchFactRebuild,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   reincludeClaudeMemObserverFiles,

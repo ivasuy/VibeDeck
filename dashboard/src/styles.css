@@ -806,13 +806,17 @@ html.native-app .tt-native-main-card {
 
   /* Shimmer effect for loading states */
   .shimmer {
+    --shimmer-base: rgba(148, 163, 184, 0.16);
+    --shimmer-highlight: rgba(226, 232, 240, 0.44);
     background: linear-gradient(
       90deg,
-      var(--oai-gray-100) 25%,
-      var(--oai-gray-50) 50%,
-      var(--oai-gray-100) 75%
+      var(--shimmer-base) 0%,
+      var(--shimmer-base) 32%,
+      var(--shimmer-highlight) 50%,
+      var(--shimmer-base) 68%,
+      var(--shimmer-base) 100%
     );
-    background-size: 200% 100%;
+    background-size: 220% 100%;
     animation: shimmer 1.5s infinite;
   }
 
@@ -841,13 +845,8 @@ html.native-app .tt-native-main-card {
      ======================================== */
 
   :root.dark .shimmer {
-    background: linear-gradient(
-      90deg,
-      var(--oai-gray-800) 25%,
-      var(--oai-gray-700) 50%,
-      var(--oai-gray-800) 75%
-    );
-    background-size: 200% 100%;
+    --shimmer-base: rgba(129, 140, 248, 0.10);
+    --shimmer-highlight: rgba(165, 180, 252, 0.22);
   }
 
   :root.dark .hover-lift:hover {

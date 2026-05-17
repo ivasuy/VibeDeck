@@ -41,12 +41,17 @@ async function mutateSkillsJson(body: AnyRecord, cmd: string) {
   return payload;
 }
 
-export function getInstalledSkills() {
-  return fetchSkillsJson({ mode: "installed" });
+export function getInstalledSkills(
+  options: { all?: boolean; offset?: number; limit?: number; q?: string } = {},
+) {
+  return fetchSkillsJson({ mode: "installed", ...options });
 }
 
-export function discoverSkills(options: { force?: boolean } = {}) {
-  return fetchSkillsJson({ mode: "discover", ...(options.force ? { force: 1 } : {}) });
+export function discoverSkills(
+  options: { all?: boolean; force?: boolean; offset?: number; limit?: number; source?: string; q?: string } = {},
+) {
+  const { force, ...rest } = options;
+  return fetchSkillsJson({ mode: "discover", ...(force ? { force: 1 } : {}), ...rest });
 }
 
 export function searchSkills(query: string, offset = 0, limit = 20) {

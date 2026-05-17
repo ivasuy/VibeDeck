@@ -49,7 +49,7 @@
 
 <text x="24" y="27" font-size="13" font-weight="700" fill="#e8e8ff" font-family="system-ui,sans-serif" letter-spacing="0.2">VibeDeck</text>
 <text x="728" y="27" font-size="8" font-weight="700" fill="rgba(168,168,220,0.28)" font-family="system-ui,sans-serif" letter-spacing="1.8">VIBEDECK</text>
-<text x="876" y="27" text-anchor="end" font-size="10" fill="rgba(168,168,220,0.26)" font-family="system-ui,sans-serif">May 15, 2026</text>
+<text x="876" y="27" text-anchor="end" font-size="10" fill="rgba(168,168,220,0.26)" font-family="system-ui,sans-serif">May 16, 2026</text>
 
 <line x1="24" y1="38" x2="876" y2="38" stroke="url(#gdiv)" stroke-width="0.75"/>
 
@@ -57,30 +57,30 @@
 <text x="268" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOTAL COST</text>
 <text x="472" y="58" font-size="9" font-weight="600" fill="rgba(168,168,220,0.4)" font-family="system-ui,sans-serif" letter-spacing="1.4">TOP MODELS</text>
 
-<text x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="'Courier New',Courier,monospace">1.41B</text>
-<text x="24" y="110" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">1,410,275,538 tokens total</text>
+<text x="24" y="91" font-size="21" font-weight="700" fill="url(#gtok)" font-family="'Courier New',Courier,monospace">1.52<tspan font-size="0.62em" dx="1" font-weight="600">B</tspan></text>
+<text x="24" y="110" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">1,521,098,507 tokens total</text>
 
-<text x="268" y="96" font-size="27" font-weight="700" fill="url(#gcost)" font-family="'Courier New',Courier,monospace">$753</text>
+<text x="268" y="96" font-size="27" font-weight="700" fill="url(#gcost)" font-family="'Courier New',Courier,monospace">$825</text>
 <text x="268" y="114" font-size="11" fill="rgba(168,168,220,0.38)" font-family="system-ui,sans-serif">all time spend</text>
 
 <line x1="256" y1="48" x2="256" y2="135" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 <line x1="458" y1="48" x2="458" y2="135" stroke="rgba(99,102,241,0.18)" stroke-width="0.75"/>
 
 <text x="472" y="72" font-size="10" fill="rgba(200,200,255,0.82)" font-family="system-ui,sans-serif">gpt-5.5</text>
-<text x="840" y="72" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">548.9M</text>
-<text x="876" y="72" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">39%</text>
+<text x="840" y="72" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">630.7M</text>
+<text x="876" y="72" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">41%</text>
 <rect x="472" y="76" width="404" height="5" rx="2.5" fill="rgba(99,102,241,0.12)"/>
-<rect x="472" y="76" width="158" height="5" rx="2.5" fill="url(#gbar1)"/>
+<rect x="472" y="76" width="166" height="5" rx="2.5" fill="url(#gbar1)"/>
 <text x="472" y="97" font-size="10" fill="rgba(200,200,255,0.82)" font-family="system-ui,sans-serif">gpt-5.4</text>
-<text x="840" y="97" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">331.5M</text>
-<text x="876" y="97" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">24%</text>
+<text x="840" y="97" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">324.6M</text>
+<text x="876" y="97" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">21%</text>
 <rect x="472" y="101" width="404" height="5" rx="2.5" fill="rgba(99,102,241,0.12)"/>
-<rect x="472" y="101" width="97" height="5" rx="2.5" fill="url(#gbar2)"/>
+<rect x="472" y="101" width="85" height="5" rx="2.5" fill="url(#gbar2)"/>
 <text x="472" y="122" font-size="10" fill="rgba(200,200,255,0.82)" font-family="system-ui,sans-serif">gpt-5.3-codex-spark</text>
 <text x="840" y="122" text-anchor="end" font-size="10" fill="#a5b4fc" font-family="'Courier New',Courier,monospace">135.7M</text>
-<text x="876" y="122" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">10%</text>
+<text x="876" y="122" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.45)" font-family="system-ui,sans-serif">9%</text>
 <rect x="472" y="126" width="404" height="5" rx="2.5" fill="rgba(99,102,241,0.12)"/>
-<rect x="472" y="126" width="40" height="5" rx="2.5" fill="url(#gbar3)"/>
+<rect x="472" y="126" width="36" height="5" rx="2.5" fill="url(#gbar3)"/>
 
 <line x1="24" y1="144" x2="876" y2="144" stroke="url(#gdiv)" stroke-width="0.75"/>
 <rect x="0" y="144" width="900" height="76" fill="url(#gbottom)" rx="0"/>
@@ -91,9 +91,9 @@
 <text x="150" y="196" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">8</text>
 
 <text x="450" y="165" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(168,168,220,0.35)" font-family="system-ui,sans-serif" letter-spacing="1.2">INPUT TOKENS</text>
-<text x="450" y="196" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">50.7M</text>
+<text x="450" y="196" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">55.5<tspan font-size="0.62em" dx="1" font-weight="600">M</tspan></text>
 
 <text x="750" y="165" text-anchor="middle" font-size="9" font-weight="600" fill="rgba(168,168,220,0.35)" font-family="system-ui,sans-serif" letter-spacing="1.2">OUTPUT TOKENS</text>
-<text x="750" y="196" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">5.1M</text>
+<text x="750" y="196" text-anchor="middle" font-size="23" font-weight="700" fill="rgba(165,180,252,0.78)" font-family="'Courier New',Courier,monospace">5.6<tspan font-size="0.62em" dx="1" font-weight="600">M</tspan></text>
 </svg>
 

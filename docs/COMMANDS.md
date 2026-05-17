@@ -319,6 +319,25 @@ Local token path:
 ~/.vibedeck/github.token
 ```
 
+### README banner SVG generation
+
+Generate the GitHub/profile README banner for this repository:
+
+```bash
+node bin/vibedeck.js readme-sync update
+```
+
+This refreshes `github-readme-banner.svg` locally before syncing the managed README block to GitHub. It requires `readme-sync set` to be configured first.
+
+Generate the project-local README banner from the project you want to update:
+
+```bash
+cd /absolute/path/to/project
+node /absolute/path/to/VibeDeck/bin/vibedeck.js project-readme-sync
+```
+
+This writes `project-readme-banner.svg` beside that project's `README.md` and refreshes the local `## Project Usage` block. It does not need a GitHub token.
+
 ### `project-readme-sync`
 
 ```bash
@@ -527,7 +546,7 @@ gh run watch
 Manual native release fallback:
 
 ```bash
-gh workflow run release-dmg.yml -f version=0.1.1
+gh workflow run release-dmg.yml -f version=0.1.3
 ```
 
 ## Useful Paths

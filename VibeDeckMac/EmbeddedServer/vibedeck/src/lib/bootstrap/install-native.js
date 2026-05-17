@@ -55,7 +55,7 @@ function getPackageVersion() {
   return (
     process.env.npm_package_version ||
     require('../../../package.json').version ||
-    "0.1.2"
+    "0.1.3"
   );
 }
 

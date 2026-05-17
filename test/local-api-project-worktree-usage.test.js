@@ -7,6 +7,7 @@ const { test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
 const { createLocalApiHandler } = require('../src/lib/local-api');
+const { rebuildAllBranchUsageFacts } = require('../src/lib/sessions/branch-usage-facts');
 
 async function callEndpoint(queuePath, endpoint) {
   const handler = createLocalApiHandler({ queuePath });
@@ -130,6 +131,7 @@ test('project usage returns a project umbrella with nested worktrees', async () 
     } finally {
       db.close();
     }
+    rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,

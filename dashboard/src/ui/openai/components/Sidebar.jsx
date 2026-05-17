@@ -5,7 +5,6 @@ import {
   Activity,
   BarChart3,
   GitBranch,
-  GitGraph,
   LayoutGrid,
   Puzzle,
   Settings as SettingsIcon,
@@ -30,7 +29,7 @@ const STORAGE_KEY = "tt.sidebarCollapsed";
 const LG_BREAKPOINT = 1024;
 const XL_BREAKPOINT = 1280;
 
-function getNavGroups() {
+export function getNavGroups() {
   return [
     {
       id: "work",
@@ -45,7 +44,6 @@ function getNavGroups() {
       id: "control",
       label: copy("nav.group.tools"),
       items: [
-        { id: "entire", to: "/entire", icon: GitGraph, label: copy("nav.entire") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
       ],
     },
@@ -112,6 +110,13 @@ function isActive(pathname, to) {
 
 function SidebarBrand({ collapsed = false }) {
   const shouldReduceMotion = useReducedMotion();
+  const icon = (
+    <>
+      <img src="/icon-light.svg" alt="" className="h-7 w-7 shrink-0 rounded-lg dark:hidden" />
+      <img src="/icon.svg" alt="" className="hidden h-7 w-7 shrink-0 rounded-lg dark:block" />
+    </>
+  );
+
   return (
     <Link
       to="/dashboard"
@@ -121,7 +126,7 @@ function SidebarBrand({ collapsed = false }) {
       )}
       aria-label={copy("brand.name")}
     >
-      <img src="/icon.svg" alt="" className="h-7 w-7 shrink-0 rounded-lg" />
+      {collapsed ? icon : null}
       <AnimatePresence mode="wait">
         {!collapsed && (
           <motion.span
@@ -130,9 +135,10 @@ function SidebarBrand({ collapsed = false }) {
             animate={{ opacity: 1, width: "auto" }}
             exit={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className="truncate text-sm font-semibold font-display overflow-hidden whitespace-nowrap"
+            className="flex min-w-0 overflow-hidden"
           >
-            {copy("brand.name")}
+            <img src="/wordmark.svg" alt="" className="h-7 w-auto max-w-[132px] dark:hidden" />
+            <img src="/wordmark-dark.svg" alt="" className="hidden h-7 w-auto max-w-[132px] dark:block" />
           </motion.span>
         )}
       </AnimatePresence>
@@ -484,10 +490,10 @@ function MobileTopBar({ onOpenDrawer }) {
         className="flex items-center gap-2 no-underline hover:opacity-80 transition-opacity"
         aria-label={copy("brand.name")}
       >
-        <img src="/icon.svg" alt="" className="h-6 w-6 shrink-0 rounded-lg" />
-        <span className="text-sm font-semibold font-display text-oai-black dark:text-oai-white">
-          {copy("brand.name")}
-        </span>
+        <img src="/icon-light.svg" alt="" className="h-6 w-6 shrink-0 rounded-lg dark:hidden" />
+        <img src="/icon.svg" alt="" className="hidden h-6 w-6 shrink-0 rounded-lg dark:block" />
+        <img src="/wordmark.svg" alt="" className="h-5 w-auto max-w-[108px] dark:hidden" />
+        <img src="/wordmark-dark.svg" alt="" className="hidden h-5 w-auto max-w-[108px] dark:block" />
       </Link>
       <div className="w-10 shrink-0" aria-hidden />
     </div>
@@ -496,12 +502,9 @@ function MobileTopBar({ onOpenDrawer }) {
 
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
-  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-  const normalizedPath = (location?.pathname || "/").replace(/\/+$/, "") || "/";
-  const fixedWorkbench = normalizedPath === "/entire";
 
   const nativeEmbed = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -534,7 +537,7 @@ export function AppLayout({ children }) {
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
-            <div className={cn("flex-1 min-h-0", fixedWorkbench ? "overflow-hidden" : "overflow-y-auto")}>
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>
           </div>

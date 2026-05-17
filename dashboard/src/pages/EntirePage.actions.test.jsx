@@ -48,7 +48,7 @@ async function loadRepo(repo = "/Users/dev/repo") {
 }
 
 async function openActionsPanel() {
-  await screen.findByText("Actions");
+  await screen.findByText("Agents and status");
 }
 
 async function openConfigurePanel() {

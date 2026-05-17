@@ -4,11 +4,72 @@ import { Button, Input } from "../../ui/openai/components";
 import { copy } from "../../lib/copy";
 import { postEntireCommand } from "../../lib/vibedeck-api";
 import { readEntirePrefs, writeEntirePrefs } from "./storage";
+import { EntireCommandOutput } from "./EntireCommandOutput.jsx";
 
 function parseArgv(raw) {
   const text = String(raw || "").trim();
   if (!text) return [];
-  return text.match(/\S+/g) || [];
+
+  const args = [];
+  let current = "";
+  let quote = null;
+  let tokenStarted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+        tokenStarted = true;
+        continue;
+      }
+
+      if (char === "\\") {
+        const next = text[index + 1];
+        if (next === quote || next === "\\") {
+          current += next;
+          index += 1;
+        } else {
+          current += "\\";
+        }
+        tokenStarted = true;
+        continue;
+      }
+
+      current += char;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (tokenStarted) {
+        args.push(current);
+        current = "";
+        tokenStarted = false;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      tokenStarted = true;
+      continue;
+    }
+
+    current += char;
+    tokenStarted = true;
+  }
+
+  if (quote) {
+    throw new Error("Unmatched quote in configure arguments.");
+  }
+
+  if (tokenStarted) {
+    args.push(current);
+  }
+
+  return args;
 }
 
 function commandOutputText(payload) {
@@ -48,10 +109,10 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
 
   const runConfigure = async () => {
     if (!repo || busy) return;
-    setBusy(true);
     setError("");
     try {
       const args = parseArgv(argsText);
+      setBusy(true);
       const result = await postEntireCommand("configure", { repo, args });
       setOutput(commandOutputText(result));
       await onActionSuccess?.();
@@ -85,16 +146,7 @@ export function AdvancedConfigurePanel({ repo = "", onActionSuccess, className =
           </p>
         ) : null}
 
-        {output ? (
-          <div className="rounded-md border border-oai-gray-200 bg-oai-black/[0.03] p-1.5 dark:border-oai-gray-800 dark:bg-white/[0.08]">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
-              {copy("entire.configure.output")}
-            </div>
-            <pre className="max-h-36 overflow-auto text-xs text-oai-gray-700 dark:text-oai-gray-200">
-              <code>{output}</code>
-            </pre>
-          </div>
-        ) : null}
+        <EntireCommandOutput label={copy("entire.configure.output")} output={output} />
       </div>
     </div>
   );

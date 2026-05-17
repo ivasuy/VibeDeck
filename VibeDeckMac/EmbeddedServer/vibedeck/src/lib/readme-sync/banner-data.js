@@ -1,6 +1,7 @@
 'use strict';
 
 const os = require('node:os');
+const fs = require('node:fs');
 const path = require('node:path');
 const { resolveTrackerPaths } = require('../tracker-paths');
 const { readUsageRowsFromDb } = require('../usage-read-models');
@@ -26,6 +27,27 @@ function formatDateUTC(date) {
   ).toISOString().slice(0, 10);
 }
 
+function formatDateInTimeZone(date, timeZone) {
+  const resolvedDate = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(resolvedDate.getTime())) return null;
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const parts = formatter.formatToParts(resolvedDate);
+    const year = parts.find((part) => part.type === 'year')?.value;
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    if (year && month && day) return `${year}-${month}-${day}`;
+  } catch {
+    // Fall back to UTC when the runtime does not recognize the local timezone.
+  }
+  return formatDateUTC(resolvedDate);
+}
+
 function addUtcDays(date, days) {
   return new Date(
     Date.UTC(
@@ -45,18 +67,6 @@ function formatUpdatedDate(now) {
   });
 }
 
-function quantile(values, q) {
-  if (!Array.isArray(values) || values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const n = sorted.length;
-  const pos = (n - 1) * q;
-  const base = Math.floor(pos);
-  const rest = pos - base;
-  const left = sorted[base] ?? sorted[n - 1];
-  const right = sorted[Math.min(n - 1, base + 1)] ?? sorted[n - 1];
-  return left + (right - left) * rest;
-}
-
 function clampLevel(level) {
   if (level <= 0) return 0;
   if (level >= 4) return 4;
@@ -70,9 +80,9 @@ function resolveHeatmapWindow({ to, weeks = 52, weekStartsOn = 'sun' }) {
   );
   const desired = weekStartsOn === 'mon' ? 1 : 0;
   const endDow = endBase.getUTCDay();
-  const end = addUtcDays(endBase, -((endDow - desired + 7) % 7));
-  const start = addUtcDays(end, -7 * Math.max(1, weeks - 1));
-  return { start, end };
+  const endWeekStart = addUtcDays(endBase, -((endDow - desired + 7) % 7));
+  const start = addUtcDays(endWeekStart, -7 * Math.max(0, weeks - 1));
+  return { start, end: endBase };
 }
 
 function formatCompactTokenCount(value) {
@@ -81,20 +91,20 @@ function formatCompactTokenCount(value) {
   const sign = n < 0 ? '-' : '';
   const abs = Math.abs(n);
 
-  const format = (v, suffix) => {
-    const normalized = Number(v.toFixed(1));
+  const format = (v, suffix, decimals = 1) => {
+    const normalized = Number(v.toFixed(decimals));
     return `${sign}${normalized.toString()}${suffix}`;
   };
 
-  if (abs >= 1_000_000_000) return format(abs / 1_000_000_000, 'B');
+  if (abs >= 1_000_000_000) return format(abs / 1_000_000_000, 'B', 2);
   if (abs >= 1_000_000) {
     const asMillions = abs / 1_000_000;
-    const carry = asMillions >= 1000 ? format(asMillions / 1000, 'B') : format(asMillions, 'M');
+    const carry = asMillions >= 1000 ? format(asMillions / 1000, 'B', 2) : format(asMillions, 'M', 1);
     return carry;
   }
   if (abs >= 1_000) {
     const asThousands = abs / 1_000;
-    const carry = asThousands >= 1000 ? format(asThousands / 1000, 'M') : format(asThousands, 'K');
+    const carry = asThousands >= 1000 ? format(asThousands / 1000, 'M', 1) : format(asThousands, 'K', 1);
     return carry;
   }
   return `${sign}${Math.round(abs)}`;
@@ -102,12 +112,11 @@ function formatCompactTokenCount(value) {
 
 function formatUsd(value) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return '$0.00';
-  const rounded = Math.abs(n).toFixed(2);
-  const [intPart, fracPart] = rounded.split('.');
-  const formattedInt = new Intl.NumberFormat('en-US').format(Number(intPart));
+  if (!Number.isFinite(n)) return '$0';
+  const rounded = Math.round(Math.abs(n));
+  const formattedInt = new Intl.NumberFormat('en-US').format(rounded);
   const sign = n < 0 ? '-' : '';
-  return `${sign}$${formattedInt}.${fracPart}`;
+  return `${sign}$${formattedInt}`;
 }
 
 function resolveTopModels(rows, totalBillable) {
@@ -132,14 +141,59 @@ function resolveTopModels(rows, totalBillable) {
   });
 }
 
-function buildHeatmap(rows, { to, weeks = 52, weekStartsOn = 'sun' }) {
+function isLegacyInclusiveCodexRow(row) {
+  if (!row || (row.source !== 'codex' && row.source !== 'every-code')) return false;
+  const inputTokens = Number(row.input_tokens || 0);
+  const cachedInputTokens = Number(row.cached_input_tokens || 0);
+  const outputTokens = Number(row.output_tokens || 0);
+  const totalTokens = Number(row.total_tokens || 0);
+  if (!Number.isFinite(inputTokens) || !Number.isFinite(cachedInputTokens)) return false;
+  if (cachedInputTokens <= 0 || inputTokens < cachedInputTokens) return false;
+  return totalTokens === inputTokens + outputTokens;
+}
+
+function normalizeQueueRow(row) {
+  if (!isLegacyInclusiveCodexRow(row)) return row;
+  return {
+    ...row,
+    input_tokens: Number(row.input_tokens || 0) - Number(row.cached_input_tokens || 0),
+  };
+}
+
+function readQueueRows(queuePath) {
+  if (typeof queuePath !== 'string' || !queuePath.trim() || !fs.existsSync(queuePath)) return [];
+  const lines = fs.readFileSync(queuePath, 'utf8').split('\n').filter((line) => line.trim());
+  const seen = new Map();
+
+  for (const line of lines) {
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const key = `${row?.source || ''}|${row?.model || ''}|${row?.hour_start || ''}`;
+    seen.set(key, normalizeQueueRow(row));
+  }
+
+  return Array.from(seen.values());
+}
+
+function readUsageRowsFromTracker(trackerDir) {
+  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+  const dbRows = readUsageRowsFromDb(dbPath);
+  if (Array.isArray(dbRows) && dbRows.length > 0) return dbRows;
+  return readQueueRows(path.join(trackerDir, 'queue.jsonl'));
+}
+
+function buildHeatmap(rows, { to, weeks = 52, weekStartsOn = 'sun', timeZone = 'UTC' }) {
   const { start, end } = resolveHeatmapWindow({ to, weeks, weekStartsOn });
   const totalDays = Math.max(1, Math.ceil(weeks)) * 7;
   const dailyByDate = new Map();
 
   for (const row of rows) {
     if (!row?.hour_start) continue;
-    const day = String(row.hour_start).slice(0, 10);
+    const day = formatDateInTimeZone(new Date(row.hour_start), timeZone);
     const v = Number(row?.billable_total_tokens ?? row?.total_tokens ?? 0);
     if (!day) continue;
     const bucket = dailyByDate.get(day) || 0;
@@ -152,18 +206,15 @@ function buildHeatmap(rows, { to, weeks = 52, weekStartsOn = 'sun' }) {
     const value = dailyByDate.get(key) || 0;
     if (value > 0) values.push(value);
   }
-  values.sort((a, b) => a - b);
-
-  const t1 = quantile(values, 0.5);
-  const t2 = quantile(values, 0.75);
-  const t3 = quantile(values, 0.9);
+  const maxValue = values.length > 0 ? Math.max(...values) : 0;
 
   function levelFor(value) {
     if (value <= 0) return 0;
-    if (t3 === 0) return 1;
-    if (value <= t1) return 1;
-    if (value <= t2) return 2;
-    if (value <= t3) return 3;
+    if (maxValue === 0) return 1;
+    const ratio = value / maxValue;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.75) return 3;
     return 4;
   }
 
@@ -176,6 +227,7 @@ function buildHeatmap(rows, { to, weeks = 52, weekStartsOn = 'sun' }) {
       const value = dailyByDate.get(day) || 0;
       week.push({
         day,
+        value,
         level: clampLevel(levelFor(Number(value))),
       });
     }
@@ -187,15 +239,19 @@ function buildHeatmap(rows, { to, weeks = 52, weekStartsOn = 'sun' }) {
     to: formatDateUTC(end),
     week_starts_on: weekStartsOn,
     weeks: weeksOut.slice(-Math.max(1, Math.trunc(weeks))),
-    thresholds: { t1, t2, t3 },
+    thresholds: {
+      t1: maxValue * 0.25,
+      t2: maxValue * 0.5,
+      t3: maxValue * 0.75,
+    },
   };
 }
 
-async function buildReadmeBannerData({ home = os.homedir(), now = new Date() } = {}) {
+async function buildReadmeBannerData({ home = os.homedir(), now = new Date(), timeZone: preferredTimeZone } = {}) {
   const { trackerDir } = await resolveTrackerPaths({ home });
-  const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
-  const rows = readUsageRowsFromDb(dbPath);
+  const rows = readUsageRowsFromTracker(trackerDir);
   const resolvedNow = now instanceof Date && Number.isFinite(now.getTime()) ? now : new Date();
+  const timeZone = preferredTimeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   const totals = rows.reduce(
     (acc, row) => {
@@ -212,9 +268,10 @@ async function buildReadmeBannerData({ home = os.homedir(), now = new Date() } =
   const totalTokens = totals.total_tokens;
   const topModels = resolveTopModels(rows, totalTokens);
   const heatmap = buildHeatmap(rows, {
-    to: formatDateUTC(resolvedNow),
+    to: formatDateInTimeZone(resolvedNow, timeZone),
     weeks: 52,
     weekStartsOn: 'sun',
+    timeZone,
   });
 
   return {

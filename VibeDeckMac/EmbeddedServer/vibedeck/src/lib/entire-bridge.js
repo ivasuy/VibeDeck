@@ -4,6 +4,7 @@ const execa = require('execa');
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { normalizeCheckpointPath, isValidCheckpointPath } = require('./entire-checkpoint-paths');
 const { resolveTrackerPaths } = require('./tracker-paths');
 const { upsertEntireState } = require('./db/repos');
 
@@ -89,20 +90,16 @@ async function listCheckpoints(repoRoot) {
 }
 
 async function readCheckpoint(repoRoot, filePath) {
-  if (
-    typeof filePath !== 'string' ||
-    filePath.includes('\0') ||
-    filePath.startsWith('/') ||
-    filePath.split('/').includes('..')
-  ) {
+  const checkpointPath = normalizeCheckpointPath(filePath);
+  if (!isValidCheckpointPath(filePath)) {
     throw new Error(`readCheckpoint: invalid filePath: ${filePath}`);
   }
   const { stdout } = await execa(
     'git',
-    ['-C', repoRoot, 'show', `${CHECKPOINT_BRANCH}:${filePath}`],
+    ['-C', repoRoot, 'show', `${CHECKPOINT_BRANCH}:${checkpointPath}`],
     { timeout: 5000 },
   );
-  return buildCheckpointPayload(filePath, stdout);
+  return buildCheckpointPayload(checkpointPath, stdout);
 }
 
 function checkpointKind(filePath) {
@@ -266,7 +263,12 @@ async function _runEntire(args, { cwd, timeoutMs = 30000 } = {}) {
   _validateArgvStrings(args, { name: 'args' });
   try {
     const r = await execa('entire', args, { cwd, timeout: timeoutMs, reject: false });
-    return { exitCode: r.exitCode, stdout: String(r.stdout), stderr: String(r.stderr) };
+    const exitCode = Number.isInteger(r.exitCode)
+      ? r.exitCode
+      : Number.isInteger(r.code)
+        ? r.code
+        : 0;
+    return { exitCode, stdout: String(r.stdout ?? ''), stderr: String(r.stderr ?? '') };
   } catch (err) {
     return { exitCode: -1, stdout: '', stderr: String(err.shortMessage || err.message) };
   }

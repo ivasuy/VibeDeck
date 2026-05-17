@@ -30,7 +30,7 @@ targets:
         PRODUCT_NAME: VibeDeck
         INFOPLIST_VALUES: |
           LSUIElement = YES
-        MARKETING_VERSION: "0.1.2"
+        MARKETING_VERSION: "0.1.3"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_EMIT_LOC_STRINGS: "YES"
         CODE_SIGN_STYLE: Automatic
@@ -94,7 +94,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vasuyadav.vibedeck.app.widget
         PRODUCT_NAME: VibeDeckWidget
-        MARKETING_VERSION: "0.1.2"
+        MARKETING_VERSION: "0.1.3"
         CURRENT_PROJECT_VERSION: "1"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         SWIFT_EMIT_LOC_STRINGS: "YES"

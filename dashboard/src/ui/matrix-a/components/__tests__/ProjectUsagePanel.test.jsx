@@ -39,6 +39,14 @@ describe("ProjectUsagePanel", () => {
     expect(card).toBeInTheDocument();
   });
 
+  it("shows a loading skeleton instead of the empty state on first project usage load", () => {
+    render(<ProjectUsagePanel entries={[]} loading />);
+
+    expect(screen.getByText("Loading project usage...")).toBeInTheDocument();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
+    expect(screen.queryByText(copy("dashboard.projects.empty"))).toBeNull();
+  });
+
   it("prefers total tokens when billable tokens are zero", () => {
     const entryWithBillableZero = {
       project_key: "octo/alpha",
@@ -259,5 +267,28 @@ describe("ProjectUsagePanel", () => {
     });
     expect(within(card).getByText("$4.50")).toBeInTheDocument();
     expect(within(card).queryByText("$9.75 est.")).toBeNull();
+  });
+
+  it("shows a decommissioned badge for archived local project usage", () => {
+    render(
+      <ProjectUsagePanel
+        entries={[
+          {
+            project_key: "old-app",
+            project_ref: "/Users/vasuyadav/Projects/old-app",
+            archived: true,
+            project_state: "git_missing",
+            total_tokens: 1000,
+            estimated_total_cost_usd: 4.2,
+            cost_estimated: false,
+          },
+        ]}
+      />,
+    );
+
+    const card = screen.getByRole("button", {
+      name: copy("dashboard.projects.expand_project", { project: "old-app" }),
+    });
+    expect(within(card).getByText("Decommissioned")).toBeInTheDocument();
   });
 });

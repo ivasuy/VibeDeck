@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
 import { render } from "../test/test-utils";
@@ -140,20 +140,33 @@ function makePayload(repos) {
 }
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   getBranchUsage.mockReset();
   getBranchUsage.mockResolvedValue(SAMPLE_PAYLOAD);
 });
 
 afterEach(() => {
+  window.sessionStorage.clear();
   cleanup();
 });
 
 describe("BranchesPage", () => {
+  it("shows full-page branch skeletons instead of zero totals while the first load is pending", () => {
+    getBranchUsage.mockImplementationOnce(() => new Promise(() => {}));
+
+    render(<BranchesPage />);
+
+    expect(screen.getAllByText("Loading branch totals...").length).toBeGreaterThan(0);
+    expect(screen.getByText("Loading branch usage...")).toBeTruthy();
+    expect(screen.queryByText("$0.00")).toBeNull();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
+  });
+
   it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
     render(<BranchesPage />);
 
     expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
-    expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: true, limit: 100 });
+    expect(getBranchUsage).toHaveBeenCalledWith({ includeSessions: false, includeArchived: true, limit: 100 });
     expect(screen.getByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: copy("branches.table.repo") })).toBeNull();
     expect(screen.queryByText("/repo-a")).toBeNull();
@@ -168,6 +181,17 @@ describe("BranchesPage", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
 
     expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    await waitFor(() => {
+      expect(getBranchUsage).toHaveBeenLastCalledWith({
+        includeSessions: true,
+        includeArchived: true,
+        includeDateBuckets: true,
+        sessionDate: "latest",
+        limit: 100,
+        repo: "/repo-a",
+        branch: "feature-a",
+      });
+    });
     expect(screen.queryByText("s-001")).toBeNull();
     expect(screen.queryByText("s-002")).toBeNull();
     expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
@@ -190,6 +214,28 @@ describe("BranchesPage", () => {
     expect(screen.getAllByText("$9.10").length).toBeGreaterThan(0);
     expect(screen.queryByText("$9.10 est.")).toBeNull();
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+
+  it("reopens cached branch session details instantly without refetching the same drawer payload", async () => {
+    getBranchUsage.mockResolvedValueOnce(SAMPLE_PAYLOAD);
+    getBranchUsage.mockResolvedValueOnce(SAMPLE_PAYLOAD);
+
+    render(<BranchesPage />);
+
+    expect(await screen.findByRole("combobox", { name: copy("branches.project.select_label") })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
+    expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    await waitFor(() => expect(getBranchUsage).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: copy("branches.drawer.close") }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Session details" })).toBeNull());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /view sessions/i })[0]);
+
+    expect(screen.getByRole("dialog", { name: "Session details" })).toBeTruthy();
+    expect(screen.queryByText("Loading branch usage...")).toBeNull();
+    expect(screen.getAllByText("gpt-5.2").length).toBeGreaterThan(0);
+    expect(getBranchUsage).toHaveBeenCalledTimes(2);
   });
 
   it("switches projects and applies the branch filter locally", async () => {
@@ -285,7 +331,7 @@ describe("BranchesPage", () => {
     });
   });
 
-  it("shows a no git registered state instead of unattributed branch rows", async () => {
+  it("shows tracked no-git branch rows instead of hiding non-git project usage", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/repo-no-git",
@@ -293,7 +339,7 @@ describe("BranchesPage", () => {
         git_branch_count: 0,
         branches: [
           {
-            branch: "unattributed",
+            branch: "No branch",
             attribution_branch: null,
             total_tokens: 1000,
             total_cost_usd: 2.5,
@@ -312,16 +358,73 @@ describe("BranchesPage", () => {
     const branchSelect = await screen.findByRole("combobox", {
       name: copy("branches.branch.select_label"),
     });
-    expect(branchSelect).toBeDisabled();
-    expect(screen.getByText("No git registered")).toBeTruthy();
-    expect(screen.queryByText("unattributed")).toBeNull();
-    expect(screen.queryByText("$2.50")).toBeNull();
+    expect(branchSelect.disabled).toBe(true);
+    expect(screen.getAllByText("No branch").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$2.50").length).toBeGreaterThan(0);
   });
 
-  it("disambiguates duplicate repo basenames in the project selector", async () => {
+  it("uses tracked branch rows for the branch selector and labels decommissioned projects", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-decommissioned",
+        project_state: "git_missing",
+        archived: true,
+        git_branches: ["feature-unused", "main", "release"],
+        git_branch_count: 3,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 100,
+            total_cost_usd: 1,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+          {
+            branch: "Unknown branch",
+            attribution_branch: null,
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T10:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const branchSelect = await screen.findByRole("combobox", {
+      name: copy("branches.branch.select_label"),
+    });
+    const options = Array.from(branchSelect.querySelectorAll("option")).map((option) => option.textContent);
+
+    expect(options).toEqual(["main", "Unknown branch"]);
+    expect(options).not.toContain("feature-unused");
+    expect(screen.getByText("Decommissioned")).toBeTruthy();
+    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+
+    fireEvent.change(branchSelect, { target: { value: "Unknown branch" } });
+
+    await waitFor(() => {
+      expect(screen.queryByText("feature-unused")).toBeNull();
+      expect(screen.getAllByText("Unknown branch").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("$0.50").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("disambiguates duplicate repo basenames without exposing absolute paths in labels", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {
         repo_root: "/work/acme/app",
+        project_ref: "/work/acme/app",
+        project_key: "app",
         git_branches: ["feature-acme"],
         git_branch_count: 1,
         branches: [
@@ -339,6 +442,8 @@ describe("BranchesPage", () => {
       },
       {
         repo_root: "/tmp/sandbox/app",
+        project_ref: "/tmp/sandbox/app",
+        project_key: "app",
         git_branches: ["feature-sandbox"],
         git_branch_count: 1,
         branches: [
@@ -361,13 +466,362 @@ describe("BranchesPage", () => {
     const projectSelect = await screen.findByRole("combobox", {
       name: copy("branches.project.select_label"),
     });
-    const options = screen.getAllByRole("option").map((option) => option.textContent);
+    const options = screen.getAllByRole("option");
+    const labels = options.map((option) => option.textContent);
 
-    expect(options).toContain("/work/acme/app");
-    expect(options).toContain("/tmp/sandbox/app");
+    expect(labels).toContain("app · acme");
+    expect(labels).toContain("app · sandbox");
+    expect(labels).not.toContain("/work/acme/app");
+    expect(labels).not.toContain("/tmp/sandbox/app");
+    expect(options.find((option) => option.textContent === "app · acme")?.getAttribute("title")).toContain("/work/acme/app");
+    expect(options.find((option) => option.textContent === "app · sandbox")?.getAttribute("title")).toContain("/tmp/sandbox/app");
     expect(projectSelect.value).toBe("/work/acme/app");
     expect(screen.getAllByText("feature-acme").length).toBeGreaterThan(0);
     expect(screen.queryByText("feature-sandbox")).toBeNull();
+  });
+
+  it("keeps decommissioned duplicate project labels compact instead of showing absolute paths", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/archive-one/app",
+        project_key: "app",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/tmp/archive-two/app",
+        project_key: "app",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T09:00:00.000Z",
+            confidence: { high: 0, medium: 1, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+
+    expect(options).toContain("app · archive-one (Decommissioned)");
+    expect(options).toContain("app · archive-two (Decommissioned)");
+    expect(options).not.toContain("/Users/dev/archive-one/app (Decommissioned)");
+    expect(options).not.toContain("/tmp/archive-two/app (Decommissioned)");
+  });
+
+  it("hides generic parent folder names for decommissioned project labels", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/Projects/vasu-portfolio-v2",
+        project_key: "vasu-portfolio-v2",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Library/CloudStorage/OneDrive-BayesFintechInc/Documents/vasu-portfolio-v2",
+        project_key: "vasu-portfolio-v2",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const option = screen.getByRole("option", { name: "vasu-portfolio-v2 (Decommissioned)" });
+
+    expect(option).toBeTruthy();
+    expect(option.textContent).not.toContain("Projects");
+    expect(option.getAttribute("title")).toContain("/Users/dev/Downloads/Projects/vasu-portfolio-v2");
+    expect(screen.getByRole("option", { name: "vasu-portfolio-v2 · OneDrive-BayesFintechInc (Decommissioned)" })).toBeTruthy();
+  });
+
+  it("labels generated workspace umbrellas compactly and keeps full paths as metadata", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/workspaces/agentfield",
+        project_key: "agentfield",
+        project_state: "cwd_missing",
+        archived: true,
+        workspace_family: true,
+        workspace_context: "workspaces",
+        workspace_paths: ["/workspaces/agentfield-45b4eb41", "/workspaces/agentfield-f2f6db087fd1"],
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "workspace-45b4eb41",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const option = screen.getByRole("option", { name: "agentfield · workspaces (Decommissioned)" });
+
+    expect(option).toBeTruthy();
+    expect(option.textContent).not.toContain("/workspaces");
+    expect(option.getAttribute("title")).toContain("/workspaces/agentfield-45b4eb41");
+  });
+
+  it("uses generic parent folders only as a last resort when compact labels would collide", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/Projects/cursor-sm",
+        project_key: "cursor-sm",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/Downloads/cursor-sm",
+        project_key: "cursor-sm",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+
+    expect(screen.getByRole("option", { name: "cursor-sm · Projects (Decommissioned)" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "cursor-sm · Downloads (Decommissioned)" })).toBeTruthy();
+  });
+
+  it("filters branch drawer sessions and model summary by selected date", async () => {
+    const summary = makePayload([
+      {
+        repo_root: "/repo-dated",
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            last_seen_at: "2026-05-11T01:10:00.000Z",
+            confidence: { high: 2, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]);
+    const latestDetail = makePayload([
+      {
+        repo_root: "/repo-dated",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-11",
+            date_buckets: [
+              {
+                date: "2026-05-11",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                session_count: 1,
+                models: [{ model: "gpt-5.5", provider: "codex", total_tokens: 100, total_cost_usd: 1, session_count: 1 }],
+              },
+              {
+                date: "2026-05-10",
+                total_tokens: 200,
+                total_cost_usd: 2,
+                session_count: 1,
+                models: [{ model: "claude-opus-4-7", provider: "claude", total_tokens: 200, total_cost_usd: 2, session_count: 1 }],
+              },
+            ],
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            models: [],
+            sessions: [
+              {
+                provider: "codex",
+                session_id: "new-day",
+                started_at: "2026-05-11T01:00:00.000Z",
+                ended_at: "2026-05-11T01:10:00.000Z",
+                model: "gpt-5.5",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                confidence: "high",
+                branch_resolution_tier: "A",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const oldDetail = makePayload([
+      {
+        repo_root: "/repo-dated",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-10",
+            date_buckets: latestDetail.repos[0].branches[0].date_buckets,
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            models: [],
+            sessions: [
+              {
+                provider: "claude",
+                session_id: "old-day",
+                started_at: "2026-05-10T01:00:00.000Z",
+                ended_at: "2026-05-10T01:10:00.000Z",
+                model: "claude-opus-4-7",
+                total_tokens: 200,
+                total_cost_usd: 2,
+                confidence: "high",
+                branch_resolution_tier: "A",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    getBranchUsage
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(latestDetail)
+      .mockResolvedValueOnce(oldDetail);
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /view sessions/i }));
+
+    const dateSelect = await screen.findByRole("combobox", { name: "Session date" });
+    expect(dateSelect.value).toBe("2026-05-11");
+    expect(screen.getAllByText("gpt-5.5").length).toBeGreaterThan(0);
+    expect(screen.queryByText("claude-opus-4-7")).toBeNull();
+
+    fireEvent.change(dateSelect, { target: { value: "2026-05-10" } });
+
+    await waitFor(() => {
+      expect(getBranchUsage).toHaveBeenLastCalledWith({
+        includeSessions: true,
+        includeArchived: true,
+        includeDateBuckets: true,
+        sessionDate: "2026-05-10",
+        limit: 100,
+        repo: "/repo-dated",
+        branch: "main",
+      });
+      expect(screen.getAllByText("claude-opus-4-7").length).toBeGreaterThan(0);
+      expect(screen.queryByText("gpt-5.5")).toBeNull();
+    });
   });
 
   it("defaults to the latest repo even when payload repos arrive out of order", async () => {
@@ -423,7 +877,8 @@ describe("BranchesPage", () => {
 
   it("paginates branch rows at ten rows per page", async () => {
     const branches = Array.from({ length: 12 }, (_, index) => ({
-      branch: `branch-${String(index + 1).padStart(2, "0")}`,
+      branch: index === 0 ? "main" : `main~${index}`,
+      attribution_branch: "main",
       total_tokens: 100 + index,
       total_cost_usd: 0.25 + index,
       session_count: 1,
@@ -443,17 +898,19 @@ describe("BranchesPage", () => {
 
     render(<BranchesPage />);
 
-    expect(await screen.findByText("branch-01")).toBeTruthy();
-    expect(screen.getByText("branch-10")).toBeTruthy();
-    expect(screen.queryByText("branch-11")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("main~9")).toBeTruthy();
+    expect(within(screen.getByRole("table")).queryByText("main~10")).toBeNull();
     expect(screen.getByText("1-10 of 12")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
 
     await waitFor(() => {
-      expect(screen.queryByText("branch-01")).toBeNull();
-      expect(screen.getByText("branch-11")).toBeTruthy();
-      expect(screen.getByText("branch-12")).toBeTruthy();
+      expect(within(screen.getByRole("table")).queryByText("main")).toBeNull();
+      expect(screen.getByText("main~10")).toBeTruthy();
+      expect(screen.getByText("main~11")).toBeTruthy();
       expect(screen.getByText("11-12 of 12")).toBeTruthy();
     });
   });

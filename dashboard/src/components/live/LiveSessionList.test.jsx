@@ -118,6 +118,75 @@ describe("LiveSessionList", () => {
     expect(onSelectSession).toHaveBeenCalledWith("codex:related-ended");
   });
 
+  it("restores provider and model breakdown visibility in the workstream drawer", () => {
+    render(
+      <LiveSessionList
+        streamStatus="connected"
+        selectedKey="codex:main-live"
+        onSelectSession={() => {}}
+        sessions={[]}
+        workstreams={[
+          {
+            id: "project:vibedeck",
+            repo_root: "/repo/VibeDeck",
+            branches: ["main"],
+            primary_session: { provider: "codex", session_id: "main-live", model: "gpt-5.5" },
+            sessions: [{ provider: "codex", session_id: "main-live", model: "gpt-5.5" }],
+            active_session_count: 1,
+            recently_completed_count: 0,
+            active_total_tokens: 100,
+            active_total_cost_usd: 0.5,
+            audit_total_tokens: 1100,
+            audit_total_cost_usd: 5.5,
+            audit_cost_unknown_count: 0,
+            providers: [
+              {
+                provider: "codex",
+                session_count: 2,
+                audit_total_tokens: 1000,
+                active_total_tokens: 100,
+                audit_total_cost_usd: 5,
+                active_total_cost_usd: 0.5,
+              },
+            ],
+            models: [
+              {
+                model: "gpt-5.5",
+                session_count: 2,
+                audit_total_tokens: 1000,
+                active_total_tokens: 100,
+                audit_total_cost_usd: 5,
+                active_total_cost_usd: 0.5,
+              },
+              {
+                model: "claude-opus-4-7",
+                session_count: 1,
+                audit_total_tokens: 500,
+                active_total_tokens: 0,
+                audit_total_cost_usd: 2.5,
+                active_total_cost_usd: 0,
+              },
+            ],
+            branch_groups: [],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /view breakdown for VibeDeck/i }));
+
+    expect(screen.getByText("Model breakdown")).toBeTruthy();
+    expect(screen.getByText("Provider breakdown")).toBeTruthy();
+    expect(screen.getByText("gpt-5.5")).toBeTruthy();
+    expect(screen.getByText("claude-opus-4-7")).toBeTruthy();
+    expect(screen.getByLabelText("Model provider codex")).toBeTruthy();
+    expect(screen.getByLabelText("Model provider claude")).toBeTruthy();
+    expect(screen.getByText("codex")).toBeTruthy();
+    expect(screen.getAllByText("1,000").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$5.00").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2 sessions").length).toBeGreaterThan(0);
+  });
+
   it("shows cwd_only workstreams as no-git scope with branch unavailable", () => {
     render(
       <LiveSessionList

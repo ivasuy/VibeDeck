@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CalendarClock, CircleDollarSign, Cpu, Layers3, Tag, X } from "lucide-react";
 import { Button } from "../../ui/openai/components";
 import { SlidePanel } from "../../ui/foundation";
@@ -6,6 +6,8 @@ import { copy } from "../../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../../lib/format";
 import { ConfidenceBadge } from "../live/ConfidenceBadge";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
+
+const INITIAL_SESSION_RENDER_LIMIT = 40;
 
 function formatTimestamp(value) {
   if (!value) return "—";
@@ -41,6 +43,20 @@ function normalizeProvider(value) {
   return provider || "unknown";
 }
 
+function timestampDateKey(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function sessionDateKey(session) {
+  return timestampDateKey(session?.ended_at) || timestampDateKey(session?.started_at);
+}
+
 function modelProvidersFromSessions(model, sessions) {
   const targetModel = String(model || "").trim();
   const out = [];
@@ -67,11 +83,34 @@ function SessionMetric({ icon: Icon, label, value }) {
   );
 }
 
-export function BranchSessionDrawer({ row = null, onClose }) {
+export function BranchSessionDrawer({ row = null, loading = false, error = "", onClose, onSelectDate }) {
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
-  const models = Array.isArray(row?.models) ? row.models : [];
+  const dateBuckets = Array.isArray(row?.date_buckets) ? row.date_buckets : [];
+  const selectedDate = String(row?.selected_date || dateBuckets[0]?.date || "");
+  const selectedBucket = dateBuckets.find((bucket) => String(bucket?.date || "") === selectedDate) || dateBuckets[0] || null;
+  const models = Array.isArray(selectedBucket?.models)
+    ? selectedBucket.models
+    : Array.isArray(row?.models)
+      ? row.models
+      : [];
   const hasModels = models.length !== 0;
   const titleId = "branch-session-drawer-title";
+  const [visibleLimit, setVisibleLimit] = useState(INITIAL_SESSION_RENDER_LIMIT);
+  const filteredSessions = useMemo(() => {
+    if (!selectedDate || dateBuckets.length === 0) return sessions;
+    return sessions.filter((session) => {
+      const date = sessionDateKey(session);
+      return !date || date === selectedDate;
+    });
+  }, [dateBuckets.length, selectedDate, sessions]);
+  const visibleSessions = useMemo(
+    () => filteredSessions.slice(0, visibleLimit),
+    [filteredSessions, visibleLimit],
+  );
+
+  useEffect(() => {
+    setVisibleLimit(INITIAL_SESSION_RENDER_LIMIT);
+  }, [row?.repo_root, row?.branch, selectedDate]);
 
   return (
     <SlidePanel
@@ -111,6 +150,30 @@ export function BranchSessionDrawer({ row = null, onClose }) {
         </div>
 
         <div className="flex-1 overflow-auto p-5">
+          {dateBuckets.length > 0 ? (
+            <div className="vd-subcard mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
+              <label
+                htmlFor="branch-session-date-select"
+                className="mb-2 block text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400"
+              >
+                Session date
+              </label>
+              <select
+                id="branch-session-date-select"
+                aria-label="Session date"
+                value={selectedDate}
+                onChange={(event) => onSelectDate?.(event.target.value)}
+                className="vd-control h-10 w-full max-w-xs rounded-md border border-oai-gray-300 bg-white px-3 text-sm text-oai-black focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+              >
+                {dateBuckets.map((bucket) => (
+                  <option key={String(bucket?.date || "")} value={String(bucket?.date || "")}>
+                    {String(bucket?.date || "Unknown date")} · {toDisplayNumber(bucket?.session_count ?? 0)} sessions
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
           {hasModels ? (
             <div className="vd-subcard mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium text-oai-brand-700 dark:text-oai-brand-300">
@@ -157,11 +220,15 @@ export function BranchSessionDrawer({ row = null, onClose }) {
             </div>
           ) : null}
 
-          {sessions.length === 0 ? (
+          {loading ? (
+            <SessionDrawerSkeleton />
+          ) : error ? (
+            <p className="text-sm text-red-700 dark:text-red-300">{copy("branches.error", { error })}</p>
+          ) : filteredSessions.length === 0 ? (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.drawer.empty")}</p>
           ) : (
             <div className="grid gap-3">
-              {sessions.map((session, index) => (
+              {visibleSessions.map((session, index) => (
                 <article
                   key={`${String(session?.provider || "unknown")}:${String(session?.session_id || index)}`}
                   className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
@@ -213,10 +280,48 @@ export function BranchSessionDrawer({ row = null, onClose }) {
                   </div>
                 </article>
               ))}
+              {visibleSessions.length < filteredSessions.length ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="justify-self-center"
+                  onClick={() => setVisibleLimit((current) => current + INITIAL_SESSION_RENDER_LIMIT)}
+                >
+                  Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, filteredSessions.length - visibleSessions.length)} more sessions
+                </Button>
+              ) : null}
             </div>
           )}
         </div>
       </div>
     </SlidePanel>
+  );
+}
+
+function SessionDrawerSkeleton() {
+  return (
+    <div aria-busy="true" className="grid gap-3">
+      <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">Loading branch usage...</p>
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="shimmer h-4 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            </div>
+            <div className="shimmer h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((slot) => (
+              <div key={slot} className="shimmer h-12 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

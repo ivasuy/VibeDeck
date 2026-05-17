@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { readLastGood, writeLastGood } from "../lib/last-good-cache";
 
 type LiveSession = Record<string, any>;
 type LiveSessionEvent = Record<string, any> & { type?: string };
-type LiveSessionStatus = "idle" | "connecting" | "connected" | "degraded";
+type LiveSessionStatus = "idle" | "connecting" | "connected" | "reconnecting" | "degraded";
 type LivePayloadState = {
   sessions: LiveSession[];
   workstreams: Record<string, any>[];
@@ -23,6 +24,8 @@ const EMPTY_STATE: LivePayloadState = {
   canonicalIncomplete: false,
   liveCanonical: null,
 };
+
+export const LIVE_SESSIONS_CACHE_KEY = "live.sessions";
 
 function isRecord(value: unknown): value is Record<string, any> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -128,10 +131,29 @@ export function reduceLivePayloadEvent(prev: LivePayloadState, event: LiveSessio
   };
 }
 
+function hasPayloadData(payload: LivePayloadState | null): boolean {
+  if (!payload) return false;
+  if (Array.isArray(payload.sessions) && payload.sessions.length > 0) return true;
+  if (Array.isArray(payload.workstreams) && payload.workstreams.length > 0) return true;
+  if (payload.totals && Object.keys(payload.totals).length > 0) return true;
+  return Boolean(payload.generatedAt || payload.lastSyncAt || payload.liveCanonical);
+}
+
+function readCachedLivePayload(): LivePayloadState | null {
+  const cached = readLastGood<LivePayloadState>(LIVE_SESSIONS_CACHE_KEY);
+  return cached && hasPayloadData(cached) ? cached : null;
+}
+
 export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean } = {}) {
-  const [payload, setPayload] = useState<LivePayloadState>(EMPTY_STATE);
+  const [payload, setPayload] = useState<LivePayloadState>(() => readCachedLivePayload() || EMPTY_STATE);
   const [status, setStatus] = useState<LiveSessionStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(() => hasPayloadData(readCachedLivePayload()));
+  const payloadRef = useRef(payload);
+
+  useEffect(() => {
+    payloadRef.current = payload;
+  }, [payload]);
 
   useEffect(() => {
     if (!enabled) {
@@ -153,7 +175,13 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     source.onmessage = (event) => {
       try {
         const parsed = JSON.parse(String(event?.data ?? ""));
-        setPayload((prev) => reduceLivePayloadEvent(prev, parsed));
+        setPayload((prev) => {
+          const next = reduceLivePayloadEvent(prev, parsed);
+          if (hasPayloadData(next)) writeLastGood(LIVE_SESSIONS_CACHE_KEY, next);
+          return next;
+        });
+        setStale(false);
+        setError(null);
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "Invalid live session event";
         setStatus("degraded");
@@ -162,6 +190,12 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     };
 
     source.onerror = () => {
+      if (hasPayloadData(payloadRef.current)) {
+        setStatus("reconnecting");
+        setError(null);
+        setStale(true);
+        return;
+      }
       setStatus("degraded");
       setError("Live session stream disconnected");
     };
@@ -171,9 +205,19 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     };
   }, [enabled]);
 
-  return useMemo(() => ({
-    ...payload,
-    status,
-    error,
-  }), [payload, status, error]);
+  return useMemo(() => {
+    const hasData = hasPayloadData(payload);
+    const reconnecting = status === "reconnecting";
+    const initialLoading = enabled && !hasData && status === "connecting";
+    return {
+      ...payload,
+      status,
+      error,
+      hasData,
+      initialLoading,
+      refreshing: hasData && (status === "connecting" || reconnecting),
+      reconnecting,
+      stale,
+    };
+  }, [enabled, payload, status, error, stale]);
 }

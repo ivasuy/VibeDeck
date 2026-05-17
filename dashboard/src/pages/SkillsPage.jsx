@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { Select } from "@base-ui/react/select";
 import {
@@ -43,9 +43,48 @@ const TARGET_ACTIVE_CLASSES = {
 };
 const SOURCE_ALL = "all";
 const SOURCE_SKILLSSH = "skillssh";
+const EMPTY_SKILLS_PAGE = {
+  skills: [],
+  totalCount: 0,
+  offset: 0,
+  limit: SKILLS_PAGE_SIZE,
+  emptyReason: "",
+  loaded: false,
+};
+const EMPTY_INSTALLED_PAGE = {
+  ...EMPTY_SKILLS_PAGE,
+  targets: [],
+  installedKeys: [],
+  query: "",
+};
+const browseCatalogCache = new Map();
+
+export function __clearSkillsBrowseCatalogCacheForTests() {
+  browseCatalogCache.clear();
+}
 
 function getSkillKey(skill) {
   return `${skill.repoOwner || "local"}/${skill.repoName || "local"}:${skill.directory}`;
+}
+
+function buildPageCacheKey({ source, query, page }) {
+  return `${source || SOURCE_ALL}::${String(query || "").trim()}::${Number(page) || 0}`;
+}
+
+function buildCatalogCacheKey({ source }) {
+  return `${source || SOURCE_ALL}::catalog`;
+}
+
+function matchesSkillText(skill, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  return [
+    skill?.name,
+    skill?.directory,
+    skill?.description,
+    skill?.repoOwner,
+    skill?.repoName,
+  ].some((value) => String(value || "").toLowerCase().includes(q));
 }
 
 function installBusyKey(skill) {
@@ -140,11 +179,11 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
   );
 }
 
-function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
+function MySkillsView({ items, totalCount, targets, busyKey, onToggleTarget, onRemove }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-2 pb-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        {copy("skills.my.count", { count: items.length })}
+        {copy("skills.my.count", { count: totalCount ?? items.length })}
       </div>
       <div className="min-h-0 flex-1 overflow-auto divide-y divide-oai-gray-200/70 pr-1 dark:divide-oai-gray-800/70">
         {items.map((skill) => (
@@ -279,6 +318,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
             <Button
               type="button"
               size="sm"
+              aria-busy={installing ? "true" : "false"}
               onClick={() => onInstall(skill, selectedTargets)}
               disabled={installing || selectedTargets.length === 0}
               className="flex-1 !rounded-r-none"
@@ -345,9 +385,30 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
   );
 });
 
-function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove }) {
+function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove, onClose }) {
   return (
     <div className="rounded-lg border border-oai-gray-200 bg-white p-3 dark:border-oai-gray-800 dark:bg-oai-gray-950">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-oai-black dark:text-white">
+            {copy("skills.repo.title")}
+          </div>
+          <div className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {copy("skills.repo.subtitle")}
+          </div>
+        </div>
+        {onClose ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="shrink-0"
+          >
+            {copy("skills.repo.done")}
+          </Button>
+        ) : null}
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Input
           value={repoInput}
@@ -368,7 +429,7 @@ function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove }
           ) : (
             <Plus className="mr-1.5 h-4 w-4" aria-hidden />
           )}
-          {copy("skills.repo.add")}
+          {busyKey === "repo:add" ? copy("skills.repo.adding") : copy("skills.repo.add")}
         </Button>
       </div>
       {repos.length ? (
@@ -415,12 +476,13 @@ function readTabFromUrl() {
 
 export function SkillsPage() {
   const [tab, setTab] = useState(readTabFromUrl);
-  const [installedData, setInstalledData] = useState({ skills: [], targets: [] });
-  const [discoverData, setDiscoverData] = useState([]);
-  const [searchData, setSearchData] = useState([]);
+  const [installedData, setInstalledData] = useState(EMPTY_INSTALLED_PAGE);
+  const [discoverData, setDiscoverData] = useState({ ...EMPTY_SKILLS_PAGE, source: SOURCE_ALL, query: "" });
+  const [searchData, setSearchData] = useState({ ...EMPTY_SKILLS_PAGE, query: "" });
   const [repos, setRepos] = useState([]);
   const [source, setSource] = useState(SOURCE_ALL);
   const [query, setQuery] = useState("");
+  const [activeSkillsShQuery, setActiveSkillsShQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [myQuery, setMyQuery] = useState("");
   const [debouncedMyQuery, setDebouncedMyQuery] = useState("");
@@ -428,15 +490,23 @@ export function SkillsPage() {
   const [manageOpen, setManageOpen] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [loading, setLoading] = useState(true);
+  const [myLoading, setMyLoading] = useState(false);
   const [browseLoading, setBrowseLoading] = useState(false);
   const [error, setError] = useState("");
   const [pendingRemove, setPendingRemove] = useState(null);
   const [toast, setToast] = useState(null); // { message, undo, key }
   const [myPage, setMyPage] = useState(0);
   const [browsePage, setBrowsePage] = useState(0);
+  const installedRequestRef = useRef(0);
+  const discoverRequestRef = useRef(0);
+  const skillsShRequestRef = useRef(0);
+  const skillsShPageCacheRef = useRef(new Map());
 
   const installedKeys = useMemo(() => {
     const keys = new Set();
+    for (const key of installedData.installedKeys || []) {
+      keys.add(String(key).toLowerCase());
+    }
     for (const skill of installedData.skills || []) {
       keys.add(getSkillKey(skill).toLowerCase());
       if (skill.repoOwner && skill.repoName) {
@@ -449,11 +519,30 @@ export function SkillsPage() {
       if (tail) keys.add(`dir:${tail}`);
     }
     return keys;
-  }, [installedData.skills]);
+  }, [installedData.installedKeys, installedData.skills]);
 
-  const loadInstalled = useCallback(async () => {
-    const data = await getInstalledSkills();
-    setInstalledData({ skills: data.skills || [], targets: data.targets || [] });
+  const loadInstalledPage = useCallback(async () => {
+    const requestId = installedRequestRef.current + 1;
+    installedRequestRef.current = requestId;
+    setMyLoading(true);
+    try {
+      const data = await getInstalledSkills({ all: true });
+      if (requestId !== installedRequestRef.current) return;
+      setInstalledData({
+        skills: data.skills || [],
+        targets: data.targets || [],
+        totalCount: Number(data.totalCount ?? (data.skills || []).length),
+        offset: 0,
+        limit: Number(data.limit ?? (data.skills || []).length),
+        installedKeys: data.installedKeys || [],
+        query: "",
+        loaded: true,
+      });
+    } catch (err) {
+      if (requestId === installedRequestRef.current) throw err;
+    } finally {
+      if (requestId === installedRequestRef.current) setMyLoading(false);
+    }
   }, []);
 
   const loadRepos = useCallback(async () => {
@@ -461,13 +550,77 @@ export function SkillsPage() {
     setRepos(data.repos || []);
   }, []);
 
-  const loadDiscover = useCallback(async ({ force = false } = {}) => {
+  const loadDiscoverPage = useCallback(async ({ force = false, sourceValue = SOURCE_ALL } = {}) => {
+    const resolvedSource = sourceValue || SOURCE_ALL;
+    const requestId = discoverRequestRef.current + 1;
+    discoverRequestRef.current = requestId;
+    const cacheKey = buildCatalogCacheKey({ source: resolvedSource });
+    if (force) browseCatalogCache.delete(cacheKey);
+    if (!force && browseCatalogCache.has(cacheKey)) {
+      setDiscoverData(browseCatalogCache.get(cacheKey));
+      setBrowseLoading(false);
+      return;
+    }
     setBrowseLoading(true);
     try {
-      const data = await discoverSkills({ force });
-      setDiscoverData(data.skills || []);
+      const data = await discoverSkills({
+        all: true,
+        force,
+        source: resolvedSource,
+      });
+      if (requestId !== discoverRequestRef.current) return;
+      const nextData = {
+        skills: data.skills || [],
+        totalCount: Number(data.totalCount ?? (data.skills || []).length),
+        offset: 0,
+        limit: Number(data.limit ?? (data.skills || []).length),
+        source: resolvedSource,
+        query: "",
+        emptyReason: data.emptyReason || "",
+        metadataComplete: data.metadataComplete !== false,
+        loaded: true,
+      };
+      browseCatalogCache.set(cacheKey, nextData);
+      setDiscoverData(nextData);
+    } catch (err) {
+      if (requestId === discoverRequestRef.current) throw err;
     } finally {
+      if (requestId === discoverRequestRef.current) setBrowseLoading(false);
+    }
+  }, []);
+
+  const loadSkillsShSearchPage = useCallback(async ({ page = 0, q = "" } = {}) => {
+    const queryText = String(q || "").trim();
+    if (queryText.length < 2) {
+      setSearchData({ ...EMPTY_SKILLS_PAGE, query: queryText });
+      return;
+    }
+    const requestId = skillsShRequestRef.current + 1;
+    skillsShRequestRef.current = requestId;
+    const cacheKey = buildPageCacheKey({ source: SOURCE_SKILLSSH, query: queryText, page });
+    if (skillsShPageCacheRef.current.has(cacheKey)) {
+      setSearchData(skillsShPageCacheRef.current.get(cacheKey));
       setBrowseLoading(false);
+      return;
+    }
+    setBrowseLoading(true);
+    try {
+      const data = await searchSkills(queryText, page * SKILLS_PAGE_SIZE, SKILLS_PAGE_SIZE);
+      if (requestId !== skillsShRequestRef.current) return;
+      const nextData = {
+        skills: data.skills || [],
+        totalCount: Number(data.totalCount ?? (data.skills || []).length),
+        offset: Number(data.offset ?? page * SKILLS_PAGE_SIZE),
+        limit: Number(data.limit ?? SKILLS_PAGE_SIZE),
+        query: queryText,
+        loaded: true,
+      };
+      skillsShPageCacheRef.current.set(cacheKey, nextData);
+      setSearchData(nextData);
+    } catch (err) {
+      if (requestId === skillsShRequestRef.current) throw err;
+    } finally {
+      if (requestId === skillsShRequestRef.current) setBrowseLoading(false);
     }
   }, []);
 
@@ -475,22 +628,25 @@ export function SkillsPage() {
     setLoading(true);
     setError("");
     try {
-      await Promise.all([loadInstalled(), loadRepos()]);
+      await Promise.all([loadInstalledPage(), loadRepos()]);
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
       setLoading(false);
     }
-  }, [loadInstalled, loadRepos]);
+  }, [loadInstalledPage, loadRepos]);
 
   const handleRefresh = useCallback(async () => {
     await loadInitial();
     if (tab === "browse" && source !== SOURCE_SKILLSSH) {
-      loadDiscover({ force: true }).catch((err) =>
+      loadDiscoverPage({
+        force: true,
+        sourceValue: source,
+      }).catch((err) =>
         setError(err?.message || copy("skills.error.generic")),
       );
     }
-  }, [loadDiscover, loadInitial, source, tab]);
+  }, [loadDiscoverPage, loadInitial, source, tab]);
 
   useEffect(() => {
     loadInitial();
@@ -499,10 +655,31 @@ export function SkillsPage() {
   useEffect(() => {
     if (tab !== "browse") return;
     if (source === SOURCE_SKILLSSH) return;
-    if (discoverData.length === 0) {
-      loadDiscover().catch((err) => setError(err?.message || copy("skills.error.generic")));
+    if (
+      discoverData.loaded &&
+      discoverData.source === source
+    ) {
+      return;
     }
-  }, [discoverData.length, loadDiscover, source, tab]);
+    loadDiscoverPage({ sourceValue: source }).catch((err) =>
+      setError(err?.message || copy("skills.error.generic")),
+    );
+  }, [discoverData.loaded, discoverData.source, loadDiscoverPage, source, tab]);
+
+  useEffect(() => {
+    if (tab !== "browse") return;
+    if (source !== SOURCE_SKILLSSH) return;
+    const queryText = activeSkillsShQuery.trim();
+    if (queryText.length < 2) return;
+    const requestedOffset = browsePage * SKILLS_PAGE_SIZE;
+    if (browsePage === 0 && (searchData.query || "") !== queryText) return;
+    if (searchData.loaded && searchData.offset === requestedOffset && (searchData.query || "") === queryText) {
+      return;
+    }
+    loadSkillsShSearchPage({ page: browsePage, q: queryText }).catch((err) =>
+      setError(err?.message || copy("skills.error.generic")),
+    );
+  }, [activeSkillsShQuery, browsePage, loadSkillsShSearchPage, searchData.offset, searchData.query, source, tab]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -522,7 +699,7 @@ export function SkillsPage() {
 
   useEffect(() => {
     setMyPage(0);
-  }, [debouncedMyQuery, installedData.skills.length, tab]);
+  }, [debouncedMyQuery, tab]);
 
   useEffect(() => {
     setBrowsePage(0);
@@ -549,7 +726,7 @@ export function SkillsPage() {
     setError("");
     try {
       await task();
-      await loadInstalled();
+      await loadInstalledPage();
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
@@ -600,7 +777,7 @@ export function SkillsPage() {
           ? async () => {
               try {
                 await restoreSkill(skill.id);
-                await loadInstalled();
+                await loadInstalledPage();
                 setToast(null);
               } catch (err) {
                 setError(err?.message || copy("skills.error.generic"));
@@ -632,8 +809,9 @@ export function SkillsPage() {
     setBusyKey("search");
     setError("");
     try {
-      const data = await searchSkills(trimmed);
-      setSearchData(data.skills || []);
+      setBrowsePage(0);
+      setActiveSkillsShQuery(trimmed);
+      await loadSkillsShSearchPage({ page: 0, q: trimmed });
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
@@ -648,54 +826,78 @@ export function SkillsPage() {
       setError(copy("skills.repo.invalid"));
       return;
     }
-    await runMutation("repo:add", async () => {
-      await addSkillRepo({ owner, name, branch: "main", enabled: true });
+    setBusyKey("repo:add");
+    setError("");
+    try {
+      const result = await addSkillRepo({ owner, name, branch: "main", enabled: true });
+      const repo = result?.repo || { owner, name, branch: "main" };
+      const repoKey = `${repo.owner}/${repo.name}`;
+      browseCatalogCache.delete(buildCatalogCacheKey({ source: SOURCE_ALL }));
+      browseCatalogCache.delete(buildCatalogCacheKey({ source: repoKey }));
       setRepoInput("");
       await loadRepos();
-      await loadDiscover();
-    });
+      setManageOpen(false);
+      setSource(repoKey);
+      setQuery("");
+      setDebouncedQuery("");
+      setActiveSkillsShQuery("");
+      setBrowsePage(0);
+      setDiscoverData({ ...EMPTY_SKILLS_PAGE, source: repoKey, query: "" });
+      await loadDiscoverPage({ force: true, sourceValue: repoKey });
+    } catch (err) {
+      setError(err?.message || copy("skills.error.generic"));
+    } finally {
+      setBusyKey("");
+    }
   };
 
   const handleRemoveRepo = async (repo) => {
-    await runMutation(`repo:${repo.owner}/${repo.name}`, async () => {
+    const repoKey = `${repo.owner}/${repo.name}`;
+    browseCatalogCache.delete(buildCatalogCacheKey({ source: SOURCE_ALL }));
+    browseCatalogCache.delete(buildCatalogCacheKey({ source: repoKey }));
+    setBusyKey(`repo:${repoKey}`);
+    setError("");
+    try {
       await removeSkillRepo(repo.owner, repo.name);
       await loadRepos();
-      await loadDiscover();
-    });
+      const nextSource = source === repoKey ? SOURCE_ALL : source;
+      if (nextSource !== source) {
+        setSource(nextSource);
+        setBrowsePage(0);
+        setDiscoverData({ ...EMPTY_SKILLS_PAGE, source: nextSource, query: debouncedQuery.trim() });
+      }
+      await loadDiscoverPage({
+        force: true,
+        sourceValue: nextSource,
+      });
+    } catch (err) {
+      setError(err?.message || copy("skills.error.generic"));
+    } finally {
+      setBusyKey("");
+    }
   };
 
   const targets = installedData.targets || [];
   const mySkills = installedData.skills || [];
-  const filteredMySkills = useMemo(() => {
-    const q = debouncedMyQuery.trim().toLowerCase();
-    if (!q) return mySkills;
-    return mySkills.filter((skill) =>
-      (skill.name || "").toLowerCase().includes(q) ||
-      (skill.directory || "").toLowerCase().includes(q) ||
-      (skill.description || "").toLowerCase().includes(q) ||
-      (skill.repoOwner || "").toLowerCase().includes(q) ||
-      (skill.repoName || "").toLowerCase().includes(q));
-  }, [debouncedMyQuery, mySkills]);
-  const myPageCount = Math.max(1, Math.ceil(filteredMySkills.length / SKILLS_PAGE_SIZE));
+  const myQueryText = debouncedMyQuery.trim();
+  const filteredMySkills = useMemo(
+    () => mySkills.filter((skill) => matchesSkillText(skill, myQueryText)),
+    [myQueryText, mySkills],
+  );
+  const myTotal = filteredMySkills.length;
+  const myPageCount = Math.max(1, Math.ceil(myTotal / SKILLS_PAGE_SIZE));
   const boundedMyPage = Math.min(myPage, myPageCount - 1);
-  const pagedMySkills = useMemo(
-    () => filteredMySkills.slice(boundedMyPage * SKILLS_PAGE_SIZE, (boundedMyPage + 1) * SKILLS_PAGE_SIZE),
-    [boundedMyPage, filteredMySkills],
+  const pagedMySkills = filteredMySkills.slice(
+    boundedMyPage * SKILLS_PAGE_SIZE,
+    (boundedMyPage + 1) * SKILLS_PAGE_SIZE,
   );
 
+  const isRepoBrowse = source !== SOURCE_SKILLSSH;
+  const activeBrowseData = isRepoBrowse ? discoverData : searchData;
+  const browseQueryText = isRepoBrowse ? debouncedQuery.trim() : activeSkillsShQuery.trim();
   const browseItems = useMemo(() => {
-    const pool = source === SOURCE_SKILLSSH ? searchData : discoverData;
-    const filtered = source === SOURCE_SKILLSSH || source === SOURCE_ALL
-      ? pool
-      : pool.filter((skill) => `${skill.repoOwner}/${skill.repoName}` === source);
-    const q = debouncedQuery.trim().toLowerCase();
-    const matched = source === SOURCE_SKILLSSH || !q
-      ? filtered
-      : filtered.filter((skill) =>
-          (skill.name || "").toLowerCase().includes(q) ||
-          (skill.directory || "").toLowerCase().includes(q) ||
-          (skill.description || "").toLowerCase().includes(q));
-    return matched.map((skill) => {
+    const page = isRepoBrowse ? discoverData : searchData;
+    return (page.skills || []).map((skill) => {
       const fullKey = getSkillKey(skill).toLowerCase();
       const tail = String(skill.directory || "").split(/[\\/]/).pop().toLowerCase();
       const dirKey = tail ? `dir:${tail}` : "";
@@ -704,14 +906,29 @@ export function SkillsPage() {
         installed: installedKeys.has(fullKey) || (dirKey && installedKeys.has(dirKey)),
       };
     });
-  }, [debouncedQuery, discoverData, installedKeys, searchData, source]);
+  }, [discoverData, installedKeys, isRepoBrowse, searchData]);
 
-  const browsePageCount = Math.max(1, Math.ceil(browseItems.length / SKILLS_PAGE_SIZE));
+  const browseDataMatches = isRepoBrowse
+    ? activeBrowseData.loaded && activeBrowseData.source === source
+    : activeBrowseData.loaded &&
+      activeBrowseData.offset === browsePage * SKILLS_PAGE_SIZE &&
+      (activeBrowseData.query || "") === browseQueryText;
+  const visibleBrowseItems = useMemo(() => {
+    if (!browseDataMatches) return [];
+    if (!isRepoBrowse) return browseItems;
+    return browseItems.filter((skill) => matchesSkillText(skill, browseQueryText));
+  }, [browseDataMatches, browseItems, browseQueryText, isRepoBrowse]);
+  const browseTotal = isRepoBrowse
+    ? visibleBrowseItems.length
+    : Number(activeBrowseData.totalCount ?? browseItems.length);
+  const browsePageCount = Math.max(1, Math.ceil(browseTotal / SKILLS_PAGE_SIZE));
   const boundedBrowsePage = Math.min(browsePage, browsePageCount - 1);
-  const pagedBrowseItems = useMemo(
-    () => browseItems.slice(boundedBrowsePage * SKILLS_PAGE_SIZE, (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE),
-    [boundedBrowsePage, browseItems],
-  );
+  const pagedBrowseItems = isRepoBrowse
+    ? visibleBrowseItems.slice(
+        boundedBrowsePage * SKILLS_PAGE_SIZE,
+        (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE,
+      )
+    : visibleBrowseItems;
 
   const loadingNode = (
     <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -737,12 +954,16 @@ export function SkillsPage() {
   if (loading) {
     contentNode = loadingNode;
   } else if (tab === "my") {
-    contentNode = mySkills.length ? (
+    const myIsFetchingPage = myLoading && !installedData.loaded;
+    contentNode = myTotal > 0 || myQueryText || myIsFetchingPage ? (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {filteredMySkills.length ? (
+        {myIsFetchingPage && !pagedMySkills.length ? (
+          browseLoadingNode
+        ) : pagedMySkills.length ? (
           <>
             <MySkillsView
               items={pagedMySkills}
+              totalCount={myTotal}
               targets={targets}
               busyKey={busyKey}
               onToggleTarget={handleToggleTarget}
@@ -751,7 +972,7 @@ export function SkillsPage() {
             <PaginationControls
               page={boundedMyPage}
               pageCount={myPageCount}
-              total={filteredMySkills.length}
+              total={myTotal}
               onPageChange={setMyPage}
             />
           </>
@@ -834,15 +1055,15 @@ export function SkillsPage() {
           </p>
         </div>
       );
-    } else if (browseLoading && !isSkillsSh) {
-      resultNode = browseLoadingNode;
-    } else if (isSkillsSh && query.trim().length < 2) {
+    } else if (isSkillsSh && activeSkillsShQuery.trim().length < 2) {
       resultNode = (
         <div className="flex min-h-[220px] items-center justify-center rounded-lg border border-dashed border-oai-gray-200 px-4 py-6 text-center text-sm text-oai-gray-500 dark:border-oai-gray-800 dark:text-oai-gray-400">
           {copy("skills.browse.hint_skillssh")}
         </div>
       );
-    } else if (browseItems.length) {
+    } else if (browseLoading && !browseDataMatches) {
+      resultNode = browseLoadingNode;
+    } else if (visibleBrowseItems.length) {
       resultNode = (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {pagedBrowseItems.map((skill) => (
@@ -861,6 +1082,10 @@ export function SkillsPage() {
       );
     } else if (isSkillsSh) {
       resultNode = emptyNode(copy("skills.empty.search"));
+    } else if (source !== SOURCE_ALL && activeBrowseData.emptyReason === "no_skill_files") {
+      resultNode = emptyNode(copy("skills.empty.repo_no_skills", { repo: source }));
+    } else if (browseQueryText) {
+      resultNode = emptyNode(copy("skills.empty.search"));
     } else {
       resultNode = emptyNode(copy("skills.empty.browse"));
     }
@@ -874,6 +1099,7 @@ export function SkillsPage() {
           busyKey={busyKey}
           onAdd={handleAddRepo}
           onRemove={handleRemoveRepo}
+          onClose={noSources ? null : () => setManageOpen(false)}
         />
       </div>
     ) : null;
@@ -882,11 +1108,11 @@ export function SkillsPage() {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {manageNode}
         <div className="min-h-0 flex-1 overflow-auto pr-1">{resultNode}</div>
-        {browseItems.length ? (
+        {browseTotal > 0 ? (
           <PaginationControls
             page={boundedBrowsePage}
             pageCount={browsePageCount}
-            total={browseItems.length}
+            total={browseTotal}
             onPageChange={setBrowsePage}
           />
         ) : null}

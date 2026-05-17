@@ -9,10 +9,12 @@ const SKIP_DIRS = new Set([
   ".git",
   ".claude",
   ".dual-graph",
+  ".worktrees",
   "node_modules",
   "dashboard/node_modules",
   "dashboard/dist",
   "dist",
+  "docs/audit",
   "docs/superpowers",
   "VibeDeckMac/build",
   ".dual-graph-context",
@@ -75,6 +77,7 @@ const REMOVED_PATHS = [
 
 const TOKEN_TRACKER_ALLOWLIST = [
   "src/lib/migration.js",
+  "VibeDeckMac/EmbeddedServer/vibedeck/src/lib/migration.js",
   "test/migration-detect.test.js",
   "test/local-api-skills.test.js",
   "test/local-api-project-usage-summary.test.js",

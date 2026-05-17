@@ -90,6 +90,22 @@ test('GET /functions/vibedeck-skills supports installed and repos modes', async 
     assert.ok(Array.isArray(installed.skills));
     assert.ok(Array.isArray(installed.targets));
 
+    const installedAllRes = await getJson(srv.baseUrl, '/functions/vibedeck-skills?mode=installed&all=1');
+    assert.equal(installedAllRes.statusCode, 200);
+    assert.ok(Array.isArray(installedAllRes.body.skills));
+    assert.equal(installedAllRes.body.offset, 0);
+    assert.equal(installedAllRes.body.limit, installedAllRes.body.totalCount);
+    assert.ok(Array.isArray(installedAllRes.body.installedKeys));
+
+    const installedPageRes = await getJson(srv.baseUrl, '/functions/vibedeck-skills?mode=installed&limit=1&offset=0&q=');
+    assert.equal(installedPageRes.statusCode, 200);
+    assert.ok(Array.isArray(installedPageRes.body.skills));
+    assert.ok(installedPageRes.body.skills.length <= 1);
+    assert.equal(installedPageRes.body.offset, 0);
+    assert.equal(installedPageRes.body.limit, 1);
+    assert.equal(typeof installedPageRes.body.totalCount, 'number');
+    assert.ok(Array.isArray(installedPageRes.body.installedKeys));
+
     const reposRes = await getJson(srv.baseUrl, '/functions/vibedeck-skills?mode=repos');
     assert.equal(reposRes.statusCode, 200);
     const repos = reposRes.body;
@@ -101,6 +117,7 @@ test('GET /functions/vibedeck-skills supports installed and repos modes', async 
 });
 
 test('POST /functions/vibedeck-skills/addRepo and removeRepo are auth-gated', async () => {
+  const originalFetch = global.fetch;
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-skills-repo-'));
   const queuePath = path.join(root, 'tracker', 'queue.jsonl');
   await fs.mkdir(path.dirname(queuePath), { recursive: true });
@@ -108,6 +125,18 @@ test('POST /functions/vibedeck-skills/addRepo and removeRepo are auth-gated', as
   const token = auth.ensureToken(path.join(root, 'auth.token'));
   const srv = await startLocalApiServer({ queuePath });
   try {
+    global.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('/git/trees/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ tree: [] }),
+        };
+      }
+      throw new Error(`unexpected fetch: ${href}`);
+    };
+
     const unauthorized = await postJson(srv.baseUrl, '/functions/vibedeck-skills/addRepo', {
       repo: { owner: 'owner', name: 'repo', branch: 'main' },
     });
@@ -131,6 +160,7 @@ test('POST /functions/vibedeck-skills/addRepo and removeRepo are auth-gated', as
     assert.equal(removed.statusCode, 200);
     assert.equal(removed.body.ok, true);
   } finally {
+    global.fetch = originalFetch;
     await srv.close();
     await fs.rm(root, { recursive: true, force: true });
   }

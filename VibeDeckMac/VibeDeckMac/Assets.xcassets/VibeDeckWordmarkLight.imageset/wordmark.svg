@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 512" fill="none">
+  <defs>
+    <linearGradient id="wm-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#2a2566"/>
+    </linearGradient>
+  </defs>
+
+  <g>
+    <rect x="24" y="24" width="464" height="464" rx="120" fill="url(#wm-bg)"/>
+    <path d="M 107 231 L 307 231 L 377 181 L 177 181 Z" fill="#a5b4fc"/>
+    <path d="M 107 281 L 307 281 L 377 231 L 177 231 Z" fill="#818cf8"/>
+    <path d="M 107 331 L 307 331 L 377 281 L 177 281 Z" fill="#6366f1"/>
+  </g>
+
+  <g fill="currentColor" color="#1e1b4b">
+    <text x="560" y="335"
+          font-family="'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif"
+          font-weight="700"
+          font-size="220"
+          letter-spacing="-6">VibeDeck</text>
+  </g>
+</svg>

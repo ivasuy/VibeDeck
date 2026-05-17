@@ -84,13 +84,19 @@ function svgHeatmap(weeks) {
     out.push(`<text x="${HMX - 4}" y="${HMY + d * COL_W + CELL - 1}" text-anchor="end" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${lbl}</text>`);
   });
 
-  // Month labels — anchor weeks to Sunday so each column = one calendar week,
-  // collect month transitions, then drop any label whose month spans fewer than
-  // MIN_SPAN columns (prevents the leading/trailing partial month from colliding
-  // with its neighbour, e.g. May/Jun jammed at x=46/x=62).
+  // Month labels — bulletproof, year-agnostic:
+  //   (1) anchor each column to its Sunday so columns map 1:1 with calendar weeks
+  //   (2) collect month transitions
+  //   (3) drop any month whose run is shorter than MIN_SPAN cols (kills partial
+  //       leading/trailing month that would visually collide)
+  //   (4) enforce a pixel-distance floor between consecutive labels and a
+  //       right-edge clamp so labels can never overlap or overflow the grid
   const MIN_SPAN = 3;
-  const now = new Date();
-  const currentSunday = new Date(now);
+  const MIN_LABEL_GAP_PX = 28;
+  const LABEL_TEXT_PX = 18;
+  const RIGHT_BOUND_PX = HMX + WEEKS * COL_W;
+
+  const currentSunday = new Date();
   currentSunday.setHours(0, 0, 0, 0);
   currentSunday.setDate(currentSunday.getDate() - currentSunday.getDay());
 
@@ -110,10 +116,15 @@ function svgHeatmap(weeks) {
     }
   }
 
+  let lastX = Number.NEGATIVE_INFINITY;
   transitions.forEach((t, i) => {
     const nextW = i + 1 < transitions.length ? transitions[i + 1].w : WEEKS;
     if (nextW - t.w < MIN_SPAN) return;
-    out.push(`<text x="${HMX + t.w * COL_W}" y="${HMY - 9}" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${MONTHS[t.month]}</text>`);
+    const x = HMX + t.w * COL_W;
+    if (x - lastX < MIN_LABEL_GAP_PX) return;
+    if (x + LABEL_TEXT_PX > RIGHT_BOUND_PX) return;
+    out.push(`<text x="${x}" y="${HMY - 9}" font-size="9" fill="rgba(168,168,220,0.36)" font-family="system-ui,sans-serif">${MONTHS[t.month]}</text>`);
+    lastX = x;
   });
 
   // Cells

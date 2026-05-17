@@ -1,9 +1,5 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./dashboard/public/wordmark-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="./dashboard/public/wordmark.svg">
-    <img src="./dashboard/public/wordmark.svg" alt="VibeDeck" width="420" />
-  </picture>
+  <img src="./dashboard/public/wordmark.svg" alt="VibeDeck" width="420" />
 </div>
 
 <div align="center">
@@ -17,15 +13,33 @@
 
 <div align="center">
 
-Local-first analytics, audit trails, and live operational visibility for AI coding workflows.
+VibeDeck shows you what every AI coding tool on your machine is burning, in real time, all in one place.
 
 </div>
 
 <div align="center">
 
-VibeDeck tracks AI coding usage across providers, projects, worktrees, branches, sessions, checkpoints, skills, and native app surfaces. It gives individual AI power users and engineering teams one place to see what is running now, what it already cost, which models were used, and how work moved across repositories over time.
+Local-first. Multi-provider. Mac-native as the premier surface, with CLI and dashboard access for everyone. Branch-aware when you want to go deeper.
 
 </div>
+
+## Why VibeDeck
+
+AI coding spend is scattered across local logs, provider folders, app state, and session files. VibeDeck turns that into one local view of what is active now, what it has burned, and where that usage belongs.
+
+The product is built around three promises:
+
+- See live spend across the AI coding tools you actually use.
+- Keep the data local on your machine instead of sending prompts or transcripts to a hosted analytics service.
+- Drill into projects and branches when attribution is available, without hiding existing non-git local work.
+
+VibeDeck is not a hosted team telemetry product. If you want to share a snapshot, use exports, screenshots, or README banners.
+
+## Built For Local AI Power Users
+
+VibeDeck is for developers who run AI coding tools locally and want one surface for current sessions, local usage history, provider status, and project context. The Mac app is the premier surface, with the CLI and browser dashboard still available when you want terminal workflows or a local web view.
+
+For team sharing, VibeDeck stays intentionally local-first. Share exports, screenshots, or README banners instead of uploading developer telemetry to a hosted service.
 
 ## Install
 
@@ -80,72 +94,10 @@ npx vibedeck-cli serve
   </tr>
   <tr>
     <td align="center">Native macOS shell around the local VibeDeck backend, with release packaging and desktop-first onboarding.</td>
-    <td align="center">Full dashboard for live sessions, branches, usage rollups, Entire checkpoints, diagnostics, and project audit.</td>
-    <td align="center">Compact desktop surfaces for glanceable live cost, token, and session activity throughout the day.</td>
+    <td align="center">Local dashboard for live sessions, branch rollups, provider status, diagnostics, and project views.</td>
+    <td align="center">Compact desktop surfaces for glanceable live usage, spend estimates, and session state throughout the day.</td>
   </tr>
 </table>
-
-### README Banner Showcase
-
-Dual-banner README surfaces for profile-level visibility and project-level audit context.
-
-#### GitHub Profile README Banner
-
-<p align="center">
-  <img src="./github-readme-banner.svg" alt="VibeDeck GitHub profile usage banner" width="900" />
-</p>
-
-Profile-ready usage surface with cross-provider model mix, token scale, cost totals, and activity heatmap context.
-
-#### Project README Banner
-
-## Project Usage
-
-## Project Usage
-
-<!-- vibedeck:project-stats:start -->
-![VibeDeck Project Usage](./project-readme-banner.svg)
-<!-- vibedeck:project-stats:end -->
-
-Repository-local usage surface focused on the active project path, with model split, token mix, cost, and activity snapshot.
-
-## Why VibeDeck
-
-Most AI coding activity is fragmented across terminals, runtime hooks, transient sessions, local SQLite files, JSONL streams, provider-specific directories, and checkpoints that disappear from view once a session ends.
-
-VibeDeck turns that into one local system of record.
-
-It does not stop at account-level billing. It maps activity to:
-
-- provider
-- model
-- project
-- repo
-- worktree
-- branch
-- session
-- checkpoint
-- skill and tool context
-
-That makes it useful both as a personal command center and as an engineering audit layer.
-
-## Built For Power Users And Teams
-
-### For individual AI power users
-
-- Watch live workstreams across Codex, Claude Code, Cursor, Gemini CLI, OpenCode, OpenClaw, and mixed-provider sessions.
-- See current token burn and total accumulated spend instead of waiting for provider dashboards to catch up.
-- Track usage by project, branch, worktree, session, and Entire checkpoint.
-- Keep historical audit history even after a session goes stale or a branch becomes inactive.
-- Use the local dashboard, widgets, CLI, and native app as one operating surface.
-
-### For teams and engineering managers
-
-- Understand AI coding usage without forcing engineers into a hosted telemetry product.
-- Compare branch-level, project-level, and provider-level concentration from one local-first product.
-- Preserve local audit records for sessions, tokens, models, and cost over time.
-- Review active workstreams, historical project rollups, and checkpoint traces with shared language across desktop and web surfaces.
-- Keep prompts and responses on local machines while still gaining operational visibility.
 
 ## Supported Providers
 
@@ -163,52 +115,68 @@ That makes it useful both as a personal command center and as an engineering aud
 | <img src="dashboard/public/brand-logos/hermes.svg" width="20" height="20" /> | Hermes Agent | Yes | Local agent runtime files |
 | <img src="dashboard/public/brand-logos/antigravity.svg" width="20" height="20" /> | Antigravity | Yes | Local provider runtime state |
 
-Some providers are hook-based. Others are passive readers over local JSONL, SQLite, CSV, or native app state. VibeDeck is designed for mixed-runtime environments rather than single-provider lock-in.
+Some providers are hook-based. Others are passive readers over local JSONL, SQLite, CSV, or native app state. Attribution depth depends on the local records each provider exposes, so VibeDeck is designed for mixed-runtime environments rather than single-provider lock-in.
 
-## What VibeDeck Tracks
+## What VibeDeck Tracks Today
 
 - Live sessions and active workstreams
-- Project, repo, worktree, branch, and session rollups
-- Token usage and model-aware cost
-- Provider, model, and branch concentration
-- Entire checkpoints and checkpoint usage metadata
-- Skill and integration management signals
-- Historical audit data preserved in SQLite
+- Provider and model usage where local data is available
+- Project and branch rollups for attributed local sessions
+- Existing non-git local folders as visible projects
+- Historical local usage preserved in SQLite
 - Local integration health, sync status, and doctor diagnostics
 
 ## Feature Highlights
 
-### Live operational view
+### Live local view
 
-VibeDeck shows what is running now, not just what ran earlier. Live pages combine real-time session activity with preserved historical cost and token totals, so active projects do not lose their prior context when a session goes stale and comes back later.
+VibeDeck shows what is running now, not just what ran earlier. Live pages combine real-time session state with preserved historical local usage, so active projects do not lose their prior context when a session goes stale and comes back later.
 
 ### Branch and worktree attribution
 
-Usage is rolled up under the actual engineering structure people work in: project, repo, worktree, branch, and session. That makes branch-level cost, model, and token history inspectable rather than disappearing into provider-wide spend totals.
-
-### Entire checkpoint visibility
-
-VibeDeck reads Entire checkpoint metadata, groups checkpoint files, surfaces model usage, and preserves checkpoint context as part of project audit. That gives you a clearer view of handoffs, manual commits, multi-session checkpoints, and historical model usage around saved work.
-
-### Skill and integration management
-
-VibeDeck is not only a dashboard for cost. It also keeps track of local integrations, skill-related runtime state, provider hooks, README sync, native install bootstrap, and local health surfaces through `status`, `doctor`, and setup flows. That makes it useful as both an analytics product and an operational layer for AI-heavy developer setups.
+When local records include enough context, usage can roll up under the engineering structure people work in: project, repo, worktree, branch, and session. Existing local folders without git metadata still remain visible instead of being discarded.
 
 ### Native macOS app and widgets
 
-The product includes a packaged macOS app and desktop widgets, so VibeDeck can live outside the browser and act more like a daily operating surface than a hidden developer tool.
+The packaged macOS app and desktop widgets let VibeDeck live outside the browser and act more like a daily operating surface than a hidden developer tool. The dashboard and CLI continue to cover local web and terminal workflows.
 
-### Canonical local audit ledger
+### Canonical local ledger
 
 Default local state lives under `~/.vibedeck/`, with canonical usage stored in SQLite and compatibility queue exports preserved alongside it. This keeps VibeDeck local-first while still giving you stable historical rollups and reconciliation surfaces.
 
-### GitHub profile README sync banner
+## Power User Surfaces
 
-Profile-oriented README surface for cross-provider usage visibility, including model mix, token activity, cost totals, and trend context.
+VibeDeck also includes supporting surfaces for developers who want deeper local context after the core live-spend view is working.
 
-### Project README sync banner
+### Entire checkpoint visibility
 
-Project-oriented README surface for repository-local usage audit, including per-project model distribution, token mix, cost, and active-day snapshot.
+VibeDeck reads Entire checkpoint metadata where available, groups checkpoint files, surfaces model usage, and preserves checkpoint context as part of project audit. This is supporting context for saved work, handoffs, and multi-session history rather than the headline product promise.
+
+### Skill and integration management
+
+VibeDeck keeps track of local integrations, skill-related runtime state, provider hooks, README sync, native install bootstrap, and local health surfaces through `status`, `doctor`, and setup flows. These are power-user operations for maintaining an AI-heavy local setup.
+
+### README Banner Showcase
+
+Dual-banner README surfaces provide optional profile-level visibility and project-level context.
+
+#### GitHub Profile README Banner
+
+<p align="center">
+  <img src="./github-readme-banner.svg" alt="VibeDeck GitHub profile usage banner" width="900" />
+</p>
+
+Profile-ready usage surface with cross-provider model mix, token scale, estimated cost rollups, and trend context.
+
+#### Project README Banner
+
+##### Project Usage
+
+<!-- vibedeck:project-stats:start -->
+![VibeDeck Project Usage](./project-readme-banner.svg)
+<!-- vibedeck:project-stats:end -->
+
+Repository-local usage surface focused on the active project path, with model split, token mix, estimated cost, and snapshot context.
 
 ## Quick Start
 
@@ -266,7 +234,7 @@ Default local state:
     diagnostics/
 ```
 
-`vibedeck.sqlite3` is the canonical local store for sessions, branches, projects, checkpoints, usage buckets, and historical audit state.
+`vibedeck.sqlite3` is the canonical local store for sessions, branches, projects, usage buckets, optional power-user metadata, and historical audit state.
 
 ## FAQ
 
@@ -280,11 +248,11 @@ No. VibeDeck is designed for mixed-runtime AI coding workflows and can ingest us
 
 ### Is it only a dashboard?
 
-No. VibeDeck includes a dashboard, CLI, packaged macOS app, widgets, Entire checkpoint support, local integrations, and health/debug tooling.
+No. VibeDeck includes a Mac app, dashboard, CLI, widgets, local integrations, health/debug tooling, and optional power-user surfaces described above.
 
 ### What makes it different from provider billing dashboards?
 
-Provider billing pages usually stop at account-level usage. VibeDeck maps cost and token usage to branch, worktree, project, session, and checkpoint context, which is much closer to how engineering work is actually organized.
+Provider billing pages usually stop at account-level usage. VibeDeck uses local provider records to connect usage to project, branch, worktree, folder, and session context when that attribution is available.
 
 ## Resources
 

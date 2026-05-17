@@ -12,6 +12,8 @@ const {
 } = require("../src/lib/readme-sync/banner-data");
 const { buildMonthAnchors, renderReadmeBannerSvg } = require("../src/lib/readme-sync/render-svg");
 
+const MONTH_LABELS = new Set(["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
+
 test("month anchors are derived from week transitions instead of hardcoded positions", () => {
   const anchors = buildMonthAnchors({
     to: "2026-05-12",
@@ -20,10 +22,15 @@ test("month anchors are derived from week transitions instead of hardcoded posit
   });
 
   assert.ok(anchors.length >= 11);
-  assert.equal(anchors[0].label, "May");
-  const june = anchors.find((entry) => entry.label === "Jun");
-  assert.ok(june, "expected Jun anchor");
-  assert.equal(june.x, 78);
+  assert.ok(anchors.every((entry) => MONTH_LABELS.has(entry.label)));
+  assert.equal(new Set(anchors.map((entry) => entry.x)).size, anchors.length);
+  for (const [index, entry] of anchors.entries()) {
+    assert.equal(entry.x, 46 + entry.weekIndex * 16);
+    if (index > 0) {
+      assert.ok(entry.weekIndex > anchors[index - 1].weekIndex);
+      assert.ok(entry.x > anchors[index - 1].x);
+    }
+  }
   assert.ok(anchors.at(-1).x > anchors[0].x);
 });
 
@@ -146,10 +153,7 @@ test("svg renders computed month labels for the visible 52-week window", () => {
     },
   });
 
-  const june = anchors.find((entry) => entry.label === "Jun");
-  assert.ok(june, "expected Jun anchor");
-  assert.match(svg, />May</);
-  assert.match(svg, />Jun</);
-  assert.match(svg, />Apr</);
-  assert.match(svg, new RegExp(`x="${june.x}"[^>]*>Jun`));
+  for (const anchor of anchors) {
+    assert.match(svg, new RegExp(`x="${anchor.x}"[^>]*>${anchor.label}`));
+  }
 });

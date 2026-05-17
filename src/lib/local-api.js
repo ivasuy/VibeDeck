@@ -2981,6 +2981,13 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         if (method === "GET") {
           const mode = url.searchParams.get("mode") || "installed";
           if (mode === "installed") {
+            if (url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true") {
+              const data = skills.listInstalledSkillsAll({
+                q: url.searchParams.get("q") || "",
+              });
+              json(res, { targets: skills.targetList(), ...data });
+              return true;
+            }
             const { offset, limit } = parsePagedRequest(url, { defaultLimit: 10, maxLimit: 100 });
             const data = skills.listInstalledSkillsPage({
               q: url.searchParams.get("q") || "",
@@ -2997,13 +3004,15 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           if (mode === "discover") {
             const { offset, limit } = parsePagedRequest(url, { defaultLimit: 10, maxLimit: 50 });
             const force = url.searchParams.get("force") === "1";
+            const source = url.searchParams.get("source") || "all";
             json(res, await skills.discoverSkills({
               force,
               offset,
               limit,
-              source: url.searchParams.get("source") || "all",
+              source,
               q: url.searchParams.get("q") || "",
             }));
+            skills.warmDiscoverCatalog({ source }).catch(() => {});
             return true;
           }
           if (mode === "search") {

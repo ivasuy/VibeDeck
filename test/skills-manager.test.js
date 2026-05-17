@@ -116,7 +116,7 @@ describe("skills-manager paged discovery", () => {
     global.fetch = originalFetch;
   });
 
-  it("hydrates only the requested discovered skill page", async () => {
+  it("hydrates the requested discovered skill page and warms a searchable metadata catalog", async () => {
     for (const [owner, name] of [
       ["anthropics", "skills"],
       ["ComposioHQ", "awesome-claude-skills"],
@@ -127,7 +127,7 @@ describe("skills-manager paged discovery", () => {
     }
     skills.addRepo({ owner: "page", name: "repo", branch: "main", enabled: true });
 
-    let rawFetches = 0;
+    let metadataFetches = 0;
     global.fetch = async (url) => {
       const href = String(url);
       if (href.includes("/git/trees/")) {
@@ -136,18 +136,23 @@ describe("skills-manager paged discovery", () => {
           status: 200,
           json: async () => ({
             tree: [
-              { type: "blob", path: "alpha/SKILL.md" },
-              { type: "blob", path: "beta/SKILL.md" },
-              { type: "blob", path: "gamma/SKILL.md" },
+              { type: "blob", path: "alpha/SKILL.md", sha: "sha-alpha" },
+              { type: "blob", path: "beta/SKILL.md", sha: "sha-beta" },
+              { type: "blob", path: "gamma/SKILL.md", sha: "sha-gamma" },
             ],
           }),
         };
       }
-      rawFetches += 1;
+      metadataFetches += 1;
+      const name = href.includes("/alpha/")
+        ? "Alpha Remote"
+        : href.includes("/gamma/")
+          ? "Gamma Remote"
+          : "Beta Remote";
       return {
         ok: true,
         status: 200,
-        text: async () => "---\nname: Beta Remote\ndescription: Hydrated only on page.\n---\n",
+        text: async () => `---\nname: ${name}\ndescription: Cached catalog entry.\n---\n`,
       };
     };
 
@@ -162,7 +167,22 @@ describe("skills-manager paged discovery", () => {
     assert.equal(page.skills.length, 1);
     assert.equal(page.skills[0].directory, "beta");
     assert.equal(page.skills[0].name, "Beta Remote");
-    assert.equal(rawFetches, 1);
+    assert.equal(metadataFetches, 1);
+
+    await skills.warmDiscoverCatalog({ source: "page/repo" });
+
+    const searched = await skills.discoverSkills({
+      source: "page/repo",
+      q: "Gamma Remote",
+      offset: 0,
+      limit: 10,
+    });
+
+    assert.equal(searched.totalCount, 1);
+    assert.equal(searched.skills.length, 1);
+    assert.equal(searched.skills[0].directory, "gamma");
+    assert.equal(searched.skills[0].name, "Gamma Remote");
+    assert.equal(metadataFetches, 3);
   });
 
   it("does not label a real repository as missing SKILL.md when search has no matches", async () => {

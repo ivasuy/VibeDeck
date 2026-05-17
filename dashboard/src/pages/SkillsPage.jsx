@@ -62,6 +62,22 @@ function getSkillKey(skill) {
   return `${skill.repoOwner || "local"}/${skill.repoName || "local"}:${skill.directory}`;
 }
 
+function buildPageCacheKey({ source, query, page }) {
+  return `${source || SOURCE_ALL}::${String(query || "").trim()}::${Number(page) || 0}`;
+}
+
+function matchesSkillText(skill, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  return [
+    skill?.name,
+    skill?.directory,
+    skill?.description,
+    skill?.repoOwner,
+    skill?.repoName,
+  ].some((value) => String(value || "").toLowerCase().includes(q));
+}
+
 function installBusyKey(skill) {
   return `install:${getSkillKey(skill)}`;
 }
@@ -154,11 +170,11 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
   );
 }
 
-function MySkillsView({ items, targets, busyKey, onToggleTarget, onRemove }) {
+function MySkillsView({ items, totalCount, targets, busyKey, onToggleTarget, onRemove }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-2 pb-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
-        {copy("skills.my.count", { count: items.length })}
+        {copy("skills.my.count", { count: totalCount ?? items.length })}
       </div>
       <div className="min-h-0 flex-1 overflow-auto divide-y divide-oai-gray-200/70 pr-1 dark:divide-oai-gray-800/70">
         {items.map((skill) => (
@@ -293,6 +309,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
             <Button
               type="button"
               size="sm"
+              aria-busy={installing ? "true" : "false"}
               onClick={() => onInstall(skill, selectedTargets)}
               disabled={installing || selectedTargets.length === 0}
               className="flex-1 !rounded-r-none"
@@ -474,6 +491,8 @@ export function SkillsPage() {
   const installedRequestRef = useRef(0);
   const discoverRequestRef = useRef(0);
   const skillsShRequestRef = useRef(0);
+  const browsePageCacheRef = useRef(new Map());
+  const skillsShPageCacheRef = useRef(new Map());
 
   const installedKeys = useMemo(() => {
     const keys = new Set();
@@ -494,26 +513,21 @@ export function SkillsPage() {
     return keys;
   }, [installedData.installedKeys, installedData.skills]);
 
-  const loadInstalledPage = useCallback(async ({ page = 0, q = "" } = {}) => {
-    const queryText = String(q || "").trim();
+  const loadInstalledPage = useCallback(async () => {
     const requestId = installedRequestRef.current + 1;
     installedRequestRef.current = requestId;
     setMyLoading(true);
     try {
-      const data = await getInstalledSkills({
-        offset: page * SKILLS_PAGE_SIZE,
-        limit: SKILLS_PAGE_SIZE,
-        q: queryText,
-      });
+      const data = await getInstalledSkills({ all: true });
       if (requestId !== installedRequestRef.current) return;
       setInstalledData({
         skills: data.skills || [],
         targets: data.targets || [],
         totalCount: Number(data.totalCount ?? (data.skills || []).length),
-        offset: Number(data.offset ?? page * SKILLS_PAGE_SIZE),
-        limit: Number(data.limit ?? SKILLS_PAGE_SIZE),
+        offset: 0,
+        limit: Number(data.limit ?? (data.skills || []).length),
         installedKeys: data.installedKeys || [],
-        query: queryText,
+        query: "",
         loaded: true,
       });
     } catch (err) {
@@ -533,6 +547,13 @@ export function SkillsPage() {
     const resolvedSource = sourceValue || SOURCE_ALL;
     const requestId = discoverRequestRef.current + 1;
     discoverRequestRef.current = requestId;
+    const cacheKey = buildPageCacheKey({ source: resolvedSource, query: queryText, page });
+    if (force) browsePageCacheRef.current.clear();
+    if (!force && browsePageCacheRef.current.has(cacheKey)) {
+      setDiscoverData(browsePageCacheRef.current.get(cacheKey));
+      setBrowseLoading(false);
+      return;
+    }
     setBrowseLoading(true);
     try {
       const data = await discoverSkills({
@@ -543,7 +564,7 @@ export function SkillsPage() {
         q: queryText,
       });
       if (requestId !== discoverRequestRef.current) return;
-      setDiscoverData({
+      const nextData = {
         skills: data.skills || [],
         totalCount: Number(data.totalCount ?? (data.skills || []).length),
         offset: Number(data.offset ?? page * SKILLS_PAGE_SIZE),
@@ -552,7 +573,9 @@ export function SkillsPage() {
         query: queryText,
         emptyReason: data.emptyReason || "",
         loaded: true,
-      });
+      };
+      browsePageCacheRef.current.set(cacheKey, nextData);
+      setDiscoverData(nextData);
     } catch (err) {
       if (requestId === discoverRequestRef.current) throw err;
     } finally {
@@ -568,18 +591,26 @@ export function SkillsPage() {
     }
     const requestId = skillsShRequestRef.current + 1;
     skillsShRequestRef.current = requestId;
+    const cacheKey = buildPageCacheKey({ source: SOURCE_SKILLSSH, query: queryText, page });
+    if (skillsShPageCacheRef.current.has(cacheKey)) {
+      setSearchData(skillsShPageCacheRef.current.get(cacheKey));
+      setBrowseLoading(false);
+      return;
+    }
     setBrowseLoading(true);
     try {
       const data = await searchSkills(queryText, page * SKILLS_PAGE_SIZE, SKILLS_PAGE_SIZE);
       if (requestId !== skillsShRequestRef.current) return;
-      setSearchData({
+      const nextData = {
         skills: data.skills || [],
         totalCount: Number(data.totalCount ?? (data.skills || []).length),
         offset: Number(data.offset ?? page * SKILLS_PAGE_SIZE),
         limit: Number(data.limit ?? SKILLS_PAGE_SIZE),
         query: queryText,
         loaded: true,
-      });
+      };
+      skillsShPageCacheRef.current.set(cacheKey, nextData);
+      setSearchData(nextData);
     } catch (err) {
       if (requestId === skillsShRequestRef.current) throw err;
     } finally {
@@ -591,7 +622,7 @@ export function SkillsPage() {
     setLoading(true);
     setError("");
     try {
-      await Promise.all([loadInstalledPage({ page: 0, q: "" }), loadRepos()]);
+      await Promise.all([loadInstalledPage(), loadRepos()]);
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
@@ -616,23 +647,6 @@ export function SkillsPage() {
   useEffect(() => {
     loadInitial();
   }, [loadInitial]);
-
-  useEffect(() => {
-    if (tab !== "my") return;
-    if (loading) return;
-    const queryText = debouncedMyQuery.trim();
-    const requestedOffset = myPage * SKILLS_PAGE_SIZE;
-    if (
-      installedData.loaded &&
-      installedData.offset === requestedOffset &&
-      (installedData.query || "") === queryText
-    ) {
-      return;
-    }
-    loadInstalledPage({ page: myPage, q: queryText }).catch((err) =>
-      setError(err?.message || copy("skills.error.generic")),
-    );
-  }, [debouncedMyQuery, installedData.offset, installedData.query, loadInstalledPage, loading, myPage, tab]);
 
   useEffect(() => {
     if (tab !== "browse") return;
@@ -712,7 +726,7 @@ export function SkillsPage() {
     setError("");
     try {
       await task();
-      await loadInstalledPage({ page: myPage, q: debouncedMyQuery });
+      await loadInstalledPage();
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
@@ -763,7 +777,7 @@ export function SkillsPage() {
           ? async () => {
               try {
                 await restoreSkill(skill.id);
-                await loadInstalledPage({ page: myPage, q: debouncedMyQuery });
+                await loadInstalledPage();
                 setToast(null);
               } catch (err) {
                 setError(err?.message || copy("skills.error.generic"));
@@ -864,14 +878,17 @@ export function SkillsPage() {
   const targets = installedData.targets || [];
   const mySkills = installedData.skills || [];
   const myQueryText = debouncedMyQuery.trim();
-  const myDataMatches =
-    installedData.loaded &&
-    installedData.offset === myPage * SKILLS_PAGE_SIZE &&
-    (installedData.query || "") === myQueryText;
-  const myTotal = myDataMatches ? Number(installedData.totalCount ?? mySkills.length) : 0;
+  const filteredMySkills = useMemo(
+    () => mySkills.filter((skill) => matchesSkillText(skill, myQueryText)),
+    [myQueryText, mySkills],
+  );
+  const myTotal = filteredMySkills.length;
   const myPageCount = Math.max(1, Math.ceil(myTotal / SKILLS_PAGE_SIZE));
   const boundedMyPage = Math.min(myPage, myPageCount - 1);
-  const pagedMySkills = myDataMatches ? mySkills : [];
+  const pagedMySkills = filteredMySkills.slice(
+    boundedMyPage * SKILLS_PAGE_SIZE,
+    (boundedMyPage + 1) * SKILLS_PAGE_SIZE,
+  );
 
   const browseItems = useMemo(() => {
     const page = source === SOURCE_SKILLSSH ? searchData : discoverData;
@@ -923,7 +940,7 @@ export function SkillsPage() {
   if (loading) {
     contentNode = loadingNode;
   } else if (tab === "my") {
-    const myIsFetchingPage = myLoading || !myDataMatches;
+    const myIsFetchingPage = myLoading && !installedData.loaded;
     contentNode = myTotal > 0 || myQueryText || myIsFetchingPage ? (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {myIsFetchingPage && !pagedMySkills.length ? (
@@ -932,6 +949,7 @@ export function SkillsPage() {
           <>
             <MySkillsView
               items={pagedMySkills}
+              totalCount={myTotal}
               targets={targets}
               busyKey={busyKey}
               onToggleTarget={handleToggleTarget}

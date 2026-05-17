@@ -42,7 +42,7 @@ async function mutateSkillsJson(body: AnyRecord, cmd: string) {
 }
 
 export function getInstalledSkills(
-  options: { offset?: number; limit?: number; q?: string } = {},
+  options: { all?: boolean; offset?: number; limit?: number; q?: string } = {},
 ) {
   return fetchSkillsJson({ mode: "installed", ...options });
 }

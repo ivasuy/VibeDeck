@@ -23,6 +23,7 @@ const DISCOVER_METADATA_TIMEOUT_MS = 1_500;
 const DISCOVER_CONCURRENCY = 4;
 const DISCOVER_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const OWNER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const discoverWarmTasks = new Map();
 
 class RateLimitError extends Error {
   constructor(message) {
@@ -318,6 +319,8 @@ async function discoverRepoSkillEntries(repoInput) {
         repoName: repo.name,
         repoBranch: branch,
         docPath,
+        sha: entry.sha || "",
+        metadataHydrated: false,
       };
     })
     .filter(Boolean);
@@ -328,6 +331,7 @@ async function hydrateDiscoverSkill(entry) {
   const installName = installNameFromDirectory(entry.directory || entry.repoName);
   if (!installName) return null;
   let metadata = { name: entry.name || installName, description: entry.description || "" };
+  let metadataHydrated = false;
   try {
     metadata = readSkillMetadata(
       await fetchText(
@@ -336,6 +340,7 @@ async function hydrateDiscoverSkill(entry) {
       ),
       installName,
     );
+    metadataHydrated = true;
   } catch (error) {
     if (error instanceof RateLimitError) throw error;
     // Keep the skill discoverable even if metadata fetch fails.
@@ -344,7 +349,70 @@ async function hydrateDiscoverSkill(entry) {
     ...entry,
     name: metadata.name,
     description: metadata.description,
+    metadataHydrated,
   };
+}
+
+function buildCachedSkillMap(cache) {
+  const map = new Map();
+  const skills = Array.isArray(cache?.skills) ? cache.skills : [];
+  for (const skill of skills) {
+    if (!skill?.repoOwner || !skill?.repoName || !skill?.directory) continue;
+    map.set(buildSkillKey(skill).toLowerCase(), skill);
+  }
+  return map;
+}
+
+function canReuseCachedSkill(cached, entry) {
+  if (!cached || cached.metadataHydrated === false) return false;
+  if (entry.sha && cached.sha && entry.sha !== cached.sha) return false;
+  return true;
+}
+
+async function hydrateDiscoverCatalog(entries, cache) {
+  const cachedByKey = buildCachedSkillMap(cache);
+  const hydrated = await mapWithConcurrency(entries, DISCOVER_CONCURRENCY, async (entry) => {
+    const cached = cachedByKey.get(buildSkillKey(entry).toLowerCase());
+    if (canReuseCachedSkill(cached, entry)) {
+      return {
+        ...entry,
+        name: cached.name,
+        description: cached.description,
+        metadataHydrated: cached.metadataHydrated !== false,
+      };
+    }
+    return hydrateDiscoverSkill(entry);
+  });
+  return dedupeSkills(hydrated.filter(Boolean));
+}
+
+function mergeCachedDiscoverMetadata(entries, cache) {
+  const cachedByKey = buildCachedSkillMap(cache);
+  return dedupeSkills(entries.map((entry) => {
+    const cached = cachedByKey.get(buildSkillKey(entry).toLowerCase());
+    if (!canReuseCachedSkill(cached, entry)) return entry;
+    return {
+      ...entry,
+      name: cached.name,
+      description: cached.description,
+      metadataHydrated: cached.metadataHydrated !== false,
+    };
+  }));
+}
+
+function mergeDiscoverSkills(baseSkills, hydratedSkills) {
+  const byKey = new Map();
+  for (const skill of baseSkills || []) {
+    if (skill?.repoOwner && skill?.repoName && skill?.directory) {
+      byKey.set(buildSkillKey(skill).toLowerCase(), skill);
+    }
+  }
+  for (const skill of hydratedSkills || []) {
+    if (skill?.repoOwner && skill?.repoName && skill?.directory) {
+      byKey.set(buildSkillKey(skill).toLowerCase(), skill);
+    }
+  }
+  return dedupeSkills(Array.from(byKey.values()));
 }
 
 function dedupeSkills(skills) {
@@ -391,12 +459,7 @@ function filterDiscoveredSkills(skills, { source = "", q = "" } = {}) {
 
 async function discoverSkills({ force = false, offset = 0, limit = 10, source = "all", q = "" } = {}) {
   const pagination = normalizePagination({ offset, limit }, { defaultLimit: 10, maxLimit: 50 });
-  const registry = readRegistry();
-  const selectedSource = normalizeDiscoverSource(source);
-  const enabled = registry.repos
-    .map(normalizeRepo)
-    .filter((repo) => repo.enabled)
-    .filter((repo) => !selectedSource || `${repo.owner}/${repo.name}` === selectedSource);
+  const { enabled, selectedSource, fingerprint } = discoverContext(source);
   if (!enabled.length) {
     return {
       skills: [],
@@ -408,13 +471,27 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
     };
   }
 
-  const fingerprint = enabled
-    .map((repo) => `${repo.owner}/${repo.name}@${repo.branch}`)
-    .sort()
-    .join("|");
+  const cached = readDiscoverCache(fingerprint);
 
   if (!force) {
-    const cached = readDiscoverCache(fingerprint);
+    if (cached?.entries) {
+      const catalog = mergeCachedDiscoverMetadata(dedupeSkills(cached.entries), cached);
+      const sourceEntries = filterDiscoveredSkills(catalog, { source, q: "" });
+      const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+      const hydratedPage = await hydrateDiscoverCatalog(pageItems(filtered, pagination), cached);
+      const nextCatalog = mergeDiscoverSkills(catalog, hydratedPage);
+      writeDiscoverCache(fingerprint, { entries: dedupeSkills(cached.entries), skills: nextCatalog });
+      return {
+        skills: hydratedPage,
+        totalCount: filtered.length,
+        offset: pagination.offset,
+        limit: pagination.limit,
+        cached: true,
+        generatedAt: cached.generatedAt,
+        emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+        metadataComplete: nextCatalog.every((skill) => skill.metadataHydrated !== false),
+      };
+    }
     if (cached?.skills) {
       const sourceEntries = filterDiscoveredSkills(cached.skills, { source, q: "" });
       const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
@@ -426,20 +503,7 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
         cached: true,
         generatedAt: cached.generatedAt,
         emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
-      };
-    }
-    if (cached?.entries) {
-      const sourceEntries = filterDiscoveredSkills(dedupeSkills(cached.entries), { source, q: "" });
-      const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
-      const page = pageItems(filtered, pagination);
-      return {
-        skills: (await mapWithConcurrency(page, DISCOVER_CONCURRENCY, hydrateDiscoverSkill)).filter(Boolean),
-        totalCount: filtered.length,
-        offset: pagination.offset,
-        limit: pagination.limit,
-        cached: true,
-        generatedAt: cached.generatedAt,
-        emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+        metadataComplete: cached.skills.every((skill) => skill.metadataHydrated !== false),
       };
     }
   }
@@ -459,20 +523,65 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
     );
     if (rateLimited) throw rateLimited.reason;
   }
-  writeDiscoverCache(fingerprint, { entries: mergedEntries });
+  const catalog = mergeCachedDiscoverMetadata(mergedEntries, cached);
   const generatedAt = Date.now();
-  const sourceEntries = filterDiscoveredSkills(mergedEntries, { source, q: "" });
+  const sourceEntries = filterDiscoveredSkills(catalog, { source, q: "" });
   const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
-  const page = pageItems(filtered, pagination);
+  const hydratedPage = await hydrateDiscoverCatalog(pageItems(filtered, pagination), cached);
+  const nextCatalog = mergeDiscoverSkills(catalog, hydratedPage);
+  writeDiscoverCache(fingerprint, { entries: mergedEntries, skills: nextCatalog });
   return {
-    skills: (await mapWithConcurrency(page, DISCOVER_CONCURRENCY, hydrateDiscoverSkill)).filter(Boolean),
+    skills: hydratedPage,
     totalCount: filtered.length,
     offset: pagination.offset,
     limit: pagination.limit,
     cached: false,
     generatedAt,
     emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+    metadataComplete: nextCatalog.every((skill) => skill.metadataHydrated !== false),
   };
+}
+
+function discoverContext(source = "all") {
+  const registry = readRegistry();
+  const selectedSource = normalizeDiscoverSource(source);
+  const enabled = registry.repos
+    .map(normalizeRepo)
+    .filter((repo) => repo.enabled)
+    .filter((repo) => !selectedSource || `${repo.owner}/${repo.name}` === selectedSource);
+  const fingerprint = enabled
+    .map((repo) => `${repo.owner}/${repo.name}@${repo.branch}`)
+    .sort()
+    .join("|");
+  return { enabled, selectedSource, fingerprint };
+}
+
+async function warmDiscoverCatalog({ force = false, source = "all" } = {}) {
+  const { enabled, fingerprint } = discoverContext(source);
+  if (!enabled.length) return { warmed: false, totalCount: 0 };
+  const cached = readDiscoverCache(fingerprint);
+  if (!force && cached?.skills?.length && cached.skills.every((skill) => skill.metadataHydrated !== false)) {
+    return { warmed: false, totalCount: cached.skills.length };
+  }
+  if (discoverWarmTasks.has(fingerprint)) return discoverWarmTasks.get(fingerprint);
+
+  const task = (async () => {
+    let entries = !force && Array.isArray(cached?.entries) ? dedupeSkills(cached.entries) : null;
+    if (!entries) {
+      const settled = await Promise.allSettled(enabled.map(discoverRepoSkillEntries));
+      const rateLimited = settled.find(
+        (result) => result.status === "rejected" && result.reason instanceof RateLimitError,
+      );
+      if (rateLimited) throw rateLimited.reason;
+      entries = dedupeSkills(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
+    }
+    const catalog = await hydrateDiscoverCatalog(entries, cached);
+    writeDiscoverCache(fingerprint, { entries, skills: catalog });
+    return { warmed: true, totalCount: catalog.length };
+  })().finally(() => discoverWarmTasks.delete(fingerprint));
+
+  discoverWarmTasks.set(fingerprint, task);
+  return task;
 }
 
 function removePath(targetPath) {
@@ -583,6 +692,18 @@ function listInstalledSkillsPage({ q = "", offset = 0, limit = 10 } = {}) {
     totalCount: filtered.length,
     offset: pagination.offset,
     limit: pagination.limit,
+    installedKeys: buildInstalledKeys(skills),
+  };
+}
+
+function listInstalledSkillsAll({ q = "" } = {}) {
+  const skills = listInstalledSkills();
+  const filtered = skills.filter((skill) => matchesSkillQuery(skill, q));
+  return {
+    skills: filtered,
+    totalCount: filtered.length,
+    offset: 0,
+    limit: filtered.length,
     installedKeys: buildInstalledKeys(skills),
   };
 }
@@ -908,6 +1029,7 @@ module.exports = {
   importLocalSkill,
   installSkill,
   listInstalledSkills,
+  listInstalledSkillsAll,
   listInstalledSkillsPage,
   listRepos,
   removeRepo,
@@ -916,4 +1038,5 @@ module.exports = {
   setSkillTargets,
   targetList,
   uninstallSkill,
+  warmDiscoverCatalog,
 };

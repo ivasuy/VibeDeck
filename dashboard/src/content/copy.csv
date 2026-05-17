@@ -484,7 +484,7 @@ skills.browse.placeholder_skillssh,ui,SkillsPage,SkillsPage,browse_placeholder_s
 skills.browse.empty_sources,ui,SkillsPage,SkillsPage,browse_empty_sources,Add a GitHub repository below to start browsing skills.,,active
 skills.browse.manage_sources,ui,SkillsPage,SkillsPage,browse_manage_sources,Manage sources,,active
 skills.browse.hint_skillssh,ui,SkillsPage,SkillsPage,browse_hint_skillssh,Type at least 2 characters to search skills.sh.,,active
-skills.browse.loading_hint,ui,SkillsPage,SkillsPage,browse_loading_hint,Fetching skill metadata from GitHub. First load can take up to a minute; results are cached.,,active
+skills.browse.loading_hint,ui,SkillsPage,SkillsPage,browse_loading_hint,Loading skills from GitHub. Metadata indexing continues in the background.,,active
 skills.error.generic,ui,SkillsPage,SkillsPage,error_generic,Skill operation failed.,,active
 skills.confirm.remove_title,ui,SkillsPage,SkillsPage,confirm_remove_title,Remove {{name}}?,,active
 skills.confirm.remove_managed,ui,SkillsPage,SkillsPage,confirm_remove_managed,This skill will be removed from every connected AI tool. You'll have a few seconds to undo.,,active

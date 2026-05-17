@@ -90,6 +90,13 @@ test('GET /functions/vibedeck-skills supports installed and repos modes', async 
     assert.ok(Array.isArray(installed.skills));
     assert.ok(Array.isArray(installed.targets));
 
+    const installedAllRes = await getJson(srv.baseUrl, '/functions/vibedeck-skills?mode=installed&all=1');
+    assert.equal(installedAllRes.statusCode, 200);
+    assert.ok(Array.isArray(installedAllRes.body.skills));
+    assert.equal(installedAllRes.body.offset, 0);
+    assert.equal(installedAllRes.body.limit, installedAllRes.body.totalCount);
+    assert.ok(Array.isArray(installedAllRes.body.installedKeys));
+
     const installedPageRes = await getJson(srv.baseUrl, '/functions/vibedeck-skills?mode=installed&limit=1&offset=0&q=');
     assert.equal(installedPageRes.statusCode, 200);
     assert.ok(Array.isArray(installedPageRes.body.skills));

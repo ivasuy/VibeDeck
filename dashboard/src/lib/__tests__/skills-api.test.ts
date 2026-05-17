@@ -33,13 +33,11 @@ describe("skills-api endpoint routing", () => {
   });
 
   it("uses vibedeck-skills for installed mode", async () => {
-    await getInstalledSkills({ offset: 10, limit: 10, q: "planner" });
+    await getInstalledSkills({ all: true });
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain("/functions/vibedeck-skills");
     expect(url).toContain("mode=installed");
-    expect(url).toContain("offset=10");
-    expect(url).toContain("limit=10");
-    expect(url).toContain("q=planner");
+    expect(url).toContain("all=true");
     expect(url).not.toContain(`/functions/${["token", "tracker"].join("")}-skills`);
   });
 

@@ -583,6 +583,28 @@ test("branch groups split one active session by canonical branch facts", () => {
   assert.equal(mainBranch.audit_total_tokens, 90);
   assert.equal(featureBranch.audit_total_tokens, 10);
   assert.deepEqual(ws.branches, ["feature/live", "main"]);
+
+  assert.equal(mainBranch.sessions.length, 1);
+  assert.equal(featureBranch.sessions.length, 1);
+  const mainCard = mainBranch.sessions[0];
+  const featureCard = featureBranch.sessions[0];
+  assert.equal(mainCard.session_id, "active-split");
+  assert.equal(featureCard.session_id, "active-split");
+  assert.equal(mainCard.total_tokens, 90);
+  assert.equal(featureCard.total_tokens, 10);
+  assert.equal(mainCard.total_cost_usd, 0.9);
+  assert.equal(featureCard.total_cost_usd, 0.1);
+  assert.equal(mainCard.estimated_total_cost_usd, 0.9);
+  assert.equal(featureCard.estimated_total_cost_usd, 0.1);
+  assert.equal(mainCard.branch, "main");
+  assert.equal(featureCard.branch, "feature/live");
+  assert.equal(mainCard.attribution_branch, "main");
+  assert.equal(featureCard.attribution_branch, "feature/live");
+  assert.equal(
+    mainCard.total_tokens + featureCard.total_tokens,
+    mainBranch.audit_total_tokens + featureBranch.audit_total_tokens,
+    "per-branch session card tokens sum to the parent rollup",
+  );
 });
 
 test("branch groups include session fallback rows when only some sessions have branch facts", () => {

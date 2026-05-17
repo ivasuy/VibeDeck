@@ -1,13 +1,17 @@
 <div align="center">
-  <img src="./dashboard/public/wordmark.svg" alt="VibeDeck" width="420" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./dashboard/public/wordmark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./dashboard/public/wordmark.svg">
+    <img src="./dashboard/public/wordmark.svg" alt="VibeDeck" width="420" />
+  </picture>
 </div>
 
 <div align="center">
 
-[![macOS release](https://img.shields.io/github/v/release/ivasuy/VibeDeck?label=macOS%20app&logo=apple)](https://github.com/ivasuy/VibeDeck/releases/latest)
-[![npm version](https://img.shields.io/npm/v/vibedeck-cli?label=npm&logo=npm)](https://www.npmjs.com/package/vibedeck-cli)
-[![Homebrew tap](https://img.shields.io/badge/Homebrew-ivasuy%2Ftap-fbb040?logo=homebrew)](https://github.com/ivasuy/homebrew-tap)
-[![license](https://img.shields.io/github/license/ivasuy/VibeDeck)](LICENSE)
+[![macOS release][macos-badge]][release]
+[![npm version][npm-badge]][npm]
+[![Homebrew tap][brew-badge]][tap]
+[![license][license-badge]][license]
 
 </div>
 
@@ -263,3 +267,12 @@ Provider billing pages usually stop at account-level usage. VibeDeck uses local 
 ## License
 
 MIT
+
+[macos-badge]: https://img.shields.io/github/v/release/ivasuy/VibeDeck?label=macOS%20app&logo=apple
+[release]: https://github.com/ivasuy/VibeDeck/releases/latest
+[npm-badge]: https://img.shields.io/npm/v/vibedeck-cli?label=npm&logo=npm
+[npm]: https://www.npmjs.com/package/vibedeck-cli
+[brew-badge]: https://img.shields.io/badge/Homebrew-ivasuy%2Ftap-fbb040?logo=homebrew
+[tap]: https://github.com/ivasuy/homebrew-tap
+[license-badge]: https://img.shields.io/github/license/ivasuy/VibeDeck
+[license]: LICENSE

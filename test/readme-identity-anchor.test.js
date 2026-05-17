@@ -5,6 +5,15 @@ const { test } = require('node:test');
 
 const readme = readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
 
+test('README preserves the dark and light aware wordmark header', () => {
+  const opening = readme.slice(0, 400);
+
+  assert.match(opening, /<picture>/);
+  assert.match(opening, /<source media="\(prefers-color-scheme: dark\)" srcset="\.\/dashboard\/public\/wordmark-dark\.svg">/);
+  assert.match(opening, /<source media="\(prefers-color-scheme: light\)" srcset="\.\/dashboard\/public\/wordmark\.svg">/);
+  assert.match(opening, /<img src="\.\/dashboard\/public\/wordmark\.svg" alt="VibeDeck" width="420" \/>/);
+});
+
 test('README opens with the Phase 1 identity anchor', () => {
   const opening = readme.slice(0, 1000);
 

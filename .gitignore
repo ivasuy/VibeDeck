@@ -122,13 +122,11 @@ readme-banner.svg
 .playwright-mcp/
 .superpowers/
 docs/screenshots/*.mov
-agent-runs/*
-!agent-runs/.gitkeep
+agent-runs/
 .worktrees/*
 !.worktrees/.gitkeep
 docs/superpowers/specs/*
 !docs/superpowers/specs/.gitkeep
 docs/superpowers/plans/*
 !docs/superpowers/plans/.gitkeep
-workflow/*
-!workflow/org.defaults.json
+workflow/

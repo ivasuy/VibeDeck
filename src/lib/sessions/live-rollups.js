@@ -190,10 +190,7 @@ function addSessionToSet(set, row) {
   set.add(sessionKey(row));
 }
 
-function addFactToBreakdown(entry, fact, session, active) {
-  const tokens = Number(fact?.total_tokens || 0) || 0;
-  const cost = factCost(fact);
-
+function addContributionToBreakdown(entry, { tokens, cost, session, active }) {
   entry.audit_total_tokens += tokens;
   entry.audit_known_cost_usd += cost.known_cost_usd;
   entry.audit_cost_unknown_count += cost.unknown_count;
@@ -236,8 +233,8 @@ function createFactBreakdown(fields) {
   };
 }
 
-function factSortTime(fact) {
-  return fact?.last_observed_at || fact?.first_observed_at || '';
+function sortTime(row) {
+  return row?.last_observed_at || row?.first_observed_at || liveSortIso(row) || '';
 }
 
 function buildFactsBySessionKey(branchFacts) {
@@ -251,27 +248,11 @@ function buildFactsBySessionKey(branchFacts) {
   return factsBySessionKey;
 }
 
-function matchingFactsForRows(rows, factsBySessionKey) {
-  const facts = [];
-  for (const row of rows) {
-    const key = sessionKey(row);
-    const sessionFacts = factsBySessionKey.get(key);
-    if (sessionFacts) facts.push(...sessionFacts);
-  }
-  return facts;
-}
-
-function buildFactBranchGroups(facts, sessionsByKey, activeSessionKeys) {
+function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys) {
   const byBranch = new Map();
 
-  for (const fact of facts) {
-    const key = sessionKey(fact);
-    const session = sessionsByKey.get(key);
-    if (!session) continue;
-
-    const branch = safeBranch(fact?.branch);
-    const provider = text(fact?.provider) || 'unknown';
-    const model = safeModel(fact?.model);
+  function addContribution({ branch, provider, model, tokens, cost, session, sourceRow }) {
+    const key = sessionKey(session);
     const active = activeSessionKeys.has(key);
 
     if (!byBranch.has(branch)) {
@@ -300,22 +281,21 @@ function buildFactBranchGroups(facts, sessionsByKey, activeSessionKeys) {
     }
 
     const branchEntry = byBranch.get(branch);
-    const tokens = Number(fact?.total_tokens || 0) || 0;
-    const cost = factCost(fact);
     const sessionMs = toMs(liveSortIso(session)) || 0;
+    const sourceMs = toMs(sortTime(sourceRow)) || 0;
     branchEntry.sessions.set(key, session);
     branchEntry.audit_session_keys.add(key);
     branchEntry.audit_total_tokens += tokens;
     branchEntry.audit_known_cost_usd += cost.known_cost_usd;
     branchEntry.audit_cost_unknown_count += cost.unknown_count;
-    branchEntry.newest_audit_ms = Math.max(branchEntry.newest_audit_ms, sessionMs, toMs(factSortTime(fact)) || 0);
+    branchEntry.newest_audit_ms = Math.max(branchEntry.newest_audit_ms, sessionMs, sourceMs);
 
     if (active) {
       branchEntry.active_session_keys.add(key);
       branchEntry.active_total_tokens += tokens;
       branchEntry.active_known_cost_usd += cost.known_cost_usd;
       branchEntry.active_cost_unknown_count += cost.unknown_count;
-      branchEntry.newest_active_ms = Math.max(branchEntry.newest_active_ms, sessionMs, toMs(factSortTime(fact)) || 0);
+      branchEntry.newest_active_ms = Math.max(branchEntry.newest_active_ms, sessionMs, sourceMs);
     } else if (isSessionEnded(session)) {
       branchEntry.recently_completed_keys.add(key);
     }
@@ -326,8 +306,36 @@ function buildFactBranchGroups(facts, sessionsByKey, activeSessionKeys) {
     if (!branchEntry.models.has(model)) {
       branchEntry.models.set(model, createFactBreakdown({ model }));
     }
-    addFactToBreakdown(branchEntry.providers.get(provider), fact, session, active);
-    addFactToBreakdown(branchEntry.models.get(model), fact, session, active);
+    addContributionToBreakdown(branchEntry.providers.get(provider), { tokens, cost, session, active });
+    addContributionToBreakdown(branchEntry.models.get(model), { tokens, cost, session, active });
+  }
+
+  for (const session of rows) {
+    const facts = factsBySessionKey.get(sessionKey(session));
+    if (facts && facts.length > 0) {
+      for (const fact of facts) {
+        addContribution({
+          branch: safeBranch(fact?.branch),
+          provider: text(fact?.provider) || 'unknown',
+          model: safeModel(fact?.model),
+          tokens: Number(fact?.total_tokens || 0) || 0,
+          cost: factCost(fact),
+          session,
+          sourceRow: fact,
+        });
+      }
+      continue;
+    }
+
+    addContribution({
+      branch: safeBranch(session?.branch),
+      provider: text(session?.provider) || 'unknown',
+      model: safeModel(session?.model),
+      tokens: Number(session?.total_tokens || 0) || 0,
+      cost: sessionCost(session),
+      session,
+      sourceRow: session,
+    });
   }
 
   return Array.from(byBranch.values())
@@ -647,12 +655,8 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
     const activeCost = sumCost(scopeActiveRows);
     const auditCost = sumCost(auditRows);
     const breakdowns = buildBreakdowns(auditRows, scopeActiveRows);
-    const sessionsByKey = new Map(auditRows.map((row) => [sessionKey(row), row]));
     const activeSessionKeys = new Set(scopeActiveRows.map((row) => sessionKey(row)));
-    const matchingFacts = matchingFactsForRows(auditRows, factsBySessionKey);
-    const branchGroups = matchingFacts.length > 0
-      ? buildFactBranchGroups(matchingFacts, sessionsByKey, activeSessionKeys)
-      : breakdowns.branch_groups;
+    const branchGroups = buildEffectiveBranchGroups(auditRows, factsBySessionKey, activeSessionKeys);
     const updatedMs = auditRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0);
 
     workstreams.push({
@@ -662,7 +666,7 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       project_ref: scope.project_ref,
       repo_root: scope.repo_root,
       cwd: scope.cwd,
-      branches: Array.from(new Set(auditRows.map((row) => safeBranch(row?.branch)))).sort((a, b) => a.localeCompare(b)),
+      branches: Array.from(new Set(branchGroups.map((row) => row.branch))).sort((a, b) => a.localeCompare(b)),
       sessions: auditRows.sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''))),
       primary_session: scopeActiveRows[0] || auditRows[0] || null,
       active_session_count: scopeActiveRows.length,

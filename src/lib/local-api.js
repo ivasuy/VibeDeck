@@ -2635,6 +2635,8 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           includeArchived: url.searchParams.get("include_archived") === "1",
           includeUnattributed: url.searchParams.get("include_unattributed") === "1",
           includeGitBranches: url.searchParams.get("include_git_branches") === "1",
+          includeDateBuckets: url.searchParams.get("include_date_buckets") === "1",
+          sessionDate: url.searchParams.get("session_date"),
         }),
       );
       return true;

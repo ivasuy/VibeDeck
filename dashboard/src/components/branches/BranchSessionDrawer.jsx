@@ -43,6 +43,20 @@ function normalizeProvider(value) {
   return provider || "unknown";
 }
 
+function timestampDateKey(value) {
+  if (!value) return "";
+  const raw = String(value).trim();
+  const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function sessionDateKey(session) {
+  return timestampDateKey(session?.ended_at) || timestampDateKey(session?.started_at);
+}
+
 function modelProvidersFromSessions(model, sessions) {
   const targetModel = String(model || "").trim();
   const out = [];
@@ -69,20 +83,34 @@ function SessionMetric({ icon: Icon, label, value }) {
   );
 }
 
-export function BranchSessionDrawer({ row = null, loading = false, error = "", onClose }) {
+export function BranchSessionDrawer({ row = null, loading = false, error = "", onClose, onSelectDate }) {
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
-  const models = Array.isArray(row?.models) ? row.models : [];
+  const dateBuckets = Array.isArray(row?.date_buckets) ? row.date_buckets : [];
+  const selectedDate = String(row?.selected_date || dateBuckets[0]?.date || "");
+  const selectedBucket = dateBuckets.find((bucket) => String(bucket?.date || "") === selectedDate) || dateBuckets[0] || null;
+  const models = Array.isArray(selectedBucket?.models)
+    ? selectedBucket.models
+    : Array.isArray(row?.models)
+      ? row.models
+      : [];
   const hasModels = models.length !== 0;
   const titleId = "branch-session-drawer-title";
   const [visibleLimit, setVisibleLimit] = useState(INITIAL_SESSION_RENDER_LIMIT);
+  const filteredSessions = useMemo(() => {
+    if (!selectedDate || dateBuckets.length === 0) return sessions;
+    return sessions.filter((session) => {
+      const date = sessionDateKey(session);
+      return !date || date === selectedDate;
+    });
+  }, [dateBuckets.length, selectedDate, sessions]);
   const visibleSessions = useMemo(
-    () => sessions.slice(0, visibleLimit),
-    [sessions, visibleLimit],
+    () => filteredSessions.slice(0, visibleLimit),
+    [filteredSessions, visibleLimit],
   );
 
   useEffect(() => {
     setVisibleLimit(INITIAL_SESSION_RENDER_LIMIT);
-  }, [row?.repo_root, row?.branch]);
+  }, [row?.repo_root, row?.branch, selectedDate]);
 
   return (
     <SlidePanel
@@ -122,6 +150,30 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
         </div>
 
         <div className="flex-1 overflow-auto p-5">
+          {dateBuckets.length > 0 ? (
+            <div className="vd-subcard mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
+              <label
+                htmlFor="branch-session-date-select"
+                className="mb-2 block text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400"
+              >
+                Session date
+              </label>
+              <select
+                id="branch-session-date-select"
+                aria-label="Session date"
+                value={selectedDate}
+                onChange={(event) => onSelectDate?.(event.target.value)}
+                className="vd-control h-10 w-full max-w-xs rounded-md border border-oai-gray-300 bg-white px-3 text-sm text-oai-black focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+              >
+                {dateBuckets.map((bucket) => (
+                  <option key={String(bucket?.date || "")} value={String(bucket?.date || "")}>
+                    {String(bucket?.date || "Unknown date")} · {toDisplayNumber(bucket?.session_count ?? 0)} sessions
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
           {hasModels ? (
             <div className="vd-subcard mb-4 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
               <div className="mb-3 flex items-center gap-2 text-xs font-medium text-oai-brand-700 dark:text-oai-brand-300">
@@ -172,7 +224,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
             <SessionDrawerSkeleton />
           ) : error ? (
             <p className="text-sm text-red-700 dark:text-red-300">{copy("branches.error", { error })}</p>
-          ) : sessions.length === 0 ? (
+          ) : filteredSessions.length === 0 ? (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.drawer.empty")}</p>
           ) : (
             <div className="grid gap-3">
@@ -228,7 +280,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                   </div>
                 </article>
               ))}
-              {visibleSessions.length < sessions.length ? (
+              {visibleSessions.length < filteredSessions.length ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -236,7 +288,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                   className="justify-self-center"
                   onClick={() => setVisibleLimit((current) => current + INITIAL_SESSION_RENDER_LIMIT)}
                 >
-                  Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, sessions.length - visibleSessions.length)} more sessions
+                  Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, filteredSessions.length - visibleSessions.length)} more sessions
                 </Button>
               ) : null}
             </div>
@@ -258,14 +310,14 @@ function SessionDrawerSkeleton() {
         >
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-2">
-              <div className="h-4 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-              <div className="h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-4 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
             </div>
-            <div className="h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {[0, 1, 2, 3].map((slot) => (
-              <div key={slot} className="h-12 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div key={slot} className="shimmer h-12 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
             ))}
           </div>
         </div>

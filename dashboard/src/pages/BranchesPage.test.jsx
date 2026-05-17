@@ -159,6 +159,7 @@ describe("BranchesPage", () => {
     expect(screen.getAllByText("Loading branch totals...").length).toBeGreaterThan(0);
     expect(screen.getByText("Loading branch usage...")).toBeTruthy();
     expect(screen.queryByText("$0.00")).toBeNull();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
   });
 
   it("renders the selected project rows, totals, confidence mix, and session drill-down", async () => {
@@ -184,6 +185,8 @@ describe("BranchesPage", () => {
       expect(getBranchUsage).toHaveBeenLastCalledWith({
         includeSessions: true,
         includeArchived: true,
+        includeDateBuckets: true,
+        sessionDate: "latest",
         limit: 100,
         repo: "/repo-a",
         branch: "feature-a",
@@ -466,6 +469,195 @@ describe("BranchesPage", () => {
     expect(projectSelect.value).toBe("/work/acme/app");
     expect(screen.getAllByText("feature-acme").length).toBeGreaterThan(0);
     expect(screen.queryByText("feature-sandbox")).toBeNull();
+  });
+
+  it("keeps decommissioned duplicate project labels compact instead of showing absolute paths", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: null,
+        project_ref: "/Users/dev/archive-one/app",
+        project_key: "app",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 50,
+            total_cost_usd: 0.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+      {
+        repo_root: null,
+        project_ref: "/tmp/archive-two/app",
+        project_key: "app",
+        project_state: "cwd_missing",
+        archived: true,
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "No branch",
+            total_tokens: 25,
+            total_cost_usd: 0.25,
+            session_count: 1,
+            last_seen_at: "2026-05-09T09:00:00.000Z",
+            confidence: { high: 0, medium: 1, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    const options = screen.getAllByRole("option").map((option) => option.textContent);
+
+    expect(options).toContain("app · archive-one (Decommissioned)");
+    expect(options).toContain("app · archive-two (Decommissioned)");
+    expect(options).not.toContain("/Users/dev/archive-one/app (Decommissioned)");
+    expect(options).not.toContain("/tmp/archive-two/app (Decommissioned)");
+  });
+
+  it("filters branch drawer sessions and model summary by selected date", async () => {
+    const summary = makePayload([
+      {
+        repo_root: "/repo-dated",
+        git_branches: [],
+        git_branch_count: 0,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            last_seen_at: "2026-05-11T01:10:00.000Z",
+            confidence: { high: 2, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]);
+    const latestDetail = makePayload([
+      {
+        repo_root: "/repo-dated",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-11",
+            date_buckets: [
+              {
+                date: "2026-05-11",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                session_count: 1,
+                models: [{ model: "gpt-5.5", provider: "codex", total_tokens: 100, total_cost_usd: 1, session_count: 1 }],
+              },
+              {
+                date: "2026-05-10",
+                total_tokens: 200,
+                total_cost_usd: 2,
+                session_count: 1,
+                models: [{ model: "claude-opus-4-7", provider: "claude", total_tokens: 200, total_cost_usd: 2, session_count: 1 }],
+              },
+            ],
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            models: [],
+            sessions: [
+              {
+                provider: "codex",
+                session_id: "new-day",
+                started_at: "2026-05-11T01:00:00.000Z",
+                ended_at: "2026-05-11T01:10:00.000Z",
+                model: "gpt-5.5",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                confidence: "high",
+                branch_resolution_tier: "A",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    const oldDetail = makePayload([
+      {
+        repo_root: "/repo-dated",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-10",
+            date_buckets: latestDetail.repos[0].branches[0].date_buckets,
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 2,
+            models: [],
+            sessions: [
+              {
+                provider: "claude",
+                session_id: "old-day",
+                started_at: "2026-05-10T01:00:00.000Z",
+                ended_at: "2026-05-10T01:10:00.000Z",
+                model: "claude-opus-4-7",
+                total_tokens: 200,
+                total_cost_usd: 2,
+                confidence: "high",
+                branch_resolution_tier: "A",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    getBranchUsage
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(latestDetail)
+      .mockResolvedValueOnce(oldDetail);
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /view sessions/i }));
+
+    const dateSelect = await screen.findByRole("combobox", { name: "Session date" });
+    expect(dateSelect.value).toBe("2026-05-11");
+    expect(screen.getAllByText("gpt-5.5").length).toBeGreaterThan(0);
+    expect(screen.queryByText("claude-opus-4-7")).toBeNull();
+
+    fireEvent.change(dateSelect, { target: { value: "2026-05-10" } });
+
+    await waitFor(() => {
+      expect(getBranchUsage).toHaveBeenLastCalledWith({
+        includeSessions: true,
+        includeArchived: true,
+        includeDateBuckets: true,
+        sessionDate: "2026-05-10",
+        limit: 100,
+        repo: "/repo-dated",
+        branch: "main",
+      });
+      expect(screen.getAllByText("claude-opus-4-7").length).toBeGreaterThan(0);
+      expect(screen.queryByText("gpt-5.5")).toBeNull();
+    });
   });
 
   it("defaults to the latest repo even when payload repos arrive out of order", async () => {

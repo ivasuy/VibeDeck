@@ -68,6 +68,11 @@ function repoBasename(repoRoot) {
   return parts[parts.length - 1] || String(repoRoot || "").trim() || "—";
 }
 
+function repoParentBasename(repoRoot) {
+  const parts = repoPathSegments(repoRoot);
+  return parts.length > 1 ? parts[parts.length - 2] : "";
+}
+
 function buildRepoOptionLabels(repos) {
   const basenameCounts = new Map();
   const labels = new Map();
@@ -81,7 +86,16 @@ function buildRepoOptionLabels(repos) {
   for (const repoEntry of repos || []) {
     const repoRoot = repoOptionValue(repoEntry);
     const basename = repoBasename(repoRoot);
-    const label = basenameCounts.get(basename) > 1 ? repoRoot || "—" : basename;
+    let label = basename;
+    if (basenameCounts.get(basename) > 1) {
+      if (repoEntry?.archived) {
+        const parent = repoParentBasename(repoRoot);
+        const projectName = String(repoEntry?.project_key || basename).trim() || basename;
+        label = parent ? `${projectName} · ${parent}` : projectName;
+      } else {
+        label = repoRoot || "—";
+      }
+    }
     labels.set(repoRoot, repoEntry?.archived ? `${label} (${copy("shared.badge.decommissioned")})` : label);
   }
 
@@ -136,7 +150,7 @@ function SummaryMetricSkeleton() {
       <div className="text-[11px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
         Loading branch totals...
       </div>
-      <div className="mt-3 h-7 w-28 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+      <div className="shimmer mt-3 h-7 w-28 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
     </div>
   );
 }
@@ -150,10 +164,10 @@ function BranchTableSkeleton() {
       <div className="grid gap-3 p-5" aria-busy="true">
         {[0, 1, 2, 3, 4].map((index) => (
           <div key={index} className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4">
-            <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-            <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-            <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-            <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
           </div>
         ))}
       </div>
@@ -161,8 +175,8 @@ function BranchTableSkeleton() {
   );
 }
 
-function branchDetailCacheKey(row) {
-  return `branches.detail.${String(row?.repo_root || "")}.${String(row?.branch || "")}`;
+function branchDetailCacheKey(row, sessionDate = "latest") {
+  return `branches.detail.${String(row?.repo_root || "")}.${String(row?.branch || "")}.${String(sessionDate || "latest")}`;
 }
 
 export function BranchesPage() {
@@ -279,9 +293,10 @@ export function BranchesPage() {
     setSessionDetailsError("");
   }
 
-  function openSessionDrawer(row) {
+  function loadSessionDetails(row, sessionDate = "latest") {
     const baseRow = row || null;
-    const cachedDetail = readLastGood(branchDetailCacheKey(baseRow));
+    const requestedDate = sessionDate || "latest";
+    const cachedDetail = readLastGood(branchDetailCacheKey(baseRow, requestedDate));
     if (cachedDetail) {
       setSelectedRow({ ...baseRow, ...cachedDetail });
       setSessionDetailsLoading(false);
@@ -297,6 +312,8 @@ export function BranchesPage() {
     getBranchUsage({
       includeSessions: true,
       includeArchived: true,
+      includeDateBuckets: true,
+      sessionDate: requestedDate,
       limit: 100,
       repo: baseRow?.repo_root || undefined,
       branch: baseRow?.branch || undefined,
@@ -309,7 +326,7 @@ export function BranchesPage() {
             String(candidate?.repo_root || "") === String(baseRow?.repo_root || "")
             && String(candidate?.branch || "") === String(baseRow?.branch || ""),
         );
-        if (detailRow) writeLastGood(branchDetailCacheKey(baseRow), detailRow);
+        if (detailRow) writeLastGood(branchDetailCacheKey(baseRow, requestedDate), detailRow);
         setSelectedRow(detailRow ? { ...baseRow, ...detailRow } : baseRow);
       })
       .catch((cause) => {
@@ -321,6 +338,10 @@ export function BranchesPage() {
       .finally(() => {
         if (sessionDetailsRequestRef.current === requestId) setSessionDetailsLoading(false);
       });
+  }
+
+  function openSessionDrawer(row) {
+    loadSessionDetails(row, "latest");
   }
 
   const totals = useMemo(() => {
@@ -494,6 +515,7 @@ export function BranchesPage() {
         row={selectedRow}
         loading={sessionDetailsLoading}
         error={sessionDetailsError}
+        onSelectDate={(sessionDate) => selectedRow && loadSessionDetails(selectedRow, sessionDate)}
         onClose={closeSessionDrawer}
       />
     </PageFrame>

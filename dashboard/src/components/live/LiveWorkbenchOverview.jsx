@@ -205,15 +205,15 @@ function LiveWorkbenchOverviewSkeleton() {
           <div className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
             Live control center
           </div>
-          <div className="mt-4 h-14 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-          <div className="mt-3 h-5 w-28 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          <div className="shimmer mt-4 h-14 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+          <div className="shimmer mt-3 h-5 w-28 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
         </div>
-        <div className="h-8 w-32 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800" />
+        <div className="shimmer h-8 w-32 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800" />
       </div>
-      <div className="mt-6 h-2 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800" />
+      <div className="shimmer mt-6 h-2 rounded-full bg-oai-gray-100 dark:bg-oai-gray-800" />
       <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
         {[0, 1, 2, 3, 4, 5].map((index) => (
-          <div key={index} className="h-16 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+          <div key={index} className="shimmer h-16 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
         ))}
       </div>
     </section>

@@ -267,14 +267,14 @@ function LiveSessionListSkeleton() {
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2">
-                <div className="h-4 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-                <div className="h-3 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="shimmer h-4 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="shimmer h-3 w-56 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
               </div>
-              <div className="h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-6 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
             </div>
             <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {[0, 1, 2, 3].map((slot) => (
-                <div key={slot} className="h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div key={slot} className="shimmer h-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
               ))}
             </div>
           </div>

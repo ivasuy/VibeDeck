@@ -158,6 +158,14 @@ describe("LiveSessionList", () => {
                 audit_total_cost_usd: 5,
                 active_total_cost_usd: 0.5,
               },
+              {
+                model: "claude-opus-4-7",
+                session_count: 1,
+                audit_total_tokens: 500,
+                active_total_tokens: 0,
+                audit_total_cost_usd: 2.5,
+                active_total_cost_usd: 0,
+              },
             ],
             branch_groups: [],
           },
@@ -170,6 +178,9 @@ describe("LiveSessionList", () => {
     expect(screen.getByText("Model breakdown")).toBeTruthy();
     expect(screen.getByText("Provider breakdown")).toBeTruthy();
     expect(screen.getByText("gpt-5.5")).toBeTruthy();
+    expect(screen.getByText("claude-opus-4-7")).toBeTruthy();
+    expect(screen.getByLabelText("Model provider codex")).toBeTruthy();
+    expect(screen.getByLabelText("Model provider claude")).toBeTruthy();
     expect(screen.getByText("codex")).toBeTruthy();
     expect(screen.getAllByText("1,000").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$5.00").length).toBeGreaterThan(0);

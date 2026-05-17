@@ -43,6 +43,7 @@ describe("ProjectUsagePanel", () => {
     render(<ProjectUsagePanel entries={[]} loading />);
 
     expect(screen.getByText("Loading project usage...")).toBeInTheDocument();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
     expect(screen.queryByText(copy("dashboard.projects.empty"))).toBeNull();
   });
 

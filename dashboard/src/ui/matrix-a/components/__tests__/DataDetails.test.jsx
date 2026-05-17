@@ -44,6 +44,7 @@ describe("DataDetails project tab", () => {
     );
 
     expect(screen.getByText("Loading usage details...")).toBeInTheDocument();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
     expect(screen.queryByText("vibedeck sync")).toBeNull();
   });
 
@@ -64,6 +65,7 @@ describe("DataDetails project tab", () => {
     });
 
     expect(screen.getByText("Loading project usage...")).toBeInTheDocument();
+    expect(document.querySelectorAll(".shimmer").length).toBeGreaterThan(0);
   });
 
   it("renders each project as a metric card with provider model progress rows", async () => {

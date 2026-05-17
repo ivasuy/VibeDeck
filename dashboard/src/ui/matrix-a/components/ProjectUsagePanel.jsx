@@ -316,15 +316,15 @@ function ProjectUsageSkeleton() {
             className="vd-card-solid rounded-lg border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-700 dark:bg-oai-gray-900"
           >
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
               <div className="min-w-0 flex-1 space-y-2">
-                <div className="h-3 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-                <div className="h-3 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="shimmer h-3 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="shimmer h-3 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
               </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-              <div className="h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
             </div>
           </div>
         ))}

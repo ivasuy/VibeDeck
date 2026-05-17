@@ -99,6 +99,20 @@ function formatSessionCount(value) {
   return `${toDisplayNumber(safe)} session${safe === 1 ? "" : "s"}`;
 }
 
+function inferProviderFromModel(row) {
+  const explicit = String(row?.provider || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  const model = String(row?.model || "").trim().toLowerCase();
+  if (model.includes("claude") || model.includes("anthropic")) return "claude";
+  if (model.includes("gemini")) return "gemini";
+  if (model.includes("cursor")) return "cursor";
+  if (model.includes("copilot")) return "copilot";
+  if (model.includes("kiro")) return "kiro";
+  if (model.includes("kimi")) return "kimi";
+  if (model.includes("gpt") || model.includes("codex") || model.startsWith("o")) return "codex";
+  return "unknown";
+}
+
 function breakdownCost(row, prefix) {
   const unknown = Number(row?.[`${prefix}_cost_unknown_count`] ?? 0);
   if (unknown > 0) return null;
@@ -323,6 +337,17 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
               title="Model breakdown"
               rows={modelRows}
               labelKey="model"
+              iconForRow={(row) => {
+                const provider = inferProviderFromModel(row);
+                return (
+                  <span
+                    className="inline-flex shrink-0 items-center justify-center"
+                    aria-label={`Model provider ${provider}`}
+                  >
+                    <ProviderIcon provider={provider} size={16} className="shrink-0" />
+                  </span>
+                );
+              }}
             />
             <BreakdownCard
               title="Provider breakdown"

@@ -453,7 +453,7 @@ function InlineDailySkeleton() {
         {[0, 1, 2, 3, 4].map((index) => (
           <div
             key={index}
-            className="h-9 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800"
+            className="shimmer h-9 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800"
           />
         ))}
       </div>
@@ -473,15 +473,15 @@ function InlineProjectSkeleton() {
           className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900"
         >
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="shimmer h-9 w-9 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-3 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
-              <div className="h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-3 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
             </div>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
             {[0, 1, 2, 3].map((slot) => (
-              <div key={slot} className="h-12 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div key={slot} className="shimmer h-12 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
             ))}
           </div>
         </div>

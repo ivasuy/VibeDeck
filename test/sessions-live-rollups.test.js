@@ -447,6 +447,96 @@ test("branch groups include separate active and audit totals with breakdowns", (
   }
 });
 
+test("branch groups split one active session by canonical branch facts", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "active-split",
+      started_at: "2026-05-12T01:00:00.000Z",
+      ended_at: null,
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "feature/live",
+      model: "gpt-5.5",
+      total_tokens: 100,
+      total_cost_usd: 1,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      last_observed_at: "2026-05-12T01:10:00.000Z",
+      created_at: "2026-05-12T01:00:00.000Z",
+      updated_at: "2026-05-12T01:10:00.000Z",
+    },
+  ], {
+    now: "2026-05-12T01:15:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+    branchFacts: [
+      {
+        provider: "codex",
+        session_id: "active-split",
+        scope_key: "git:/repo/VibeDeck",
+        project_state: "git_existing",
+        project_key: "VibeDeck",
+        project_ref: "/repo/VibeDeck",
+        repo_root: "/repo/VibeDeck",
+        cwd: null,
+        parent_repo: "/repo/VibeDeck",
+        branch: "main",
+        attribution_branch: "main",
+        branch_kind: "known",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5.5",
+        first_observed_at: "2026-05-12T01:00:00.000Z",
+        last_observed_at: "2026-05-12T01:05:00.000Z",
+        total_tokens: 90,
+        total_cost_usd: 0.9,
+        cost_estimated: 0,
+        cost_quality: "stored",
+      },
+      {
+        provider: "codex",
+        session_id: "active-split",
+        scope_key: "git:/repo/VibeDeck",
+        project_state: "git_existing",
+        project_key: "VibeDeck",
+        project_ref: "/repo/VibeDeck",
+        repo_root: "/repo/VibeDeck",
+        cwd: null,
+        parent_repo: "/repo/VibeDeck",
+        branch: "feature/live",
+        attribution_branch: "feature/live",
+        branch_kind: "known",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5.5",
+        first_observed_at: "2026-05-12T01:05:00.000Z",
+        last_observed_at: "2026-05-12T01:10:00.000Z",
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        cost_estimated: 0,
+        cost_quality: "stored",
+      },
+    ],
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.equal(ws.audit_total_tokens, 100);
+
+  const mainBranch = ws.branch_groups.find((row) => row.branch === "main");
+  const featureBranch = ws.branch_groups.find((row) => row.branch === "feature/live");
+  assert.ok(mainBranch);
+  assert.ok(featureBranch);
+  assert.equal(mainBranch.audit_total_tokens, 90);
+  assert.equal(featureBranch.audit_total_tokens, 10);
+});
+
 test("branch groups and sessions are sorted with active-first ordering", () => {
   const payload = buildLiveAuditRollups([
     {

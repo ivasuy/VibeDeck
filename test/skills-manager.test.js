@@ -185,6 +185,109 @@ describe("skills-manager paged discovery", () => {
     assert.equal(metadataFetches, 3);
   });
 
+  it("returns a full cached discover catalog and indexes only newly added repos", async () => {
+    for (const [owner, name] of [
+      ["anthropics", "skills"],
+      ["ComposioHQ", "awesome-claude-skills"],
+      ["cexll", "myclaude"],
+      ["JimLiu", "baoyu-skills"],
+      ["page", "repo"],
+      ["first", "repo"],
+      ["second", "repo"],
+    ]) {
+      skills.removeRepo(owner, name);
+    }
+    skills.addRepo({ owner: "first", name: "repo", branch: "main", enabled: true });
+
+    const metadataFetches = [];
+    global.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes("/git/trees/")) {
+        const owner = href.includes("/repos/second/") ? "second" : "first";
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            tree: Array.from({ length: owner === "first" ? 12 : 2 }, (_, index) => ({
+              type: "blob",
+              path: `${owner}-${index + 1}/SKILL.md`,
+              sha: `${owner}-sha-${index + 1}`,
+            })),
+          }),
+        };
+      }
+      const owner = href.includes("/second-") ? "second" : "first";
+      const number = href.match(/-(\d+)\/SKILL\.md/)?.[1] || "1";
+      metadataFetches.push(`${owner}-${number}`);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => `---\nname: ${owner} Skill ${number}\ndescription: ${owner} metadata ${number}\n---\n`,
+      };
+    };
+
+    await skills.warmDiscoverCatalog({ source: "all" });
+    assert.equal(metadataFetches.length, 12);
+
+    const firstCatalog = await skills.discoverSkills({ all: true, source: "all" });
+    assert.equal(firstCatalog.skills.length, 12);
+    assert.equal(firstCatalog.totalCount, 12);
+    assert.equal(firstCatalog.offset, 0);
+    assert.equal(firstCatalog.limit, 12);
+
+    skills.addRepo({ owner: "second", name: "repo", branch: "main", enabled: true });
+    await skills.warmDiscoverCatalog({ source: "all" });
+
+    assert.equal(metadataFetches.filter((key) => key.startsWith("first-")).length, 12);
+    assert.equal(metadataFetches.filter((key) => key.startsWith("second-")).length, 2);
+
+    const mergedCatalog = await skills.discoverSkills({ all: true, source: "all" });
+    assert.equal(mergedCatalog.skills.length, 14);
+    assert.equal(mergedCatalog.totalCount, 14);
+    assert.ok(mergedCatalog.skills.some((skill) => skill.name === "first Skill 12"));
+    assert.ok(mergedCatalog.skills.some((skill) => skill.name === "second Skill 2"));
+  });
+
+  it("keeps the all-repo metadata index usable when one registered repo is unreachable", async () => {
+    for (const [owner, name] of [
+      ["first", "repo"],
+      ["second", "repo"],
+      ["good", "repo"],
+      ["bad", "repo"],
+    ]) {
+      skills.removeRepo(owner, name);
+    }
+    skills.addRepo({ owner: "good", name: "repo", branch: "main", enabled: true });
+    skills.addRepo({ owner: "bad", name: "repo", branch: "main", enabled: true });
+
+    global.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes("/repos/bad/")) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      if (href.includes("/git/trees/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            tree: [{ type: "blob", path: "alpha/SKILL.md", sha: "good-alpha" }],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => "---\nname: Good Skill\ndescription: Indexed despite another repo failing.\n---\n",
+      };
+    };
+
+    await skills.warmDiscoverCatalog({ source: "all" });
+    const catalog = await skills.discoverSkills({ all: true, source: "all" });
+
+    assert.equal(catalog.totalCount, 1);
+    assert.equal(catalog.skills[0].name, "Good Skill");
+  });
+
   it("does not label a real repository as missing SKILL.md when search has no matches", async () => {
     skills.removeRepo("page", "repo");
     skills.addRepo({ owner: "page", name: "repo", branch: "main", enabled: true });

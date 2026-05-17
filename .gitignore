@@ -115,6 +115,7 @@ readme-banner.svg
 .dual-graph-context/
 
 .playwright/
+.playwright-mcp/
 .superpowers/
 docs/screenshots/*.mov
 agent-runs/*

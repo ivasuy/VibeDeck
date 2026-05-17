@@ -313,6 +313,9 @@ async function cmdServe(argv) {
     }
   }
 
+  const { warmSkillMetadataIndex } = require("../lib/skills-warmup");
+  await warmSkillMetadataIndex({ lifecycle });
+
   let syncInterval = null;
   let syncing = false;
   const syncEveryMs = Number(process.env.VIBEDECK_SERVE_SYNC_MS || "1000");

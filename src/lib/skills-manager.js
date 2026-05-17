@@ -71,6 +71,10 @@ function discoverCachePath() {
   return path.join(dataDir(), "discover-cache.json");
 }
 
+function discoverRepoCacheDir() {
+  return path.join(dataDir(), "discover-cache");
+}
+
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -415,14 +419,27 @@ function mergeDiscoverSkills(baseSkills, hydratedSkills) {
   return dedupeSkills(Array.from(byKey.values()));
 }
 
+function metadataComplete(skills) {
+  return Array.isArray(skills) && skills.every((skill) => skill.metadataHydrated !== false);
+}
+
 function dedupeSkills(skills) {
   const byKey = new Map();
   for (const skill of skills) byKey.set(buildSkillKey(skill).toLowerCase(), skill);
   return Array.from(byKey.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function readDiscoverCache(fingerprint) {
-  const data = readJson(discoverCachePath(), null);
+function repoFingerprint(repo) {
+  const normalized = normalizeRepo(repo);
+  return `${normalized.owner}/${normalized.name}@${normalized.branch}`;
+}
+
+function repoCacheFile(repo) {
+  const key = repoFingerprint(repo).replace(/[^A-Za-z0-9._-]+/g, "__");
+  return path.join(discoverRepoCacheDir(), `${key}.json`);
+}
+
+function validateDiscoverCache(data, fingerprint) {
   if (!data || typeof data !== "object") return null;
   if (!Array.isArray(data.skills) && !Array.isArray(data.entries)) return null;
   if (data.fingerprint !== fingerprint) return null;
@@ -431,13 +448,50 @@ function readDiscoverCache(fingerprint) {
   return data;
 }
 
-function writeDiscoverCache(fingerprint, payload) {
-  writeJson(discoverCachePath(), { fingerprint, generatedAt: Date.now(), ...payload });
+function readLegacyDiscoverCache(fingerprint) {
+  return validateDiscoverCache(readJson(discoverCachePath(), null), fingerprint);
 }
 
-function invalidateDiscoverCache() {
+function readRepoDiscoverCache(repo) {
+  return validateDiscoverCache(readJson(repoCacheFile(repo), null), repoFingerprint(repo));
+}
+
+function writeRepoDiscoverCache(repo, payload) {
+  writeJson(repoCacheFile(repo), { fingerprint: repoFingerprint(repo), generatedAt: Date.now(), ...payload });
+}
+
+function readCombinedDiscoverCache(repos, fingerprint) {
+  if (!Array.isArray(repos) || repos.length === 0) return readLegacyDiscoverCache(fingerprint);
+  const caches = repos.map(readRepoDiscoverCache);
+  if (caches.every(Boolean)) {
+    const entries = dedupeSkills(caches.flatMap((cache) => (Array.isArray(cache.entries) ? cache.entries : [])));
+    const skills = dedupeSkills(caches.flatMap((cache) => (Array.isArray(cache.skills) ? cache.skills : [])));
+    return {
+      fingerprint,
+      generatedAt: Math.min(...caches.map((cache) => cache.generatedAt)),
+      entries,
+      skills,
+    };
+  }
+  return readLegacyDiscoverCache(fingerprint);
+}
+
+function writeRepoCachesFromCatalog(repos, entries, skills) {
+  for (const repo of repos) {
+    const repoKey = `${repo.owner}/${repo.name}`;
+    const repoEntries = dedupeSkills((entries || []).filter((entry) => `${entry.repoOwner}/${entry.repoName}` === repoKey));
+    if (!repoEntries.length) continue;
+    const repoSkills = mergeDiscoverSkills(
+      repoEntries,
+      (skills || []).filter((skill) => `${skill.repoOwner}/${skill.repoName}` === repoKey),
+    );
+    writeRepoDiscoverCache(repo, { entries: repoEntries, skills: repoSkills });
+  }
+}
+
+function invalidateRepoDiscoverCache(repo) {
   try {
-    fs.rmSync(discoverCachePath(), { force: true });
+    fs.rmSync(repoCacheFile(repo), { force: true });
   } catch (_e) {
     // ignore
   }
@@ -457,7 +511,7 @@ function filterDiscoveredSkills(skills, { source = "", q = "" } = {}) {
   });
 }
 
-async function discoverSkills({ force = false, offset = 0, limit = 10, source = "all", q = "" } = {}) {
+async function discoverSkills({ all = false, force = false, offset = 0, limit = 10, source = "all", q = "" } = {}) {
   const pagination = normalizePagination({ offset, limit }, { defaultLimit: 10, maxLimit: 50 });
   const { enabled, selectedSource, fingerprint } = discoverContext(source);
   if (!enabled.length) {
@@ -471,16 +525,48 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
     };
   }
 
-  const cached = readDiscoverCache(fingerprint);
+  let cached = readCombinedDiscoverCache(enabled, fingerprint);
+
+  if (all && (!cached || !metadataComplete(cached.skills))) {
+    await warmDiscoverCatalog({ force, source });
+    cached = readCombinedDiscoverCache(enabled, fingerprint);
+  }
+
+  if (all && cached && Array.isArray(cached.skills) && metadataComplete(cached.skills)) {
+    const sourceEntries = filterDiscoveredSkills(cached.skills, { source, q: "" });
+    const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+    return {
+      skills: filtered,
+      totalCount: filtered.length,
+      offset: 0,
+      limit: filtered.length,
+      cached: !force,
+      generatedAt: cached.generatedAt,
+      emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+      metadataComplete: true,
+    };
+  }
 
   if (!force) {
     if (cached?.entries) {
       const catalog = mergeCachedDiscoverMetadata(dedupeSkills(cached.entries), cached);
       const sourceEntries = filterDiscoveredSkills(catalog, { source, q: "" });
       const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+      if (all && metadataComplete(catalog)) {
+        return {
+          skills: filtered,
+          totalCount: filtered.length,
+          offset: 0,
+          limit: filtered.length,
+          cached: true,
+          generatedAt: cached.generatedAt,
+          emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+          metadataComplete: true,
+        };
+      }
       const hydratedPage = await hydrateDiscoverCatalog(pageItems(filtered, pagination), cached);
       const nextCatalog = mergeDiscoverSkills(catalog, hydratedPage);
-      writeDiscoverCache(fingerprint, { entries: dedupeSkills(cached.entries), skills: nextCatalog });
+      writeRepoCachesFromCatalog(enabled, dedupeSkills(cached.entries), nextCatalog);
       return {
         skills: hydratedPage,
         totalCount: filtered.length,
@@ -489,21 +575,21 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
         cached: true,
         generatedAt: cached.generatedAt,
         emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
-        metadataComplete: nextCatalog.every((skill) => skill.metadataHydrated !== false),
+        metadataComplete: metadataComplete(nextCatalog),
       };
     }
     if (cached?.skills) {
       const sourceEntries = filterDiscoveredSkills(cached.skills, { source, q: "" });
       const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
       return {
-        skills: pageItems(filtered, pagination),
+        skills: all ? filtered : pageItems(filtered, pagination),
         totalCount: filtered.length,
-        offset: pagination.offset,
-        limit: pagination.limit,
+        offset: all ? 0 : pagination.offset,
+        limit: all ? filtered.length : pagination.limit,
         cached: true,
         generatedAt: cached.generatedAt,
         emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
-        metadataComplete: cached.skills.every((skill) => skill.metadataHydrated !== false),
+        metadataComplete: metadataComplete(cached.skills),
       };
     }
   }
@@ -529,16 +615,16 @@ async function discoverSkills({ force = false, offset = 0, limit = 10, source = 
   const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
   const hydratedPage = await hydrateDiscoverCatalog(pageItems(filtered, pagination), cached);
   const nextCatalog = mergeDiscoverSkills(catalog, hydratedPage);
-  writeDiscoverCache(fingerprint, { entries: mergedEntries, skills: nextCatalog });
+  writeRepoCachesFromCatalog(enabled, mergedEntries, nextCatalog);
   return {
-    skills: hydratedPage,
+    skills: all && metadataComplete(nextCatalog) ? filtered : hydratedPage,
     totalCount: filtered.length,
-    offset: pagination.offset,
-    limit: pagination.limit,
+    offset: all && metadataComplete(nextCatalog) ? 0 : pagination.offset,
+    limit: all && metadataComplete(nextCatalog) ? filtered.length : pagination.limit,
     cached: false,
     generatedAt,
     emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
-    metadataComplete: nextCatalog.every((skill) => skill.metadataHydrated !== false),
+    metadataComplete: metadataComplete(nextCatalog),
   };
 }
 
@@ -556,28 +642,50 @@ function discoverContext(source = "all") {
   return { enabled, selectedSource, fingerprint };
 }
 
-async function warmDiscoverCatalog({ force = false, source = "all" } = {}) {
-  const { enabled, fingerprint } = discoverContext(source);
+async function warmDiscoverCatalog({ force = false, source = "all", onProgress = null } = {}) {
+  const { enabled, selectedSource, fingerprint } = discoverContext(source);
   if (!enabled.length) return { warmed: false, totalCount: 0 };
-  const cached = readDiscoverCache(fingerprint);
-  if (!force && cached?.skills?.length && cached.skills.every((skill) => skill.metadataHydrated !== false)) {
+  const cached = readCombinedDiscoverCache(enabled, fingerprint);
+  if (!force && cached && Array.isArray(cached.skills) && metadataComplete(cached.skills)) {
     return { warmed: false, totalCount: cached.skills.length };
   }
   if (discoverWarmTasks.has(fingerprint)) return discoverWarmTasks.get(fingerprint);
 
   const task = (async () => {
-    let entries = !force && Array.isArray(cached?.entries) ? dedupeSkills(cached.entries) : null;
-    if (!entries) {
-      const settled = await Promise.allSettled(enabled.map(discoverRepoSkillEntries));
-      const rateLimited = settled.find(
-        (result) => result.status === "rejected" && result.reason instanceof RateLimitError,
-      );
-      if (rateLimited) throw rateLimited.reason;
-      entries = dedupeSkills(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
+    const catalogs = [];
+    let warmed = false;
+    let index = 0;
+    for (const repo of enabled) {
+      index += 1;
+      onProgress?.({
+        index,
+        total: enabled.length,
+        unit: "repos",
+        current: `${repo.owner}/${repo.name}`,
+      });
+      const repoCache = !force ? readRepoDiscoverCache(repo) : null;
+      if (repoCache && Array.isArray(repoCache.skills) && metadataComplete(repoCache.skills)) {
+        catalogs.push(repoCache.skills);
+        continue;
+      }
+      let entries = !force && Array.isArray(repoCache?.entries) ? dedupeSkills(repoCache.entries) : null;
+      if (!entries) {
+        try {
+          entries = await discoverRepoSkillEntries(repo);
+        } catch (err) {
+          if (err instanceof RateLimitError) throw err;
+          if (selectedSource) throw repoReadError(repo);
+          writeRepoDiscoverCache(repo, { entries: [], skills: [], error: err?.message || String(err) });
+          continue;
+        }
+      }
+      const catalog = await hydrateDiscoverCatalog(entries, repoCache);
+      writeRepoDiscoverCache(repo, { entries, skills: catalog });
+      catalogs.push(catalog);
+      warmed = true;
     }
-    const catalog = await hydrateDiscoverCatalog(entries, cached);
-    writeDiscoverCache(fingerprint, { entries, skills: catalog });
-    return { warmed: true, totalCount: catalog.length };
+    const catalog = dedupeSkills(catalogs.flat());
+    return { warmed, totalCount: catalog.length };
   })().finally(() => discoverWarmTasks.delete(fingerprint));
 
   discoverWarmTasks.set(fingerprint, task);
@@ -953,12 +1061,18 @@ function listRepos() {
 function addRepo(repoInput) {
   const repo = validateRepoInput(repoInput);
   const registry = readRegistry();
+  const previous = registry.repos.find(
+    (entry) => `${entry.owner}/${entry.name}`.toLowerCase() === `${repo.owner}/${repo.name}`.toLowerCase(),
+  );
   registry.repos = registry.repos.filter(
     (entry) => `${entry.owner}/${entry.name}`.toLowerCase() !== `${repo.owner}/${repo.name}`.toLowerCase(),
   );
   registry.repos.push(repo);
   saveRegistry(registry);
-  invalidateDiscoverCache();
+  if (previous && repoFingerprint(previous) !== repoFingerprint(repo)) {
+    invalidateRepoDiscoverCache(previous);
+  }
+  invalidateRepoDiscoverCache(repo);
   return repo;
 }
 
@@ -981,7 +1095,6 @@ function removeRepo(owner, name) {
     (entry) => `${entry.owner}/${entry.name}`.toLowerCase() !== `${owner}/${name}`.toLowerCase(),
   );
   saveRegistry(registry);
-  invalidateDiscoverCache();
   return { ok: true };
 }
 

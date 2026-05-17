@@ -57,6 +57,11 @@ const EMPTY_INSTALLED_PAGE = {
   installedKeys: [],
   query: "",
 };
+const browseCatalogCache = new Map();
+
+export function __clearSkillsBrowseCatalogCacheForTests() {
+  browseCatalogCache.clear();
+}
 
 function getSkillKey(skill) {
   return `${skill.repoOwner || "local"}/${skill.repoName || "local"}:${skill.directory}`;
@@ -64,6 +69,10 @@ function getSkillKey(skill) {
 
 function buildPageCacheKey({ source, query, page }) {
   return `${source || SOURCE_ALL}::${String(query || "").trim()}::${Number(page) || 0}`;
+}
+
+function buildCatalogCacheKey({ source }) {
+  return `${source || SOURCE_ALL}::catalog`;
 }
 
 function matchesSkillText(skill, query) {
@@ -491,7 +500,6 @@ export function SkillsPage() {
   const installedRequestRef = useRef(0);
   const discoverRequestRef = useRef(0);
   const skillsShRequestRef = useRef(0);
-  const browsePageCacheRef = useRef(new Map());
   const skillsShPageCacheRef = useRef(new Map());
 
   const installedKeys = useMemo(() => {
@@ -542,39 +550,37 @@ export function SkillsPage() {
     setRepos(data.repos || []);
   }, []);
 
-  const loadDiscoverPage = useCallback(async ({ force = false, page = 0, q = "", sourceValue = SOURCE_ALL } = {}) => {
-    const queryText = String(q || "").trim();
+  const loadDiscoverPage = useCallback(async ({ force = false, sourceValue = SOURCE_ALL } = {}) => {
     const resolvedSource = sourceValue || SOURCE_ALL;
     const requestId = discoverRequestRef.current + 1;
     discoverRequestRef.current = requestId;
-    const cacheKey = buildPageCacheKey({ source: resolvedSource, query: queryText, page });
-    if (force) browsePageCacheRef.current.clear();
-    if (!force && browsePageCacheRef.current.has(cacheKey)) {
-      setDiscoverData(browsePageCacheRef.current.get(cacheKey));
+    const cacheKey = buildCatalogCacheKey({ source: resolvedSource });
+    if (force) browseCatalogCache.delete(cacheKey);
+    if (!force && browseCatalogCache.has(cacheKey)) {
+      setDiscoverData(browseCatalogCache.get(cacheKey));
       setBrowseLoading(false);
       return;
     }
     setBrowseLoading(true);
     try {
       const data = await discoverSkills({
+        all: true,
         force,
-        offset: page * SKILLS_PAGE_SIZE,
-        limit: SKILLS_PAGE_SIZE,
         source: resolvedSource,
-        q: queryText,
       });
       if (requestId !== discoverRequestRef.current) return;
       const nextData = {
         skills: data.skills || [],
         totalCount: Number(data.totalCount ?? (data.skills || []).length),
-        offset: Number(data.offset ?? page * SKILLS_PAGE_SIZE),
-        limit: Number(data.limit ?? SKILLS_PAGE_SIZE),
+        offset: 0,
+        limit: Number(data.limit ?? (data.skills || []).length),
         source: resolvedSource,
-        query: queryText,
+        query: "",
         emptyReason: data.emptyReason || "",
+        metadataComplete: data.metadataComplete !== false,
         loaded: true,
       };
-      browsePageCacheRef.current.set(cacheKey, nextData);
+      browseCatalogCache.set(cacheKey, nextData);
       setDiscoverData(nextData);
     } catch (err) {
       if (requestId === discoverRequestRef.current) throw err;
@@ -635,14 +641,12 @@ export function SkillsPage() {
     if (tab === "browse" && source !== SOURCE_SKILLSSH) {
       loadDiscoverPage({
         force: true,
-        page: browsePage,
-        q: debouncedQuery,
         sourceValue: source,
       }).catch((err) =>
         setError(err?.message || copy("skills.error.generic")),
       );
     }
-  }, [browsePage, debouncedQuery, loadDiscoverPage, loadInitial, source, tab]);
+  }, [loadDiscoverPage, loadInitial, source, tab]);
 
   useEffect(() => {
     loadInitial();
@@ -651,20 +655,16 @@ export function SkillsPage() {
   useEffect(() => {
     if (tab !== "browse") return;
     if (source === SOURCE_SKILLSSH) return;
-    const queryText = debouncedQuery.trim();
-    const requestedOffset = browsePage * SKILLS_PAGE_SIZE;
     if (
       discoverData.loaded &&
-      discoverData.offset === requestedOffset &&
-      discoverData.source === source &&
-      (discoverData.query || "") === queryText
+      discoverData.source === source
     ) {
       return;
     }
-    loadDiscoverPage({ page: browsePage, q: queryText, sourceValue: source }).catch((err) =>
+    loadDiscoverPage({ sourceValue: source }).catch((err) =>
       setError(err?.message || copy("skills.error.generic")),
     );
-  }, [browsePage, debouncedQuery, discoverData.offset, discoverData.query, discoverData.source, loadDiscoverPage, source, tab]);
+  }, [discoverData.loaded, discoverData.source, loadDiscoverPage, source, tab]);
 
   useEffect(() => {
     if (tab !== "browse") return;
@@ -832,6 +832,8 @@ export function SkillsPage() {
       const result = await addSkillRepo({ owner, name, branch: "main", enabled: true });
       const repo = result?.repo || { owner, name, branch: "main" };
       const repoKey = `${repo.owner}/${repo.name}`;
+      browseCatalogCache.delete(buildCatalogCacheKey({ source: SOURCE_ALL }));
+      browseCatalogCache.delete(buildCatalogCacheKey({ source: repoKey }));
       setRepoInput("");
       await loadRepos();
       setManageOpen(false);
@@ -841,7 +843,7 @@ export function SkillsPage() {
       setActiveSkillsShQuery("");
       setBrowsePage(0);
       setDiscoverData({ ...EMPTY_SKILLS_PAGE, source: repoKey, query: "" });
-      await loadDiscoverPage({ force: true, page: 0, q: "", sourceValue: repoKey });
+      await loadDiscoverPage({ force: true, sourceValue: repoKey });
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
@@ -851,6 +853,8 @@ export function SkillsPage() {
 
   const handleRemoveRepo = async (repo) => {
     const repoKey = `${repo.owner}/${repo.name}`;
+    browseCatalogCache.delete(buildCatalogCacheKey({ source: SOURCE_ALL }));
+    browseCatalogCache.delete(buildCatalogCacheKey({ source: repoKey }));
     setBusyKey(`repo:${repoKey}`);
     setError("");
     try {
@@ -864,8 +868,6 @@ export function SkillsPage() {
       }
       await loadDiscoverPage({
         force: true,
-        page: nextSource === source ? browsePage : 0,
-        q: debouncedQuery,
         sourceValue: nextSource,
       });
     } catch (err) {
@@ -890,8 +892,11 @@ export function SkillsPage() {
     (boundedMyPage + 1) * SKILLS_PAGE_SIZE,
   );
 
+  const isRepoBrowse = source !== SOURCE_SKILLSSH;
+  const activeBrowseData = isRepoBrowse ? discoverData : searchData;
+  const browseQueryText = isRepoBrowse ? debouncedQuery.trim() : activeSkillsShQuery.trim();
   const browseItems = useMemo(() => {
-    const page = source === SOURCE_SKILLSSH ? searchData : discoverData;
+    const page = isRepoBrowse ? discoverData : searchData;
     return (page.skills || []).map((skill) => {
       const fullKey = getSkillKey(skill).toLowerCase();
       const tail = String(skill.directory || "").split(/[\\/]/).pop().toLowerCase();
@@ -901,20 +906,29 @@ export function SkillsPage() {
         installed: installedKeys.has(fullKey) || (dirKey && installedKeys.has(dirKey)),
       };
     });
-  }, [discoverData, installedKeys, searchData, source]);
+  }, [discoverData, installedKeys, isRepoBrowse, searchData]);
 
-  const activeBrowseData = source === SOURCE_SKILLSSH ? searchData : discoverData;
-  const browseQueryText = source === SOURCE_SKILLSSH ? activeSkillsShQuery.trim() : debouncedQuery.trim();
-  const browseDataMatches =
-    activeBrowseData.loaded &&
-    activeBrowseData.offset === browsePage * SKILLS_PAGE_SIZE &&
-    (activeBrowseData.query || "") === browseQueryText &&
-    (source === SOURCE_SKILLSSH || activeBrowseData.source === source);
-  const visibleBrowseItems = browseDataMatches ? browseItems : [];
-  const browseTotal = Number(activeBrowseData.totalCount ?? browseItems.length);
+  const browseDataMatches = isRepoBrowse
+    ? activeBrowseData.loaded && activeBrowseData.source === source
+    : activeBrowseData.loaded &&
+      activeBrowseData.offset === browsePage * SKILLS_PAGE_SIZE &&
+      (activeBrowseData.query || "") === browseQueryText;
+  const visibleBrowseItems = useMemo(() => {
+    if (!browseDataMatches) return [];
+    if (!isRepoBrowse) return browseItems;
+    return browseItems.filter((skill) => matchesSkillText(skill, browseQueryText));
+  }, [browseDataMatches, browseItems, browseQueryText, isRepoBrowse]);
+  const browseTotal = isRepoBrowse
+    ? visibleBrowseItems.length
+    : Number(activeBrowseData.totalCount ?? browseItems.length);
   const browsePageCount = Math.max(1, Math.ceil(browseTotal / SKILLS_PAGE_SIZE));
   const boundedBrowsePage = Math.min(browsePage, browsePageCount - 1);
-  const pagedBrowseItems = visibleBrowseItems;
+  const pagedBrowseItems = isRepoBrowse
+    ? visibleBrowseItems.slice(
+        boundedBrowsePage * SKILLS_PAGE_SIZE,
+        (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE,
+      )
+    : visibleBrowseItems;
 
   const loadingNode = (
     <div className="flex min-h-0 flex-1 items-center justify-center">

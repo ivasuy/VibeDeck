@@ -48,7 +48,7 @@ export function getInstalledSkills(
 }
 
 export function discoverSkills(
-  options: { force?: boolean; offset?: number; limit?: number; source?: string; q?: string } = {},
+  options: { all?: boolean; force?: boolean; offset?: number; limit?: number; source?: string; q?: string } = {},
 ) {
   const { force, ...rest } = options;
   return fetchSkillsJson({ mode: "discover", ...(force ? { force: 1 } : {}), ...rest });

@@ -3006,6 +3006,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             const force = url.searchParams.get("force") === "1";
             const source = url.searchParams.get("source") || "all";
             json(res, await skills.discoverSkills({
+              all: url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true",
               force,
               offset,
               limit,

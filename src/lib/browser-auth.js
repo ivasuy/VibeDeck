@@ -133,29 +133,8 @@ async function startLocalCallbackServer({ callbackPath, timeoutMs, redirectUrl }
   return { callbackUrl, waitForCallback };
 }
 
-function detectDefaultBrowser() {
-  try {
-    const raw = cp.execFileSync("defaults", [
-      "read", "com.apple.LaunchServices/com.apple.launchservices.secure", "LSHandlers",
-    ], { encoding: "utf8", timeout: 3000 });
-    const match = raw.match(/https[\s\S]*?LSHandlerRoleAll\s*=\s*"([^"]+)"/);
-    if (!match) return null;
-    const bundleId = match[1].toLowerCase();
-    if (bundleId.includes("chrome")) return "Google Chrome";
-    if (bundleId.includes("safari")) return "Safari";
-    if (bundleId.includes("edgemac")) return "Microsoft Edge";
-    if (bundleId.includes("thebrowser") || bundleId.includes("arc")) return "Arc";
-    return null;
-  } catch (_e) {
-    return null;
-  }
-}
-
 function buildBrowserList() {
-  const all = ["Google Chrome", "Safari", "Microsoft Edge", "Arc"];
-  const def = detectDefaultBrowser();
-  if (!def) return all;
-  return [def, ...all.filter((b) => b !== def)];
+  return ["Google Chrome", "Safari", "Microsoft Edge", "Arc"];
 }
 
 function openInBrowser(url) {

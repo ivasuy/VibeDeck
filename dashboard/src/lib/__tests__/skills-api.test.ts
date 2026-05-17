@@ -50,15 +50,13 @@ describe("skills-api endpoint routing", () => {
   });
 
   it("uses vibedeck-skills for discover mode", async () => {
-    await discoverSkills({ force: true, offset: 20, limit: 10, source: "acme/skills", q: "agent" });
+    await discoverSkills({ all: true, force: true, source: "acme/skills" });
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain("/functions/vibedeck-skills");
     expect(url).toContain("mode=discover");
+    expect(url).toContain("all=true");
     expect(url).toContain("force=1");
-    expect(url).toContain("offset=20");
-    expect(url).toContain("limit=10");
     expect(url).toContain("source=acme%2Fskills");
-    expect(url).toContain("q=agent");
     expect(url).not.toContain(`/functions/${["token", "tracker"].join("")}-skills`);
   });
 

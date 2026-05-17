@@ -801,6 +801,11 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
     }
 
+    if (!opts.auto) {
+      const { warmSkillMetadataIndex } = require("../lib/skills-warmup");
+      await warmSkillMetadataIndex({ lifecycle });
+    }
+
     cursors.updatedAt = new Date().toISOString();
     await writeJson(cursorsPath, cursors);
 

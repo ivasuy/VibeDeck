@@ -5,7 +5,6 @@ import {
   Activity,
   BarChart3,
   GitBranch,
-  GitGraph,
   LayoutGrid,
   Puzzle,
   Settings as SettingsIcon,
@@ -30,7 +29,7 @@ const STORAGE_KEY = "tt.sidebarCollapsed";
 const LG_BREAKPOINT = 1024;
 const XL_BREAKPOINT = 1280;
 
-function getNavGroups() {
+export function getNavGroups() {
   return [
     {
       id: "work",
@@ -45,7 +44,6 @@ function getNavGroups() {
       id: "control",
       label: copy("nav.group.tools"),
       items: [
-        { id: "entire", to: "/entire", icon: GitGraph, label: copy("nav.entire") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
       ],
     },
@@ -504,12 +502,9 @@ function MobileTopBar({ onOpenDrawer }) {
 
 export function AppLayout({ children }) {
   const { collapsed, toggle } = useSidebarCollapsed();
-  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const openDrawer = useCallback(() => setDrawerOpen(true), []);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-  const normalizedPath = (location?.pathname || "/").replace(/\/+$/, "") || "/";
-  const fixedWorkbench = normalizedPath === "/entire";
 
   const nativeEmbed = useMemo(() => {
     if (typeof window === "undefined") return false;
@@ -542,7 +537,7 @@ export function AppLayout({ children }) {
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
-            <div className={cn("flex-1 min-h-0", fixedWorkbench ? "overflow-hidden" : "overflow-y-auto")}>
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {children}
             </div>
           </div>

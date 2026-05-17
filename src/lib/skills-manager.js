@@ -19,6 +19,7 @@ const TARGETS = {
 };
 
 const FETCH_TIMEOUT_MS = 20_000;
+const DISCOVER_METADATA_TIMEOUT_MS = 1_500;
 const DISCOVER_CONCURRENCY = 4;
 const DISCOVER_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const OWNER_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -165,9 +166,9 @@ async function fetchJson(url) {
   }
 }
 
-async function fetchText(url) {
+async function fetchText(url, timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       headers: { Accept: "text/plain", "User-Agent": "vibedeck-skills" },
@@ -221,6 +222,47 @@ function buildSkillKey(skill) {
   return `${skill.repoOwner}/${skill.repoName}:${skill.directory}`;
 }
 
+function normalizePagination({ offset = 0, limit = 10 } = {}, { defaultLimit = 10, maxLimit = 50 } = {}) {
+  const normalizedLimit = Number(limit);
+  const normalizedOffset = Number(offset);
+  return {
+    offset: Number.isFinite(normalizedOffset) && normalizedOffset > 0 ? Math.trunc(normalizedOffset) : 0,
+    limit:
+      Number.isFinite(normalizedLimit) && normalizedLimit > 0
+        ? Math.max(1, Math.min(maxLimit, Math.trunc(normalizedLimit)))
+        : defaultLimit,
+  };
+}
+
+function pageItems(items, pagination) {
+  return items.slice(pagination.offset, pagination.offset + pagination.limit);
+}
+
+function matchesSkillQuery(skill, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  return [
+    skill?.name,
+    skill?.directory,
+    skill?.description,
+    skill?.repoOwner,
+    skill?.repoName,
+  ].some((value) => String(value || "").toLowerCase().includes(q));
+}
+
+function buildInstalledKeys(skills) {
+  const keys = new Set();
+  for (const skill of skills) {
+    if (skill?.repoOwner && skill?.repoName) {
+      keys.add(buildSkillKey(skill).toLowerCase());
+      keys.add(`${skill.repoOwner}/${skill.repoName}:${skill.sourceDirectory || skill.directory}`.toLowerCase());
+    }
+    const tail = String(skill?.directory || "").split(/[\\/]/).pop().toLowerCase();
+    if (tail) keys.add(`dir:${tail}`);
+  }
+  return Array.from(keys).sort();
+}
+
 function normalizeRepo(repo) {
   return {
     owner: String(repo?.owner || "").trim(),
@@ -230,38 +272,79 @@ function normalizeRepo(repo) {
   };
 }
 
+function validateRepoInput(repoInput) {
+  const repo = normalizeRepo(repoInput);
+  if (!repo.owner || !repo.name) throw new Error("Repository owner and name are required");
+  if (!OWNER_NAME_PATTERN.test(repo.owner) || !OWNER_NAME_PATTERN.test(repo.name)) {
+    throw new Error("Repository owner and name may only contain letters, digits, '.', '_', or '-'");
+  }
+  if (!OWNER_NAME_PATTERN.test(repo.branch)) {
+    throw new Error("Repository branch contains unsupported characters");
+  }
+  return repo;
+}
+
+function repoReadError(repo) {
+  return new Error(
+    `Unable to read GitHub repository ${repo.owner}/${repo.name}. Check the owner/repository name and that it is public.`,
+  );
+}
+
 async function discoverRepoSkills(repoInput) {
+  const entries = await discoverRepoSkillEntries(repoInput);
+  const skills = await mapWithConcurrency(entries, DISCOVER_CONCURRENCY, hydrateDiscoverSkill);
+  return skills.filter(Boolean);
+}
+
+async function discoverRepoSkillEntries(repoInput) {
   const repo = normalizeRepo(repoInput);
   if (!repo.owner || !repo.name || !repo.enabled) return [];
   const { branch, tree } = await getRepoTree(repo);
-  const skillFiles = tree
+  return tree
     .filter((entry) => entry?.type === "blob" && /(^|\/)SKILL\.md$/i.test(entry.path || ""))
-    .slice(0, 200);
+    .slice(0, 200)
+    .map((entry) => {
+      const docPath = entry.path.replace(/\\/g, "/");
+      const directory = docPath.endsWith("/SKILL.md") ? docPath.slice(0, -"/SKILL.md".length) : repo.name;
+      const installName = installNameFromDirectory(directory || repo.name);
+      if (!installName) return null;
+      return {
+        key: `${repo.owner}/${repo.name}:${directory || repo.name}`,
+        name: installName,
+        description: "",
+        directory: directory || repo.name,
+        readmeUrl: githubDocUrl(repo.owner, repo.name, branch, docPath),
+        repoOwner: repo.owner,
+        repoName: repo.name,
+        repoBranch: branch,
+        docPath,
+      };
+    })
+    .filter(Boolean);
+}
 
-  const skills = await mapWithConcurrency(skillFiles, DISCOVER_CONCURRENCY, async (entry) => {
-    const docPath = entry.path.replace(/\\/g, "/");
-    const directory = docPath.endsWith("/SKILL.md") ? docPath.slice(0, -"/SKILL.md".length) : repo.name;
-    const installName = installNameFromDirectory(directory || repo.name);
-    if (!installName) return null;
-    let metadata = { name: installName, description: "" };
-    try {
-      metadata = readSkillMetadata(await fetchText(githubRawUrl(repo.owner, repo.name, branch, docPath)), installName);
-    } catch (error) {
-      if (error instanceof RateLimitError) throw error;
-      // Keep the skill discoverable even if metadata fetch fails.
-    }
-    return {
-      key: `${repo.owner}/${repo.name}:${directory || repo.name}`,
-      name: metadata.name,
-      description: metadata.description,
-      directory: directory || repo.name,
-      readmeUrl: githubDocUrl(repo.owner, repo.name, branch, docPath),
-      repoOwner: repo.owner,
-      repoName: repo.name,
-      repoBranch: branch,
-    };
-  });
-  return skills.filter(Boolean);
+async function hydrateDiscoverSkill(entry) {
+  if (!entry) return null;
+  const installName = installNameFromDirectory(entry.directory || entry.repoName);
+  if (!installName) return null;
+  let metadata = { name: entry.name || installName, description: entry.description || "" };
+  try {
+    metadata = readSkillMetadata(
+      await fetchText(
+        githubRawUrl(entry.repoOwner, entry.repoName, entry.repoBranch, entry.docPath),
+        DISCOVER_METADATA_TIMEOUT_MS,
+      ),
+      installName,
+    );
+  } catch (error) {
+    if (error instanceof RateLimitError) throw error;
+    // Keep the skill discoverable even if metadata fetch fails.
+  }
+  return {
+    ...entry,
+    name: metadata.name,
+    description: metadata.description,
+  };
 }
 
 function dedupeSkills(skills) {
@@ -272,15 +355,16 @@ function dedupeSkills(skills) {
 
 function readDiscoverCache(fingerprint) {
   const data = readJson(discoverCachePath(), null);
-  if (!data || typeof data !== "object" || !Array.isArray(data.skills)) return null;
+  if (!data || typeof data !== "object") return null;
+  if (!Array.isArray(data.skills) && !Array.isArray(data.entries)) return null;
   if (data.fingerprint !== fingerprint) return null;
   if (!Number.isFinite(data.generatedAt)) return null;
   if (Date.now() - data.generatedAt > DISCOVER_CACHE_TTL_MS) return null;
   return data;
 }
 
-function writeDiscoverCache(fingerprint, skills) {
-  writeJson(discoverCachePath(), { fingerprint, generatedAt: Date.now(), skills });
+function writeDiscoverCache(fingerprint, payload) {
+  writeJson(discoverCachePath(), { fingerprint, generatedAt: Date.now(), ...payload });
 }
 
 function invalidateDiscoverCache() {
@@ -291,10 +375,38 @@ function invalidateDiscoverCache() {
   }
 }
 
-async function discoverSkills({ force = false } = {}) {
+function normalizeDiscoverSource(source) {
+  const value = String(source || "").trim();
+  if (!value || value === "all") return "";
+  return value;
+}
+
+function filterDiscoveredSkills(skills, { source = "", q = "" } = {}) {
+  const selectedSource = normalizeDiscoverSource(source);
+  return skills.filter((skill) => {
+    if (selectedSource && `${skill.repoOwner}/${skill.repoName}` !== selectedSource) return false;
+    return matchesSkillQuery(skill, q);
+  });
+}
+
+async function discoverSkills({ force = false, offset = 0, limit = 10, source = "all", q = "" } = {}) {
+  const pagination = normalizePagination({ offset, limit }, { defaultLimit: 10, maxLimit: 50 });
   const registry = readRegistry();
-  const enabled = registry.repos.map(normalizeRepo).filter((repo) => repo.enabled);
-  if (!enabled.length) return { skills: [], cached: false, generatedAt: Date.now() };
+  const selectedSource = normalizeDiscoverSource(source);
+  const enabled = registry.repos
+    .map(normalizeRepo)
+    .filter((repo) => repo.enabled)
+    .filter((repo) => !selectedSource || `${repo.owner}/${repo.name}` === selectedSource);
+  if (!enabled.length) {
+    return {
+      skills: [],
+      totalCount: 0,
+      offset: pagination.offset,
+      limit: pagination.limit,
+      cached: false,
+      generatedAt: Date.now(),
+    };
+  }
 
   const fingerprint = enabled
     .map((repo) => `${repo.owner}/${repo.name}@${repo.branch}`)
@@ -303,19 +415,64 @@ async function discoverSkills({ force = false } = {}) {
 
   if (!force) {
     const cached = readDiscoverCache(fingerprint);
-    if (cached) return { skills: cached.skills, cached: true, generatedAt: cached.generatedAt };
+    if (cached?.skills) {
+      const sourceEntries = filterDiscoveredSkills(cached.skills, { source, q: "" });
+      const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+      return {
+        skills: pageItems(filtered, pagination),
+        totalCount: filtered.length,
+        offset: pagination.offset,
+        limit: pagination.limit,
+        cached: true,
+        generatedAt: cached.generatedAt,
+        emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+      };
+    }
+    if (cached?.entries) {
+      const sourceEntries = filterDiscoveredSkills(dedupeSkills(cached.entries), { source, q: "" });
+      const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+      const page = pageItems(filtered, pagination);
+      return {
+        skills: (await mapWithConcurrency(page, DISCOVER_CONCURRENCY, hydrateDiscoverSkill)).filter(Boolean),
+        totalCount: filtered.length,
+        offset: pagination.offset,
+        limit: pagination.limit,
+        cached: true,
+        generatedAt: cached.generatedAt,
+        emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+      };
+    }
   }
 
-  const settled = await Promise.allSettled(enabled.map(discoverRepoSkills));
-  const merged = dedupeSkills(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
-  if (!merged.length) {
+  const settled = await Promise.allSettled(enabled.map(discoverRepoSkillEntries));
+  if (selectedSource && settled.every((result) => result.status === "rejected")) {
+    const rateLimited = settled.find(
+      (result) => result.status === "rejected" && result.reason instanceof RateLimitError,
+    );
+    if (rateLimited) throw rateLimited.reason;
+    throw repoReadError(enabled[0]);
+  }
+  const mergedEntries = dedupeSkills(settled.flatMap((result) => (result.status === "fulfilled" ? result.value : [])));
+  if (!mergedEntries.length) {
     const rateLimited = settled.find(
       (result) => result.status === "rejected" && result.reason instanceof RateLimitError,
     );
     if (rateLimited) throw rateLimited.reason;
   }
-  writeDiscoverCache(fingerprint, merged);
-  return { skills: merged, cached: false, generatedAt: Date.now() };
+  writeDiscoverCache(fingerprint, { entries: mergedEntries });
+  const generatedAt = Date.now();
+  const sourceEntries = filterDiscoveredSkills(mergedEntries, { source, q: "" });
+  const filtered = sourceEntries.filter((skill) => matchesSkillQuery(skill, q));
+  const page = pageItems(filtered, pagination);
+  return {
+    skills: (await mapWithConcurrency(page, DISCOVER_CONCURRENCY, hydrateDiscoverSkill)).filter(Boolean),
+    totalCount: filtered.length,
+    offset: pagination.offset,
+    limit: pagination.limit,
+    cached: false,
+    generatedAt,
+    emptyReason: selectedSource && sourceEntries.length === 0 ? "no_skill_files" : "",
+  };
 }
 
 function removePath(targetPath) {
@@ -415,6 +572,19 @@ function listInstalledSkills() {
   }
 
   return [...managed, ...unmanaged.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function listInstalledSkillsPage({ q = "", offset = 0, limit = 10 } = {}) {
+  const pagination = normalizePagination({ offset, limit }, { defaultLimit: 10, maxLimit: 100 });
+  const skills = listInstalledSkills();
+  const filtered = skills.filter((skill) => matchesSkillQuery(skill, q));
+  return {
+    skills: pageItems(filtered, pagination),
+    totalCount: filtered.length,
+    offset: pagination.offset,
+    limit: pagination.limit,
+    installedKeys: buildInstalledKeys(skills),
+  };
 }
 
 async function installSkill(skillInput, targetIds = ["claude", "codex"]) {
@@ -660,14 +830,7 @@ function listRepos() {
 }
 
 function addRepo(repoInput) {
-  const repo = normalizeRepo(repoInput);
-  if (!repo.owner || !repo.name) throw new Error("Repository owner and name are required");
-  if (!OWNER_NAME_PATTERN.test(repo.owner) || !OWNER_NAME_PATTERN.test(repo.name)) {
-    throw new Error("Repository owner and name may only contain letters, digits, '.', '_', or '-'");
-  }
-  if (!OWNER_NAME_PATTERN.test(repo.branch)) {
-    throw new Error("Repository branch contains unsupported characters");
-  }
+  const repo = validateRepoInput(repoInput);
   const registry = readRegistry();
   registry.repos = registry.repos.filter(
     (entry) => `${entry.owner}/${entry.name}`.toLowerCase() !== `${repo.owner}/${repo.name}`.toLowerCase(),
@@ -676,6 +839,19 @@ function addRepo(repoInput) {
   saveRegistry(registry);
   invalidateDiscoverCache();
   return repo;
+}
+
+async function addRepoChecked(repoInput) {
+  const repo = validateRepoInput(repoInput);
+  let detectedBranch = repo.branch;
+  try {
+    const tree = await getRepoTree(repo);
+    detectedBranch = tree.branch || detectedBranch;
+  } catch (error) {
+    if (error instanceof RateLimitError) throw error;
+    throw repoReadError(repo);
+  }
+  return addRepo({ ...repo, branch: detectedBranch });
 }
 
 function removeRepo(owner, name) {
@@ -718,17 +894,21 @@ async function searchSkillsSh(query, limit = 20, offset = 0) {
   return {
     query: String(data?.query || q),
     totalCount: Number(data?.count || skills.length),
+    offset: Math.max(0, Number(offset) || 0),
+    limit: Math.max(1, Math.min(50, Number(limit) || 20)),
     skills,
   };
 }
 
 module.exports = {
   addRepo,
+  addRepoChecked,
   discoverSkills,
   deleteLocalSkill,
   importLocalSkill,
   installSkill,
   listInstalledSkills,
+  listInstalledSkillsPage,
   listRepos,
   removeRepo,
   restoreSkill,

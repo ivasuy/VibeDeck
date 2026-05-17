@@ -495,11 +495,16 @@ shared.action.cancel,shared,*,Shared,action_cancel,Cancel,,active
 skills.empty.my,ui,SkillsPage,SkillsPage,empty_my,No skills yet. Open Discover to search and install.,,active
 skills.empty.my_cta,ui,SkillsPage,SkillsPage,empty_my_cta,Browse,,active
 skills.empty.browse,ui,SkillsPage,SkillsPage,empty_browse,No skills found.,,active
+skills.empty.repo_no_skills,ui,SkillsPage,SkillsPage,empty_repo_no_skills,No SKILL.md files found in {{repo}}. This repository may contain markdown docs, but VibeDeck can only install folders that include SKILL.md.,,active
 skills.empty.search,ui,SkillsPage,SkillsPage,empty_search,No matching skills found.,,active
 skills.repo.placeholder,ui,SkillsPage,SkillsPage,repo_placeholder,owner/repository,,active
 skills.repo.add,ui,SkillsPage,SkillsPage,repo_add,Add repository,,active
+skills.repo.adding,ui,SkillsPage,SkillsPage,repo_adding,Checking repository…,,active
+skills.repo.done,ui,SkillsPage,SkillsPage,repo_done,Done,,active
 skills.repo.invalid,ui,SkillsPage,SkillsPage,repo_invalid,Use owner/repository or a GitHub repository URL.,,active
 skills.repo.remove,ui,SkillsPage,RepoRow,repo_remove,Remove repository,,active
+skills.repo.subtitle,ui,SkillsPage,SkillsPage,repo_subtitle,Only repositories with SKILL.md files can be installed.,,active
+skills.repo.title,ui,SkillsPage,SkillsPage,repo_title,Skill repositories,,active
 settings.appearance.language.label,ui,SettingsPage,SettingsPage,language_label,Language,,active
 settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,Use System to follow your computer language by default.,,active
 settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,System,,active

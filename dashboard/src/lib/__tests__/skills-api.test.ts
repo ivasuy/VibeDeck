@@ -33,10 +33,13 @@ describe("skills-api endpoint routing", () => {
   });
 
   it("uses vibedeck-skills for installed mode", async () => {
-    await getInstalledSkills();
+    await getInstalledSkills({ offset: 10, limit: 10, q: "planner" });
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain("/functions/vibedeck-skills");
     expect(url).toContain("mode=installed");
+    expect(url).toContain("offset=10");
+    expect(url).toContain("limit=10");
+    expect(url).toContain("q=planner");
     expect(url).not.toContain(`/functions/${["token", "tracker"].join("")}-skills`);
   });
 
@@ -49,11 +52,15 @@ describe("skills-api endpoint routing", () => {
   });
 
   it("uses vibedeck-skills for discover mode", async () => {
-    await discoverSkills({ force: true });
+    await discoverSkills({ force: true, offset: 20, limit: 10, source: "acme/skills", q: "agent" });
     const url = String(fetchMock.mock.calls[0][0]);
     expect(url).toContain("/functions/vibedeck-skills");
     expect(url).toContain("mode=discover");
     expect(url).toContain("force=1");
+    expect(url).toContain("offset=20");
+    expect(url).toContain("limit=10");
+    expect(url).toContain("source=acme%2Fskills");
+    expect(url).toContain("q=agent");
     expect(url).not.toContain(`/functions/${["token", "tracker"].join("")}-skills`);
   });
 

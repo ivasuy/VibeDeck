@@ -37,6 +37,7 @@ vi.mock("../lib/skills-api", () => ({
 }));
 
 beforeEach(() => {
+  vi.resetAllMocks();
   vi.mocked(getInstalledSkills).mockResolvedValue({
     targets: [{ id: "claude", label: "Claude" }],
     skills: [
@@ -49,6 +50,10 @@ beforeEach(() => {
         managed: true,
       },
     ],
+    totalCount: 1,
+    offset: 0,
+    limit: 10,
+    installedKeys: ["local/local:sample-skill", "dir:sample-skill"],
   });
   vi.mocked(getSkillRepos).mockResolvedValue({ repos: [] });
   vi.mocked(discoverSkills).mockResolvedValue({ skills: [] });
@@ -67,6 +72,16 @@ afterEach(() => {
   cleanup();
 });
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("SkillsPage", () => {
   it("renders installed skills instead of the empty state", async () => {
     render(<SkillsPage />);
@@ -80,17 +95,40 @@ describe("SkillsPage", () => {
   });
 
   it("paginates installed skills at 10 items per page", async () => {
-    vi.mocked(getInstalledSkills).mockResolvedValue({
-      targets: [{ id: "claude", label: "Claude" }],
-      skills: Array.from({ length: 11 }, (_, index) => ({
-        id: `skill-${index + 1}`,
-        name: `Skill ${index + 1}`,
-        directory: `skill-${index + 1}`,
-        description: `Description ${index + 1}`,
-        targets: ["claude"],
-        managed: true,
-      })),
-    });
+    vi.mocked(getInstalledSkills)
+      .mockResolvedValueOnce({
+        targets: [{ id: "claude", label: "Claude" }],
+        skills: Array.from({ length: 10 }, (_, index) => ({
+          id: `skill-${index + 1}`,
+          name: `Skill ${index + 1}`,
+          directory: `skill-${index + 1}`,
+          description: `Description ${index + 1}`,
+          targets: ["claude"],
+          managed: true,
+        })),
+        totalCount: 11,
+        offset: 0,
+        limit: 10,
+        installedKeys: [],
+      })
+      .mockResolvedValueOnce({
+        targets: [{ id: "claude", label: "Claude" }],
+        skills: [
+          {
+            id: "skill-11",
+            name: "Skill 11",
+            directory: "skill-11",
+            description: "Description 11",
+            targets: ["claude"],
+            managed: true,
+          },
+        ],
+        totalCount: 11,
+        offset: 10,
+        limit: 10,
+        installedKeys: [],
+      });
+    vi.mocked(getSkillRepos).mockResolvedValue({ repos: [] });
 
     render(<SkillsPage />);
 
@@ -98,36 +136,64 @@ describe("SkillsPage", () => {
     expect(screen.getByText("Skill 10")).toBeTruthy();
     expect(screen.queryByText("Skill 11")).toBeNull();
     expect(screen.getByText("1-10 of 11")).toBeTruthy();
+    await waitFor(() => {
+      expect(getInstalledSkills).toHaveBeenCalledWith({ offset: 0, limit: 10, q: "" });
+    });
 
     await userEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
 
     expect(await screen.findByText("Skill 11")).toBeTruthy();
     expect(screen.queryByText("Skill 1")).toBeNull();
     expect(screen.getByText("11-11 of 11")).toBeTruthy();
+    await waitFor(() => {
+      expect(getInstalledSkills).toHaveBeenCalledWith({ offset: 10, limit: 10, q: "" });
+    });
   });
 
   it("filters installed skills with the My Skills search bar before pagination", async () => {
-    vi.mocked(getInstalledSkills).mockResolvedValue({
-      targets: [{ id: "claude", label: "Claude" }],
-      skills: [
-        {
-          id: "alpha",
-          name: "Alpha Skill",
-          directory: "alpha",
-          description: "Visible when searching alpha.",
-          targets: ["claude"],
-          managed: true,
-        },
-        {
-          id: "beta",
-          name: "Beta Skill",
-          directory: "beta",
-          description: "Different skill.",
-          targets: ["claude"],
-          managed: true,
-        },
-      ],
-    });
+    vi.mocked(getInstalledSkills)
+      .mockResolvedValueOnce({
+        targets: [{ id: "claude", label: "Claude" }],
+        skills: [
+          {
+            id: "alpha",
+            name: "Alpha Skill",
+            directory: "alpha",
+            description: "Visible when searching alpha.",
+            targets: ["claude"],
+            managed: true,
+          },
+          {
+            id: "beta",
+            name: "Beta Skill",
+            directory: "beta",
+            description: "Different skill.",
+            targets: ["claude"],
+            managed: true,
+          },
+        ],
+        totalCount: 2,
+        offset: 0,
+        limit: 10,
+        installedKeys: [],
+      })
+      .mockResolvedValueOnce({
+        targets: [{ id: "claude", label: "Claude" }],
+        skills: [
+          {
+            id: "alpha",
+            name: "Alpha Skill",
+            directory: "alpha",
+            description: "Visible when searching alpha.",
+            targets: ["claude"],
+            managed: true,
+          },
+        ],
+        totalCount: 1,
+        offset: 0,
+        limit: 10,
+        installedKeys: [],
+      });
 
     render(<SkillsPage />);
 
@@ -140,26 +206,58 @@ describe("SkillsPage", () => {
     );
 
     await waitFor(() => {
+      expect(getInstalledSkills).toHaveBeenCalledWith({ offset: 0, limit: 10, q: "alpha" });
+    });
+    await waitFor(() => {
       expect(screen.queryByText("Beta Skill")).toBeNull();
     });
     expect(screen.getByText("Alpha Skill")).toBeTruthy();
   });
 
-  it("paginates browse skills at 10 cards per page", async () => {
+  it("paginates browse skills by requesting each page from the API", async () => {
     vi.mocked(getSkillRepos).mockResolvedValue({
       repos: [{ owner: "acme", name: "skills", branch: "main" }],
     });
-    vi.mocked(discoverSkills).mockResolvedValue({
-      skills: Array.from({ length: 12 }, (_, index) => ({
-        id: `browse-${index + 1}`,
-        key: `browse-${index + 1}`,
-        name: `Browse Skill ${index + 1}`,
-        directory: `browse-skill-${index + 1}`,
-        description: `Browse description ${index + 1}`,
-        repoOwner: "acme",
-        repoName: "skills",
-      })),
-    });
+    vi.mocked(discoverSkills)
+      .mockResolvedValueOnce({
+        skills: Array.from({ length: 10 }, (_, index) => ({
+          id: `browse-${index + 1}`,
+          key: `browse-${index + 1}`,
+          name: `Browse Skill ${index + 1}`,
+          directory: `browse-skill-${index + 1}`,
+          description: `Browse description ${index + 1}`,
+          repoOwner: "acme",
+          repoName: "skills",
+        })),
+        totalCount: 12,
+        offset: 0,
+        limit: 10,
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "browse-11",
+            key: "browse-11",
+            name: "Browse Skill 11",
+            directory: "browse-skill-11",
+            description: "Browse description 11",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+          {
+            id: "browse-12",
+            key: "browse-12",
+            name: "Browse Skill 12",
+            directory: "browse-skill-12",
+            description: "Browse description 12",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 12,
+        offset: 10,
+        limit: 10,
+      });
 
     render(<SkillsPage />);
 
@@ -169,6 +267,15 @@ describe("SkillsPage", () => {
     expect(screen.getByText("Browse Skill 10")).toBeTruthy();
     expect(screen.queryByText("Browse Skill 11")).toBeNull();
     expect(screen.getByText("1-10 of 12")).toBeTruthy();
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: false,
+        offset: 0,
+        limit: 10,
+        source: "all",
+        q: "",
+      });
+    });
 
     await userEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
 
@@ -176,5 +283,266 @@ describe("SkillsPage", () => {
     expect(screen.getByText("Browse Skill 12")).toBeTruthy();
     expect(screen.queryByText("Browse Skill 1")).toBeNull();
     expect(screen.getByText("11-12 of 12")).toBeTruthy();
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: false,
+        offset: 10,
+        limit: 10,
+        source: "all",
+        q: "",
+      });
+    });
   });
+
+  it("paginates skills.sh search results through the API", async () => {
+    vi.mocked(searchSkills)
+      .mockResolvedValueOnce({
+        skills: Array.from({ length: 10 }, (_, index) => ({
+          id: `remote-${index + 1}`,
+          key: `remote-${index + 1}`,
+          name: `Remote Skill ${index + 1}`,
+          directory: `remote-skill-${index + 1}`,
+          repoOwner: "remote",
+          repoName: "skills",
+        })),
+        totalCount: 12,
+        offset: 0,
+        limit: 10,
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "remote-11",
+            key: "remote-11",
+            name: "Remote Skill 11",
+            directory: "remote-skill-11",
+            repoOwner: "remote",
+            repoName: "skills",
+          },
+          {
+            id: "remote-12",
+            key: "remote-12",
+            name: "Remote Skill 12",
+            directory: "remote-skill-12",
+            repoOwner: "remote",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 12,
+        offset: 10,
+        limit: 10,
+      });
+
+    render(<SkillsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: copy("skills.tab.browse") }));
+    await userEvent.click(screen.getByRole("tab", { name: copy("skills.mode.skillssh") }));
+    await userEvent.type(screen.getByPlaceholderText(copy("skills.browse.placeholder_skillssh")), "planner");
+    await userEvent.click(screen.getByRole("button", { name: copy("skills.action.search") }));
+
+    expect(await screen.findByText("Remote Skill 1")).toBeTruthy();
+    expect(screen.getByText("Remote Skill 10")).toBeTruthy();
+    expect(screen.queryByText("Remote Skill 11")).toBeNull();
+    expect(searchSkills).toHaveBeenCalledWith("planner", 0, 10);
+
+    await userEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
+
+    expect(await screen.findByText("Remote Skill 11")).toBeTruthy();
+    expect(searchSkills).toHaveBeenCalledWith("planner", 10, 10);
+  });
+
+  it("ignores stale browse page responses after the user changes pages", async () => {
+    const slowSecondPage = deferred();
+    vi.mocked(getSkillRepos).mockResolvedValue({
+      repos: [{ owner: "acme", name: "skills", branch: "main" }],
+    });
+    vi.mocked(discoverSkills)
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "browse-1",
+            key: "browse-1",
+            name: "Browse Skill 1",
+            directory: "browse-skill-1",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 11,
+        offset: 0,
+        limit: 10,
+      })
+      .mockReturnValueOnce(slowSecondPage.promise)
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "browse-1",
+            key: "browse-1",
+            name: "Browse Skill 1",
+            directory: "browse-skill-1",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 11,
+        offset: 0,
+        limit: 10,
+      });
+
+    render(<SkillsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: copy("skills.tab.browse") }));
+    expect(await screen.findByText("Browse Skill 1")).toBeTruthy();
+
+    await userEvent.click(screen.getByRole("button", { name: copy("details.pagination.next") }));
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: false,
+        offset: 10,
+        limit: 10,
+        source: "all",
+        q: "",
+      });
+    });
+    await userEvent.click(screen.getByRole("button", { name: copy("details.pagination.prev") }));
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: false,
+        offset: 0,
+        limit: 10,
+        source: "all",
+        q: "",
+      });
+    });
+
+    slowSecondPage.resolve({
+      skills: [
+        {
+          id: "browse-11",
+          key: "browse-11",
+          name: "Browse Skill 11",
+          directory: "browse-skill-11",
+          repoOwner: "acme",
+          repoName: "skills",
+        },
+      ],
+      totalCount: 11,
+      offset: 10,
+      limit: 10,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Browse Skill 1")).toBeTruthy();
+      expect(screen.queryByText("Browse Skill 11")).toBeNull();
+    });
+  });
+
+  it("searches repository skills through the paged discover API", async () => {
+    vi.mocked(getSkillRepos).mockResolvedValue({
+      repos: [{ owner: "acme", name: "skills", branch: "main" }],
+    });
+    vi.mocked(discoverSkills)
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "browse-1",
+            key: "browse-1",
+            name: "Browse Skill 1",
+            directory: "browse-skill-1",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 1,
+        offset: 0,
+        limit: 10,
+      })
+      .mockResolvedValueOnce({
+        skills: [
+          {
+            id: "alpha",
+            key: "alpha",
+            name: "Alpha Skill",
+            directory: "alpha",
+            repoOwner: "acme",
+            repoName: "skills",
+          },
+        ],
+        totalCount: 1,
+        offset: 0,
+        limit: 10,
+      });
+
+    render(<SkillsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: copy("skills.tab.browse") }));
+    expect(await screen.findByText("Browse Skill 1")).toBeTruthy();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(copy("skills.browse.placeholder_all")),
+      "alpha",
+    );
+
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: false,
+        offset: 0,
+        limit: 10,
+        source: "all",
+        q: "alpha",
+      });
+    });
+    expect(await screen.findByText("Alpha Skill")).toBeTruthy();
+    expect(screen.queryByText("Browse Skill 1")).toBeNull();
+  });
+
+  it("adds a repository by fetching only the new source and closing source management", async () => {
+    vi.mocked(getSkillRepos)
+      .mockResolvedValueOnce({ repos: [] })
+      .mockResolvedValueOnce({
+        repos: [{ owner: "VoltAgent", name: "awesome-design-md", branch: "main" }],
+      });
+    vi.mocked(addSkillRepo).mockResolvedValue({
+      ok: true,
+      repo: { owner: "VoltAgent", name: "awesome-design-md", branch: "main" },
+    });
+    vi.mocked(discoverSkills).mockResolvedValue({
+      skills: [],
+      totalCount: 0,
+      offset: 0,
+      limit: 10,
+      emptyReason: "no_skill_files",
+    });
+
+    render(<SkillsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: copy("skills.tab.browse") }));
+    await userEvent.type(screen.getByPlaceholderText(copy("skills.repo.placeholder")), "VoltAgent/awesome-design-md");
+    await userEvent.click(screen.getByRole("button", { name: copy("skills.repo.add") }));
+
+    await waitFor(() => {
+      expect(addSkillRepo).toHaveBeenCalledWith({
+        owner: "VoltAgent",
+        name: "awesome-design-md",
+        branch: "main",
+        enabled: true,
+      });
+    });
+    await waitFor(() => {
+      expect(discoverSkills).toHaveBeenCalledWith({
+        force: true,
+        offset: 0,
+        limit: 10,
+        source: "VoltAgent/awesome-design-md",
+        q: "",
+      });
+    });
+    expect(
+      await screen.findByText((text) =>
+        text.includes("No SKILL.md files found in VoltAgent/awesome-design-md"),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByPlaceholderText(copy("skills.repo.placeholder"))).toBeNull();
+  });
+
 });

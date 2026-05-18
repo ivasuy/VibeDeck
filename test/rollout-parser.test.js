@@ -2364,6 +2364,40 @@ test("parseClaudeIncremental emits Claude gitBranch when one clean branch is pre
   }
 });
 
+test("parseClaudeIncremental emits Claude gitBranch when branch appears on non-usage line", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-claude-"));
+  try {
+    const claudePath = path.join(tmp, "agent-claude.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+
+    const lines = [
+      buildClaudeBranchOnlyLine({ ts: "2026-01-02T02:04:59.000Z", gitBranch: "main" }),
+      buildClaudeUsageLine({
+        ts: "2026-01-02T02:05:00.000Z",
+        input: 10,
+        output: 5,
+        model: "claude-sonnet-4-5",
+      }),
+    ];
+    await fs.writeFile(claudePath, lines.join("\n") + "\n", "utf8");
+
+    await parseClaudeIncremental({
+      projectFiles: [{ path: claudePath, source: "claude" }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const updateEvent = events.find((event) => event.kind === "update" && event.provider === "claude");
+    assert.ok(updateEvent);
+    assert.equal(updateEvent.branch, "main");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 function buildCodexGitBranchLine(branch) {
   return JSON.stringify({
     payload: {
@@ -2425,6 +2459,15 @@ function buildEveryCodeTokenCountLine({ ts, last, total }) {
         },
       },
     },
+  });
+}
+
+function buildClaudeBranchOnlyLine({ ts, gitBranch }) {
+  return JSON.stringify({
+    timestamp: ts,
+    type: "assistant",
+    gitBranch,
+    message: { content: "branch metadata" },
   });
 }
 

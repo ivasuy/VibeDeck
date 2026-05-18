@@ -546,6 +546,7 @@ test('branch usage facts keep mixed provider branch sessions unknown', async () 
     const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].branch, 'Unknown branch');
+    assert.equal(rows[0].total_cost_usd, 0.1);
   } finally {
     tmp.cleanup();
   }

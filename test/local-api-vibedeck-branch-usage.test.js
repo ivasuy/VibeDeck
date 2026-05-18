@@ -261,6 +261,113 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
   }
 });
 
+test('branch usage hides ref-like branch labels from user-facing output', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-usage-unsafe-'));
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'repo');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['main']);
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'safe-main',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'C',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 100,
+        total_cost_usd: 1.0,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'unsafe-tag',
+        started_at: '2026-05-10T01:00:00.000Z',
+        ended_at: '2026-05-10T01:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'tags/v0.1.1~73',
+        branch_resolution_tier: 'C',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'unsafe-head',
+        started_at: '2026-05-10T02:00:00.000Z',
+        ended_at: '2026-05-10T02:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'HEAD',
+        branch_resolution_tier: 'C',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 5,
+        total_cost_usd: 0.05,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'unsafe-detached',
+        started_at: '2026-05-10T03:00:00.000Z',
+        ended_at: '2026-05-10T03:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'detached@abcdef',
+        branch_resolution_tier: 'C',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 6,
+        total_cost_usd: 0.06,
+      });
+    } finally {
+      db.close();
+    }
+
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    const { queryBranchUsage } = require('../src/lib/branch-usage');
+    const body = queryBranchUsage(dbPath, {
+      repo: fssync.realpathSync(repoRoot),
+      includeArchived: false,
+      includeUnattributed: false,
+      limit: 100,
+    });
+    const branches = body.repos[0].branches;
+    const names = branches.map((entry) => entry.branch).sort();
+
+    assert.deepEqual(names, ['Unknown branch', 'main']);
+    const unknown = branches.find((entry) => entry.branch === 'Unknown branch');
+    assert.ok(unknown);
+    assert.equal(unknown.branch_kind, 'unknown_git');
+    assert.equal(unknown.total_tokens, 21);
+    assertClose(unknown.total_cost_usd, 0.21);
+    assert.equal(
+      branches.some((entry) =>
+        entry.branch === 'HEAD'
+        || entry.branch.startsWith('tags/')
+        || entry.branch.startsWith('origin/')
+        || entry.branch.startsWith('remotes/')
+        || entry.branch.startsWith('detached@')
+        || entry.branch.startsWith('refs/'),
+      ),
+      false,
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('branch usage summary does not shell out to git branches by default', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-no-git-hot-path-'));
   const cp = require('node:child_process');

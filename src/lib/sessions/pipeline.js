@@ -12,6 +12,7 @@ const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
 const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
 const { upsertEntireLink } = require('./entire-links');
+const { readProviderBranchFromSessionFile, cleanProviderBranch } = require('./provider-branch');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -99,15 +100,35 @@ function recoverCodexSessionMetadata(event) {
   return {};
 }
 
+function canReadProviderBranch({ provider, session_id } = {}) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (!(normalizedProvider === 'codex' || normalizedProvider === 'every-code' || normalizedProvider === 'claude')) {
+    return false;
+  }
+  return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
+}
+
+function recoverProviderBranchFromSessionMetadata(event) {
+  if (!event || typeof event !== 'object') return null;
+  if (!canReadProviderBranch({ provider: event.provider, session_id: event.session_id })) return null;
+  const recovered = readProviderBranchFromSessionFile({
+    provider: event.provider,
+    session_id: event.session_id,
+  });
+  return cleanProviderBranch(recovered && recovered.branch);
+}
+
 function enrichEventFromSessionMetadata(event) {
   if (!event || typeof event !== 'object') return event;
-  if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model)) return event;
+  if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model) && isNonEmptyString(event.branch)) return event;
   const recovered = recoverCodexSessionMetadata(event);
-  if (!recovered.cwd && !recovered.model) return event;
+  const providerBranch = isNonEmptyString(event.branch) ? null : recoverProviderBranchFromSessionMetadata(event);
+  if (!recovered.cwd && !recovered.model && !providerBranch) return event;
   return {
     ...event,
     cwd: isNonEmptyString(event.cwd) ? event.cwd : recovered.cwd ?? event.cwd,
     model: isNonEmptyString(event.model) ? event.model : recovered.model ?? event.model,
+    branch: isNonEmptyString(event.branch) ? event.branch : providerBranch ?? event.branch,
   };
 }
 
@@ -347,6 +368,18 @@ async function processSessionEvent(dbPath, event) {
     reopenOrphanedSession,
     preserveExistingTerminalEnd,
   });
+  const providerBranchFromEvent = cleanProviderBranch(event.branch);
+  const providerBranchFromLog = providerBranchFromEvent
+    ? null
+    : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
+      ? cleanProviderBranch(
+          (readProviderBranchFromSessionFile({
+            provider: session.provider,
+            session_id: session.session_id,
+          }) || {}).branch,
+        )
+      : null;
+  const providerBranch = providerBranchFromEvent || providerBranchFromLog || null;
   const branchRes = needsBranchResolution
     ? await resolveBranchForSession({
         provider: session.provider,
@@ -355,6 +388,7 @@ async function processSessionEvent(dbPath, event) {
         started_at: session.started_at,
         ended_at: session.ended_at,
         dbPath,
+        provider_branch: providerBranch,
       })
     : null;
 

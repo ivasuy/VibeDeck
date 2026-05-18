@@ -8,6 +8,7 @@ const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
 const { normalizeBranchName } = require('./branch-name');
 const historicalBranchRecovery = require('./historical-branch-recovery');
+const { readProviderBranchFromSessionFile } = require('./provider-branch');
 const { resolveUsageCost } = require('../cost-estimation');
 
 function isNonEmptyString(value) {
@@ -113,7 +114,26 @@ function knownBranchResult(branch, { confidence = 'low', branch_resolution_tier 
   };
 }
 
-async function factBranch({ dbPath, project, observedAt, event, session }) {
+function canReadProviderBranch({ provider, session_id } = {}) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (!(normalizedProvider === 'codex' || normalizedProvider === 'every-code' || normalizedProvider === 'claude')) {
+    return false;
+  }
+  return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
+}
+
+function readProviderBranchForSession({ provider, session_id, cache = null } = {}) {
+  if (!canReadProviderBranch({ provider, session_id })) {
+    return { branch: null, checked: false, ambiguous: false };
+  }
+  const resolved = readProviderBranchFromSessionFile({ provider, session_id, cache });
+  if (resolved && isNonEmptyString(resolved.branch)) {
+    return { branch: resolved.branch, checked: true, ambiguous: false };
+  }
+  return { branch: null, checked: true, ambiguous: true };
+}
+
+async function factBranch({ dbPath, project, observedAt, event, session, providerBranch = null, providerAmbiguous = false }) {
   if (!project || project.branch_kind !== 'unknown_git') return null;
 
   const eventBranch = knownBranchResult(event?.branch, {
@@ -122,6 +142,20 @@ async function factBranch({ dbPath, project, observedAt, event, session }) {
   });
   if (eventBranch) return eventBranch;
 
+  const provider = knownBranchResult(providerBranch, {
+    confidence: 'medium',
+    branch_resolution_tier: 'PROVIDER_LOG',
+  });
+  if (provider) return provider;
+
+  const sessionBranch = knownBranchResult(session?.branch, {
+    confidence: session?.confidence || 'low',
+    branch_resolution_tier: session?.branch_resolution_tier || null,
+  });
+  if (sessionBranch) return sessionBranch;
+
+  if (providerAmbiguous) return null;
+
   const historyBranch = headHistoryBranch(dbPath, project, observedAt);
   if (historyBranch) {
     return knownBranchResult(historyBranch, {
@@ -129,12 +163,6 @@ async function factBranch({ dbPath, project, observedAt, event, session }) {
       branch_resolution_tier: 'B',
     });
   }
-
-  const sessionBranch = knownBranchResult(session?.branch, {
-    confidence: session?.confidence || 'low',
-    branch_resolution_tier: session?.branch_resolution_tier || null,
-  });
-  if (sessionBranch) return sessionBranch;
 
   if (!isNonEmptyString(project.repo_root)) return null;
 
@@ -178,10 +206,22 @@ function baseTimestamps(session) {
   return { first, last };
 }
 
-async function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
+async function buildSyntheticGroup(session, { dbPath, provider, session_id, cache = null }) {
   const project = projectShape(session, provider, session_id);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
-  const resolvedBranch = await factBranch({ dbPath, project, observedAt: when, event: null, session });
+  const sessionBranch = knownBranchResult(session?.branch);
+  const providerRead = !sessionBranch
+    ? readProviderBranchForSession({ provider, session_id, cache })
+    : { branch: null, checked: false, ambiguous: false };
+  const resolvedBranch = await factBranch({
+    dbPath,
+    project,
+    observedAt: when,
+    event: null,
+    session,
+    providerBranch: providerRead.branch,
+    providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+  });
   const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
   const times = baseTimestamps(session);
 
@@ -218,15 +258,28 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
   };
 }
 
-async function buildEventGroups(session, events, { dbPath, provider, session_id }) {
+async function buildEventGroups(session, events, { dbPath, provider, session_id, cache = null }) {
   const groups = new Map();
+  const missingEventBranch = events.some((event) => !knownBranchResult(event?.branch));
+  const missingSessionBranch = !knownBranchResult(session?.branch);
+  const providerRead = missingEventBranch || missingSessionBranch
+    ? readProviderBranchForSession({ provider, session_id, cache })
+    : { branch: null, checked: false, ambiguous: false };
 
   for (const event of events) {
     const project = projectShape(mergeProjectRow(event, session), provider, session_id);
     const observedAt = isNonEmptyString(event.observed_at)
       ? event.observed_at
       : session.last_observed_at || session.ended_at || session.started_at;
-    const resolvedBranch = await factBranch({ dbPath, project, observedAt, event, session });
+    const resolvedBranch = await factBranch({
+      dbPath,
+      project,
+      observedAt,
+      event,
+      session,
+      providerBranch: providerRead.branch,
+      providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+    });
     const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
     const model = isNonEmptyString(event.model)
       ? event.model.trim()
@@ -482,7 +535,7 @@ function insertFacts(db, session, groups) {
   }
 }
 
-async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id } = {}) {
+async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id, cache = null } = {}) {
   if (!db || typeof db.prepare !== 'function') {
     throw new TypeError('rebuildBranchUsageFactsForSession: db must be a writable sqlite connection');
   }
@@ -503,8 +556,8 @@ async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session
 
   const events = readUpdateEvents(db, { provider, session_id });
   const groups = events.length > 0
-    ? await buildEventGroups(session, events, { dbPath, provider, session_id })
-    : [await buildSyntheticGroup(session, { dbPath, provider, session_id })];
+    ? await buildEventGroups(session, events, { dbPath, provider, session_id, cache })
+    : [await buildSyntheticGroup(session, { dbPath, provider, session_id, cache })];
 
   reconcileGroupTokens(groups, session);
   if (!allocateStoredSessionCost(groups, session)) {
@@ -515,7 +568,7 @@ async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session
   return groups.length;
 }
 
-async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null } = {}) {
+async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null, cache = null } = {}) {
   if (!isNonEmptyString(dbPath)) {
     throw new TypeError('rebuildAllBranchUsageFacts: dbPath must be a non-empty string');
   }
@@ -535,6 +588,7 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
           dbPath,
           provider: row.provider,
           session_id: row.session_id,
+          cache,
         });
         progress?.({
           index: index + 1,
@@ -555,7 +609,7 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
   }
 }
 
-async function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null } = {}) {
+async function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null, cache = null } = {}) {
   if (!isNonEmptyString(dbPath) || !fs.existsSync(dbPath)) return 0;
 
   const progress = typeof onProgress === 'function' ? onProgress : null;
@@ -616,6 +670,7 @@ async function repairMissingProjectAttribution(dbPath, { provider = null, onProg
           dbPath,
           provider: row.provider,
           session_id: row.session_id,
+          cache,
         });
         progress?.({
           index: index + 1,

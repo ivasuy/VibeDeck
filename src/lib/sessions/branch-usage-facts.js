@@ -8,7 +8,7 @@ const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
 const { normalizeBranchName } = require('./branch-name');
 const historicalBranchRecovery = require('./historical-branch-recovery');
-const { readProviderBranchFromSessionFile } = require('./provider-branch');
+const { createProviderBranchState, collectProviderBranchFromObject } = require('./provider-branch');
 const { resolveUsageCost } = require('../cost-estimation');
 
 function isNonEmptyString(value) {
@@ -122,15 +122,61 @@ function canReadProviderBranch({ provider, session_id } = {}) {
   return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
 }
 
+function getProviderBranchEvidenceCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.providerBranchEvidenceBySession instanceof Map)) {
+    cache.providerBranchEvidenceBySession = new Map();
+  }
+  return cache.providerBranchEvidenceBySession;
+}
+
+function providerBranchEvidenceCacheKey(provider, session_id) {
+  return `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
+}
+
 function readProviderBranchForSession({ provider, session_id, cache = null } = {}) {
   if (!canReadProviderBranch({ provider, session_id })) {
     return { branch: null, checked: false, ambiguous: false };
   }
-  const resolved = readProviderBranchFromSessionFile({ provider, session_id, cache });
-  if (resolved && isNonEmptyString(resolved.branch)) {
-    return { branch: resolved.branch, checked: true, ambiguous: false };
+
+  const map = getProviderBranchEvidenceCache(cache);
+  const cacheKey = providerBranchEvidenceCacheKey(provider, session_id);
+  if (map && map.has(cacheKey)) return map.get(cacheKey);
+
+  let result = { branch: null, checked: true, ambiguous: false };
+  try {
+    if (!fs.existsSync(session_id)) {
+      result = { branch: null, checked: true, ambiguous: false };
+    } else {
+      const state = createProviderBranchState();
+      const content = fs.readFileSync(session_id, 'utf8');
+      for (const line of content.split(/\r?\n/)) {
+        if (!line) continue;
+        let obj;
+        try {
+          obj = JSON.parse(line);
+        } catch {
+          // Keep fallback behavior when provider log is unreadable or sparse.
+          continue;
+        }
+        collectProviderBranchFromObject(provider, obj, state);
+        if (state.unsafe || state.branches.size > 1) {
+          result = { branch: null, checked: true, ambiguous: true };
+          break;
+        }
+      }
+
+      if (!result.ambiguous && state.branches.size === 1) {
+        const [branch] = state.branches;
+        result = { branch, checked: true, ambiguous: false };
+      }
+    }
+  } catch {
+    result = { branch: null, checked: true, ambiguous: false };
   }
-  return { branch: null, checked: true, ambiguous: true };
+
+  if (map) map.set(cacheKey, result);
+  return result;
 }
 
 async function factBranch({ dbPath, project, observedAt, event, session, providerBranch = null, providerAmbiguous = false }) {

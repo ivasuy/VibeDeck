@@ -551,6 +551,72 @@ test('branch usage facts keep mixed provider branch sessions unknown', async () 
   }
 });
 
+test('branch usage facts allow head-history fallback when provider log has no branch evidence', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-18T02:00:00.000Z',
+    });
+    const sessionLog = path.join(tmp.dir, `codex-provider-empty-${Date.now()}.jsonl`);
+    fs.writeFileSync(sessionLog, `${JSON.stringify({ payload: { usage: { input_tokens: 1, output_tokens: 1 } } })}\n`, 'utf8');
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        started_at: '2026-05-18T02:10:00.000Z',
+        ended_at: '2026-05-18T02:15:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        last_observed_at: '2026-05-18T02:15:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        event_key: 'e1',
+        observed_at: '2026-05-18T02:12:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 6,
+        output_tokens: 4,
+      });
+
+      await rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: sessionLog,
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'main');
+    assert.equal(rows[0].branch_resolution_tier, 'B');
+    assert.equal(rows[0].confidence, 'medium');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('historical guard preserves project attribution and totals before repo history starts', async () => {
   const tmp = makeDb();
   try {

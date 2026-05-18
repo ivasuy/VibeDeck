@@ -70,8 +70,12 @@ function shouldRunFullBranchFactRebuild({
   auto = false,
   rebuildVibedeckDb = false,
   autoBranchFactsRebuilt = false,
+  sessionEventProcessorMode = null,
 } = {}) {
-  if (rebuildVibedeckDb) return true;
+  if (rebuildVibedeckDb) {
+    if (sessionEventProcessorMode === "grouped-rebuild") return false;
+    return true;
+  }
   if (!auto) return true;
   return !autoBranchFactsRebuilt;
 }
@@ -776,6 +780,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       auto: opts.auto,
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
       autoBranchFactsRebuilt,
+      sessionEventProcessorMode: sessionEventProcessor.mode,
     });
     if (runFullBranchFactRebuild) {
       lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
@@ -1185,6 +1190,7 @@ function createSessionEventProcessor(processor) {
   };
 
   return {
+    mode: "single-event",
     onSessionEvent,
     drain,
     errors,
@@ -1248,6 +1254,7 @@ function createGroupedSessionEventProcessor(processor) {
   };
 
   return {
+    mode: "grouped-rebuild",
     onSessionEvent,
     drain,
     errors,

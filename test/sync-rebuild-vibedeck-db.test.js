@@ -620,6 +620,82 @@ test('sync --rebuild-vibedeck-db closes historical idle sessions with historical
   }
 });
 
+test('sync --rebuild-vibedeck-db skips global branch-fact rebuild when grouped session batches are used', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-no-global-branch-pass-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const syncPath = require.resolve('../src/commands/sync');
+  const pipeline = require(pipelinePath);
+  const branchFacts = require(branchFactsPath);
+  const originalProcessSessionEventBatch = pipeline.processSessionEventBatch;
+  const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
+
+  let rebuildAllCalls = 0;
+
+  try {
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '11');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rolloutPath = path.join(rolloutDir, 'rollout-a.jsonl');
+    const usage = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: '2026-05-11T09:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    branchFacts.rebuildAllBranchUsageFacts = async () => {
+      rebuildAllCalls += 1;
+      return 0;
+    };
+    pipeline.processSessionEventBatch = originalProcessSessionEventBatch;
+
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--rebuild-vibedeck-db']);
+
+    assert.equal(rebuildAllCalls, 0);
+  } finally {
+    pipeline.processSessionEventBatch = originalProcessSessionEventBatch;
+    branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
+    delete require.cache[syncPath];
+
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync --rebuild-vibedeck-db clears stale checkpoint match and link rows before backfill', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-entire-reset-'));
   const prevHome = process.env.HOME;

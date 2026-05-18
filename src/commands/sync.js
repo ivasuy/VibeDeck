@@ -54,7 +54,7 @@ const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
-const { processSessionEvent, processSessionEventBatch, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
+const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
@@ -161,7 +161,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
     const sessionEventProcessor = opts.rebuildVibedeckDb
-      ? createGroupedSessionEventProcessor((events) => processSessionEventBatch(dbPath, events))
+      ? createGroupedSessionEventProcessor((events) => require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events))
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
     const onSessionEvent = sessionEventProcessor.onSessionEvent;
 

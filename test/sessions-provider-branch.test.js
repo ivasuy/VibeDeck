@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const { makeUpdate } = require('../src/lib/sessions/event');
+const { extractClaudeCodeSessionEvents, extractCodexSessionEvents } = require('../src/lib/sessions/extractors');
 const {
   cleanProviderBranch,
   collectProviderBranchFromObject,
@@ -101,4 +103,38 @@ test('readProviderBranchFromSessionFile returns null for unsafe refs', () => {
   } finally {
     tmp.cleanup();
   }
+});
+
+test('SessionEvent accepts optional provider branch', () => {
+  const event = makeUpdate({
+    provider: 'codex',
+    session_id: 's1',
+    observed_at: '2026-05-18T00:00:00.000Z',
+    delta_tokens: 10,
+    cwd: '/tmp/repo',
+    model: 'gpt-5.4',
+    branch: 'main',
+  });
+
+  assert.equal(event.branch, 'main');
+});
+
+test('Codex and Claude extractors pass batch branch to update events', () => {
+  const codexEvents = extractCodexSessionEvents({
+    session_id: 'codex-s1',
+    started_at: '2026-05-18T00:00:00.000Z',
+    branch: 'main',
+    updates: [{ observed_at: '2026-05-18T00:01:00.000Z', delta_tokens: 12 }],
+  });
+  const codexUpdate = codexEvents.find((event) => event.kind === 'update');
+  assert.equal(codexUpdate.branch, 'main');
+
+  const claudeEvents = extractClaudeCodeSessionEvents({
+    session_id: 'claude-s1',
+    started_at: '2026-05-18T00:00:00.000Z',
+    branch: 'feature/claude',
+    updates: [{ observed_at: '2026-05-18T00:01:00.000Z', delta_tokens: 5 }],
+  });
+  const claudeUpdate = claudeEvents.find((event) => event.kind === 'update');
+  assert.equal(claudeUpdate.branch, 'feature/claude');
 });

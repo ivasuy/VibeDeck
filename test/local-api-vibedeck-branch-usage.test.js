@@ -1077,8 +1077,10 @@ test('GET /functions/vibedeck-branch-usage reads branch facts rather than branch
 
     const body = JSON.parse(res.body.toString('utf8'));
     const branches = body.repos[0].branches;
-    assert.equal(branches.find((b) => b.branch === 'main').total_tokens, 90);
-    assert.equal(branches.find((b) => b.branch === 'feature').total_tokens, 10);
+    // Branch facts intentionally prefer session branch when event/provider branch
+    // evidence is missing, so stale branch-window splits must not leak into output.
+    assert.equal(branches.find((b) => b.branch === 'main').total_tokens, 100);
+    assert.equal(branches.find((b) => b.branch === 'feature'), undefined);
     assert.equal(body.totals.total_tokens, 100);
   } finally {
     await fs.rm(root, { recursive: true, force: true });

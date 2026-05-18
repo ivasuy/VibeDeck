@@ -257,7 +257,7 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -341,7 +341,7 @@ test("project usage reads tracked existing and decommissioned projects from cano
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -411,7 +411,7 @@ test("project usage skips remote queue rows when a matching live local repo has 
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -515,7 +515,7 @@ test("project usage recent sort uses latest session activity instead of latest s
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -600,7 +600,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -731,7 +731,7 @@ test("project usage applies DB-backed from, to, and source filters without break
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const filtered = await callEndpoint(
       queuePath,
@@ -809,7 +809,7 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -856,7 +856,7 @@ test("project usage reads tracked branches without shelling out to git branch by
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     let gitBranchCalls = 0;
     cp.execFileSync = (cmd, args, ...rest) => {

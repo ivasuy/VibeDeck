@@ -199,7 +199,7 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -290,7 +290,7 @@ test('branch usage summary does not shell out to git branches by default', async
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     let gitBranchCalls = 0;
     cp.execFileSync = (cmd, args, ...rest) => {
@@ -359,7 +359,7 @@ test('GET /functions/vibedeck-branch-usage folds deleted worktree cwd rows under
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -451,7 +451,7 @@ test('GET /functions/vibedeck-branch-usage groups generated workspace clones und
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -546,7 +546,7 @@ test('GET /functions/vibedeck-branch-usage folds generated workspace clones into
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -622,7 +622,7 @@ test('GET /functions/vibedeck-branch-usage merges archived git and cwd rows for 
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -685,7 +685,7 @@ test('GET /functions/vibedeck-branch-usage keeps name-similar folders separate w
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -756,7 +756,7 @@ test('GET /functions/vibedeck-branch-usage returns date buckets and filters sess
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -860,7 +860,7 @@ test('GET /functions/vibedeck-branch-usage does not undercount when more than 10
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -954,7 +954,7 @@ test('GET /functions/vibedeck-branch-usage reads branch facts rather than branch
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -1041,7 +1041,7 @@ test('GET /functions/vibedeck-branch-usage includes non-git folders and hides ar
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -1124,7 +1124,7 @@ test('GET /functions/vibedeck-branch-usage uses branch fact cost when stored cos
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -1192,7 +1192,7 @@ test('GET /functions/vibedeck-branch-usage ignores stale zero branch window cost
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -1285,7 +1285,7 @@ test('GET /functions/vibedeck-branch-usage uses last_observed_at for open-sessio
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');
@@ -1343,7 +1343,7 @@ test('GET /functions/vibedeck-branch-usage passes include_unattributed to branch
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     delete require.cache[require.resolve('../src/lib/local-api')];
     const { createLocalApiHandler } = require('../src/lib/local-api');

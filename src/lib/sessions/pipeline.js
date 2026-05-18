@@ -399,7 +399,7 @@ async function processSessionEvent(dbPath, event) {
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         }
         if (latest) {
-          rebuildBranchUsageFactsForSession(db, {
+          await rebuildBranchUsageFactsForSession(db, {
             dbPath,
             provider: latest.provider,
             session_id: latest.session_id,

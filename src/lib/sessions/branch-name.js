@@ -1,6 +1,6 @@
 'use strict';
 
-const SENTINEL_BRANCHES = new Set(['unknown branch', 'no branch', 'unattributed']);
+const SENTINEL_BRANCHES = new Set(['unknown branch', 'historical unknown', 'no branch', 'unattributed']);
 
 function text(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;

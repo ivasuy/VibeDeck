@@ -54,7 +54,7 @@ const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
-const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
+const { processSessionEvent, processSessionEventBatch, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
@@ -160,7 +160,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         cursors,
       });
     }
-    const sessionEventProcessor = createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
+    const sessionEventProcessor = opts.rebuildVibedeckDb
+      ? createGroupedSessionEventProcessor((events) => processSessionEventBatch(dbPath, events))
+      : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
     const onSessionEvent = sessionEventProcessor.onSessionEvent;
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
@@ -1179,6 +1181,69 @@ function createSessionEventProcessor(processor) {
       progressCallback({ processed, total, pending: 0 });
     }
     progressCallback = null;
+    return { errors, processed, total };
+  };
+
+  return {
+    onSessionEvent,
+    drain,
+    errors,
+    get processed() {
+      return processed;
+    },
+    get total() {
+      return total;
+    },
+  };
+}
+
+function createGroupedSessionEventProcessor(processor) {
+  if (typeof processor !== "function") {
+    throw new TypeError("processor must be a function");
+  }
+
+  const errors = [];
+  const groups = new Map();
+  let total = 0;
+  let processed = 0;
+
+  const onSessionEvent = (event) => {
+    total += 1;
+    const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
+    const group = groups.get(key);
+    if (group) {
+      group.events.push(event);
+    } else {
+      groups.set(key, { events: [event] });
+    }
+    return Promise.resolve();
+  };
+
+  const drain = async ({ onProgress } = {}) => {
+    const progressCallback = typeof onProgress === "function" ? onProgress : null;
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+    }
+
+    for (const group of groups.values()) {
+      try {
+        await processor(group.events);
+      } catch (err) {
+        for (const event of group.events) {
+          errors.push(eventFailureRecord(event, err));
+        }
+      } finally {
+        processed += group.events.length;
+        if (progressCallback) {
+          progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+        }
+      }
+    }
+    groups.clear();
+
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: 0 });
+    }
     return { errors, processed, total };
   };
 

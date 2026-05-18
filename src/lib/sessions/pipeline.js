@@ -458,6 +458,200 @@ async function processSessionEvent(dbPath, event) {
   }
 }
 
+function assertBatchEvents(batch) {
+  if (!Array.isArray(batch) || batch.length === 0) {
+    throw new TypeError('processSessionEventBatch: events must be a non-empty array');
+  }
+  const provider = batch[0]?.provider;
+  const sessionId = batch[0]?.session_id;
+  if (!isNonEmptyString(provider) || !isNonEmptyString(sessionId)) {
+    throw new TypeError('processSessionEventBatch: each event must include provider and session_id');
+  }
+  for (const event of batch) {
+    if (!event || typeof event !== 'object') {
+      throw new TypeError('processSessionEventBatch: each event must be an object');
+    }
+    if (event.provider !== provider || event.session_id !== sessionId) {
+      throw new Error('processSessionEventBatch: events must all share provider/session');
+    }
+  }
+}
+
+async function processSessionEventBatch(dbPath, events) {
+  if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
+  assertBatchEvents(events);
+  const enrichedEvents = events.map((event) => enrichEventFromSessionMetadata(event));
+  assertBatchEvents(enrichedEvents);
+
+  // Preserve compatibility with test harnesses that monkeypatch the single-event processor.
+  if (module.exports.processSessionEvent !== processSessionEvent) {
+    for (const event of enrichedEvents) {
+      await module.exports.processSessionEvent(dbPath, event);
+    }
+    return;
+  }
+
+  const first = enrichedEvents[0];
+  const last = enrichedEvents[enrichedEvents.length - 1];
+
+  let existingBeforeUpsert = null;
+  {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      existingBeforeUpsert = loadSession(db, { provider: first.provider, session_id: first.session_id });
+    } finally {
+      db.close();
+    }
+  }
+
+  const keepOpenForCheckpoint = shouldKeepSessionOpenForCheckpoint(existingBeforeUpsert, last);
+  const reopenOrphanedSession = shouldReopenOrphanedSession(existingBeforeUpsert, last);
+  const preserveExistingTerminalEnd = shouldPreserveExistingTerminalEnd(existingBeforeUpsert, last);
+
+  let repo = null;
+  const existingRepoStillApplies =
+    last.kind === 'update' &&
+    isNonEmptyString(existingBeforeUpsert?.repo_root) &&
+    isNonEmptyString(existingBeforeUpsert?.cwd) &&
+    isNonEmptyString(last.cwd) &&
+    existingBeforeUpsert.cwd === last.cwd;
+  if (!existingRepoStillApplies) {
+    const repoEvent = [...enrichedEvents].reverse().find((event) => isNonEmptyString(event.cwd));
+    if (repoEvent && isNonEmptyString(repoEvent.cwd)) {
+      try {
+        repo = resolveRepo(repoEvent.cwd);
+      } catch {
+        repo = null;
+      }
+    }
+  }
+
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec('BEGIN');
+    try {
+      upsertSessionFromEvents(dbPath, enrichedEvents, { db });
+      if (keepOpenForCheckpoint || reopenOrphanedSession) {
+        updateSessionEndedState(db, {
+          provider: first.provider,
+          session_id: first.session_id,
+          ended_at: null,
+          end_reason: null,
+        });
+      } else if (preserveExistingTerminalEnd) {
+        updateSessionEndedState(db, {
+          provider: first.provider,
+          session_id: first.session_id,
+          ended_at: existingBeforeUpsert.ended_at,
+          end_reason: existingBeforeUpsert.end_reason,
+        });
+      }
+      updateRepoMeta(db, { provider: first.provider, session_id: first.session_id, repo });
+
+      let session = loadSession(db, { provider: first.provider, session_id: first.session_id });
+      if (!session) {
+        throw new Error('processSessionEventBatch: upsert did not create a session row');
+      }
+
+      const needsBranchResolution = shouldResolveBranch({
+        existing: existingBeforeUpsert,
+        session,
+        repo,
+        event: last,
+        keepOpenForCheckpoint,
+        reopenOrphanedSession,
+        preserveExistingTerminalEnd,
+      });
+      const providerBranchFromEvents = [...enrichedEvents]
+        .reverse()
+        .map((event) => cleanProviderBranch(event.branch))
+        .find((branch) => isNonEmptyString(branch)) || null;
+      const providerBranchFromLog = providerBranchFromEvents
+        ? null
+        : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
+          ? cleanProviderBranch(
+              (readProviderBranchFromSessionFile({
+                provider: session.provider,
+                session_id: session.session_id,
+              }) || {}).branch,
+            )
+          : null;
+      const providerBranch = providerBranchFromEvents || providerBranchFromLog || null;
+
+      const branchRes = needsBranchResolution
+        ? await resolveBranchForSession({
+            provider: session.provider,
+            session_id: session.session_id,
+            repo_root: session.repo_root,
+            started_at: session.started_at,
+            ended_at: session.ended_at,
+            dbPath,
+            provider_branch: providerBranch,
+          })
+        : null;
+
+      if (branchRes) {
+        updateBranchResolution(db, {
+          provider: session.provider,
+          session_id: session.session_id,
+          branch: branchRes.branch,
+          tier: branchRes.tier,
+          confidence: branchRes.confidence,
+        });
+        if (isNonEmptyString(branchRes.entire_link)) {
+          upsertEntireLink(db, {
+            provider: session.provider,
+            session_id: session.session_id,
+            entire_session_id: branchRes.entire_link,
+            checkpoint_ids: branchRes.checkpoint_ids,
+            match_confidence: branchRes.confidence,
+          });
+        }
+        session = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      }
+
+      for (const event of enrichedEvents) {
+        const inserted = insertSessionEvent(db, event, {
+          repo_root: session.repo_root,
+          repo_common_dir: session.repo_common_dir,
+          parent_repo: session.parent_repo,
+          branch: session.branch,
+          branch_resolution_tier: session.branch_resolution_tier,
+          confidence: session.confidence,
+        });
+        if (inserted) upsertBucketFact(db, session, event);
+      }
+
+      recomputeSessionLedger(db, session);
+      const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      if (latest) {
+        await rebuildBranchUsageFactsForSession(db, {
+          dbPath,
+          provider: latest.provider,
+          session_id: latest.session_id,
+        });
+        persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
+      }
+
+      db.exec('COMMIT');
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw err;
+    }
+
+    const latest = loadSession(db, { provider: first.provider, session_id: first.session_id });
+    for (const event of enrichedEvents) {
+      const shouldSkipEmit = preserveExistingTerminalEnd && event === last;
+      if (shouldSkipEmit) continue;
+      emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession });
+    }
+  } finally {
+    db.close();
+  }
+}
+
 async function recoverActiveSessionMetadata(dbPath) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('recoverActiveSessionMetadata: dbPath must be a non-empty string');
   let candidates = [];
@@ -507,4 +701,4 @@ async function recoverActiveSessionMetadata(dbPath) {
   return { scanned: candidates.length, recovered };
 }
 
-module.exports = { processSessionEvent, recoverActiveSessionMetadata };
+module.exports = { processSessionEvent, processSessionEventBatch, recoverActiveSessionMetadata };

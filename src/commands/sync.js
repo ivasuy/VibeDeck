@@ -97,13 +97,10 @@ function providerDoneSummary({ action = "read", count = 0, unit = "items", event
 
 async function cmdSync(argv, { lifecycle = null } = {}) {
   const opts = parseArgs(argv);
-  const home = os.homedir();
+  const home = process.env.VIBEDECK_HOME || os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
-  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
-  ensureSchema(dbPath);
-
-  const sessionEventProcessor = createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
-  const onSessionEvent = sessionEventProcessor.onSessionEvent;
+  const liveDbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  ensureSchema(liveDbPath);
 
   await ensureDir(trackerDir);
   if (opts.fromOpenclaw) {
@@ -118,19 +115,42 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
   }
 
   let progress = null;
+  let rebuildStaging = null;
+  let rebuildPromoted = false;
   try {
     progress = !opts.auto ? createProgress({ stream: process.stdout }) : null;
     const configPath = path.join(trackerDir, "config.json");
     const cursorsPath = path.join(trackerDir, "cursors.json");
-    const queuePath = path.join(trackerDir, "queue.jsonl");
-    const queueStatePath = path.join(trackerDir, "queue.state.json");
-    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
-    const projectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
+    const liveQueuePath = path.join(trackerDir, "queue.jsonl");
+    const liveQueueStatePath = path.join(trackerDir, "queue.state.json");
+    const liveProjectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const liveProjectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
+
+    let dbPath = liveDbPath;
+    let queuePath = liveQueuePath;
+    let queueStatePath = liveQueueStatePath;
+    let projectQueuePath = liveProjectQueuePath;
+    let projectQueueStatePath = liveProjectQueueStatePath;
 
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
-      if (!opts.auto) process.stderr.write("Rebuild phase: clearing canonical tables\n");
+      rebuildStaging = await createRebuildStagingContext({
+        trackerDir,
+        dbPath: liveDbPath,
+        queuePath: liveQueuePath,
+        queueStatePath: liveQueueStatePath,
+        projectQueuePath: liveProjectQueuePath,
+        projectQueueStatePath: liveProjectQueueStatePath,
+      });
+      dbPath = rebuildStaging.staged.dbPath;
+      queuePath = rebuildStaging.staged.queuePath;
+      queueStatePath = rebuildStaging.staged.queueStatePath;
+      projectQueuePath = rebuildStaging.staged.projectQueuePath;
+      projectQueueStatePath = rebuildStaging.staged.projectQueueStatePath;
+
+      ensureSchema(dbPath);
+      if (!opts.auto) process.stderr.write("Rebuild phase: resetting staged canonical tables\n");
       await resetVibedeckSyncState({
         dbPath,
         queuePath,
@@ -140,6 +160,8 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         cursors,
       });
     }
+    const sessionEventProcessor = createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
+    const onSessionEvent = sessionEventProcessor.onSessionEvent;
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
     const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -799,6 +821,15 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       const outPath = path.join(diagnosticsDir, "canonical-reconciliation.json");
       await fs.writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
       if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
+
+      if (!opts.auto) process.stderr.write("Rebuild phase: promoting staged outputs\n");
+      await promoteRebuildStagingContext(rebuildStaging);
+      rebuildPromoted = true;
+      dbPath = liveDbPath;
+      queuePath = liveQueuePath;
+      queueStatePath = liveQueueStatePath;
+      projectQueuePath = liveProjectQueuePath;
+      projectQueueStatePath = liveProjectQueueStatePath;
     }
 
     if (!opts.auto) {
@@ -867,6 +898,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     }
   } finally {
     progress?.stop();
+    if (rebuildStaging && !rebuildPromoted) {
+      await fs.rm(rebuildStaging.stagingDir, { recursive: true, force: true }).catch(() => {});
+    }
     await lock.release();
     await fs.unlink(lockPath).catch(() => {});
   }
@@ -892,6 +926,100 @@ function parseArgs(argv) {
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
+}
+
+function escapeSqliteSingleQuotedPath(filePath) {
+  return String(filePath || "").replace(/'/g, "''");
+}
+
+async function createRebuildStagingContext({
+  trackerDir,
+  dbPath,
+  queuePath,
+  queueStatePath,
+  projectQueuePath,
+  projectQueueStatePath,
+} = {}) {
+  const stamp = `${Date.now()}-${process.pid}`;
+  const stagingDir = path.join(trackerDir, `.rebuild-${stamp}`);
+  await fs.mkdir(stagingDir, { recursive: true });
+
+  const stagedDbPath = path.join(stagingDir, "vibedeck.sqlite3");
+  if (fssync.existsSync(dbPath)) {
+    const source = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      source.exec(`VACUUM INTO '${escapeSqliteSingleQuotedPath(stagedDbPath)}'`);
+    } finally {
+      source.close();
+    }
+  } else {
+    ensureSchema(stagedDbPath);
+  }
+
+  return {
+    stagingDir,
+    live: {
+      dbPath,
+      queuePath,
+      queueStatePath,
+      projectQueuePath,
+      projectQueueStatePath,
+    },
+    staged: {
+      dbPath: stagedDbPath,
+      queuePath: path.join(stagingDir, "queue.jsonl"),
+      queueStatePath: path.join(stagingDir, "queue.state.json"),
+      projectQueuePath: path.join(stagingDir, "project.queue.jsonl"),
+      projectQueueStatePath: path.join(stagingDir, "project.queue.state.json"),
+    },
+  };
+}
+
+async function copyFileOrDefault(sourcePath, targetPath, defaultBody = "") {
+  await ensureDir(path.dirname(targetPath));
+  if (fssync.existsSync(sourcePath)) {
+    await fs.copyFile(sourcePath, targetPath);
+    return;
+  }
+  await fs.writeFile(targetPath, defaultBody, "utf8");
+}
+
+async function promoteRebuildStagingContext(ctx) {
+  if (!ctx || !ctx.live || !ctx.staged) {
+    throw new Error("invalid rebuild staging context");
+  }
+
+  ensureSchema(ctx.staged.dbPath);
+
+  const stamp = `${Date.now()}-${process.pid}`;
+  const backupDbPath = `${ctx.live.dbPath}.before-rebuild-${stamp}`;
+  const liveDbExists = fssync.existsSync(ctx.live.dbPath);
+
+  try {
+    if (liveDbExists) {
+      await fs.copyFile(ctx.live.dbPath, backupDbPath);
+    }
+    await fs.rename(ctx.staged.dbPath, ctx.live.dbPath);
+    await copyFileOrDefault(ctx.staged.queuePath, ctx.live.queuePath, "");
+    await copyFileOrDefault(ctx.staged.projectQueuePath, ctx.live.projectQueuePath, "");
+    await copyFileOrDefault(
+      ctx.staged.queueStatePath,
+      ctx.live.queueStatePath,
+      JSON.stringify({ offset: 0 }),
+    );
+    await copyFileOrDefault(
+      ctx.staged.projectQueueStatePath,
+      ctx.live.projectQueueStatePath,
+      JSON.stringify({ offset: 0 }),
+    );
+  } catch (err) {
+    if (!fssync.existsSync(ctx.live.dbPath) && liveDbExists && fssync.existsSync(backupDbPath)) {
+      await fs.copyFile(backupDbPath, ctx.live.dbPath).catch(() => {});
+    }
+    throw err;
+  } finally {
+    await fs.rm(ctx.stagingDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 function clearCanonicalVibedeckTables(dbPath) {

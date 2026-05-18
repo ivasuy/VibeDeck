@@ -176,6 +176,100 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
   }
 });
 
+test('rebuild failure leaves live canonical DB untouched', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-safe-fail-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+
+  const rolloutPath = require.resolve('../src/lib/rollout');
+  const syncPath = require.resolve('../src/commands/sync');
+  const originalRollout = require.cache[rolloutPath];
+  const realRollout = require(rolloutPath);
+
+  try {
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    await fs.mkdir(trackerDir, { recursive: true });
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, last_observed_at,
+          cost_estimated, cost_quality, created_at, updated_at
+        ) VALUES (
+          'codex', 'existing-session', '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z', 'normal',
+          NULL, NULL, NULL, NULL,
+          NULL, 'D', 'unattributed', NULL,
+          'gpt-5.4', 10, 0.1, '2026-05-10T00:01:00.000Z',
+          0, 'stored', '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z'
+        );
+      `);
+    } finally {
+      db.close();
+    }
+
+    require.cache[rolloutPath] = {
+      id: rolloutPath,
+      filename: rolloutPath,
+      loaded: true,
+      exports: {
+        ...realRollout,
+        parseRolloutIncremental: async () => {
+          throw new Error('forced parser failure');
+        },
+      },
+    };
+    delete require.cache[syncPath];
+    const { cmdSync: failingSync } = require(syncPath);
+
+    await assert.rejects(() => failingSync(['--auto', '--rebuild-vibedeck-db']), /forced parser failure/);
+
+    const verifyDb = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const count = verifyDb.prepare('SELECT COUNT(*) AS n FROM vibedeck_sessions').get();
+      const row = verifyDb.prepare('SELECT session_id FROM vibedeck_sessions').get();
+      assert.equal(Number(count.n), 1);
+      assert.equal(row.session_id, 'existing-session');
+    } finally {
+      verifyDb.close();
+    }
+  } finally {
+    if (originalRollout) require.cache[rolloutPath] = originalRollout;
+    else delete require.cache[rolloutPath];
+    delete require.cache[syncPath];
+
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync --rebuild-vibedeck-db fails loudly and writes diagnostics when session event processing fails', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-fail-'));
   const prevHome = process.env.HOME;

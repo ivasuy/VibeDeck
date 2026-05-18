@@ -318,7 +318,7 @@ async function cmdServe(argv) {
 
   let syncInterval = null;
   let syncing = false;
-  const syncEveryMs = Number(process.env.VIBEDECK_SERVE_SYNC_MS || "1000");
+  const syncEveryMs = Number(process.env.VIBEDECK_SERVE_SYNC_MS || "30000");
   if (opts.sync && Number.isFinite(syncEveryMs) && syncEveryMs > 0) {
     const { cmdSync } = require("./sync");
     syncInterval = setInterval(async () => {

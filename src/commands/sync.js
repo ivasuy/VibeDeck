@@ -139,6 +139,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
+      lifecycle?.phase?.("Preparing staged rebuild...");
       rebuildStaging = await createRebuildStagingContext({
         trackerDir,
         dbPath: liveDbPath,
@@ -208,6 +209,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       ? [{ path: openclawSignal.sessionFile, source: "openclaw" }]
       : [];
 
+    if (opts.rebuildVibedeckDb) {
+      lifecycle?.phase?.("Parsing provider logs...");
+    }
     if (opts.rebuildVibedeckDb && !opts.auto) {
       process.stderr.write("Rebuild phase: parsing provider logs\n");
     }
@@ -723,6 +727,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     if (opts.rebuildVibedeckDb && !opts.auto) {
       process.stderr.write("Rebuild phase: draining session events\n");
     }
+    if (opts.rebuildVibedeckDb) {
+      lifecycle?.phase?.("Attributing grouped session events...");
+    }
     const sessionEventDrain = await sessionEventProcessor.drain({
       onProgress: progress?.enabled
         ? ({ processed, total }) => {
@@ -820,6 +827,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       if (!opts.auto) {
         process.stderr.write("Rebuild phase: validating canonical facts\n");
       }
+      lifecycle?.phase?.("Validating staged rebuild...");
 
       const queueRows = await readQueueRowsForAudit(queuePath);
       const report = reconcileCanonicalUsage({ dbPath, queueRows });
@@ -829,6 +837,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       await fs.writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
       if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
 
+      lifecycle?.phase?.("Promoting staged rebuild...");
       if (!opts.auto) process.stderr.write("Rebuild phase: promoting staged outputs\n");
       await promoteRebuildStagingContext(rebuildStaging);
       rebuildPromoted = true;

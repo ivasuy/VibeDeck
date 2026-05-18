@@ -53,7 +53,12 @@ function parseSseEvents(buffer) {
 
 async function startServe({ home, port }) {
   const child = cp.spawn(process.execPath, [path.join(__dirname, '..', 'bin', 'vibedeck.js'), 'serve', '--no-open', '--port', String(port)], {
-    env: { ...process.env, HOME: home },
+    env: {
+      ...process.env,
+      HOME: home,
+      // Keep this test deterministic even when production serve default is conservative.
+      VIBEDECK_SERVE_SYNC_MS: '250',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.setEncoding('utf8');

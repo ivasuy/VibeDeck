@@ -179,7 +179,16 @@ function readProviderBranchForSession({ provider, session_id, cache = null } = {
   return result;
 }
 
-async function factBranch({ dbPath, project, observedAt, event, session, providerBranch = null, providerAmbiguous = false }) {
+async function factBranch({
+  dbPath,
+  project,
+  observedAt,
+  event,
+  session,
+  providerBranch = null,
+  providerAmbiguous = false,
+  cache = null,
+}) {
   if (!project || project.branch_kind !== 'unknown_git') return null;
 
   const eventBranch = knownBranchResult(event?.branch, {
@@ -216,7 +225,7 @@ async function factBranch({ dbPath, project, observedAt, event, session, provide
     return await historicalBranchRecovery.recoverHistoricalBranchForUnknownGit({
       repoRoot: project.repo_root,
       observedAt,
-    });
+    }, { cache });
   } catch {
     return null;
   }
@@ -267,6 +276,7 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, cach
     session,
     providerBranch: providerRead.branch,
     providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+    cache,
   });
   const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
   const times = baseTimestamps(session);
@@ -325,6 +335,7 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
       session,
       providerBranch: providerRead.branch,
       providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+      cache,
     });
     const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
     const model = isNonEmptyString(event.model)
@@ -619,6 +630,7 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
     throw new TypeError('rebuildAllBranchUsageFacts: dbPath must be a non-empty string');
   }
   const progress = typeof onProgress === 'function' ? onProgress : null;
+  const sharedCache = cache && typeof cache === 'object' ? cache : {};
   const db = new DatabaseSync(dbPath);
   try {
     const rows = provider
@@ -634,7 +646,7 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
           dbPath,
           provider: row.provider,
           session_id: row.session_id,
-          cache,
+          cache: sharedCache,
         });
         progress?.({
           index: index + 1,

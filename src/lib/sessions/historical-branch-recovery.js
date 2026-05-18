@@ -29,6 +29,39 @@ function safeGit(repoRoot, args) {
   }
 }
 
+function getCacheMap(cache, key) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache[key] instanceof Map)) {
+    cache[key] = new Map();
+  }
+  return cache[key];
+}
+
+function computeWithCacheSync(cache, key, cacheKey, compute) {
+  const map = getCacheMap(cache, key);
+  if (!map) return compute();
+  if (map.has(cacheKey)) return map.get(cacheKey);
+  const value = compute();
+  map.set(cacheKey, value);
+  return value;
+}
+
+async function computeWithCacheAsync(cache, key, cacheKey, compute) {
+  const map = getCacheMap(cache, key);
+  if (!map) return compute();
+  if (map.has(cacheKey)) return map.get(cacheKey);
+  const pending = Promise.resolve().then(compute);
+  map.set(cacheKey, pending);
+  try {
+    const value = await pending;
+    map.set(cacheKey, value);
+    return value;
+  } catch (error) {
+    map.delete(cacheKey);
+    throw error;
+  }
+}
+
 function firstCommitIsoFromGit(repoRoot) {
   const out = safeGit(repoRoot, ['log', '--reverse', '--max-parents=0', '--format=%cI', '-n', '1']);
   if (!isNonEmptyString(out)) return null;
@@ -60,6 +93,7 @@ function isRecoverableLocalBranch(branch, localBranches) {
 async function recoverHistoricalBranchForUnknownGit(
   { repoRoot, observedAt } = {},
   {
+    cache = null,
     firstCommitIsoFromGit: readFirstCommit = firstCommitIsoFromGit,
     listLocalBranchesFromGit: listLocalBranches = listLocalBranchesFromGit,
     resolveTierC = resolveBranchTierC,
@@ -70,7 +104,9 @@ async function recoverHistoricalBranchForUnknownGit(
   const observedIso = parseUtcIsoOrNull(observedAt);
   if (!observedIso) return null;
 
-  const firstCommitIso = parseUtcIsoOrNull(readFirstCommit(repoRoot));
+  const firstCommitIso = parseUtcIsoOrNull(
+    computeWithCacheSync(cache, 'firstCommitIsoByRepo', repoRoot, () => readFirstCommit(repoRoot)),
+  );
   if (firstCommitIso && observedIso < firstCommitIso) {
     return {
       branch: 'Historical unknown',
@@ -82,7 +118,9 @@ async function recoverHistoricalBranchForUnknownGit(
 
   let tierC;
   try {
-    tierC = await resolveTierC({ repoRoot, when: observedIso });
+    tierC = await computeWithCacheAsync(cache, 'tierCResultByRepoTime', `${repoRoot}\u0000${observedIso}`, () =>
+      resolveTierC({ repoRoot, when: observedIso, cache }),
+    );
   } catch {
     return null;
   }
@@ -90,7 +128,7 @@ async function recoverHistoricalBranchForUnknownGit(
   const normalized = normalizeBranchName(tierC && tierC.branch);
   if (!normalized) return null;
 
-  const localBranches = listLocalBranches(repoRoot);
+  const localBranches = computeWithCacheSync(cache, 'localBranchesByRepo', repoRoot, () => listLocalBranches(repoRoot));
   if (!isRecoverableLocalBranch(normalized, localBranches)) return null;
 
   return {

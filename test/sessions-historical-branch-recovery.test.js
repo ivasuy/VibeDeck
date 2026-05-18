@@ -104,3 +104,34 @@ test('recoverHistoricalBranchForUnknownGit rejects tags/..., HEAD, and detached@
     assert.equal(result, null);
   }
 });
+
+test('recoverHistoricalBranchForUnknownGit reuses expensive Git lookups through a shared cache', async () => {
+  const calls = { firstCommit: 0, localBranches: 0, tierC: 0 };
+  const cache = {};
+
+  const options = {
+    cache,
+    firstCommitIsoFromGit: () => {
+      calls.firstCommit += 1;
+      return '2026-05-10T10:00:00.000Z';
+    },
+    listLocalBranchesFromGit: () => {
+      calls.localBranches += 1;
+      return ['main'];
+    },
+    resolveTierC: async () => {
+      calls.tierC += 1;
+      return { branch: 'main', confidence: 'low' };
+    },
+  };
+
+  const input = { repoRoot: '/tmp/repo', observedAt: '2026-05-10T10:05:00.000Z' };
+  const first = await recoverHistoricalBranchForUnknownGit(input, options);
+  const second = await recoverHistoricalBranchForUnknownGit(input, options);
+
+  assert.equal(first && first.branch, 'main');
+  assert.equal(second && second.branch, 'main');
+  assert.equal(calls.firstCommit, 1);
+  assert.equal(calls.localBranches, 1);
+  assert.equal(calls.tierC, 1);
+});

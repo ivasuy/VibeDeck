@@ -1373,3 +1373,86 @@ test('GET /functions/vibedeck-branch-usage passes include_unattributed to branch
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('GET /functions/vibedeck-branch-usage includes Historical unknown as a tracked branch bucket', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-historical-unknown-'));
+  const historicalBranchRecovery = require('../src/lib/sessions/historical-branch-recovery');
+  const originalRecover = historicalBranchRecovery.recoverHistoricalBranchForUnknownGit;
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoRoot = path.join(root, 'VibeDeck');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ['main', 'release/0.1.3']);
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'historical-unknown',
+        started_at: '2000-01-01T00:00:00.000Z',
+        ended_at: '2000-01-01T00:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'low',
+        model: 'gpt-5.4',
+        total_tokens: 123,
+        total_cost_usd: 1.23,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'historical-unknown',
+        event_key: 'historical-unknown-event',
+        observed_at: '2000-01-01T00:02:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.4',
+        delta_tokens: 123,
+        input_tokens: 100,
+        output_tokens: 23,
+      });
+    } finally {
+      db.close();
+    }
+
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = async () => ({
+      branch: 'Historical unknown',
+      branch_kind: 'historical_unknown',
+      confidence: 'low',
+      branch_resolution_tier: 'HISTORICAL_GUARD',
+    });
+
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+    );
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.repos.length, 1);
+    assert.equal(body.repos[0].project_key, 'VibeDeck');
+    assert.equal(body.repos[0].branches.length, 1);
+    assert.equal(body.repos[0].branches[0].branch, 'Historical unknown');
+    assert.equal(body.repos[0].branches[0].branch_kind, 'historical_unknown');
+    assert.equal(body.repos[0].branches[0].total_cost_usd, 1.23);
+    assert.equal(body.totals.total_cost_usd, 1.23);
+  } finally {
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = originalRecover;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

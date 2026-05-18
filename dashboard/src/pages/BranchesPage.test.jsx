@@ -419,6 +419,42 @@ describe("BranchesPage", () => {
     });
   });
 
+  it("shows Historical unknown as the only branch option without listing unused git branches", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-historical",
+        git_branches: ["main", "release/0.1.3"],
+        git_branch_count: 2,
+        branches: [
+          {
+            branch: "Historical unknown",
+            attribution_branch: null,
+            branch_kind: "historical_unknown",
+            total_tokens: 123,
+            total_cost_usd: 1.23,
+            session_count: 1,
+            last_seen_at: "2000-01-01T00:05:00.000Z",
+            confidence: { high: 0, medium: 0, low: 1, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+
+    render(<BranchesPage />);
+
+    const branchSelect = await screen.findByRole("combobox", {
+      name: copy("branches.branch.select_label"),
+    });
+    const options = Array.from(branchSelect.querySelectorAll("option")).map((option) => option.textContent);
+
+    expect(options).toEqual(["Historical unknown"]);
+    expect(options).not.toContain("main");
+    expect(options).not.toContain("release/0.1.3");
+    expect(screen.getAllByText("$1.23").length).toBeGreaterThan(0);
+  });
+
   it("disambiguates duplicate repo basenames without exposing absolute paths in labels", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {

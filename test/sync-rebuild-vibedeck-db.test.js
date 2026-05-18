@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const { execFileSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const { test } = require('node:test');
 
@@ -692,6 +693,103 @@ test('sync --rebuild-vibedeck-db skips global branch-fact rebuild when grouped s
     else process.env.GEMINI_HOME = prevGeminiHome;
     if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
     else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync --rebuild-vibedeck-db batches many events for one session into one rich-fact rebuild shape', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-batch-shape-unit-'));
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const branchFacts = require(branchFactsPath);
+  const originalRebuildBranchUsageFactsForSession = branchFacts.rebuildBranchUsageFactsForSession;
+  delete require.cache[pipelinePath];
+  let processSessionEventBatch = null;
+  let rebuildCalls = 0;
+  const updateCount = 1000;
+
+  try {
+    branchFacts.rebuildBranchUsageFactsForSession = async (...args) => {
+      rebuildCalls += 1;
+      return originalRebuildBranchUsageFactsForSession(...args);
+    };
+    ({ processSessionEventBatch } = require(pipelinePath));
+
+    const dbPath = path.join(tmp, 'vibedeck.sqlite3');
+    const repoRoot = path.join(tmp, 'repo');
+    await fs.mkdir(repoRoot, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot, stdio: 'ignore' });
+    ensureSchema(dbPath);
+    const events = [
+      {
+        kind: 'start',
+        provider: 'codex',
+        session_id: 'many',
+        started_at: '2026-05-10T00:00:00.000Z',
+        cwd: repoRoot,
+        model: 'gpt-5.4',
+        branch: 'main',
+      },
+    ];
+    for (let i = 0; i < updateCount; i += 1) {
+      events.push({
+        kind: 'update',
+        provider: 'codex',
+        session_id: 'many',
+        observed_at: new Date(Date.UTC(2026, 4, 10, 0, 0, i)).toISOString(),
+        cwd: repoRoot,
+        model: 'gpt-5.4',
+        branch: 'main',
+        delta_tokens: 1,
+        input_tokens: 1,
+        output_tokens: 0,
+      });
+    }
+    events.push({
+      kind: 'end',
+      provider: 'codex',
+      session_id: 'many',
+      ended_at: '2026-05-10T00:20:00.000Z',
+      cwd: repoRoot,
+      model: 'gpt-5.4',
+      branch: 'main',
+      total_tokens: updateCount,
+      end_reason: 'log_complete',
+    });
+
+    await processSessionEventBatch(dbPath, events);
+    assert.equal(rebuildCalls, 1);
+
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const session = db
+        .prepare('SELECT total_tokens, model, branch FROM vibedeck_sessions WHERE provider = ? AND session_id = ?')
+        .get('codex', 'many');
+      assert.ok(session);
+      assert.equal(session.total_tokens, updateCount);
+      assert.equal(session.model, 'gpt-5.4');
+      assert.ok(session.branch === null || typeof session.branch === 'string');
+
+      const events = db
+        .prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events WHERE provider = ? AND session_id = ?')
+        .get('codex', 'many');
+      assert.ok(events);
+      assert.equal(events.n, updateCount + 2);
+
+      const fact = db
+        .prepare('SELECT total_tokens, model, branch, branch_resolution_tier FROM vibedeck_branch_usage_facts WHERE provider = ? AND session_id = ?')
+        .get('codex', 'many');
+      assert.ok(fact);
+      assert.equal(fact.total_tokens, updateCount);
+      assert.equal(fact.model, 'gpt-5.4');
+      assert.equal(fact.branch, 'main');
+      assert.ok(typeof fact.branch_resolution_tier === 'string' && fact.branch_resolution_tier.length > 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    branchFacts.rebuildBranchUsageFactsForSession = originalRebuildBranchUsageFactsForSession;
+    delete require.cache[pipelinePath];
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });

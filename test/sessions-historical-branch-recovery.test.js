@@ -17,7 +17,9 @@ function git(cwd, args, opts = {}) {
 }
 
 function initRepo(dir, firstCommitIso) {
-  git(dir, ['init']);
+  git(dir, ['init', '-b', 'main']);
+  git(dir, ['config', 'user.email', 'test@example.com']);
+  git(dir, ['config', 'user.name', 'Test User']);
   fs.writeFileSync(path.join(dir, 'README.md'), 'init\n');
   git(dir, ['add', '.']);
   git(dir, ['commit', '-m', 'init'], {

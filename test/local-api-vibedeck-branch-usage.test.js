@@ -1456,3 +1456,132 @@ test('GET /functions/vibedeck-branch-usage includes Historical unknown as a trac
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('historical recovery never moves cost between projects', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-branch-no-project-move-'));
+  const historicalBranchRecovery = require('../src/lib/sessions/historical-branch-recovery');
+  const originalRecover = historicalBranchRecovery.recoverHistoricalBranchForUnknownGit;
+  try {
+    const trackerDir = path.join(root, 'tracker');
+    const repoA = path.join(root, 'repo-a');
+    const repoB = path.join(root, 'repo-b');
+    await fs.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoA, ['main']);
+    initGitRepo(repoB, ['main']);
+    const repoAReal = fssync.realpathSync(repoA);
+    const repoBReal = fssync.realpathSync(repoB);
+
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    await fs.writeFile(queuePath, '', 'utf8');
+
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'repo-a-session',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        cwd: repoA,
+        repo_root: repoA,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.5',
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'repo-b-session',
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        cwd: repoB,
+        repo_root: repoB,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.5',
+        total_tokens: 200,
+        total_cost_usd: 0.2,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'repo-a-session',
+        event_key: 'repo-a-event',
+        observed_at: '2026-05-10T00:05:00.000Z',
+        cwd: repoA,
+        repo_root: repoA,
+        branch: null,
+        model: 'gpt-5.5',
+        delta_tokens: 100,
+        input_tokens: 80,
+        output_tokens: 20,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'repo-b-session',
+        event_key: 'repo-b-event',
+        observed_at: '2026-05-10T00:05:00.000Z',
+        cwd: repoB,
+        repo_root: repoB,
+        branch: null,
+        model: 'gpt-5.5',
+        delta_tokens: 200,
+        input_tokens: 160,
+        output_tokens: 40,
+      });
+    } finally {
+      db.close();
+    }
+
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = async ({ repoRoot }) => ({
+      branch: repoRoot === repoAReal ? 'main' : 'Historical unknown',
+      branch_kind: repoRoot === repoAReal ? 'known' : 'historical_unknown',
+      confidence: 'low',
+      branch_resolution_tier: repoRoot === repoAReal ? 'C' : 'HISTORICAL_GUARD',
+    });
+
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    delete require.cache[require.resolve('../src/lib/local-api')];
+    const { createLocalApiHandler } = require('../src/lib/local-api');
+    const handler = createLocalApiHandler({ queuePath });
+
+    const req = createRequest({ method: 'GET' });
+    const res = createResponse();
+    await handler(
+      req,
+      res,
+      new URL('http://127.0.0.1/functions/vibedeck-branch-usage?include_sessions=1'),
+    );
+
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.body.toString('utf8'));
+    assert.equal(body.repos.length, 2);
+
+    const repoAUsage = body.repos.find((repo) => repo.project_key === 'repo-a');
+    const repoBUsage = body.repos.find((repo) => repo.project_key === 'repo-b');
+    assert.ok(repoAUsage);
+    assert.ok(repoBUsage);
+    assert.equal(repoAUsage.repo_root, repoAReal);
+    assert.equal(repoBUsage.repo_root, repoBReal);
+    assert.equal(repoAUsage.branches.length, 1);
+    assert.equal(repoBUsage.branches.length, 1);
+
+    assert.equal(repoAUsage.branches[0].branch, 'main');
+    assertClose(repoAUsage.branches[0].total_cost_usd, 0.1);
+    assert.equal(repoAUsage.branches[0].total_tokens, 100);
+
+    assert.equal(repoBUsage.branches[0].branch, 'Historical unknown');
+    assertClose(repoBUsage.branches[0].total_cost_usd, 0.2);
+    assert.equal(repoBUsage.branches[0].total_tokens, 200);
+
+    assertClose(body.totals.total_cost_usd, 0.3);
+  } finally {
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = originalRecover;
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

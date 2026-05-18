@@ -261,10 +261,34 @@ test('branch facts split a cross-branch session by event time instead of wall-cl
     }
 
     const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
-    assert.deepEqual(rows.map((row) => ({ branch: row.branch, total_tokens: row.total_tokens, total_cost_usd: row.total_cost_usd })), [
-      { branch: 'main', total_tokens: 90, total_cost_usd: 0.9 },
-      { branch: 'feature/live', total_tokens: 10, total_cost_usd: 0.1 },
-    ]);
+    assert.deepEqual(
+      rows.map((row) => ({
+        branch: row.branch,
+        total_tokens: row.total_tokens,
+        total_cost_usd: row.total_cost_usd,
+        branch_kind: row.branch_kind,
+        confidence: row.confidence,
+        branch_resolution_tier: row.branch_resolution_tier,
+      })),
+      [
+        {
+          branch: 'main',
+          total_tokens: 90,
+          total_cost_usd: 0.9,
+          branch_kind: 'known',
+          confidence: 'medium',
+          branch_resolution_tier: 'B',
+        },
+        {
+          branch: 'feature/live',
+          total_tokens: 10,
+          total_cost_usd: 0.1,
+          branch_kind: 'known',
+          confidence: 'medium',
+          branch_resolution_tier: 'B',
+        },
+      ],
+    );
   } finally {
     tmp.cleanup();
   }

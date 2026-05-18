@@ -124,7 +124,10 @@ async function factBranch({ dbPath, project, observedAt, event, session }) {
 
   const historyBranch = headHistoryBranch(dbPath, project, observedAt);
   if (historyBranch) {
-    return knownBranchResult(historyBranch, { confidence: 'low' });
+    return knownBranchResult(historyBranch, {
+      confidence: 'medium',
+      branch_resolution_tier: 'B',
+    });
   }
 
   const sessionBranch = knownBranchResult(session?.branch, {

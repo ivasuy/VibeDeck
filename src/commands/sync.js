@@ -737,7 +737,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     await recoverActiveSessionMetadata(dbPath);
     lifecycle?.providerDone?.("Indexes", "active session metadata recovered");
     lifecycle?.provider?.("Indexes", "repairing missing project attribution");
-    const repairedAttribution = repairMissingProjectAttribution(dbPath, {
+    const repairedAttribution = await repairMissingProjectAttribution(dbPath, {
       onProgress: createSyncLifecycleProgressCallback({
         provider: "Indexes",
         unit: "sessions",
@@ -755,7 +755,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     });
     if (runFullBranchFactRebuild) {
       lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
-      const branchFactsRebuilt = rebuildAllBranchUsageFacts(dbPath, {
+      const branchFactsRebuilt = await rebuildAllBranchUsageFacts(dbPath, {
         onProgress: createSyncLifecycleProgressCallback({
           provider: "Indexes",
           unit: "sessions",

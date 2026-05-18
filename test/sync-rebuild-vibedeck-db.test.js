@@ -30,6 +30,11 @@ async function readJsonl(filePath) {
     .map((line) => JSON.parse(line));
 }
 
+async function readJsonFile(filePath) {
+  const raw = await fs.readFile(filePath, 'utf8');
+  return JSON.parse(raw);
+}
+
 test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provider logs', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-'));
   const prevHome = process.env.HOME;
@@ -67,6 +72,9 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
     const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
     const queuePath = path.join(trackerDir, 'queue.jsonl');
+    const queueStatePath = path.join(trackerDir, 'queue.state.json');
+    const projectQueuePath = path.join(trackerDir, 'project.queue.jsonl');
+    const projectQueueStatePath = path.join(trackerDir, 'project.queue.state.json');
     ensureSchema(dbPath);
 
     let db = new DatabaseSync(dbPath);
@@ -129,6 +137,18 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
       })}\n`,
       'utf8',
     );
+    await fs.appendFile(
+      projectQueuePath,
+      `${JSON.stringify({
+        source: 'cursor',
+        project_key: 'stale-project',
+        hour_start: '2026-05-10T00:00:00.000Z',
+        total_tokens: 999,
+      })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(queueStatePath, JSON.stringify({ offset: 999 }), 'utf8');
+    await fs.writeFile(projectQueueStatePath, JSON.stringify({ offset: 999 }), 'utf8');
 
     await cmdSync(['--rebuild-vibedeck-db']);
 
@@ -161,6 +181,12 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
     assert.equal(queueRows.length, 1);
     assert.equal(queueRows[0].source, 'codex');
     assert.equal(queueRows[0].total_tokens, 3);
+    const projectQueueRows = await readJsonl(projectQueuePath);
+    assert.ok(projectQueueRows.every((row) => row.source !== 'cursor'));
+    const queueState = await readJsonFile(queueStatePath);
+    const projectQueueState = await readJsonFile(projectQueueStatePath);
+    assert.equal(queueState.offset, 0);
+    assert.equal(projectQueueState.offset, 0);
   } finally {
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
@@ -200,8 +226,20 @@ test('rebuild failure leaves live canonical DB untouched', async () => {
 
     const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    const queueStatePath = path.join(trackerDir, 'queue.state.json');
+    const projectQueuePath = path.join(trackerDir, 'project.queue.jsonl');
+    const projectQueueStatePath = path.join(trackerDir, 'project.queue.state.json');
     await fs.mkdir(trackerDir, { recursive: true });
     ensureSchema(dbPath);
+    const seedQueue = `${JSON.stringify({ source: 'cursor', total_tokens: 999 })}\n`;
+    const seedQueueState = JSON.stringify({ offset: 77 });
+    const seedProjectQueue = `${JSON.stringify({ source: 'cursor', project_key: 'stale-project', total_tokens: 999 })}\n`;
+    const seedProjectQueueState = JSON.stringify({ offset: 88 });
+    await fs.writeFile(queuePath, seedQueue, 'utf8');
+    await fs.writeFile(queueStatePath, seedQueueState, 'utf8');
+    await fs.writeFile(projectQueuePath, seedProjectQueue, 'utf8');
+    await fs.writeFile(projectQueueStatePath, seedProjectQueueState, 'utf8');
 
     const db = new DatabaseSync(dbPath);
     try {
@@ -249,11 +287,133 @@ test('rebuild failure leaves live canonical DB untouched', async () => {
     } finally {
       verifyDb.close();
     }
+
+    assert.equal(await fs.readFile(queuePath, 'utf8'), seedQueue);
+    assert.equal(await fs.readFile(queueStatePath, 'utf8'), seedQueueState);
+    assert.equal(await fs.readFile(projectQueuePath, 'utf8'), seedProjectQueue);
+    assert.equal(await fs.readFile(projectQueueStatePath, 'utf8'), seedProjectQueueState);
   } finally {
     if (originalRollout) require.cache[rolloutPath] = originalRollout;
     else delete require.cache[rolloutPath];
     delete require.cache[syncPath];
 
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('rebuild promotion failure rolls back live DB and queue/state artifacts', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-promotion-fail-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const originalCopyFile = fs.copyFile;
+
+  try {
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '11');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rolloutPath = path.join(rolloutDir, 'rollout-a.jsonl');
+    const usage = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: '2026-05-11T09:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
+    const queuePath = path.join(trackerDir, 'queue.jsonl');
+    const queueStatePath = path.join(trackerDir, 'queue.state.json');
+    const projectQueuePath = path.join(trackerDir, 'project.queue.jsonl');
+    const projectQueueStatePath = path.join(trackerDir, 'project.queue.state.json');
+    await fs.mkdir(trackerDir, { recursive: true });
+    ensureSchema(dbPath);
+
+    const seedQueue = `${JSON.stringify({ source: 'cursor', total_tokens: 999 })}\n`;
+    const seedQueueState = JSON.stringify({ offset: 44 });
+    const seedProjectQueue = `${JSON.stringify({ source: 'cursor', project_key: 'stale-project', total_tokens: 999 })}\n`;
+    const seedProjectQueueState = JSON.stringify({ offset: 55 });
+    await fs.writeFile(queuePath, seedQueue, 'utf8');
+    await fs.writeFile(queueStatePath, seedQueueState, 'utf8');
+    await fs.writeFile(projectQueuePath, seedProjectQueue, 'utf8');
+    await fs.writeFile(projectQueueStatePath, seedProjectQueueState, 'utf8');
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, last_observed_at,
+          cost_estimated, cost_quality, created_at, updated_at
+        ) VALUES (
+          'codex', 'existing-session', '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z', 'normal',
+          NULL, NULL, NULL, NULL,
+          NULL, 'D', 'unattributed', NULL,
+          'gpt-5.4', 10, 0.1, '2026-05-10T00:01:00.000Z',
+          0, 'stored', '2026-05-10T00:00:00.000Z', '2026-05-10T00:01:00.000Z'
+        );
+      `);
+    } finally {
+      db.close();
+    }
+
+    let injectedFailure = false;
+    fs.copyFile = async (src, dest, ...rest) => {
+      if (!injectedFailure && dest === projectQueuePath && path.basename(src) === 'project.queue.jsonl') {
+        injectedFailure = true;
+        throw new Error('forced promotion copy failure');
+      }
+      return originalCopyFile.call(fs, src, dest, ...rest);
+    };
+
+    await assert.rejects(() => cmdSync(['--rebuild-vibedeck-db']), /forced promotion copy failure/);
+
+    const verifyDb = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const count = verifyDb.prepare('SELECT COUNT(*) AS n FROM vibedeck_sessions').get();
+      const row = verifyDb.prepare('SELECT session_id FROM vibedeck_sessions').get();
+      assert.equal(Number(count.n), 1);
+      assert.equal(row.session_id, 'existing-session');
+    } finally {
+      verifyDb.close();
+    }
+
+    assert.equal(await fs.readFile(queuePath, 'utf8'), seedQueue);
+    assert.equal(await fs.readFile(queueStatePath, 'utf8'), seedQueueState);
+    assert.equal(await fs.readFile(projectQueuePath, 'utf8'), seedProjectQueue);
+    assert.equal(await fs.readFile(projectQueueStatePath, 'utf8'), seedProjectQueueState);
+  } finally {
+    fs.copyFile = originalCopyFile;
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;
     if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;

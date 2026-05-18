@@ -984,6 +984,59 @@ async function copyFileOrDefault(sourcePath, targetPath, defaultBody = "") {
   await fs.writeFile(targetPath, defaultBody, "utf8");
 }
 
+function createRebuildPromotionArtifacts(ctx) {
+  return [
+    {
+      key: "db",
+      stagedPath: ctx.staged.dbPath,
+      livePath: ctx.live.dbPath,
+      defaultBody: null,
+    },
+    {
+      key: "queue",
+      stagedPath: ctx.staged.queuePath,
+      livePath: ctx.live.queuePath,
+      defaultBody: "",
+    },
+    {
+      key: "projectQueue",
+      stagedPath: ctx.staged.projectQueuePath,
+      livePath: ctx.live.projectQueuePath,
+      defaultBody: "",
+    },
+    {
+      key: "queueState",
+      stagedPath: ctx.staged.queueStatePath,
+      livePath: ctx.live.queueStatePath,
+      defaultBody: JSON.stringify({ offset: 0 }),
+    },
+    {
+      key: "projectQueueState",
+      stagedPath: ctx.staged.projectQueueStatePath,
+      livePath: ctx.live.projectQueueStatePath,
+      defaultBody: JSON.stringify({ offset: 0 }),
+    },
+  ];
+}
+
+async function backupLiveArtifact(artifact, backupPath) {
+  await ensureDir(path.dirname(backupPath));
+  if (!fssync.existsSync(artifact.livePath)) {
+    return { existed: false };
+  }
+  await fs.copyFile(artifact.livePath, backupPath);
+  return { existed: true, backupPath };
+}
+
+async function restoreLiveArtifact(artifact, backup) {
+  if (backup?.existed && backup.backupPath && fssync.existsSync(backup.backupPath)) {
+    await ensureDir(path.dirname(artifact.livePath));
+    await fs.copyFile(backup.backupPath, artifact.livePath);
+    return;
+  }
+  await fs.rm(artifact.livePath, { force: true }).catch(() => {});
+}
+
 async function promoteRebuildStagingContext(ctx) {
   if (!ctx || !ctx.live || !ctx.staged) {
     throw new Error("invalid rebuild staging context");
@@ -992,32 +1045,40 @@ async function promoteRebuildStagingContext(ctx) {
   ensureSchema(ctx.staged.dbPath);
 
   const stamp = `${Date.now()}-${process.pid}`;
-  const backupDbPath = `${ctx.live.dbPath}.before-rebuild-${stamp}`;
-  const liveDbExists = fssync.existsSync(ctx.live.dbPath);
+  const persistentDbBackupPath = `${ctx.live.dbPath}.before-rebuild-${stamp}`;
+  const rollbackDir = path.join(ctx.stagingDir, `.rollback-${stamp}`);
+  const artifacts = createRebuildPromotionArtifacts(ctx);
+  const backups = new Map();
 
   try {
-    if (liveDbExists) {
-      await fs.copyFile(ctx.live.dbPath, backupDbPath);
+    await fs.mkdir(rollbackDir, { recursive: true });
+
+    for (const artifact of artifacts) {
+      const backupPath = path.join(rollbackDir, `${artifact.key}.bak`);
+      const snapshot = await backupLiveArtifact(artifact, backupPath);
+      backups.set(artifact.key, snapshot);
     }
-    await fs.rename(ctx.staged.dbPath, ctx.live.dbPath);
-    await copyFileOrDefault(ctx.staged.queuePath, ctx.live.queuePath, "");
-    await copyFileOrDefault(ctx.staged.projectQueuePath, ctx.live.projectQueuePath, "");
-    await copyFileOrDefault(
-      ctx.staged.queueStatePath,
-      ctx.live.queueStatePath,
-      JSON.stringify({ offset: 0 }),
-    );
-    await copyFileOrDefault(
-      ctx.staged.projectQueueStatePath,
-      ctx.live.projectQueueStatePath,
-      JSON.stringify({ offset: 0 }),
-    );
+
+    const dbBackup = backups.get("db");
+    if (dbBackup?.existed) {
+      await fs.copyFile(dbBackup.backupPath, persistentDbBackupPath);
+    }
+
+    for (const artifact of artifacts) {
+      if (artifact.defaultBody == null) {
+        await ensureDir(path.dirname(artifact.livePath));
+        await fs.copyFile(artifact.stagedPath, artifact.livePath);
+      } else {
+        await copyFileOrDefault(artifact.stagedPath, artifact.livePath, artifact.defaultBody);
+      }
+    }
   } catch (err) {
-    if (!fssync.existsSync(ctx.live.dbPath) && liveDbExists && fssync.existsSync(backupDbPath)) {
-      await fs.copyFile(backupDbPath, ctx.live.dbPath).catch(() => {});
+    for (const artifact of artifacts) {
+      await restoreLiveArtifact(artifact, backups.get(artifact.key)).catch(() => {});
     }
     throw err;
   } finally {
+    await fs.rm(rollbackDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(ctx.stagingDir, { recursive: true, force: true }).catch(() => {});
   }
 }

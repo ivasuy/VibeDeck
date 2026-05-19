@@ -176,14 +176,112 @@ function factCost(row) {
 }
 
 function compareLiveRowsActiveFirst(a, b) {
-  const aActive = !isSessionEnded(a);
-  const bActive = !isSessionEnded(b);
+  const aActive = isActiveRollupSession(a);
+  const bActive = isActiveRollupSession(b);
   if (aActive !== bActive) return aActive ? -1 : 1;
   return String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''));
 }
 
 function uniqueSortedSessions(sessionMap) {
   return Array.from(sessionMap.values()).sort(compareLiveRowsActiveFirst);
+}
+
+function isSupersededSession(row) {
+  return String(row?.live_state || '').trim().toLowerCase() === 'superseded';
+}
+
+function isActiveRollupSession(row) {
+  return !isSessionEnded(row) && !isSupersededSession(row);
+}
+
+function isStaleRollupSession(row) {
+  return isSessionEnded(row) || isSupersededSession(row);
+}
+
+function liveLaneKey(row) {
+  const provider = text(row?.provider);
+  const repoRoot = text(row?.repo_root);
+  const cwd = text(row?.cwd);
+  if (!provider || !repoRoot || !cwd) return '';
+  return `${provider}|repo:${repoRoot}|cwd:${cwd}`;
+}
+
+function markSupersededSession(row, winner) {
+  return {
+    ...row,
+    live_state: 'superseded',
+    superseded_at: liveSortIso(winner) || winner?.last_observed_at || winner?.updated_at || winner?.observed_at || null,
+    superseded_by_session_id: text(winner?.session_id) || null,
+    superseded_by_branch: safeBranch(winner?.branch),
+  };
+}
+
+function resolveEffectiveActiveSessions(rows, { now, idleTimeoutMin } = {}) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const liveRows = sourceRows.filter((row) => isLiveEligibleSession(row, { now, idleTimeoutMin }));
+  const activeByKey = new Map();
+  const supersededByKey = new Map();
+  const byLane = new Map();
+
+  for (const row of liveRows) {
+    const key = liveLaneKey(row);
+    if (!key) {
+      activeByKey.set(sessionKey(row), row);
+      continue;
+    }
+    if (!byLane.has(key)) byLane.set(key, []);
+    byLane.get(key).push(row);
+  }
+
+  for (const laneRows of byLane.values()) {
+    const rowsByBranch = new Map();
+    for (const row of laneRows) {
+      const branch = safeBranch(row?.branch);
+      if (!rowsByBranch.has(branch)) rowsByBranch.set(branch, []);
+      rowsByBranch.get(branch).push(row);
+    }
+
+    if (rowsByBranch.size <= 1) {
+      for (const row of laneRows) activeByKey.set(sessionKey(row), row);
+      continue;
+    }
+
+    const branchFreshness = Array.from(rowsByBranch.entries()).map(([branch, branchRows]) => ({
+      branch,
+      newestMs: branchRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0),
+    }));
+    const newestMs = branchFreshness.reduce((max, row) => Math.max(max, row.newestMs), 0);
+    const newestBranches = branchFreshness.filter((row) => row.newestMs === newestMs).map((row) => row.branch);
+
+    if (newestBranches.length !== 1) {
+      for (const row of laneRows) activeByKey.set(sessionKey(row), row);
+      continue;
+    }
+
+    const winnerBranch = newestBranches[0];
+    const winner = [...(rowsByBranch.get(winnerBranch) || [])]
+      .sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || '')))[0];
+
+    if (!winner) {
+      for (const row of laneRows) activeByKey.set(sessionKey(row), row);
+      continue;
+    }
+
+    for (const row of laneRows) {
+      if (safeBranch(row?.branch) === winnerBranch) {
+        activeByKey.set(sessionKey(row), row);
+      } else {
+        supersededByKey.set(sessionKey(row), markSupersededSession(row, winner));
+      }
+    }
+  }
+
+  const decoratedRows = sourceRows.map((row) => supersededByKey.get(sessionKey(row)) || row);
+  return {
+    active_sessions: uniqueSortedSessions(activeByKey),
+    superseded_sessions: uniqueSortedSessions(supersededByKey),
+    decorated_rows: decoratedRows,
+  };
 }
 
 function addSessionToSet(set, row) {
@@ -201,7 +299,7 @@ function addContributionToBreakdown(entry, { tokens, cost, session, active }) {
     entry.active_known_cost_usd += cost.known_cost_usd;
     entry.active_cost_unknown_count += cost.unknown_count;
     addSessionToSet(entry.active_session_keys, session);
-  } else if (isSessionEnded(session)) {
+  } else if (isStaleRollupSession(session)) {
     addSessionToSet(entry.recently_completed_keys, session);
   }
 }
@@ -320,7 +418,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
       branchEntry.active_known_cost_usd += cost.known_cost_usd;
       branchEntry.active_cost_unknown_count += cost.unknown_count;
       branchEntry.newest_active_ms = Math.max(branchEntry.newest_active_ms, sessionMs, sourceMs);
-    } else if (isSessionEnded(session)) {
+    } else if (isStaleRollupSession(session)) {
       branchEntry.recently_completed_keys.add(key);
     }
 
@@ -563,7 +661,7 @@ function buildBreakdowns(rows, activeRows) {
       bm.active_total_cost_usd += cost.total_cost_usd ?? 0;
       bm.active_known_cost_usd += cost.known_cost_usd;
       bm.active_cost_unknown_count += cost.unknown_count;
-    } else if (isSessionEnded(row)) {
+    } else if (isStaleRollupSession(row)) {
       b.recently_completed_count += 1;
     }
   }
@@ -618,10 +716,10 @@ function buildBreakdowns(rows, activeRows) {
         const bHasActive = b.active_session_count > 0;
         if (aHasActive !== bHasActive) return aHasActive ? -1 : 1;
         const aNewestActive = aHasActive
-          ? Math.max(...a.sessions.filter((row) => !isSessionEnded(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
+          ? Math.max(...a.sessions.filter((row) => isActiveRollupSession(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
           : 0;
         const bNewestActive = bHasActive
-          ? Math.max(...b.sessions.filter((row) => !isSessionEnded(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
+          ? Math.max(...b.sessions.filter((row) => isActiveRollupSession(row)).map((row) => toMs(liveSortIso(row)) || 0), 0)
           : 0;
         if (aNewestActive !== bNewestActive) return bNewestActive - aNewestActive;
         const aNewestAudit = Math.max(...a.sessions.map((row) => toMs(liveSortIso(row)) || 0), 0);
@@ -641,7 +739,10 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
   const recentCutoff = nowMs - endedWindowMs;
   const factsBySessionKey = buildFactsBySessionKey(branchFacts);
 
-  const activeSessions = enrichedRows.filter((row) => isLiveEligibleSession(row, { now: nowIso, idleTimeoutMin: timeoutMin }));
+  const effectiveLive = resolveEffectiveActiveSessions(enrichedRows, { now: nowIso, idleTimeoutMin: timeoutMin });
+  const activeSessions = effectiveLive.active_sessions;
+  const supersededSessions = effectiveLive.superseded_sessions;
+  const decoratedRows = effectiveLive.decorated_rows;
   const recentSessions = enrichedRows.filter((row) => {
     if (!isSessionEnded(row)) return false;
     const endedMs = toMs(row?.ended_at);
@@ -649,7 +750,7 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
   });
 
   const payloadSessions = [...new Map(
-    [...activeSessions, ...recentSessions].map((row) => [`${text(row?.provider)}:${text(row?.session_id)}`, row]),
+    [...activeSessions, ...supersededSessions, ...recentSessions].map((row) => [sessionKey(row), row]),
   ).values()].sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || '')));
 
   const activeScopes = new Map();
@@ -660,7 +761,7 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
 
   const workstreams = [];
   const auditRowsByScope = new Map();
-  for (const row of enrichedRows) {
+  for (const row of decoratedRows) {
     const scope = projectScopeKey(row);
     if (!activeScopes.has(scope.key)) continue;
     if (!auditRowsByScope.has(scope.key)) auditRowsByScope.set(scope.key, []);
@@ -669,24 +770,27 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
 
   for (const [scopeKey, scope] of activeScopes.entries()) {
     const auditRows = auditRowsByScope.get(scopeKey) || [];
-    const scopeActiveRows = auditRows.filter((row) => isLiveEligibleSession(row, { now: nowIso, idleTimeoutMin: timeoutMin }));
+    const scopeEffectiveLive = resolveEffectiveActiveSessions(auditRows, { now: nowIso, idleTimeoutMin: timeoutMin });
+    const scopeActiveRows = scopeEffectiveLive.active_sessions;
+    const scopeSupersededRows = scopeEffectiveLive.superseded_sessions;
+    const scopeDecoratedAuditRows = scopeEffectiveLive.decorated_rows;
     const scopeRecentEnded = auditRows.filter((row) => {
       if (!isSessionEnded(row)) return false;
       const endedMs = toMs(row?.ended_at);
       return Number.isFinite(endedMs) && endedMs >= recentCutoff;
     });
     const scopePayloadRows = [...new Map(
-      [...scopeActiveRows, ...scopeRecentEnded].map((row) => [sessionKey(row), row]),
+      [...scopeActiveRows, ...scopeSupersededRows, ...scopeRecentEnded].map((row) => [sessionKey(row), row]),
     ).values()].sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || '')));
     const activeTokens = scopeActiveRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
-    const auditTokens = auditRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
+    const auditTokens = scopeDecoratedAuditRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
     const activeCost = sumCost(scopeActiveRows);
-    const auditCost = sumCost(auditRows);
-    const breakdowns = buildBreakdowns(auditRows, scopeActiveRows);
+    const auditCost = sumCost(scopeDecoratedAuditRows);
+    const breakdowns = buildBreakdowns(scopeDecoratedAuditRows, scopeActiveRows);
     const activeSessionKeys = new Set(scopeActiveRows.map((row) => sessionKey(row)));
     const visibleSessionKeys = new Set(scopePayloadRows.map((row) => sessionKey(row)));
-    const branchGroups = buildEffectiveBranchGroups(auditRows, factsBySessionKey, activeSessionKeys, visibleSessionKeys);
-    const updatedMs = auditRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0);
+    const branchGroups = buildEffectiveBranchGroups(scopeDecoratedAuditRows, factsBySessionKey, activeSessionKeys, visibleSessionKeys);
+    const updatedMs = scopeDecoratedAuditRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0);
 
     workstreams.push({
       id: `project:${stableHash(scopeKey)}`,
@@ -697,10 +801,10 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       cwd: scope.cwd,
       branches: Array.from(new Set(branchGroups.map((row) => row.branch))).sort((a, b) => a.localeCompare(b)),
       sessions: scopePayloadRows,
-      primary_session: scopeActiveRows[0] || scopePayloadRows[0] || auditRows[0] || null,
+      primary_session: scopeActiveRows[0] || scopePayloadRows[0] || scopeDecoratedAuditRows[0] || null,
       active_session_count: scopeActiveRows.length,
-      recently_completed_count: scopeRecentEnded.length,
-      audit_session_count: auditRows.length,
+      recently_completed_count: scopeRecentEnded.length + scopeSupersededRows.length,
+      audit_session_count: scopeDecoratedAuditRows.length,
       active_total_tokens: activeTokens,
       active_total_cost_usd: activeCost.unknown_count > 0 ? null : activeCost.total_cost_usd,
       active_known_cost_usd: activeCost.known_cost_usd,
@@ -741,6 +845,7 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
   return {
     sessions: payloadSessions,
     active_sessions: activeSessions,
+    superseded_sessions: supersededSessions,
     recent_sessions: recentSessions,
     workstreams,
     totals: {

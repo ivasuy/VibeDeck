@@ -56,6 +56,7 @@ const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
+const { createProviderBranchCache } = require("../lib/sessions/provider-branch");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
@@ -165,8 +166,13 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         cursors,
       });
     }
+    const rebuildBranchCache = opts.rebuildVibedeckDb ? createProviderBranchCache() : null;
     const sessionEventProcessor = opts.rebuildVibedeckDb
-      ? createGroupedSessionEventProcessor((events) => require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events))
+      ? createGroupedSessionEventProcessor((events) =>
+          require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events, {
+            cache: rebuildBranchCache,
+          }),
+        )
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
     const onSessionEvent = sessionEventProcessor.onSessionEvent;
 
@@ -778,6 +784,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         unit: "sessions",
         lifecycle,
       }),
+      cache: rebuildBranchCache,
     });
     lifecycle?.providerDone?.(
       "Indexes",
@@ -797,6 +804,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
           unit: "sessions",
           lifecycle,
         }),
+        cache: rebuildBranchCache,
       });
       lifecycle?.providerDone?.(
         "Indexes",

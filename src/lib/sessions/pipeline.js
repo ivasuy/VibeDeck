@@ -12,7 +12,8 @@ const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
 const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
 const { upsertEntireLink } = require('./entire-links');
-const { readProviderBranchFromSessionFile, cleanProviderBranch } = require('./provider-branch');
+const providerBranch = require('./provider-branch');
+const { cleanProviderBranch } = providerBranch;
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -108,27 +109,30 @@ function canReadProviderBranch({ provider, session_id } = {}) {
   return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
 }
 
-function recoverProviderBranchFromSessionMetadata(event) {
+function recoverProviderBranchFromSessionMetadata(event, { cache = null } = {}) {
   if (!event || typeof event !== 'object') return null;
   if (!canReadProviderBranch({ provider: event.provider, session_id: event.session_id })) return null;
-  const recovered = readProviderBranchFromSessionFile({
+  const recovered = providerBranch.readProviderBranchFromSessionFile({
     provider: event.provider,
     session_id: event.session_id,
+    cache,
   });
   return cleanProviderBranch(recovered && recovered.branch);
 }
 
-function enrichEventFromSessionMetadata(event) {
+function enrichEventFromSessionMetadata(event, { cache = null } = {}) {
   if (!event || typeof event !== 'object') return event;
   if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model) && isNonEmptyString(event.branch)) return event;
   const recovered = recoverCodexSessionMetadata(event);
-  const providerBranch = isNonEmptyString(event.branch) ? null : recoverProviderBranchFromSessionMetadata(event);
-  if (!recovered.cwd && !recovered.model && !providerBranch) return event;
+  const resolvedProviderBranch = isNonEmptyString(event.branch)
+    ? null
+    : recoverProviderBranchFromSessionMetadata(event, { cache });
+  if (!recovered.cwd && !recovered.model && !resolvedProviderBranch) return event;
   return {
     ...event,
     cwd: isNonEmptyString(event.cwd) ? event.cwd : recovered.cwd ?? event.cwd,
     model: isNonEmptyString(event.model) ? event.model : recovered.model ?? event.model,
-    branch: isNonEmptyString(event.branch) ? event.branch : providerBranch ?? event.branch,
+    branch: isNonEmptyString(event.branch) ? event.branch : resolvedProviderBranch ?? event.branch,
   };
 }
 
@@ -373,13 +377,14 @@ async function processSessionEvent(dbPath, event) {
     ? null
     : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
       ? cleanProviderBranch(
-          (readProviderBranchFromSessionFile({
+          (providerBranch.readProviderBranchFromSessionFile({
             provider: session.provider,
             session_id: session.session_id,
+            cache: null,
           }) || {}).branch,
         )
       : null;
-  const providerBranch = providerBranchFromEvent || providerBranchFromLog || null;
+  const resolvedProviderBranch = providerBranchFromEvent || providerBranchFromLog || null;
   const branchRes = needsBranchResolution
     ? await resolveBranchForSession({
         provider: session.provider,
@@ -388,7 +393,7 @@ async function processSessionEvent(dbPath, event) {
         started_at: session.started_at,
         ended_at: session.ended_at,
         dbPath,
-        provider_branch: providerBranch,
+        provider_branch: resolvedProviderBranch,
       })
     : null;
 
@@ -477,10 +482,10 @@ function assertBatchEvents(batch) {
   }
 }
 
-async function processSessionEventBatch(dbPath, events) {
+async function processSessionEventBatch(dbPath, events, { cache = null } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
   assertBatchEvents(events);
-  const enrichedEvents = events.map((event) => enrichEventFromSessionMetadata(event));
+  const enrichedEvents = events.map((event) => enrichEventFromSessionMetadata(event, { cache }));
   assertBatchEvents(enrichedEvents);
 
   // Preserve compatibility with test harnesses that monkeypatch the single-event processor.
@@ -570,13 +575,14 @@ async function processSessionEventBatch(dbPath, events) {
         ? null
         : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
           ? cleanProviderBranch(
-              (readProviderBranchFromSessionFile({
+              (providerBranch.readProviderBranchFromSessionFile({
                 provider: session.provider,
                 session_id: session.session_id,
+                cache,
               }) || {}).branch,
             )
           : null;
-      const providerBranch = providerBranchFromEvents || providerBranchFromLog || null;
+      const resolvedProviderBranch = providerBranchFromEvents || providerBranchFromLog || null;
 
       const branchRes = needsBranchResolution
         ? await resolveBranchForSession({
@@ -586,7 +592,7 @@ async function processSessionEventBatch(dbPath, events) {
             started_at: session.started_at,
             ended_at: session.ended_at,
             dbPath,
-            provider_branch: providerBranch,
+            provider_branch: resolvedProviderBranch,
           })
         : null;
 

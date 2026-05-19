@@ -105,6 +105,38 @@ test('readProviderBranchFromSessionFile returns null for unsafe refs', () => {
   }
 });
 
+test('readProviderBranchFromSessionFile caches null and known results per provider session', () => {
+  const tmp = tempJsonl([{ payload: { git: { branch: 'main' } } }]);
+  const cache = {};
+  const originalReadFileSync = fs.readFileSync;
+  let reads = 0;
+
+  try {
+    fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+      if (filePath === tmp.file) reads += 1;
+      return originalReadFileSync.call(this, filePath, ...args);
+    };
+
+    assert.deepEqual(readProviderBranchFromSessionFile({ provider: 'codex', session_id: tmp.file, cache }), {
+      branch: 'main',
+      branch_kind: 'known',
+      confidence: 'medium',
+      branch_resolution_tier: 'PROVIDER_LOG',
+    });
+    assert.deepEqual(readProviderBranchFromSessionFile({ provider: 'codex', session_id: tmp.file, cache }), {
+      branch: 'main',
+      branch_kind: 'known',
+      confidence: 'medium',
+      branch_resolution_tier: 'PROVIDER_LOG',
+    });
+
+    assert.equal(reads, 1);
+  } finally {
+    fs.readFileSync = originalReadFileSync;
+    tmp.cleanup();
+  }
+});
+
 test('SessionEvent accepts optional provider branch', () => {
   const event = makeUpdate({
     provider: 'codex',

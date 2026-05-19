@@ -127,3 +127,76 @@ test('processSessionEventBatch preserves session, event, bucket, and branch fact
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('processSessionEventBatch uses event branch evidence without provider-log fallback', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-session-batch-no-reread-'));
+  const providerBranchPath = require.resolve('../src/lib/sessions/provider-branch');
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const providerBranch = require(providerBranchPath);
+  const originalRead = providerBranch.readProviderBranchFromSessionFile;
+  delete require.cache[pipelinePath];
+
+  try {
+    const repo = path.join(root, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'vibedeck@example.test'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'VibeDeck Test'], { cwd: repo, stdio: 'ignore' });
+    await fs.writeFile(path.join(repo, 'README.md'), 'branch evidence\n', 'utf8');
+    execFileSync('git', ['add', 'README.md'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
+
+    const sessionFile = path.join(root, 'session.jsonl');
+    await fs.writeFile(sessionFile, '{"payload":{"git":{"branch":"main"}}}\n', 'utf8');
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    let fallbackReads = 0;
+    providerBranch.readProviderBranchFromSessionFile = (...args) => {
+      fallbackReads += 1;
+      return originalRead(...args);
+    };
+
+    const { processSessionEventBatch: freshBatch } = require(pipelinePath);
+    await freshBatch(dbPath, [
+      {
+        kind: 'start',
+        provider: 'codex',
+        session_id: sessionFile,
+        started_at: '2026-05-10T00:00:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+      },
+      {
+        kind: 'update',
+        provider: 'codex',
+        session_id: sessionFile,
+        observed_at: '2026-05-10T00:01:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+        delta_tokens: 7,
+        input_tokens: 5,
+        output_tokens: 2,
+      },
+      {
+        kind: 'end',
+        provider: 'codex',
+        session_id: sessionFile,
+        ended_at: '2026-05-10T00:02:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+        total_tokens: 7,
+        end_reason: 'log_complete',
+      },
+    ], { cache: {} });
+
+    assert.equal(fallbackReads, 0);
+  } finally {
+    providerBranch.readProviderBranchFromSessionFile = originalRead;
+    delete require.cache[pipelinePath];
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

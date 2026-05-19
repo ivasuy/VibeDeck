@@ -43,6 +43,13 @@ function createProviderBranchState() {
   return { branches: new Set(), unsafe: false };
 }
 
+function createProviderBranchCache() {
+  return {
+    providerBranchBySession: new Map(),
+    providerBranchEvidenceBySession: new Map(),
+  };
+}
+
 function ensureState(state) {
   if (state && state.branches instanceof Set) return state;
   return createProviderBranchState();
@@ -147,6 +154,7 @@ function readProviderBranchFromSessionFile({ provider, session_id, cache = null 
 module.exports = {
   cleanProviderBranch,
   collectProviderBranchFromObject,
+  createProviderBranchCache,
   createProviderBranchState,
   providerBranchFromState,
   readProviderBranchFromSessionFile,

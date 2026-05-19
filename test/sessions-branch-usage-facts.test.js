@@ -7,6 +7,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
+const providerBranch = require('../src/lib/sessions/provider-branch');
 const {
   rebuildBranchUsageFactsForSession,
   rebuildAllBranchUsageFacts,
@@ -204,6 +205,49 @@ test('repairMissingProjectAttribution reports attribution repair progress', asyn
     assert.equal(progress[0].session_id, 'needs-repair');
     assert.equal(progress[0].cwd, fixture.dir);
   } finally {
+    fixture.cleanup();
+  }
+});
+
+test('branch fact rebuild uses shared provider branch helper cache for fallback evidence', async () => {
+  const fixture = makeDb();
+  const originalRead = providerBranch.readProviderBranchEvidenceFromSessionFile;
+  let reads = 0;
+
+  try {
+    const sessionFile = path.join(fixture.dir, 'codex-session.jsonl');
+    fs.writeFileSync(sessionFile, `${JSON.stringify({ payload: { git: { branch: 'feature/cache' } } })}\n`, 'utf8');
+
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionFile,
+        cwd: fixture.dir,
+        repo_root: fixture.dir,
+        branch: null,
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        total_tokens: 10,
+        total_cost_usd: 0.01,
+        model: 'gpt-5.4',
+        last_observed_at: '2026-05-10T00:10:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+
+    providerBranch.readProviderBranchEvidenceFromSessionFile = (...args) => {
+      reads += 1;
+      return originalRead(...args);
+    };
+
+    const cache = {};
+    await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    assert.equal(reads, 1);
+  } finally {
+    providerBranch.readProviderBranchEvidenceFromSessionFile = originalRead;
     fixture.cleanup();
   }
 });

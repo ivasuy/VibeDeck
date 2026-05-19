@@ -110,42 +110,113 @@ function makeCacheKey(provider, sessionId) {
   return `${providerKey(provider)}\u0000${sessionId}`;
 }
 
-function readProviderBranchFromSessionFile({ provider, session_id, cache = null } = {}) {
-  const key = providerKey(provider);
-  if (!SUPPORTED_PROVIDERS.has(key)) return null;
-  if (!isNonEmptyString(session_id) || !session_id.endsWith('.jsonl')) return null;
+function getProviderBranchEvidenceCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.providerBranchEvidenceBySession instanceof Map)) {
+    cache.providerBranchEvidenceBySession = new Map();
+  }
+  return cache.providerBranchEvidenceBySession;
+}
 
-  const map = getProviderBranchCache(cache);
-  const cacheKey = makeCacheKey(key, session_id);
-  if (map && map.has(cacheKey)) return map.get(cacheKey);
-
-  let result = null;
+function scanJsonlFileSync(filePath, onObject, { chunkSize = 256 * 1024 } = {}) {
+  let fd;
   try {
-    if (!fs.existsSync(session_id)) {
-      result = null;
-    } else {
-      const state = createProviderBranchState();
-      const content = fs.readFileSync(session_id, 'utf8');
-      for (const line of content.split(/\r?\n/)) {
+    fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(chunkSize);
+    let carry = '';
+    while (true) {
+      const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead <= 0) break;
+      const chunk = carry + buffer.toString('utf8', 0, bytesRead);
+      const lines = chunk.split(/\r?\n/);
+      carry = lines.pop() || '';
+      for (const line of lines) {
         if (!line) continue;
         let obj;
         try {
           obj = JSON.parse(line);
-        } catch {
-          result = null;
-          state.unsafe = true;
-          break;
+        } catch (err) {
+          const decision = onObject(null, { line, error: err });
+          if (decision === false) return;
+          continue;
         }
-        collectProviderBranchFromObject(key, obj, state);
-        if (state.unsafe || state.branches.size > 1) break;
+        const decision = onObject(obj, { line, error: null });
+        if (decision === false) return;
       }
-      if (!state.unsafe && state.branches.size <= 1) {
-        result = providerBranchFromState(state);
+    }
+    if (carry) {
+      let obj;
+      try {
+        obj = JSON.parse(carry);
+      } catch (err) {
+        onObject(null, { line: carry, error: err });
+        return;
+      }
+      onObject(obj, { line: carry, error: null });
+    }
+  } finally {
+    if (fd != null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+  }
+}
+
+function readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache = null } = {}) {
+  const key = providerKey(provider);
+  if (!SUPPORTED_PROVIDERS.has(key)) return { branch: null, checked: false, ambiguous: false };
+  if (!isNonEmptyString(session_id) || !session_id.endsWith('.jsonl')) {
+    return { branch: null, checked: false, ambiguous: false };
+  }
+
+  const map = getProviderBranchEvidenceCache(cache);
+  const cacheKey = makeCacheKey(key, session_id);
+  if (map && map.has(cacheKey)) return map.get(cacheKey);
+
+  let result = { branch: null, checked: true, ambiguous: false };
+  try {
+    if (!fs.existsSync(session_id)) {
+      result = { branch: null, checked: true, ambiguous: false };
+    } else {
+      const state = createProviderBranchState();
+      scanJsonlFileSync(session_id, (obj, meta) => {
+        if (meta && meta.error) return true;
+        collectProviderBranchFromObject(key, obj, state);
+        if (state.unsafe || state.branches.size > 1) {
+          result = { branch: null, checked: true, ambiguous: true };
+          return false;
+        }
+        return true;
+      });
+
+      if (!result.ambiguous && state.branches.size === 1) {
+        const [branch] = state.branches;
+        result = { branch, checked: true, ambiguous: false };
       }
     }
   } catch {
-    result = null;
+    result = { branch: null, checked: true, ambiguous: false };
   }
+
+  if (map) map.set(cacheKey, result);
+  return result;
+}
+
+function readProviderBranchFromSessionFile({ provider, session_id, cache = null } = {}) {
+  const evidence = readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache });
+  if (!evidence.branch || evidence.ambiguous) return null;
+
+  const map = getProviderBranchCache(cache);
+  const cacheKey = makeCacheKey(provider, session_id);
+  if (map && map.has(cacheKey)) return map.get(cacheKey);
+
+  const result = {
+    branch: evidence.branch,
+    branch_kind: 'known',
+    confidence: 'medium',
+    branch_resolution_tier: 'PROVIDER_LOG',
+  };
 
   if (map) map.set(cacheKey, result);
   return result;
@@ -157,5 +228,6 @@ module.exports = {
   createProviderBranchCache,
   createProviderBranchState,
   providerBranchFromState,
+  readProviderBranchEvidenceFromSessionFile,
   readProviderBranchFromSessionFile,
 };

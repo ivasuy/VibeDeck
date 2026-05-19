@@ -108,13 +108,13 @@ test('readProviderBranchFromSessionFile returns null for unsafe refs', () => {
 test('readProviderBranchFromSessionFile caches null and known results per provider session', () => {
   const tmp = tempJsonl([{ payload: { git: { branch: 'main' } } }]);
   const cache = {};
-  const originalReadFileSync = fs.readFileSync;
+  const originalOpenSync = fs.openSync;
   let reads = 0;
 
   try {
-    fs.readFileSync = function patchedReadFileSync(filePath, ...args) {
+    fs.openSync = function patchedOpenSync(filePath, ...args) {
       if (filePath === tmp.file) reads += 1;
-      return originalReadFileSync.call(this, filePath, ...args);
+      return originalOpenSync.call(this, filePath, ...args);
     };
 
     assert.deepEqual(readProviderBranchFromSessionFile({ provider: 'codex', session_id: tmp.file, cache }), {
@@ -131,6 +131,32 @@ test('readProviderBranchFromSessionFile caches null and known results per provid
     });
 
     assert.equal(reads, 1);
+  } finally {
+    fs.openSync = originalOpenSync;
+    tmp.cleanup();
+  }
+});
+
+test('readProviderBranchFromSessionFile scans without fs.readFileSync', () => {
+  const tmp = tempJsonl([
+    { type: 'event_msg' },
+    { payload: { git: { branch: 'main' } } },
+  ]);
+  const originalReadFileSync = fs.readFileSync;
+  try {
+    fs.readFileSync = function blockedReadFileSync(filePath, ...args) {
+      if (filePath === tmp.file) {
+        throw new Error('readFileSync should not be used for provider branch fallback');
+      }
+      return originalReadFileSync.call(this, filePath, ...args);
+    };
+
+    assert.deepEqual(readProviderBranchFromSessionFile({ provider: 'codex', session_id: tmp.file }), {
+      branch: 'main',
+      branch_kind: 'known',
+      confidence: 'medium',
+      branch_resolution_tier: 'PROVIDER_LOG',
+    });
   } finally {
     fs.readFileSync = originalReadFileSync;
     tmp.cleanup();

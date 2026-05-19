@@ -8,7 +8,7 @@ const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
 const { normalizeBranchName } = require('./branch-name');
 const historicalBranchRecovery = require('./historical-branch-recovery');
-const { createProviderBranchState, collectProviderBranchFromObject } = require('./provider-branch');
+const providerBranch = require('./provider-branch');
 const { resolveUsageCost } = require('../cost-estimation');
 
 function isNonEmptyString(value) {
@@ -114,71 +114,6 @@ function knownBranchResult(branch, { confidence = 'low', branch_resolution_tier 
   };
 }
 
-function canReadProviderBranch({ provider, session_id } = {}) {
-  const normalizedProvider = String(provider || '').trim().toLowerCase();
-  if (!(normalizedProvider === 'codex' || normalizedProvider === 'every-code' || normalizedProvider === 'claude')) {
-    return false;
-  }
-  return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
-}
-
-function getProviderBranchEvidenceCache(cache) {
-  if (!cache || typeof cache !== 'object') return null;
-  if (!(cache.providerBranchEvidenceBySession instanceof Map)) {
-    cache.providerBranchEvidenceBySession = new Map();
-  }
-  return cache.providerBranchEvidenceBySession;
-}
-
-function providerBranchEvidenceCacheKey(provider, session_id) {
-  return `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
-}
-
-function readProviderBranchForSession({ provider, session_id, cache = null } = {}) {
-  if (!canReadProviderBranch({ provider, session_id })) {
-    return { branch: null, checked: false, ambiguous: false };
-  }
-
-  const map = getProviderBranchEvidenceCache(cache);
-  const cacheKey = providerBranchEvidenceCacheKey(provider, session_id);
-  if (map && map.has(cacheKey)) return map.get(cacheKey);
-
-  let result = { branch: null, checked: true, ambiguous: false };
-  try {
-    if (!fs.existsSync(session_id)) {
-      result = { branch: null, checked: true, ambiguous: false };
-    } else {
-      const state = createProviderBranchState();
-      const content = fs.readFileSync(session_id, 'utf8');
-      for (const line of content.split(/\r?\n/)) {
-        if (!line) continue;
-        let obj;
-        try {
-          obj = JSON.parse(line);
-        } catch {
-          // Keep fallback behavior when provider log is unreadable or sparse.
-          continue;
-        }
-        collectProviderBranchFromObject(provider, obj, state);
-        if (state.unsafe || state.branches.size > 1) {
-          result = { branch: null, checked: true, ambiguous: true };
-          break;
-        }
-      }
-
-      if (!result.ambiguous && state.branches.size === 1) {
-        const [branch] = state.branches;
-        result = { branch, checked: true, ambiguous: false };
-      }
-    }
-  } catch {
-    result = { branch: null, checked: true, ambiguous: false };
-  }
-
-  if (map) map.set(cacheKey, result);
-  return result;
-}
-
 async function factBranch({
   dbPath,
   project,
@@ -265,8 +200,14 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, cach
   const project = projectShape(session, provider, session_id);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
   const sessionBranch = knownBranchResult(session?.branch);
+  const providerEvidenceMap = cache && cache.providerBranchEvidenceBySession instanceof Map
+    ? cache.providerBranchEvidenceBySession
+    : null;
+  const providerEvidenceKey = `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
   const providerRead = !sessionBranch
-    ? readProviderBranchForSession({ provider, session_id, cache })
+    ? (providerEvidenceMap && providerEvidenceMap.has(providerEvidenceKey)
+      ? providerEvidenceMap.get(providerEvidenceKey)
+      : providerBranch.readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache }))
     : { branch: null, checked: false, ambiguous: false };
   const resolvedBranch = await factBranch({
     dbPath,
@@ -318,8 +259,14 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
   const groups = new Map();
   const missingEventBranch = events.some((event) => !knownBranchResult(event?.branch));
   const missingSessionBranch = !knownBranchResult(session?.branch);
+  const providerEvidenceMap = cache && cache.providerBranchEvidenceBySession instanceof Map
+    ? cache.providerBranchEvidenceBySession
+    : null;
+  const providerEvidenceKey = `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
   const providerRead = missingEventBranch || missingSessionBranch
-    ? readProviderBranchForSession({ provider, session_id, cache })
+    ? (providerEvidenceMap && providerEvidenceMap.has(providerEvidenceKey)
+      ? providerEvidenceMap.get(providerEvidenceKey)
+      : providerBranch.readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache }))
     : { branch: null, checked: false, ambiguous: false };
 
   for (const event of events) {

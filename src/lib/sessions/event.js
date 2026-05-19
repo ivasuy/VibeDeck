@@ -54,12 +54,13 @@ function validateEvent(e) {
 
   if (!isNullableString(e.cwd)) throw new TypeError('SessionEvent.cwd must be a string or null');
   if (!isNullableString(e.model)) throw new TypeError('SessionEvent.model must be a string or null');
+  if (!isNullableString(e.branch)) throw new TypeError('SessionEvent.branch must be a string or null');
 
   return e;
 }
 
-function makeStart({ provider, session_id, started_at, cwd = null, model = null }) {
-  const e = { kind: 'start', provider, session_id, started_at, cwd, model };
+function makeStart({ provider, session_id, started_at, cwd = null, model = null, branch = null }) {
+  const e = { kind: 'start', provider, session_id, started_at, cwd, model, branch };
   return validateEvent(e);
 }
 
@@ -76,6 +77,7 @@ function makeUpdate({
   output_tokens = null,
   reasoning_output_tokens = null,
   conversation_count = null,
+  branch = null,
 }) {
   const e = {
     kind: 'update',
@@ -91,12 +93,13 @@ function makeUpdate({
     output_tokens,
     reasoning_output_tokens,
     conversation_count,
+    branch,
   };
   return validateEvent(e);
 }
 
-function makeEnd({ provider, session_id, ended_at, total_tokens = null, end_reason = null, cwd = null, model = null }) {
-  const e = { kind: 'end', provider, session_id, ended_at, total_tokens, end_reason, cwd, model };
+function makeEnd({ provider, session_id, ended_at, total_tokens = null, end_reason = null, cwd = null, model = null, branch = null }) {
+  const e = { kind: 'end', provider, session_id, ended_at, total_tokens, end_reason, cwd, model, branch };
   return validateEvent(e);
 }
 

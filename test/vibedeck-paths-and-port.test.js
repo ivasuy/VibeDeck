@@ -33,3 +33,10 @@ test('serve banner uses VibeDeck branding and explains no-sync', () => {
   assert.match(src, /Sync: disabled \(\-\-no-sync\); run without --no-sync for live data refresh\./);
   assert.doesNotMatch(src, new RegExp(`${["token", "tracker"].join("")} dashboard running at:`));
 });
+
+test('serve background sync default is not every second', () => {
+  const fs = require('node:fs');
+  const src = fs.readFileSync(path.join(__dirname, '../src/commands/serve.js'), 'utf8');
+  assert.doesNotMatch(src, /VIBEDECK_SERVE_SYNC_MS \|\| "1000"/);
+  assert.match(src, /VIBEDECK_SERVE_SYNC_MS \|\| "30000"/);
+});

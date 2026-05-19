@@ -8,6 +8,11 @@ const crypto = require("node:crypto");
 const { ensureDir } = require("./fs");
 const { decodeClaudeProjectPathFromSessionFile } = require("./sessions/claude-project-path");
 const {
+  collectProviderBranchFromObject,
+  createProviderBranchState,
+  providerBranchFromState,
+} = require("./sessions/provider-branch");
+const {
   extractClaudeCodeSessionEvents,
   extractCodexSessionEvents,
   extractGeminiSessionEvents,
@@ -127,6 +132,7 @@ async function parseRolloutIncremental({
   projectQueuePath,
   onProgress,
   onSessionEvent,
+  onFileComplete,
   source,
   publicRepoResolver,
 }) {
@@ -197,6 +203,10 @@ async function parseRolloutIncremental({
       onSessionEvent,
     });
 
+    if (typeof onFileComplete === "function") {
+      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+    }
+
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
@@ -241,6 +251,7 @@ async function parseClaudeIncremental({
   projectQueuePath,
   onProgress,
   onSessionEvent,
+  onFileComplete,
   source,
   publicRepoResolver,
 }) {
@@ -309,6 +320,10 @@ async function parseClaudeIncremental({
       seenMessageHashes,
       onSessionEvent,
     });
+
+    if (typeof onFileComplete === "function") {
+      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+    }
 
     cursors.files[key] = {
       inode,
@@ -846,6 +861,7 @@ async function parseRolloutFile({
   const sessionUpdates = [];
   let sessionModel = null;
   let sessionCwd = null;
+  const providerBranchState = createProviderBranchState();
 
   for await (const line of rl) {
     if (!line) continue;
@@ -854,7 +870,9 @@ async function parseRolloutFile({
       !maybeTokenCount &&
       (line.includes('"turn_context"') || line.includes('"session_meta"')) &&
       (line.includes('"model"') || line.includes('"cwd"'));
-    if (!maybeTokenCount && !maybeTurnContext) continue;
+    const maybeProviderBranch =
+      !maybeTokenCount && !maybeTurnContext && line.includes('"git"') && line.includes('"branch"');
+    if (!maybeTokenCount && !maybeTurnContext && !maybeProviderBranch) continue;
 
     let obj;
     try {
@@ -862,6 +880,7 @@ async function parseRolloutFile({
     } catch (_e) {
       continue;
     }
+    collectProviderBranchFromObject(source, obj, providerBranchState);
 
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
@@ -951,6 +970,7 @@ async function parseRolloutFile({
         ? extractEveryCodeSessionEvents
         : null;
   if (extractFn && sessionStartedAt && sessionEndedAt) {
+    const providerBranch = providerBranchFromState(providerBranchState);
     emitSessionEvents(
       extractFn,
       {
@@ -960,6 +980,7 @@ async function parseRolloutFile({
         end_reason: "log_complete",
         cwd: sessionCwd,
         model: sessionModel,
+        branch: providerBranch ? providerBranch.branch : null,
         updates: sessionUpdates,
         total_tokens: sessionTotalTokens,
       },
@@ -999,11 +1020,20 @@ async function parseClaudeFile({
   const sessionUpdates = [];
   let sessionModel = null;
   let sessionCwd = decodeClaudeProjectPathFromSessionFile(filePath);
+  const providerBranchState = createProviderBranchState();
   const isMainSession = !filePath.includes("/subagents/");
   for await (const line of rl) {
     if (!line) continue;
     if (!sessionCwd) {
       sessionCwd = extractClaudeCwdFromLine(line) || sessionCwd;
+    }
+    if (line.includes('"gitBranch"')) {
+      try {
+        const branchObj = JSON.parse(line);
+        collectProviderBranchFromObject("claude", branchObj, providerBranchState);
+      } catch (_e) {
+        /* skip */
+      }
     }
 
     // Count user-typed messages as conversations (main sessions only).
@@ -1013,6 +1043,7 @@ async function parseClaudeFile({
       let userObj;
       try {
         userObj = JSON.parse(line);
+        collectProviderBranchFromObject("claude", userObj, providerBranchState);
       } catch (_e) {
         /* skip */
       }
@@ -1041,6 +1072,7 @@ async function parseClaudeFile({
     } catch (_e) {
       continue;
     }
+    collectProviderBranchFromObject("claude", obj, providerBranchState);
 
     const usage = obj?.message?.usage || obj?.usage;
     if (!usage || typeof usage !== "object") continue;
@@ -1101,6 +1133,7 @@ async function parseClaudeFile({
   rl.close();
   stream.close?.();
   if (sessionStartedAt && sessionEndedAt) {
+    const providerBranch = providerBranchFromState(providerBranchState);
     emitSessionEvents(
       extractClaudeCodeSessionEvents,
       {
@@ -1110,6 +1143,7 @@ async function parseClaudeFile({
         end_reason: "log_complete",
         cwd: sessionCwd,
         model: sessionModel,
+        branch: providerBranch ? providerBranch.branch : null,
         updates: sessionUpdates,
         total_tokens: sessionTotalTokens,
       },

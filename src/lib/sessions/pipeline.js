@@ -12,6 +12,8 @@ const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
 const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
 const { upsertEntireLink } = require('./entire-links');
+const providerBranch = require('./provider-branch');
+const { cleanProviderBranch } = providerBranch;
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -99,15 +101,38 @@ function recoverCodexSessionMetadata(event) {
   return {};
 }
 
-function enrichEventFromSessionMetadata(event) {
+function canReadProviderBranch({ provider, session_id } = {}) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (!(normalizedProvider === 'codex' || normalizedProvider === 'every-code' || normalizedProvider === 'claude')) {
+    return false;
+  }
+  return isNonEmptyString(session_id) && session_id.endsWith('.jsonl');
+}
+
+function recoverProviderBranchFromSessionMetadata(event, { cache = null } = {}) {
+  if (!event || typeof event !== 'object') return null;
+  if (!canReadProviderBranch({ provider: event.provider, session_id: event.session_id })) return null;
+  const recovered = providerBranch.readProviderBranchFromSessionFile({
+    provider: event.provider,
+    session_id: event.session_id,
+    cache,
+  });
+  return cleanProviderBranch(recovered && recovered.branch);
+}
+
+function enrichEventFromSessionMetadata(event, { cache = null } = {}) {
   if (!event || typeof event !== 'object') return event;
-  if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model)) return event;
+  if (isNonEmptyString(event.cwd) && isNonEmptyString(event.model) && isNonEmptyString(event.branch)) return event;
   const recovered = recoverCodexSessionMetadata(event);
-  if (!recovered.cwd && !recovered.model) return event;
+  const resolvedProviderBranch = isNonEmptyString(event.branch)
+    ? null
+    : recoverProviderBranchFromSessionMetadata(event, { cache });
+  if (!recovered.cwd && !recovered.model && !resolvedProviderBranch) return event;
   return {
     ...event,
     cwd: isNonEmptyString(event.cwd) ? event.cwd : recovered.cwd ?? event.cwd,
     model: isNonEmptyString(event.model) ? event.model : recovered.model ?? event.model,
+    branch: isNonEmptyString(event.branch) ? event.branch : resolvedProviderBranch ?? event.branch,
   };
 }
 
@@ -347,6 +372,19 @@ async function processSessionEvent(dbPath, event) {
     reopenOrphanedSession,
     preserveExistingTerminalEnd,
   });
+  const providerBranchFromEvent = cleanProviderBranch(event.branch);
+  const providerBranchFromLog = providerBranchFromEvent
+    ? null
+    : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
+      ? cleanProviderBranch(
+          (providerBranch.readProviderBranchFromSessionFile({
+            provider: session.provider,
+            session_id: session.session_id,
+            cache: null,
+          }) || {}).branch,
+        )
+      : null;
+  const resolvedProviderBranch = providerBranchFromEvent || providerBranchFromLog || null;
   const branchRes = needsBranchResolution
     ? await resolveBranchForSession({
         provider: session.provider,
@@ -355,6 +393,7 @@ async function processSessionEvent(dbPath, event) {
         started_at: session.started_at,
         ended_at: session.ended_at,
         dbPath,
+        provider_branch: resolvedProviderBranch,
       })
     : null;
 
@@ -399,7 +438,7 @@ async function processSessionEvent(dbPath, event) {
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         }
         if (latest) {
-          rebuildBranchUsageFactsForSession(db, {
+          await rebuildBranchUsageFactsForSession(db, {
             dbPath,
             provider: latest.provider,
             session_id: latest.session_id,
@@ -421,6 +460,201 @@ async function processSessionEvent(dbPath, event) {
     } finally {
       db.close();
     }
+  }
+}
+
+function assertBatchEvents(batch) {
+  if (!Array.isArray(batch) || batch.length === 0) {
+    throw new TypeError('processSessionEventBatch: events must be a non-empty array');
+  }
+  const provider = batch[0]?.provider;
+  const sessionId = batch[0]?.session_id;
+  if (!isNonEmptyString(provider) || !isNonEmptyString(sessionId)) {
+    throw new TypeError('processSessionEventBatch: each event must include provider and session_id');
+  }
+  for (const event of batch) {
+    if (!event || typeof event !== 'object') {
+      throw new TypeError('processSessionEventBatch: each event must be an object');
+    }
+    if (event.provider !== provider || event.session_id !== sessionId) {
+      throw new Error('processSessionEventBatch: events must all share provider/session');
+    }
+  }
+}
+
+async function processSessionEventBatch(dbPath, events, { cache = null } = {}) {
+  if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
+  assertBatchEvents(events);
+  const enrichedEvents = events.map((event) => enrichEventFromSessionMetadata(event, { cache }));
+  assertBatchEvents(enrichedEvents);
+
+  // Preserve compatibility with test harnesses that monkeypatch the single-event processor.
+  if (module.exports.processSessionEvent !== processSessionEvent) {
+    for (const event of enrichedEvents) {
+      await module.exports.processSessionEvent(dbPath, event);
+    }
+    return;
+  }
+
+  const first = enrichedEvents[0];
+  const last = enrichedEvents[enrichedEvents.length - 1];
+
+  let existingBeforeUpsert = null;
+  {
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      existingBeforeUpsert = loadSession(db, { provider: first.provider, session_id: first.session_id });
+    } finally {
+      db.close();
+    }
+  }
+
+  const keepOpenForCheckpoint = shouldKeepSessionOpenForCheckpoint(existingBeforeUpsert, last);
+  const reopenOrphanedSession = shouldReopenOrphanedSession(existingBeforeUpsert, last);
+  const preserveExistingTerminalEnd = shouldPreserveExistingTerminalEnd(existingBeforeUpsert, last);
+
+  let repo = null;
+  const existingRepoStillApplies =
+    last.kind === 'update' &&
+    isNonEmptyString(existingBeforeUpsert?.repo_root) &&
+    isNonEmptyString(existingBeforeUpsert?.cwd) &&
+    isNonEmptyString(last.cwd) &&
+    existingBeforeUpsert.cwd === last.cwd;
+  if (!existingRepoStillApplies) {
+    const repoEvent = [...enrichedEvents].reverse().find((event) => isNonEmptyString(event.cwd));
+    if (repoEvent && isNonEmptyString(repoEvent.cwd)) {
+      try {
+        repo = resolveRepo(repoEvent.cwd);
+      } catch {
+        repo = null;
+      }
+    }
+  }
+
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec('BEGIN');
+    try {
+      upsertSessionFromEvents(dbPath, enrichedEvents, { db });
+      if (keepOpenForCheckpoint || reopenOrphanedSession) {
+        updateSessionEndedState(db, {
+          provider: first.provider,
+          session_id: first.session_id,
+          ended_at: null,
+          end_reason: null,
+        });
+      } else if (preserveExistingTerminalEnd) {
+        updateSessionEndedState(db, {
+          provider: first.provider,
+          session_id: first.session_id,
+          ended_at: existingBeforeUpsert.ended_at,
+          end_reason: existingBeforeUpsert.end_reason,
+        });
+      }
+      updateRepoMeta(db, { provider: first.provider, session_id: first.session_id, repo });
+
+      let session = loadSession(db, { provider: first.provider, session_id: first.session_id });
+      if (!session) {
+        throw new Error('processSessionEventBatch: upsert did not create a session row');
+      }
+
+      const needsBranchResolution = shouldResolveBranch({
+        existing: existingBeforeUpsert,
+        session,
+        repo,
+        event: last,
+        keepOpenForCheckpoint,
+        reopenOrphanedSession,
+        preserveExistingTerminalEnd,
+      });
+      const providerBranchFromEvents = [...enrichedEvents]
+        .reverse()
+        .map((event) => cleanProviderBranch(event.branch))
+        .find((branch) => isNonEmptyString(branch)) || null;
+      const providerBranchFromLog = providerBranchFromEvents
+        ? null
+        : canReadProviderBranch({ provider: session.provider, session_id: session.session_id })
+          ? cleanProviderBranch(
+              (providerBranch.readProviderBranchFromSessionFile({
+                provider: session.provider,
+                session_id: session.session_id,
+                cache,
+              }) || {}).branch,
+            )
+          : null;
+      const resolvedProviderBranch = providerBranchFromEvents || providerBranchFromLog || null;
+
+      const branchRes = needsBranchResolution
+        ? await resolveBranchForSession({
+            provider: session.provider,
+            session_id: session.session_id,
+            repo_root: session.repo_root,
+            started_at: session.started_at,
+            ended_at: session.ended_at,
+            dbPath,
+            provider_branch: resolvedProviderBranch,
+          })
+        : null;
+
+      if (branchRes) {
+        updateBranchResolution(db, {
+          provider: session.provider,
+          session_id: session.session_id,
+          branch: branchRes.branch,
+          tier: branchRes.tier,
+          confidence: branchRes.confidence,
+        });
+        if (isNonEmptyString(branchRes.entire_link)) {
+          upsertEntireLink(db, {
+            provider: session.provider,
+            session_id: session.session_id,
+            entire_session_id: branchRes.entire_link,
+            checkpoint_ids: branchRes.checkpoint_ids,
+            match_confidence: branchRes.confidence,
+          });
+        }
+        session = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      }
+
+      for (const event of enrichedEvents) {
+        const inserted = insertSessionEvent(db, event, {
+          repo_root: session.repo_root,
+          repo_common_dir: session.repo_common_dir,
+          parent_repo: session.parent_repo,
+          branch: session.branch,
+          branch_resolution_tier: session.branch_resolution_tier,
+          confidence: session.confidence,
+        });
+        if (inserted) upsertBucketFact(db, session, event);
+      }
+
+      recomputeSessionLedger(db, session);
+      const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      if (latest) {
+        await rebuildBranchUsageFactsForSession(db, {
+          dbPath,
+          provider: latest.provider,
+          session_id: latest.session_id,
+        });
+        persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
+      }
+
+      db.exec('COMMIT');
+    } catch (err) {
+      try {
+        db.exec('ROLLBACK');
+      } catch {}
+      throw err;
+    }
+
+    const latest = loadSession(db, { provider: first.provider, session_id: first.session_id });
+    for (const event of enrichedEvents) {
+      const shouldSkipEmit = preserveExistingTerminalEnd && event === last;
+      if (shouldSkipEmit) continue;
+      emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession });
+    }
+  } finally {
+    db.close();
   }
 }
 
@@ -473,4 +707,4 @@ async function recoverActiveSessionMetadata(dbPath) {
   return { scanned: candidates.length, recovered };
 }
 
-module.exports = { processSessionEvent, recoverActiveSessionMetadata };
+module.exports = { processSessionEvent, processSessionEventBatch, recoverActiveSessionMetadata };

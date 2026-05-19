@@ -7,6 +7,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
+const providerBranch = require('../src/lib/sessions/provider-branch');
 const {
   rebuildBranchUsageFactsForSession,
   rebuildAllBranchUsageFacts,
@@ -35,6 +36,20 @@ function initGitRepo(repoRoot) {
   execFileSync('git', ['add', 'README.md'], { cwd: repoRoot, stdio: 'ignore' });
   execFileSync('git', ['commit', '-m', 'init'], { cwd: repoRoot, stdio: 'ignore' });
   execFileSync('git', ['branch', 'feature/live'], { cwd: repoRoot, stdio: 'ignore' });
+}
+
+function writeProviderBranchLog(tmpDir, provider, branch) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const filePath = path.join(tmpDir, `${normalizedProvider}-provider-branch-${Date.now()}-${Math.random()}.jsonl`);
+  const row = normalizedProvider === 'claude'
+    ? {
+        gitBranch: branch,
+        message: { usage: { input_tokens: 1, output_tokens: 1 }, model: 'claude-opus-4-7' },
+        timestamp: '2026-05-18T00:00:00.000Z',
+      }
+    : { payload: { git: { branch } } };
+  fs.writeFileSync(filePath, `${JSON.stringify(row)}\n`, 'utf8');
+  return filePath;
 }
 
 function insertSession(db, row) {
@@ -105,7 +120,7 @@ function insertEvent(db, row) {
   });
 }
 
-test('rebuildAllBranchUsageFacts reports session-level rebuild progress', () => {
+test('rebuildAllBranchUsageFacts reports session-level rebuild progress', async () => {
   const fixture = makeDb();
   try {
     const db = new DatabaseSync(fixture.dbPath);
@@ -137,7 +152,7 @@ test('rebuildAllBranchUsageFacts reports session-level rebuild progress', () => 
     }
 
     const progress = [];
-    rebuildAllBranchUsageFacts(fixture.dbPath, {
+    await rebuildAllBranchUsageFacts(fixture.dbPath, {
       onProgress(payload) {
         progress.push(payload);
       },
@@ -156,7 +171,7 @@ test('rebuildAllBranchUsageFacts reports session-level rebuild progress', () => 
   }
 });
 
-test('repairMissingProjectAttribution reports attribution repair progress', () => {
+test('repairMissingProjectAttribution reports attribution repair progress', async () => {
   const fixture = makeDb();
   try {
     const db = new DatabaseSync(fixture.dbPath);
@@ -177,7 +192,7 @@ test('repairMissingProjectAttribution reports attribution repair progress', () =
     }
 
     const progress = [];
-    repairMissingProjectAttribution(fixture.dbPath, {
+    await repairMissingProjectAttribution(fixture.dbPath, {
       onProgress(payload) {
         progress.push(payload);
       },
@@ -194,7 +209,50 @@ test('repairMissingProjectAttribution reports attribution repair progress', () =
   }
 });
 
-test('branch facts split a cross-branch session by event time instead of wall-clock time', () => {
+test('branch fact rebuild uses shared provider branch helper cache for fallback evidence', async () => {
+  const fixture = makeDb();
+  const originalRead = providerBranch.readProviderBranchEvidenceFromSessionFile;
+  let reads = 0;
+
+  try {
+    const sessionFile = path.join(fixture.dir, 'codex-session.jsonl');
+    fs.writeFileSync(sessionFile, `${JSON.stringify({ payload: { git: { branch: 'feature/cache' } } })}\n`, 'utf8');
+
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionFile,
+        cwd: fixture.dir,
+        repo_root: fixture.dir,
+        branch: null,
+        started_at: '2026-05-10T00:00:00.000Z',
+        ended_at: '2026-05-10T00:10:00.000Z',
+        total_tokens: 10,
+        total_cost_usd: 0.01,
+        model: 'gpt-5.4',
+        last_observed_at: '2026-05-10T00:10:00.000Z',
+      });
+    } finally {
+      db.close();
+    }
+
+    providerBranch.readProviderBranchEvidenceFromSessionFile = (...args) => {
+      reads += 1;
+      return originalRead(...args);
+    };
+
+    const cache = {};
+    await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    assert.equal(reads, 1);
+  } finally {
+    providerBranch.readProviderBranchEvidenceFromSessionFile = originalRead;
+    fixture.cleanup();
+  }
+});
+
+test('branch facts prefer session branch when event/provider branch evidence is missing', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -255,22 +313,38 @@ test('branch facts split a cross-branch session by event time instead of wall-cl
         input_tokens: 8,
         output_tokens: 2,
       });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 's1' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 's1' });
     } finally {
       db.close();
     }
 
     const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
-    assert.deepEqual(rows.map((row) => ({ branch: row.branch, total_tokens: row.total_tokens, total_cost_usd: row.total_cost_usd })), [
-      { branch: 'main', total_tokens: 90, total_cost_usd: 0.9 },
-      { branch: 'feature/live', total_tokens: 10, total_cost_usd: 0.1 },
-    ]);
+    assert.deepEqual(
+      rows.map((row) => ({
+        branch: row.branch,
+        total_tokens: row.total_tokens,
+        total_cost_usd: row.total_cost_usd,
+        branch_kind: row.branch_kind,
+        confidence: row.confidence,
+        branch_resolution_tier: row.branch_resolution_tier,
+      })),
+      [
+        {
+          branch: 'feature/live',
+          total_tokens: 100,
+          total_cost_usd: 1,
+          branch_kind: 'known',
+          confidence: 'medium',
+          branch_resolution_tier: 'B',
+        },
+      ],
+    );
   } finally {
     tmp.cleanup();
   }
 });
 
-test('branch facts use event branch labels when head history is missing and normalize ancestry suffixes', () => {
+test('branch facts use event branch labels when head history is missing and normalize ancestry suffixes', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -321,7 +395,7 @@ test('branch facts use event branch labels when head history is missing and norm
         input_tokens: 8,
         output_tokens: 2,
       });
-      rebuildBranchUsageFactsForSession(db, {
+      await rebuildBranchUsageFactsForSession(db, {
         dbPath: tmp.dbPath,
         provider: 'codex',
         session_id: 'event-branch-fallback',
@@ -351,7 +425,288 @@ test('branch facts use event branch labels when head history is missing and norm
   }
 });
 
-test('branch facts preserve non-git projects and hide missing folders by default', () => {
+test('unknown branch can recover to a local branch from historical fallback', async () => {
+  const tmp = makeDb();
+  const historicalBranchRecovery = require('../src/lib/sessions/historical-branch-recovery');
+  const originalRecover = historicalBranchRecovery.recoverHistoricalBranchForUnknownGit;
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = async () => ({
+      branch: 'feature/live',
+      branch_kind: 'known',
+      confidence: 'low',
+      branch_resolution_tier: 'C',
+    });
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'recover-known',
+        started_at: '2026-05-10T10:00:00.000Z',
+        ended_at: '2026-05-10T10:10:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'Unknown branch',
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 40,
+        total_cost_usd: 0.4,
+        last_observed_at: '2026-05-10T10:10:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'recover-known' });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'feature/live');
+    assert.equal(rows[0].attribution_branch, 'feature/live');
+    assert.equal(rows[0].branch_kind, 'known');
+    assert.equal(rows[0].confidence, 'low');
+    assert.equal(rows[0].branch_resolution_tier, 'C');
+  } finally {
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = originalRecover;
+    tmp.cleanup();
+  }
+});
+
+test('branch usage facts use provider-log branch before Git fallback for old Codex rows', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    const sessionLog = writeProviderBranchLog(tmp.dir, 'codex', 'main');
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        started_at: '2026-05-18T00:00:00.000Z',
+        ended_at: '2026-05-18T00:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        last_observed_at: '2026-05-18T00:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        event_key: 'e1',
+        observed_at: '2026-05-18T00:02:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 6,
+        output_tokens: 4,
+      });
+
+      await rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: sessionLog,
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'main');
+    assert.equal(rows[0].branch_resolution_tier, 'PROVIDER_LOG');
+    assert.equal(rows[0].confidence, 'medium');
+    assert.equal(rows[0].total_cost_usd, 0.1);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('branch usage facts keep mixed provider branch sessions unknown', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    const sessionLog = writeProviderBranchLog(tmp.dir, 'codex', 'main');
+    fs.appendFileSync(sessionLog, `${JSON.stringify({ payload: { git: { branch: 'feature/changed' } } })}\n`, 'utf8');
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        started_at: '2026-05-18T01:00:00.000Z',
+        ended_at: '2026-05-18T01:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        last_observed_at: '2026-05-18T01:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        event_key: 'e1',
+        observed_at: '2026-05-18T01:02:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 6,
+        output_tokens: 4,
+      });
+
+      await rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: sessionLog,
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'Unknown branch');
+    assert.equal(rows[0].total_cost_usd, 0.1);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('branch usage facts allow head-history fallback when provider log has no branch evidence', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-18T02:00:00.000Z',
+    });
+    const sessionLog = path.join(tmp.dir, `codex-provider-empty-${Date.now()}.jsonl`);
+    fs.writeFileSync(sessionLog, `${JSON.stringify({ payload: { usage: { input_tokens: 1, output_tokens: 1 } } })}\n`, 'utf8');
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        started_at: '2026-05-18T02:10:00.000Z',
+        ended_at: '2026-05-18T02:15:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 10,
+        total_cost_usd: 0.1,
+        last_observed_at: '2026-05-18T02:15:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: sessionLog,
+        event_key: 'e1',
+        observed_at: '2026-05-18T02:12:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 6,
+        output_tokens: 4,
+      });
+
+      await rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'codex',
+        session_id: sessionLog,
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'main');
+    assert.equal(rows[0].branch_resolution_tier, 'B');
+    assert.equal(rows[0].confidence, 'medium');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('historical guard preserves project attribution and totals before repo history starts', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'historical-guard',
+        started_at: '2000-01-01T00:00:00.000Z',
+        ended_at: '2000-01-01T00:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'Historical unknown',
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 55,
+        total_cost_usd: 0.55,
+        last_observed_at: '2000-01-01T00:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'historical-guard' });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].project_key, path.basename(repoRoot));
+    assert.equal(rows[0].total_tokens, 55);
+    assert.equal(rows[0].branch, 'Historical unknown');
+    assert.equal(rows[0].attribution_branch, null);
+    assert.equal(rows[0].branch_kind, 'historical_unknown');
+    assert.equal(rows[0].confidence, 'low');
+    assert.equal(rows[0].branch_resolution_tier, 'HISTORICAL_GUARD');
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('branch facts preserve non-git projects and hide missing folders by default', async () => {
   const tmp = makeDb();
   try {
     const nonGit = path.join(tmp.dir, 'notes-app');
@@ -387,8 +742,8 @@ test('branch facts preserve non-git projects and hide missing folders by default
         cost_estimated: 0,
         cost_quality: 'stored',
       });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'non-git' });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'missing' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'non-git' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'missing' });
     } finally {
       db.close();
     }
@@ -406,7 +761,7 @@ test('branch facts preserve non-git projects and hide missing folders by default
   }
 });
 
-test('sessions with no update events fall back to one fact and rebuild is idempotent', () => {
+test('sessions with no update events fall back to one fact and rebuild is idempotent', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -433,8 +788,8 @@ test('sessions with no update events fall back to one fact and rebuild is idempo
         cost_quality: 'stored',
       });
 
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'fallback' });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'fallback' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'fallback' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'fallback' });
     } finally {
       db.close();
     }
@@ -453,7 +808,7 @@ test('sessions with no update events fall back to one fact and rebuild is idempo
   }
 });
 
-test('branch facts normalize remote branch labels but preserve tag ancestry labels', () => {
+test('branch facts normalize remote branch labels but preserve tag ancestry labels', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -496,8 +851,8 @@ test('branch facts normalize remote branch labels but preserve tag ancestry labe
         cost_quality: 'stored',
       });
 
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'remote-branch' });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'tag-history' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'remote-branch' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'tag-history' });
     } finally {
       db.close();
     }
@@ -514,7 +869,7 @@ test('branch facts normalize remote branch labels but preserve tag ancestry labe
   }
 });
 
-test('sessions without cwd or repo evidence remain hidden by default and can be included', () => {
+test('sessions without cwd or repo evidence remain hidden by default and can be included', async () => {
   const tmp = makeDb();
   try {
     const db = new DatabaseSync(tmp.dbPath);
@@ -533,7 +888,7 @@ test('sessions without cwd or repo evidence remain hidden by default and can be 
         cost_estimated: 1,
         cost_quality: 'partial_unknown',
       });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'cursor', session_id: 'unattributed' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'cursor', session_id: 'unattributed' });
     } finally {
       db.close();
     }
@@ -550,7 +905,7 @@ test('sessions without cwd or repo evidence remain hidden by default and can be 
   }
 });
 
-test('token reconciliation assigns delta to the largest group', () => {
+test('token reconciliation assigns delta to the largest group', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -606,7 +961,7 @@ test('token reconciliation assigns delta to the largest group', () => {
         output_tokens: 5,
       });
 
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'reconcile' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'reconcile' });
     } finally {
       db.close();
     }
@@ -623,7 +978,7 @@ test('token reconciliation assigns delta to the largest group', () => {
   }
 });
 
-test('events missing cwd/repo fallback to session project attribution for event-time branch splits', () => {
+test('events missing cwd/repo fallback to session project attribution and keep session branch precedence', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -685,7 +1040,7 @@ test('events missing cwd/repo fallback to session project attribution for event-
         output_tokens: 5,
       });
 
-      rebuildBranchUsageFactsForSession(db, {
+      await rebuildBranchUsageFactsForSession(db, {
         dbPath: tmp.dbPath,
         provider: 'codex',
         session_id: 'missing-event-project',
@@ -696,15 +1051,14 @@ test('events missing cwd/repo fallback to session project attribution for event-
 
     const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
     assert.deepEqual(rows.map((row) => ({ branch: row.branch, total_tokens: row.total_tokens })), [
-      { branch: 'main', total_tokens: 80 },
-      { branch: 'feature/live', total_tokens: 20 },
+      { branch: 'feature/live', total_tokens: 100 },
     ]);
   } finally {
     tmp.cleanup();
   }
 });
 
-test('readBranchUsageFactRows supports sourceFilter string and set', () => {
+test('readBranchUsageFactRows supports sourceFilter string and set', async () => {
   const tmp = makeDb();
   try {
     const codexDir = path.join(tmp.dir, 'codex-proj');
@@ -743,8 +1097,8 @@ test('readBranchUsageFactRows supports sourceFilter string and set', () => {
         cost_quality: 'stored',
       });
 
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'source-codex' });
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'source-claude' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'source-codex' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'claude', session_id: 'source-claude' });
     } finally {
       db.close();
     }
@@ -759,7 +1113,7 @@ test('readBranchUsageFactRows supports sourceFilter string and set', () => {
   }
 });
 
-test('token reconciliation never writes negative totals when event sum exceeds session total', () => {
+test('token reconciliation never writes negative totals when event sum exceeds session total', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -815,7 +1169,7 @@ test('token reconciliation never writes negative totals when event sum exceeds s
         output_tokens: 5,
       });
 
-      rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'overcount' });
+      await rebuildBranchUsageFactsForSession(db, { dbPath: tmp.dbPath, provider: 'codex', session_id: 'overcount' });
     } finally {
       db.close();
     }
@@ -830,7 +1184,7 @@ test('token reconciliation never writes negative totals when event sum exceeds s
   }
 });
 
-test('repairMissingProjectAttribution backfills session repo metadata and rebuilds git facts', () => {
+test('repairMissingProjectAttribution backfills session repo metadata and rebuilds git facts', async () => {
   const tmp = makeDb();
   try {
     const repoRoot = path.join(tmp.dir, 'repo');
@@ -864,7 +1218,7 @@ test('repairMissingProjectAttribution backfills session repo metadata and rebuil
       db.close();
     }
 
-    const repaired = repairMissingProjectAttribution(tmp.dbPath);
+    const repaired = await repairMissingProjectAttribution(tmp.dbPath);
     assert.equal(repaired, 1);
 
     const checkDb = new DatabaseSync(tmp.dbPath, { readOnly: true });

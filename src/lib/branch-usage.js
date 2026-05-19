@@ -125,6 +125,33 @@ function displayBranchIsUnknown(row) {
   return row?.branch_kind !== 'known' && !row?.attribution_branch;
 }
 
+function isUnsafeUserFacingBranchLabel(value) {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  const lower = value.trim().toLowerCase();
+  if (lower === 'head') return true;
+  if (lower.startsWith('tags/')) return true;
+  if (lower.startsWith('origin/')) return true;
+  if (lower.startsWith('remotes/')) return true;
+  if (lower.startsWith('refs/tags/')) return true;
+  if (lower.startsWith('refs/remotes/')) return true;
+  if (lower.startsWith('detached@')) return true;
+  if (lower.startsWith('refs/')) return true;
+  return false;
+}
+
+function sanitizeUserFacingBranchRow(row) {
+  if (!row || row.branch_kind !== 'known') return row;
+  if (!isUnsafeUserFacingBranchLabel(row.branch)) return row;
+  const unattributed = row.project_state === 'unattributed';
+  return {
+    ...row,
+    branch: unattributed ? 'Unattributed' : 'Unknown branch',
+    attribution_branch: null,
+    branch_kind: unattributed ? 'unattributed' : 'unknown_git',
+    confidence: unattributed ? 'unattributed' : 'low',
+  };
+}
+
 function pathParts(value) {
   return String(value || '').replace(/\\/g, '/').split('/').filter(Boolean);
 }
@@ -258,7 +285,9 @@ function activeProjectShape(row) {
 }
 
 function prepareDisplayRows(rawRows) {
-  const rows = (Array.isArray(rawRows) ? rawRows : []).map((row) => rowWithDisplayAttribution(row));
+  const rows = (Array.isArray(rawRows) ? rawRows : [])
+    .map((row) => rowWithDisplayAttribution(row))
+    .map((row) => sanitizeUserFacingBranchRow(row));
   const activeByProjectKey = new Map();
 
   for (const row of rows) {

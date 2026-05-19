@@ -10,9 +10,10 @@ const { test } = require('node:test');
 
 const { ensureSchema } = require('../src/lib/db');
 const { DatabaseSync } = require('node:sqlite');
-function buildSessionMetaLine({ model, cwd }) {
+function buildSessionMetaLine({ model, cwd, branch = null }) {
   const payload = { model };
   if (typeof cwd === 'string' && cwd.length > 0) payload.cwd = cwd;
+  if (typeof branch === 'string' && branch.length > 0) payload.git = { branch };
   return JSON.stringify({ type: 'session_meta', payload });
 }
 
@@ -52,7 +53,12 @@ function parseSseEvents(buffer) {
 
 async function startServe({ home, port }) {
   const child = cp.spawn(process.execPath, [path.join(__dirname, '..', 'bin', 'vibedeck.js'), 'serve', '--no-open', '--port', String(port)], {
-    env: { ...process.env, HOME: home },
+    env: {
+      ...process.env,
+      HOME: home,
+      // Keep this test deterministic even when production serve default is conservative.
+      VIBEDECK_SERVE_SYNC_MS: '250',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.setEncoding('utf8');
@@ -61,7 +67,7 @@ async function startServe({ home, port }) {
   child.stdout.on('data', (c) => (out += c));
   child.stderr.on('data', (c) => (out += c));
 
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
       await new Promise((resolve, reject) => {
@@ -153,7 +159,7 @@ test('serve pipeline emits SSE session events for new rollout', { timeout: 30_00
       total_tokens: 15,
     };
     const lines = [
-      buildSessionMetaLine({ model: 'gpt-5.2', cwd: repoRoot }),
+      buildSessionMetaLine({ model: 'gpt-5.2', cwd: repoRoot, branch: 'main' }),
       buildTokenCountLine({ ts: new Date().toISOString(), last: usage, total: usage }),
     ];
     await fs.writeFile(rolloutPath, lines.join('\n') + '\n', 'utf8');
@@ -164,6 +170,8 @@ test('serve pipeline emits SSE session events for new rollout', { timeout: 30_00
       10_000,
     );
     assert.ok(update.total_tokens > 0);
+    assert.equal(update.branch, 'main');
+    assert.equal(update.branch_resolution_tier, 'PROVIDER_LOG');
     assert.ok(typeof update.confidence === 'string');
     sse.req.destroy();
     sse.res.destroy();

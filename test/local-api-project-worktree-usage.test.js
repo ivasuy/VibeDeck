@@ -131,7 +131,7 @@ test('project usage returns a project umbrella with nested worktrees', async () 
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,

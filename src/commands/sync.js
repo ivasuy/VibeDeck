@@ -56,6 +56,7 @@ const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
+const { createProviderBranchCache } = require("../lib/sessions/provider-branch");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
@@ -70,8 +71,12 @@ function shouldRunFullBranchFactRebuild({
   auto = false,
   rebuildVibedeckDb = false,
   autoBranchFactsRebuilt = false,
+  sessionEventProcessorMode = null,
 } = {}) {
-  if (rebuildVibedeckDb) return true;
+  if (rebuildVibedeckDb) {
+    if (sessionEventProcessorMode === "grouped-rebuild") return false;
+    return true;
+  }
   if (!auto) return true;
   return !autoBranchFactsRebuilt;
 }
@@ -97,13 +102,10 @@ function providerDoneSummary({ action = "read", count = 0, unit = "items", event
 
 async function cmdSync(argv, { lifecycle = null } = {}) {
   const opts = parseArgs(argv);
-  const home = os.homedir();
+  const home = process.env.VIBEDECK_HOME || os.homedir();
   const { trackerDir } = await resolveTrackerPaths({ home });
-  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
-  ensureSchema(dbPath);
-
-  const sessionEventProcessor = createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
-  const onSessionEvent = sessionEventProcessor.onSessionEvent;
+  const liveDbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  ensureSchema(liveDbPath);
 
   await ensureDir(trackerDir);
   if (opts.fromOpenclaw) {
@@ -118,19 +120,43 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
   }
 
   let progress = null;
+  let rebuildStaging = null;
+  let rebuildPromoted = false;
   try {
     progress = !opts.auto ? createProgress({ stream: process.stdout }) : null;
     const configPath = path.join(trackerDir, "config.json");
     const cursorsPath = path.join(trackerDir, "cursors.json");
-    const queuePath = path.join(trackerDir, "queue.jsonl");
-    const queueStatePath = path.join(trackerDir, "queue.state.json");
-    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
-    const projectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
+    const liveQueuePath = path.join(trackerDir, "queue.jsonl");
+    const liveQueueStatePath = path.join(trackerDir, "queue.state.json");
+    const liveProjectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const liveProjectQueueStatePath = path.join(trackerDir, "project.queue.state.json");
+
+    let dbPath = liveDbPath;
+    let queuePath = liveQueuePath;
+    let queueStatePath = liveQueueStatePath;
+    let projectQueuePath = liveProjectQueuePath;
+    let projectQueueStatePath = liveProjectQueueStatePath;
 
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
-      if (!opts.auto) process.stderr.write("Rebuild phase: clearing canonical tables\n");
+      lifecycle?.phase?.("Preparing staged rebuild...");
+      rebuildStaging = await createRebuildStagingContext({
+        trackerDir,
+        dbPath: liveDbPath,
+        queuePath: liveQueuePath,
+        queueStatePath: liveQueueStatePath,
+        projectQueuePath: liveProjectQueuePath,
+        projectQueueStatePath: liveProjectQueueStatePath,
+      });
+      dbPath = rebuildStaging.staged.dbPath;
+      queuePath = rebuildStaging.staged.queuePath;
+      queueStatePath = rebuildStaging.staged.queueStatePath;
+      projectQueuePath = rebuildStaging.staged.projectQueuePath;
+      projectQueueStatePath = rebuildStaging.staged.projectQueueStatePath;
+
+      ensureSchema(dbPath);
+      if (!opts.auto) process.stderr.write("Rebuild phase: resetting staged canonical tables\n");
       await resetVibedeckSyncState({
         dbPath,
         queuePath,
@@ -140,6 +166,19 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         cursors,
       });
     }
+    const rebuildBranchCache = opts.rebuildVibedeckDb ? createProviderBranchCache() : null;
+    const sessionEventProcessor = opts.rebuildVibedeckDb
+      ? createGroupedSessionEventProcessor((events) =>
+          require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events, {
+            cache: rebuildBranchCache,
+          }),
+        )
+      : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
+    const onSessionEvent = sessionEventProcessor.onSessionEvent;
+    const onProviderFileComplete =
+      opts.rebuildVibedeckDb && typeof sessionEventProcessor.flush === "function"
+        ? () => sessionEventProcessor.flush()
+        : null;
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
     const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -180,6 +219,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       ? [{ path: openclawSignal.sessionFile, source: "openclaw" }]
       : [];
 
+    if (opts.rebuildVibedeckDb) {
+      lifecycle?.phase?.("Parsing provider logs...");
+    }
     if (opts.rebuildVibedeckDb && !opts.auto) {
       process.stderr.write("Rebuild phase: parsing provider logs\n");
     }
@@ -196,6 +238,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       queuePath,
       projectQueuePath,
       onSessionEvent,
+      onFileComplete: onProviderFileComplete,
       onProgress: createSyncLifecycleProgressCallback({
         provider: "Codex",
         unit: "files",
@@ -261,6 +304,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         queuePath,
         projectQueuePath,
         onSessionEvent,
+        onFileComplete: onProviderFileComplete,
         onProgress: createSyncLifecycleProgressCallback({
           provider: "Claude",
           unit: "files",
@@ -695,6 +739,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     if (opts.rebuildVibedeckDb && !opts.auto) {
       process.stderr.write("Rebuild phase: draining session events\n");
     }
+    if (opts.rebuildVibedeckDb) {
+      lifecycle?.phase?.("Attributing grouped session events...");
+    }
     const sessionEventDrain = await sessionEventProcessor.drain({
       onProgress: progress?.enabled
         ? ({ processed, total }) => {
@@ -737,12 +784,13 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     await recoverActiveSessionMetadata(dbPath);
     lifecycle?.providerDone?.("Indexes", "active session metadata recovered");
     lifecycle?.provider?.("Indexes", "repairing missing project attribution");
-    const repairedAttribution = repairMissingProjectAttribution(dbPath, {
+    const repairedAttribution = await repairMissingProjectAttribution(dbPath, {
       onProgress: createSyncLifecycleProgressCallback({
         provider: "Indexes",
         unit: "sessions",
         lifecycle,
       }),
+      cache: rebuildBranchCache,
     });
     lifecycle?.providerDone?.(
       "Indexes",
@@ -752,15 +800,17 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       auto: opts.auto,
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
       autoBranchFactsRebuilt,
+      sessionEventProcessorMode: sessionEventProcessor.mode,
     });
     if (runFullBranchFactRebuild) {
       lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
-      const branchFactsRebuilt = rebuildAllBranchUsageFacts(dbPath, {
+      const branchFactsRebuilt = await rebuildAllBranchUsageFacts(dbPath, {
         onProgress: createSyncLifecycleProgressCallback({
           provider: "Indexes",
           unit: "sessions",
           lifecycle,
         }),
+        cache: rebuildBranchCache,
       });
       lifecycle?.providerDone?.(
         "Indexes",
@@ -791,6 +841,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       if (!opts.auto) {
         process.stderr.write("Rebuild phase: validating canonical facts\n");
       }
+      lifecycle?.phase?.("Validating staged rebuild...");
 
       const queueRows = await readQueueRowsForAudit(queuePath);
       const report = reconcileCanonicalUsage({ dbPath, queueRows });
@@ -799,6 +850,16 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       const outPath = path.join(diagnosticsDir, "canonical-reconciliation.json");
       await fs.writeFile(outPath, JSON.stringify(report, null, 2), "utf8");
       if (!opts.auto) process.stderr.write(`Canonical reconciliation: ${outPath}\n`);
+
+      lifecycle?.phase?.("Promoting staged rebuild...");
+      if (!opts.auto) process.stderr.write("Rebuild phase: promoting staged outputs\n");
+      await promoteRebuildStagingContext(rebuildStaging);
+      rebuildPromoted = true;
+      dbPath = liveDbPath;
+      queuePath = liveQueuePath;
+      queueStatePath = liveQueueStatePath;
+      projectQueuePath = liveProjectQueuePath;
+      projectQueueStatePath = liveProjectQueueStatePath;
     }
 
     if (!opts.auto) {
@@ -867,6 +928,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     }
   } finally {
     progress?.stop();
+    if (rebuildStaging && !rebuildPromoted) {
+      await fs.rm(rebuildStaging.stagingDir, { recursive: true, force: true }).catch(() => {});
+    }
     await lock.release();
     await fs.unlink(lockPath).catch(() => {});
   }
@@ -892,6 +956,161 @@ function parseArgs(argv) {
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;
+}
+
+function escapeSqliteSingleQuotedPath(filePath) {
+  return String(filePath || "").replace(/'/g, "''");
+}
+
+async function createRebuildStagingContext({
+  trackerDir,
+  dbPath,
+  queuePath,
+  queueStatePath,
+  projectQueuePath,
+  projectQueueStatePath,
+} = {}) {
+  const stamp = `${Date.now()}-${process.pid}`;
+  const stagingDir = path.join(trackerDir, `.rebuild-${stamp}`);
+  await fs.mkdir(stagingDir, { recursive: true });
+
+  const stagedDbPath = path.join(stagingDir, "vibedeck.sqlite3");
+  if (fssync.existsSync(dbPath)) {
+    const source = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      source.exec(`VACUUM INTO '${escapeSqliteSingleQuotedPath(stagedDbPath)}'`);
+    } finally {
+      source.close();
+    }
+  } else {
+    ensureSchema(stagedDbPath);
+  }
+
+  return {
+    stagingDir,
+    live: {
+      dbPath,
+      queuePath,
+      queueStatePath,
+      projectQueuePath,
+      projectQueueStatePath,
+    },
+    staged: {
+      dbPath: stagedDbPath,
+      queuePath: path.join(stagingDir, "queue.jsonl"),
+      queueStatePath: path.join(stagingDir, "queue.state.json"),
+      projectQueuePath: path.join(stagingDir, "project.queue.jsonl"),
+      projectQueueStatePath: path.join(stagingDir, "project.queue.state.json"),
+    },
+  };
+}
+
+async function copyFileOrDefault(sourcePath, targetPath, defaultBody = "") {
+  await ensureDir(path.dirname(targetPath));
+  if (fssync.existsSync(sourcePath)) {
+    await fs.copyFile(sourcePath, targetPath);
+    return;
+  }
+  await fs.writeFile(targetPath, defaultBody, "utf8");
+}
+
+function createRebuildPromotionArtifacts(ctx) {
+  return [
+    {
+      key: "db",
+      stagedPath: ctx.staged.dbPath,
+      livePath: ctx.live.dbPath,
+      defaultBody: null,
+    },
+    {
+      key: "queue",
+      stagedPath: ctx.staged.queuePath,
+      livePath: ctx.live.queuePath,
+      defaultBody: "",
+    },
+    {
+      key: "projectQueue",
+      stagedPath: ctx.staged.projectQueuePath,
+      livePath: ctx.live.projectQueuePath,
+      defaultBody: "",
+    },
+    {
+      key: "queueState",
+      stagedPath: ctx.staged.queueStatePath,
+      livePath: ctx.live.queueStatePath,
+      defaultBody: JSON.stringify({ offset: 0 }),
+    },
+    {
+      key: "projectQueueState",
+      stagedPath: ctx.staged.projectQueueStatePath,
+      livePath: ctx.live.projectQueueStatePath,
+      defaultBody: JSON.stringify({ offset: 0 }),
+    },
+  ];
+}
+
+async function backupLiveArtifact(artifact, backupPath) {
+  await ensureDir(path.dirname(backupPath));
+  if (!fssync.existsSync(artifact.livePath)) {
+    return { existed: false };
+  }
+  await fs.copyFile(artifact.livePath, backupPath);
+  return { existed: true, backupPath };
+}
+
+async function restoreLiveArtifact(artifact, backup) {
+  if (backup?.existed && backup.backupPath && fssync.existsSync(backup.backupPath)) {
+    await ensureDir(path.dirname(artifact.livePath));
+    await fs.copyFile(backup.backupPath, artifact.livePath);
+    return;
+  }
+  await fs.rm(artifact.livePath, { force: true }).catch(() => {});
+}
+
+async function promoteRebuildStagingContext(ctx) {
+  if (!ctx || !ctx.live || !ctx.staged) {
+    throw new Error("invalid rebuild staging context");
+  }
+
+  ensureSchema(ctx.staged.dbPath);
+
+  const stamp = `${Date.now()}-${process.pid}`;
+  const persistentDbBackupPath = `${ctx.live.dbPath}.before-rebuild-${stamp}`;
+  const rollbackDir = path.join(ctx.stagingDir, `.rollback-${stamp}`);
+  const artifacts = createRebuildPromotionArtifacts(ctx);
+  const backups = new Map();
+
+  try {
+    await fs.mkdir(rollbackDir, { recursive: true });
+
+    for (const artifact of artifacts) {
+      const backupPath = path.join(rollbackDir, `${artifact.key}.bak`);
+      const snapshot = await backupLiveArtifact(artifact, backupPath);
+      backups.set(artifact.key, snapshot);
+    }
+
+    const dbBackup = backups.get("db");
+    if (dbBackup?.existed) {
+      await fs.copyFile(dbBackup.backupPath, persistentDbBackupPath);
+    }
+
+    for (const artifact of artifacts) {
+      if (artifact.defaultBody == null) {
+        await ensureDir(path.dirname(artifact.livePath));
+        await fs.copyFile(artifact.stagedPath, artifact.livePath);
+      } else {
+        await copyFileOrDefault(artifact.stagedPath, artifact.livePath, artifact.defaultBody);
+      }
+    }
+  } catch (err) {
+    for (const artifact of artifacts) {
+      await restoreLiveArtifact(artifact, backups.get(artifact.key)).catch(() => {});
+    }
+    throw err;
+  } finally {
+    await fs.rm(rollbackDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(ctx.stagingDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
 function clearCanonicalVibedeckTables(dbPath) {
@@ -994,7 +1213,86 @@ function createSessionEventProcessor(processor) {
   };
 
   return {
+    mode: "single-event",
     onSessionEvent,
+    drain,
+    errors,
+    get processed() {
+      return processed;
+    },
+    get total() {
+      return total;
+    },
+  };
+}
+
+function createGroupedSessionEventProcessor(processor) {
+  if (typeof processor !== "function") {
+    throw new TypeError("processor must be a function");
+  }
+
+  const errors = [];
+  const groups = new Map();
+  let total = 0;
+  let processed = 0;
+
+  const onSessionEvent = (event) => {
+    total += 1;
+    const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
+    const group = groups.get(key);
+    if (group) {
+      group.events.push(event);
+    } else {
+      groups.set(key, { events: [event] });
+    }
+    return Promise.resolve();
+  };
+
+  const flush = async ({ onProgress } = {}) => {
+    const progressCallback = typeof onProgress === "function" ? onProgress : null;
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+    }
+
+    const pendingGroups = Array.from(groups.values());
+    groups.clear();
+
+    for (const group of pendingGroups) {
+      try {
+        await processor(group.events);
+      } catch (err) {
+        for (const event of group.events) {
+          errors.push(eventFailureRecord(event, err));
+        }
+      } finally {
+        processed += group.events.length;
+        if (progressCallback) {
+          progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+        }
+      }
+    }
+
+    return { errors, processed, total };
+  };
+
+  const drain = async ({ onProgress } = {}) => {
+    const progressCallback = typeof onProgress === "function" ? onProgress : null;
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+    }
+
+    await flush({ onProgress: progressCallback });
+
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: 0 });
+    }
+    return { errors, processed, total };
+  };
+
+  return {
+    mode: "grouped-rebuild",
+    onSessionEvent,
+    flush,
     drain,
     errors,
     get processed() {
@@ -1242,6 +1540,7 @@ module.exports = {
   cmdSync,
   createSyncLifecycleProgressCallback,
   createSessionEventProcessor,
+  createGroupedSessionEventProcessor,
   shouldRunFullBranchFactRebuild,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,

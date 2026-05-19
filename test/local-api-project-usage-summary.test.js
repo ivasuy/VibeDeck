@@ -257,7 +257,7 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -341,7 +341,7 @@ test("project usage reads tracked existing and decommissioned projects from cano
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -411,7 +411,7 @@ test("project usage skips remote queue rows when a matching live local repo has 
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -515,7 +515,7 @@ test("project usage recent sort uses latest session activity instead of latest s
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -600,7 +600,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -731,7 +731,7 @@ test("project usage applies DB-backed from, to, and source filters without break
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const filtered = await callEndpoint(
       queuePath,
@@ -809,7 +809,7 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -856,7 +856,7 @@ test("project usage reads tracked branches without shelling out to git branch by
     } finally {
       db.close();
     }
-    rebuildAllBranchUsageFacts(dbPath);
+    await rebuildAllBranchUsageFacts(dbPath);
 
     let gitBranchCalls = 0;
     cp.execFileSync = (cmd, args, ...rest) => {
@@ -918,5 +918,109 @@ test("project usage filters project-queue rows by usage bucket day instead of ne
     assert.equal(body.entries[0].total_tokens, "25");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+function insertEvent(db, row) {
+  db.prepare(`
+    INSERT INTO vibedeck_session_events (
+      provider, session_id, event_key, kind, observed_at,
+      started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence,
+      model, delta_tokens, input_tokens, cached_input_tokens,
+      cache_creation_input_tokens, output_tokens, reasoning_output_tokens,
+      conversation_count, total_tokens, created_at
+    ) VALUES (
+      @provider, @session_id, @event_key, 'update', @observed_at,
+      NULL, NULL, NULL,
+      @cwd, @repo_root, NULL, NULL,
+      @branch, @branch_resolution_tier, @confidence,
+      @model, @delta_tokens, @input_tokens, 0,
+      0, @output_tokens, 0,
+      1, @total_tokens, @observed_at
+    )
+  `).run({
+    branch: null,
+    branch_resolution_tier: null,
+    confidence: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: null,
+    delta_tokens: null,
+    ...row,
+  });
+}
+
+test("project usage total is unchanged when unknown branch becomes Historical unknown", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vd-project-historical-total-"));
+  const historicalBranchRecovery = require("../src/lib/sessions/historical-branch-recovery");
+  const originalRecover = historicalBranchRecovery.recoverHistoricalBranchForUnknownGit;
+  try {
+    const trackerDir = path.join(root, "tracker");
+    const repoRoot = path.join(root, "VibeDeck");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ["main"]);
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "historical-total",
+        started_at: "2026-05-10T00:00:00.000Z",
+        ended_at: "2026-05-10T00:10:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: "D",
+        confidence: "unattributed",
+        model: "gpt-5.5",
+        total_tokens: 1000,
+        total_cost_usd: 1.23,
+      });
+      insertEvent(db, {
+        provider: "codex",
+        session_id: "historical-total",
+        event_key: "e1",
+        observed_at: "2026-05-10T00:05:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: "gpt-5.5",
+        delta_tokens: 1000,
+        input_tokens: 800,
+        output_tokens: 200,
+      });
+    } finally {
+      db.close();
+    }
+
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = async () => ({
+      branch: "Historical unknown",
+      branch_kind: "historical_unknown",
+      confidence: "low",
+      branch_resolution_tier: "HISTORICAL_GUARD",
+    });
+
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    const entry = body.entries.find((row) => row.project_key === "VibeDeck");
+    assert.ok(entry);
+    assert.equal(entry.total_tokens, "1000");
+    assert.equal(Number(entry.estimated_total_cost_usd), 1.23);
+    assert.deepEqual(entry.branches, ["Historical unknown"]);
+  } finally {
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = originalRecover;
+    await fs.promises.rm(root, { recursive: true, force: true });
   }
 });

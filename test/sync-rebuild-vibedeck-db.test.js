@@ -752,6 +752,29 @@ test('sync rebuild passes one shared branch evidence cache to grouped batches', 
   }
 });
 
+test('grouped rebuild processor can flush batches before final drain', async () => {
+  const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
+  const batches = [];
+  const processor = createGroupedSessionEventProcessor(async (events) => {
+    batches.push(events.map((event) => event.session_id));
+  });
+
+  await processor.onSessionEvent({ provider: 'codex', session_id: 's1', kind: 'start' });
+  await processor.onSessionEvent({ provider: 'codex', session_id: 's1', kind: 'update' });
+  assert.equal(processor.total, 2);
+  assert.equal(processor.processed, 0);
+
+  await processor.flush();
+  assert.deepEqual(batches, [['s1', 's1']]);
+  assert.equal(processor.processed, 2);
+
+  await processor.onSessionEvent({ provider: 'codex', session_id: 's2', kind: 'start' });
+  const drain = await processor.drain();
+  assert.deepEqual(batches, [['s1', 's1'], ['s2']]);
+  assert.equal(drain.processed, 3);
+  assert.equal(drain.total, 3);
+});
+
 test('sync --rebuild-vibedeck-db batches many events for one session into one rich-fact rebuild shape', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-batch-shape-unit-'));
   const pipelinePath = require.resolve('../src/lib/sessions/pipeline');

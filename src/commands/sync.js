@@ -175,6 +175,10 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         )
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
     const onSessionEvent = sessionEventProcessor.onSessionEvent;
+    const onProviderFileComplete =
+      opts.rebuildVibedeckDb && typeof sessionEventProcessor.flush === "function"
+        ? () => sessionEventProcessor.flush()
+        : null;
 
     const codexHome = process.env.CODEX_HOME || path.join(home, ".codex");
     const codeHome = process.env.CODE_HOME || path.join(home, ".code");
@@ -234,6 +238,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       queuePath,
       projectQueuePath,
       onSessionEvent,
+      onFileComplete: onProviderFileComplete,
       onProgress: createSyncLifecycleProgressCallback({
         provider: "Codex",
         unit: "files",
@@ -299,6 +304,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         queuePath,
         projectQueuePath,
         onSessionEvent,
+        onFileComplete: onProviderFileComplete,
         onProgress: createSyncLifecycleProgressCallback({
           provider: "Claude",
           unit: "files",
@@ -1242,13 +1248,16 @@ function createGroupedSessionEventProcessor(processor) {
     return Promise.resolve();
   };
 
-  const drain = async ({ onProgress } = {}) => {
+  const flush = async ({ onProgress } = {}) => {
     const progressCallback = typeof onProgress === "function" ? onProgress : null;
     if (progressCallback) {
       progressCallback({ processed, total, pending: Math.max(0, total - processed) });
     }
 
-    for (const group of groups.values()) {
+    const pendingGroups = Array.from(groups.values());
+    groups.clear();
+
+    for (const group of pendingGroups) {
       try {
         await processor(group.events);
       } catch (err) {
@@ -1262,7 +1271,17 @@ function createGroupedSessionEventProcessor(processor) {
         }
       }
     }
-    groups.clear();
+
+    return { errors, processed, total };
+  };
+
+  const drain = async ({ onProgress } = {}) => {
+    const progressCallback = typeof onProgress === "function" ? onProgress : null;
+    if (progressCallback) {
+      progressCallback({ processed, total, pending: Math.max(0, total - processed) });
+    }
+
+    await flush({ onProgress: progressCallback });
 
     if (progressCallback) {
       progressCallback({ processed, total, pending: 0 });
@@ -1273,6 +1292,7 @@ function createGroupedSessionEventProcessor(processor) {
   return {
     mode: "grouped-rebuild",
     onSessionEvent,
+    flush,
     drain,
     errors,
     get processed() {
@@ -1520,6 +1540,7 @@ module.exports = {
   cmdSync,
   createSyncLifecycleProgressCallback,
   createSessionEventProcessor,
+  createGroupedSessionEventProcessor,
   shouldRunFullBranchFactRebuild,
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,

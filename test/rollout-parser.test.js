@@ -2398,6 +2398,70 @@ test("parseClaudeIncremental emits Claude gitBranch when branch appears on non-u
   }
 });
 
+test('parseRolloutIncremental calls onFileComplete after each Codex file emits events', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-rollout-file-complete-'));
+  try {
+    const file = path.join(tmp, 'rollout.jsonl');
+    const usage = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    await fs.writeFile(
+      file,
+      `${JSON.stringify({ type: 'session_meta', payload: { cwd: tmp, model: 'gpt-5.4', git: { branch: 'main' } } })}\n${buildTokenCountLine({ ts: '2026-05-11T09:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    const seen = [];
+    const events = [];
+    await parseRolloutIncremental({
+      rolloutFiles: [file],
+      cursors: { version: 1, files: {} },
+      queuePath: path.join(tmp, 'queue.jsonl'),
+      onSessionEvent: (event) => events.push(event),
+      onFileComplete: (payload) => seen.push({ filePath: payload.filePath, events: events.length }),
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].filePath, file);
+    assert.ok(seen[0].events > 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('parseClaudeIncremental calls onFileComplete after each Claude file emits events', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-claude-file-complete-'));
+  try {
+    const file = path.join(tmp, 'claude.jsonl');
+    await fs.writeFile(
+      file,
+      `${JSON.stringify({ type: 'assistant', timestamp: '2026-05-11T09:00:00.000Z', gitBranch: 'main', message: { id: 'm1', model: 'claude-sonnet-4', usage: { input_tokens: 2, output_tokens: 1 } }, requestId: 'r1' })}\n`,
+      'utf8',
+    );
+
+    const seen = [];
+    const events = [];
+    await parseClaudeIncremental({
+      projectFiles: [file],
+      cursors: { version: 1, files: {} },
+      queuePath: path.join(tmp, 'queue.jsonl'),
+      onSessionEvent: (event) => events.push(event),
+      onFileComplete: (payload) => seen.push({ filePath: payload.filePath, events: events.length }),
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].filePath, file);
+    assert.ok(seen[0].events > 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 function buildCodexGitBranchLine(branch) {
   return JSON.stringify({
     payload: {

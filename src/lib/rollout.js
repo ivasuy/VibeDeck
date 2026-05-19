@@ -132,6 +132,7 @@ async function parseRolloutIncremental({
   projectQueuePath,
   onProgress,
   onSessionEvent,
+  onFileComplete,
   source,
   publicRepoResolver,
 }) {
@@ -202,6 +203,10 @@ async function parseRolloutIncremental({
       onSessionEvent,
     });
 
+    if (typeof onFileComplete === "function") {
+      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+    }
+
     cursors.files[key] = {
       inode,
       offset: result.endOffset,
@@ -246,6 +251,7 @@ async function parseClaudeIncremental({
   projectQueuePath,
   onProgress,
   onSessionEvent,
+  onFileComplete,
   source,
   publicRepoResolver,
 }) {
@@ -314,6 +320,10 @@ async function parseClaudeIncremental({
       seenMessageHashes,
       onSessionEvent,
     });
+
+    if (typeof onFileComplete === "function") {
+      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+    }
 
     cursors.files[key] = {
       inode,

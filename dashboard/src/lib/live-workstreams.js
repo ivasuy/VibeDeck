@@ -7,6 +7,7 @@ export function liveSessionKey(row) {
 
 export function isActiveLiveSession(row) {
   if (!row) return false;
+  if (String(row.live_state || "").trim().toLowerCase() === "superseded") return false;
   if (row.ended_at) return false;
   return String(row.state || "").trim().toLowerCase() !== "ended";
 }

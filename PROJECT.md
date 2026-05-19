@@ -1,202 +1,238 @@
 # VibeDeck
 
-**Version:** 0.1.3
-**Last updated:** 2026-05-18
-**Tagline:** VibeDeck shows live AI coding spend across every tool you use, on your machine.
+**Version:** 0.1.3 (PR, unreleased)
+**Last updated:** 2026-05-19
+**Tagline:** Live AI coding spend across every tool you use, on your machine.
 
-VibeDeck is a local-first dashboard that turns the raw output of your AI coding tools — Claude, Codex, Cursor, Gemini, Copilot, OpenCode, and more — into a single, real-time view of what you are spending, where that spend is going, and which projects and branches it is happening on. Nothing leaves the machine. Nothing routes through a proxy.
+VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
 
----
+## Product Contract
 
-## What VibeDeck Is
+VibeDeck should stay true to five promises:
 
-VibeDeck answers four questions in one place, in real time:
-
-1. How much am I burning on AI coding right now, this session, today?
-2. Which tool is it coming from?
-3. Which project is it landing on?
-4. Which branch did the work actually happen on?
-
-The product is anchored on five durable traits. Every release must keep all of them true.
-
-| Trait | What it means in the product |
+| Promise | Meaning |
 |---|---|
-| **Live** | Token and cost counters tick up in the dashboard, menubar, and widgets as local tools write usage data. Nothing waits on a hosted billing refresh. |
-| **Multi-provider** | Usage from many AI coding tools rolls into one local view. |
-| **Local-first** | VibeDeck reads files and local databases on the user's machine. It is not a proxy and does not require routing API traffic through it. |
-| **Mac-native with cross-surface access** | The Mac app, menubar, and widgets are the premier ambient surfaces. CLI and web dashboard are available wherever the backend runs. |
-| **Branch-aware depth** | Project and branch attribution lets users see where AI work is landing in their engineering workflow, not just at the account level. |
+| Live | Active sessions update quickly in the dashboard, Mac app, menubar, and widgets. |
+| Multi-provider | Claude, Codex, Cursor, Gemini, Copilot, OpenCode, Kiro, and other local providers roll into one view where data is available. |
+| Local-first | Usage is read and stored on the user's machine. No hosted service is required. |
+| Branch-aware | When evidence exists, spend is attributed to project, repo, worktree, branch, and session. |
+| Honest | Unknown data stays visible as unknown. VibeDeck must not fake precision. |
 
----
-
-## How It Works (One-Minute Architecture)
-
-- **Capture.** Provider-specific readers scan local session files and SQLite databases written by each AI coding tool. Token and cost shapes are normalized per provider, with deduplication for streamed messages and cumulative-vs-delta migration safety.
-- **Store.** Canonical state lives in a local SQLite database with versioned migrations. Sessions are the receipt ledger; usage events are the source-of-truth detail; rollups are derived.
-- **Attribute.** Each session is mapped to a project (repo, parent worktree, or non-git folder) and each usage event is mapped to the branch HEAD was on at that moment using local git head history.
-- **Surface.** A local Node server exposes the data through HTTP and Server-Sent Events. The web dashboard, Mac app, menubar, widgets, and CLI all read from the same backend.
-- **Refresh.** Background sync ingests new usage as providers write it; the dashboard streams live updates without polling.
-
----
-
-## Surfaces
+## Current Surfaces
 
 | Surface | Purpose |
 |---|---|
-| Web dashboard | Primary drill-down view: active sessions, project and branch rollups, model and provider breakdowns, date drill-downs. |
-| Mac app | Native shell around the dashboard, with desktop-class window management. |
-| Menubar | Ambient at-a-glance totals while you work. |
-| Widgets | Home-screen surface for live spend. |
-| CLI (`vibedeck`) | Sync, serve, doctor, repo management, README banner sync, project README sync. |
-| Embedded server | Local HTTP/SSE endpoint that every surface reads from. |
+| Web dashboard | Deep view for live sessions, projects, branches, usage, models, and providers. |
+| Mac app | Native desktop shell for the dashboard. |
+| Menubar and widgets | Glanceable live spend and session state. |
+| CLI (`vibedeck`) | Sync, serve, status, doctor, README banner, and project README commands. |
+| Local server | HTTP and SSE backend used by the dashboard and native surfaces. |
 
----
+## Release Audit History
 
-## Providers Supported
+This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
 
-Active AI coding tools whose local usage or runtime state VibeDeck surfaces today:
+### 0.1.3 PR - Trust Foundation And Rebuild Speed
 
-- Claude (Code, Desktop)
-- Codex / OpenAI Codex CLI / every-code
-- Cursor
-- Gemini CLI
-- GitHub Copilot
-- OpenCode
-- OpenClaw
-- Kiro
-- Kimi
-- Hermes
-- Codebuddy
-- OMP / Oh My Pi
-- Antigravity
+**Status:** PR, unreleased.
 
-Provider coverage continues to grow. Each provider's token capture, pricing fidelity, and project/branch attribution quality is tracked and documented per release.
+**Branches:**
 
----
+| Branch | Purpose |
+|---|---|
+| `release/0.1.3` | Main PR branch. |
+| `agent/phase-1-5-historical-branch-recovery` | Branch attribution trust work. |
+| `agent/sync-rebuild-performance` | Safe rebuild and first performance pass. |
+| `agent/phase-a-sync-rebuild-safe-speedup` | Rebuild speedup without reducing data richness. |
 
-## Release History
+#### Problem
 
-Releases are listed newest-first. Each entry describes what materially changed for users: fixes, new capabilities, trust improvements, and what is still deliberately out of scope. This document is the standalone release record; readers should not need an internal roadmap to understand what a shipped version claims.
+Branch and project attribution had too many ways to be wrong:
 
-### 0.1.3 — 2026-05-18
+- `/dashboard`, `/usage`, and `/branches` could disagree because they read different sources.
+- Cross-branch sessions could charge the wrong branch.
+- Old sessions with missing branch data became `Unknown branch`, even when provider logs had clean branch proof.
+- Git fallback could surface unsafe names like tags or detached refs as user-facing branches.
+- Old unclosed live transcripts could make a previous branch look active after work moved to a newer branch in the same workspace.
+- Full rebuilds were safer after the first pass, but still too slow for heavy users.
 
-This PR is the 0.1.3 trust-foundation release. Compared with the previous published base (`4076520`, `fix: publish cli dependencies in 0.1.2`), it ships a clearer product identity, a canonical branch-attribution pipeline, safer README banner behavior, a larger local dashboard surface, skills-browser hardening, refreshed branding, and release/test tooling.
+#### What Changed
 
-The user-facing contract for 0.1.3 is: **VibeDeck can present live local AI coding spend with consistent project and branch attribution when the local records provide enough context, while clearly deferring deeper pricing, activity, export, and provider-support claims.**
+- Added a canonical branch usage projection so branch-aware surfaces read the same source.
+- Changed branch allocation to use recorded usage events instead of elapsed-time guesses.
+- Repaired project attribution before branch fact rebuilds, so resolvable historical sessions can re-enter project views.
+- Added safe historical branch recovery when local Git can prove a clean branch.
+- Added `Historical unknown` for old rows that belong to a project but cannot safely be assigned to a branch.
+- Extracted clean branch proof from Codex `payload.git.branch` and Claude `gitBranch` while parsing logs.
+- Preferred provider branch proof before Git fallback.
+- Cached Git fallback metadata and hid unsafe refs from user-facing branch usage.
+- Decoupled GitHub README banner writes from `sync` and `serve`; banner updates are explicit commands now.
+- Added staged rebuild output so failed rebuilds do not leave the live DB half-built.
+- Added rebuild-only batch session processing so historical rebuilds avoid repeated per-event recomputation.
+- Reused provider branch evidence during rebuild instead of rereading the same provider logs repeatedly.
+- Changed provider fallback branch recovery to stream files instead of loading and splitting whole logs.
+- Flushed rebuild session batches per provider file, reducing long-lived in-memory event groups.
+- Added live-scale verification fixtures for token, cost, branch, and unknown-fallback preservation.
+- Added live supersession state so an older open session becomes stale when a newer same-provider, same-repo, same-cwd session is active on another branch.
+- Kept parallel live work visible for different providers and separate worktrees.
+- Updated the frontend fallback workstream grouping to treat superseded open sessions as stale.
 
-#### Product identity and release packaging
+#### Evidence
 
-- **Version line moved to 0.1.3.** The root package, embedded Mac server package, Homebrew formula, and native bootstrap manifest now target the 0.1.3 release.
-- **README front door was rewritten around the actual product.** The public explanation now leads with live, local, multi-provider AI coding spend, Mac-native surfaces, and branch-aware depth instead of audit/team/compliance framing.
-- **README claims are scoped to shipped behavior.** Branch, project, provider, checkpoint, skill, and banner claims are written as current capabilities or power-user surfaces instead of broad future promises.
-- **Branding was refreshed.** The dashboard, README, Mac assets, icons, wordmarks, and generated banners now use the updated VibeDeck mark and release branding.
+Live DB after a real rebuild against local data:
 
-#### Attribution truth
+| Metric | Result |
+|---|---:|
+| SQLite `quick_check` | `ok` |
+| Sessions | 1,026 |
+| Session events | 42,938 |
+| Branch usage facts | 1,027 |
+| Session buckets | 1,698 |
+| `Unknown branch` with cost | 1 real project, `$97.4731` |
+| `Historical unknown` with cost | 2 real projects, `$380.4749` |
 
-- **Branch totals now come from a canonical projection.** The new branch-usage facts layer materializes per-branch usage from recorded events, then feeds live workstream groups, project rollups, branch reports, and branch pages from the same source.
-- **Branch spend is usage-based, not elapsed-time-based.** If a session crosses branches, cost and tokens are assigned to the branch where usage actually occurred. Branch slices sum back to the session total.
-- **Historical sessions are repaired during sync.** Sessions with missing repo/project metadata are re-resolved when their original folder exists again or later becomes a git repository.
-- **Project attribution states are explicit.** Git projects, existing non-git folders, deleted folders, and genuinely unattributed sessions are separated so VibeDeck stops silently hiding resolvable local work.
-- **Branch fact rebuilds are idempotent.** The projection can be rebuilt from the recorded ledger and should produce stable branch totals.
+Before this work, the audit showed 8 `Unknown branch` projects costing `$616.5441` and 3 `Historical unknown` projects costing `$414.5178`.
 
-#### Dashboard correctness and drill-downs
+The remaining unknown cost is intentional. If the app cannot prove the branch, it should show an honest bucket instead of inventing one.
 
-- **Per-branch drawer cards now show the right slice.** A session that contributed to two branches no longer appears with the full session total under each branch; each branch group shows only its own token and cost slice.
-- **Branch drill-downs gained date buckets.** Branch pages can break usage into per-day session rollups with model and provider details.
-- **Live branch UX was tightened.** Active, recently completed, and stale branch states are labeled more clearly, with fewer transient empty states while sync and live refresh run concurrently.
-- **Project and dashboard rollups now use last-good data where appropriate.** Loading behavior is less jumpy when a sync is rebuilding or a request briefly returns empty.
+Live branch-state verification after the supersession fix:
 
-#### README banner controls
+| Branch | Codex facts | Tokens | Cost |
+|---|---:|---:|---:|
+| `entire/ui-fix` | 22 | 286,540,055 | `$214.3296` |
+| `release/0.1.3` | 68 | 145,848,722 | `$100.3989` |
 
-- **GitHub/profile README banner updates are opt-in.** `vibedeck sync` and `vibedeck serve` no longer push banner updates to GitHub. Profile README updates happen only through `vibedeck readme-sync update`.
-- **Project README banners are local-only.** `vibedeck project-readme-sync` writes `project-readme-banner.svg` beside the current project's README and refreshes a managed Project Usage block without a GitHub token or GitHub API call.
-- **Banner rendering was polished.** Profile and project banners now have clearer token suffixes, progress treatment, and snapshot context.
+The active/stale label can change as live sessions move or idle out, but these totals stay on their original branches.
 
-#### Power-user dashboard surfaces
+#### Important Commits
 
-- **Entire dashboard was rebuilt into a richer command surface.** The release adds checkpoint cards, checkpoint timelines, command-center controls, command output panels, and clearer maintenance/configuration panels.
-- **Checkpoint inspection is safer and more useful.** Checkpoint prompt/activity/metadata previews are grouped, summarized, capped, and loaded through hardened local file validation.
-- **Entire configuration edge cases were fixed.** Configure arguments are parsed more safely, Windows-style backslashes are preserved, checkpoint path validation is stricter, and repo state cache hits now prefer exact matches before aliases.
+| Area | Commits |
+|---|---|
+| Canonical branch facts | `0df6401`, `871aee5`, `9c769a4`, `68ddd49`, `a9f1a28` |
+| Project repair and README identity | `47f6ef8`, `f5a2b78`, `60e0e92` |
+| Branch drawer and dashboard stability | `db0e848`, `1d79409`, `bda06fd`, `cf5943f` |
+| Safe historical recovery | `e32421a`, `4eae109`, `ee16b2b`, `a7766c4`, `f55034a` |
+| Provider branch proof | `396c1a8`, `1fa2221`, `dcfdc66`, `2d23acb`, `c91af76` |
+| Git fallback and unsafe refs | `10eb7b9`, `883d7c2`, `6f8199e`, `97093b1`, `8006b83` |
+| Rebuild safety and batching | `25c32d2`, `ad28830`, `ab0949b`, `49f100a`, `ae5471e` |
+| Rebuild progress and guards | `b2825aa`, `c6b8e42`, `777c605` |
+| README and banner behavior | `86876bd`, `81a692b`, `9025c96` |
+| Skills and local dashboard polish | `2f3a586`, `5066a76`, `d44d773` |
+| Phase A rebuild speedup | `d862ab4`, `c22a4ba`, `082c6eb`, `67ad61b`, `13d32d4`, `f46c4c4` |
+| Live branch supersession | `e5120ef`, `60e8488`, `424d2e0`, `1511ddd` |
 
-#### Skills and integration management
+#### Rebuild Performance
 
-- **Skills browsing is faster and less noisy.** Repository skill catalogs can be cached, warmed, paginated locally, and filtered without refetching every page.
-- **Installed-skill state is more accurate.** The dashboard uses installed keys from the API and shows install buttons, busy states, and target toggles more consistently.
-- **Repository skill sources are easier to manage.** Adding or removing a source invalidates only the relevant catalog cache and can immediately browse the selected repository.
-- **Unreachable skill repositories do not poison the whole catalog.** The all-repo catalog remains usable when one registered source fails.
-- **Serve and manual sync can warm skill metadata.** `serve` warms the skill metadata index before the regular sync loop, and manual `sync` can refresh the index outside auto mode.
+The rebuild is now safe and materially faster, but still not at the user-feel target.
 
-#### Release and runtime hardening
+| Stage | Result |
+|---|---:|
+| Pre-fix failure mode | `30+ minutes`, manually stopped |
+| First safe measured rebuild | `10m 32s` |
+| Phase A live rebuild after speedup | `5m 59s` |
+| Target | `1-2 minutes` |
 
-- **Serve and sync lifecycle behavior was hardened.** The release adds progress surfaces, shutdown coverage, rebuild policy tests, and protections around sync-triggered side effects.
-- **The test suite was expanded around the new trust contract.** New coverage includes branch usage facts, project usage summaries, project README sync, banner rendering, live rollups, Entire checkpoint UI, skills caching/install state, static serving, and lifecycle shutdown paths.
-- **Internal agent-run scaffolding was added.** Codex-org prompts, scripts, workflow defaults, and role contracts were added for autonomous phase execution. This is release infrastructure, not a user-facing analytics feature.
+What improved:
 
-#### Roadmap-comparable status
+- The worst repeated provider-log reread path was removed from the rebuild loop.
+- Branch evidence is carried forward from the provider parse path instead of rediscovered late.
+- Fallback branch recovery is streaming, so large logs no longer need full-file materialization.
+- Rebuild batches are released per file/session instead of held until the full parser drain.
 
-| Area | 0.1.3 status | What can be claimed |
-|---|---|---|
-| Product identity and README anchor | Shipped | VibeDeck is positioned as live, local, multi-provider AI coding spend with Mac-native surfaces and branch-aware depth. |
-| Attribution core | Shipped | Resolvable sessions appear in project/branch views, branch totals are canonical, and cross-branch sessions split by usage activity. |
-| Provider attribution support tiers | Not shipped | Provider support is still mixed; this release does not claim every provider has full project or branch attribution. |
-| Core dollar correctness | Not shipped | Known pricing gaps remain for long-lived cache writes, web search charges, fuzzy model matches, and paid-plan billing models. |
-| Ledger hardening and rebuild parity | Partial | Branch fact rebuilds are covered; broader negative-update diagnostics and bucket reconciliation remain future work. |
-| Reports, exports, activity labels, compare/context/plan, optimize/yield | Not shipped | No new model comparison, full CSV/JSON export suite, turn/tool capture, activity classification, waste scanner, or one-shot metric is claimed. |
-| Provider breadth | Not shipped | This release does not add a new usage-ingestion provider. |
+What remains:
 
-#### What this release deliberately does **not** add
+- Keep serving the last complete DB while a staged rebuild runs in the background.
+- Start serving immediately instead of blocking `serve` on startup sync/index rebuild.
+- Persist file/session fingerprints so unchanged historical logs can be skipped.
+- Stop retrying known-unrepairable historical attribution rows every startup.
+- Add recent-first rebuild so current work appears quickly while older history backfills.
+- Add materialized read models for `/usage`, `/dashboard`, and `/branches` at 10x data.
 
-The current release improves the trust foundation and local operations. These items remain deferred:
+Data richness must stay intact: provider, model, hour, token buckets, cost quality, project, repo, worktree, branch confidence, branch kind, date buckets, session drawer details, and live session updates.
 
-- Full provider attribution tiers for Cursor, Gemini, Copilot, Kimi, OMP, Hermes, OpenClaw, and other weak-context providers.
-- Claude long-lived cache pricing, server-side web-search billing, fuzzy model pricing guardrails, premium-request billing, and paid-plan exactness.
-- Per-call activity, tool, MCP, shell, or edit-attempt breakdowns.
-- Activity labels, task categories, "one-shot rate", productivity scoring, waste scanners, or yield signals.
-- Model comparison, context-window pressure, and plan/quota decision support.
-- A full CSV/JSON export and models-report release.
-- New provider ingestion beyond the providers and runtime states already surfaced.
-- Hosted/team sharing, cloud sync, prompt inspection, or proxy behavior.
+### 0.1.2 - Publish And Public README Cleanup
 
----
+**Status:** released on `main`.
 
-## Honesty Rules
+#### Problem
 
-VibeDeck only claims what shipped releases make true.
+The first public release path still had packaging and presentation rough edges:
 
-- Branch totals agree across branch-aware surfaces that read the 0.1.3 branch facts projection.
-- Sessions whose local project path becomes resolvable later are repaired instead of staying permanently hidden.
-- Provider attribution remains mixed. If a provider does not expose recoverable project or branch context, VibeDeck must not imply full attribution.
-- Provider pricing is best-effort against a curated snapshot. Where the source data does not expose a charge (for example, server-side web search), the dashboard does not invent one.
-- Cursor "Auto" model usage and subscription-style billing are surfaced as estimates, not exact charges.
-- GitHub/profile README banner writes are opt-in. Local project README banner writes stay local and do not require GitHub credentials.
+- CLI publish dependencies needed a final fix.
+- The README needed to explain the product clearly instead of looking like an internal build log.
+- Local-only assets needed to stay out of the tracked release surface.
 
----
+#### What Changed
 
-## Non-Goals
+- Fixed CLI publish dependencies.
+- Reworked the README into a product-facing showcase.
+- Cleaned media links and provider presentation.
+- Stopped tracking local-only release artifacts.
 
-These are load-bearing. They define what VibeDeck will not become.
+#### Important Commits
 
-- Not a hosted service.
-- Not a team-sharing product. Sharing happens through export, screenshots, or the local README banner.
-- Not an audit or compliance platform.
-- Not a prompt-inspection product.
-- Not a productivity coach.
-- Not a proxy. Users never need to route AI traffic through VibeDeck.
+| Area | Commits |
+|---|---|
+| CLI publish fix | `4076520` |
+| README product showcase | `aaef604`, `2fb66a0`, `43a5b87`, `924d767` |
+| Media and local artifact cleanup | `bde999f`, `3a70aa7`, `4ca01a2`, `333935d` |
 
----
+#### Lesson
 
-## Versioning And Release Cadence
+A release is not only code. If install, packaging, and the first README screen are confusing, users will not reach the product value.
 
-- **Version line:** semantic versioning at the package level (`vibedeck-cli`). Patch releases for fixes and small surface polish; minor releases when new capability ships behind a flag or as a new endpoint; major when a load-bearing contract changes.
-- **Release notes:** every release appends one section to this document, newest at the top. Each release section describes the user-visible change, the trust improvement behind it, and what was deliberately deferred.
-- **README contract:** the project README must only make claims that the most recent release in this document supports.
+### 0.1.1 - First Public Release
 
----
+**Status:** released and tagged as `v0.1.1`.
 
-## Reading This Document
+#### Problem
 
-If you are evaluating VibeDeck for the first time, read the top three sections — what it is, how it works, and the surfaces — and then the latest release entry. Together they describe the product as it stands today.
+VibeDeck needed a shippable baseline:
 
-If you are upgrading, read the latest release entry first. Anything older is historical context.
+- Local usage had to be captured into a stable store.
+- Live updates had to be dependable enough for the dashboard and native surfaces.
+- The Mac app and CLI needed a working release path.
+- Checkpoint and branch context needed to be linked without breaking cost totals.
 
-If you are contributing, the latest release entry tells you what trust contract the current code is expected to honor, and what work has been deliberately scoped out.
+#### What Changed
+
+- Added the first public release packaging path for npm, Mac assets, and Homebrew planning.
+- Added first-run bootstrap and native app installer support.
+- Hardened live SSE rollups and recent-session behavior.
+- Added canonical cost summary helpers and stable release audit checks.
+- Linked Entire checkpoint metadata to usage sessions and surfaced checkpoint usage status.
+- Added README banner generation from local canonical usage.
+
+#### Important Commits
+
+| Area | Commits |
+|---|---|
+| Release tag and packaging | `b6762ba`, `9f001bd`, `01a79f4` |
+| Bootstrap and native app | `63c2871`, `046bd60`, `762ee99`, `7098780` |
+| Live rollups and attribution payloads | `6859924`, `49a3645`, `4f8f42f`, `6e71898` |
+| Cost summary and audit checks | `46f56bd`, `e75d6c9`, `6eadbe0`, `c2c9c78` |
+| Entire checkpoint linking | `a7de2a6`, `bc8397d`, `cecbe06`, `2230efb` |
+| README banner | `a770206`, `96f6bd9`, `179e256`, `6ba8286` |
+
+#### Lesson
+
+The first useful version proved the shape: local data, live UI, native shell, and historical context can work together. The later releases are mostly about making that data more honest, faster, and easier to explain.
+
+## Known Boundaries
+
+VibeDeck should not overclaim these areas yet:
+
+- Provider attribution is mixed. Some providers do not expose enough local project or branch context.
+- Pricing remains best-effort where providers hide billing details, subscription quotas, web search charges, or special cache tiers.
+- Cursor Auto and subscription-style billing are estimates, not exact invoice totals.
+- Full export, model comparison, task/activity classification, waste scanning, and productivity scoring are not part of the current release.
+- VibeDeck is not a hosted service, proxy, compliance product, prompt inspector, or team-sharing platform.
+
+## Release Rule
+
+Every release note should answer four questions:
+
+1. What user-visible problem existed?
+2. What changed to solve it?
+3. What evidence proves the fix?
+4. What is still deliberately not claimed?

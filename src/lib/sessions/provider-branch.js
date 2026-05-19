@@ -163,7 +163,12 @@ function scanJsonlFileSync(filePath, onObject, { chunkSize = 256 * 1024 } = {}) 
   }
 }
 
-function readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache = null } = {}) {
+function readProviderBranchEvidenceFromSessionFile({
+  provider,
+  session_id,
+  cache = null,
+  strictMalformed = false,
+} = {}) {
   const key = providerKey(provider);
   if (!SUPPORTED_PROVIDERS.has(key)) return { branch: null, checked: false, ambiguous: false };
   if (!isNonEmptyString(session_id) || !session_id.endsWith('.jsonl')) {
@@ -171,7 +176,9 @@ function readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache
   }
 
   const map = getProviderBranchEvidenceCache(cache);
-  const cacheKey = makeCacheKey(key, session_id);
+  const cacheKey = strictMalformed
+    ? `${makeCacheKey(key, session_id)}\u0000strict-malformed`
+    : makeCacheKey(key, session_id);
   if (map && map.has(cacheKey)) return map.get(cacheKey);
 
   let result = { branch: null, checked: true, ambiguous: false };
@@ -181,7 +188,13 @@ function readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache
     } else {
       const state = createProviderBranchState();
       scanJsonlFileSync(session_id, (obj, meta) => {
-        if (meta && meta.error) return true;
+        if (meta && meta.error) {
+          if (strictMalformed) {
+            result = { branch: null, checked: true, ambiguous: true };
+            return false;
+          }
+          return true;
+        }
         collectProviderBranchFromObject(key, obj, state);
         if (state.unsafe || state.branches.size > 1) {
           result = { branch: null, checked: true, ambiguous: true };
@@ -204,7 +217,12 @@ function readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache
 }
 
 function readProviderBranchFromSessionFile({ provider, session_id, cache = null } = {}) {
-  const evidence = readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache });
+  const evidence = readProviderBranchEvidenceFromSessionFile({
+    provider,
+    session_id,
+    cache,
+    strictMalformed: true,
+  });
   if (!evidence.branch || evidence.ambiguous) return null;
 
   const map = getProviderBranchCache(cache);

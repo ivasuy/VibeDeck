@@ -23,6 +23,16 @@ function tempJsonl(lines) {
   };
 }
 
+function tempRawJsonl(raw) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-provider-branch-'));
+  const file = path.join(dir, 'session.jsonl');
+  fs.writeFileSync(file, raw, 'utf8');
+  return {
+    file,
+    cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
+  };
+}
+
 test('cleanProviderBranch accepts local-looking branches', () => {
   assert.equal(cleanProviderBranch('main'), 'main');
   assert.equal(cleanProviderBranch('feature/provider-branch'), 'feature/provider-branch');
@@ -100,6 +110,19 @@ test('readProviderBranchFromSessionFile returns null for unsafe refs', () => {
   const tmp = tempJsonl([{ gitBranch: 'tags/v1.2.3' }]);
   try {
     assert.equal(readProviderBranchFromSessionFile({ provider: 'claude', session_id: tmp.file }), null);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('readProviderBranchFromSessionFile returns null for malformed JSONL', () => {
+  const tmp = tempRawJsonl([
+    JSON.stringify({ payload: { git: { branch: 'main' } } }),
+    '{"payload":',
+    '',
+  ].join('\n'));
+  try {
+    assert.equal(readProviderBranchFromSessionFile({ provider: 'codex', session_id: tmp.file }), null);
   } finally {
     tmp.cleanup();
   }

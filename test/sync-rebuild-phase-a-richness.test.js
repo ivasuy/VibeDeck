@@ -43,15 +43,18 @@ function usage(input, output, cached = 0, cacheCreation = 0, reasoning = 0) {
   };
 }
 
-async function writeCodexSession(filePath, { cwd, branch, unsafeBranch = null, count = 20 }) {
+async function writeCodexSession(filePath, { cwd, branch, unsafeBranch = null, mixedBranches = [], count = 20 }) {
   const lines = [
     JSON.stringify({ type: 'session_meta', payload: { cwd, model: 'gpt-5.4', git: { branch } } }),
   ];
   if (unsafeBranch) {
     lines.push(JSON.stringify({ payload: { git: { branch: unsafeBranch } } }));
   }
+  for (const mixedBranch of mixedBranches) {
+    lines.push(JSON.stringify({ payload: { git: { branch: mixedBranch } } }));
+  }
 
-  const baseHour = unsafeBranch ? 11 : 9;
+  const baseHour = unsafeBranch ? 11 : mixedBranches.length > 0 ? 12 : 9;
   let total = usage(0, 0);
   for (let i = 0; i < count; i += 1) {
     const last = usage(3 + i, 2, 1, 1, 1);
@@ -146,8 +149,10 @@ test('phase A rebuild preserves rich usage, branch facts, and honest unknown fal
 
     const repoA = await makeGitRepo(root, 'repo-a');
     const repoB = await makeGitRepo(root, 'repo-b');
+    const repoC = await makeGitRepo(root, 'repo-c');
     const canonicalRepoA = await fs.realpath(repoA);
     const canonicalRepoB = await fs.realpath(repoB);
+    const canonicalRepoC = await fs.realpath(repoC);
 
     const codexDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '11');
     await writeCodexSession(path.join(codexDir, 'rollout-known.jsonl'), {
@@ -160,6 +165,12 @@ test('phase A rebuild preserves rich usage, branch facts, and honest unknown fal
       branch: 'main',
       unsafeBranch: 'tags/v1.2.3',
       count: 15,
+    });
+    await writeCodexSession(path.join(codexDir, 'rollout-mixed.jsonl'), {
+      cwd: repoC,
+      branch: 'main',
+      mixedBranches: ['feature/mixed-clean'],
+      count: 18,
     });
 
     const claudeDir = path.join(root, '.claude', 'projects', repoA.replace(/\//g, '-'));
@@ -201,6 +212,27 @@ test('phase A rebuild preserves rich usage, branch facts, and honest unknown fal
     assert.ok(Number(tokenBuckets.reasoning_output_tokens) > 0);
     assert.ok(Number(tokenBuckets.conversation_count) >= 0);
 
+    const hourBuckets = all(dbPath, `
+      SELECT
+        bucket_provider,
+        bucket_model,
+        bucket_hour_start,
+        total_tokens,
+        total_cost_usd,
+        cost_quality
+      FROM vibedeck_session_buckets
+      ORDER BY bucket_hour_start, bucket_provider, bucket_model
+    `);
+    assert.ok(hourBuckets.length >= 3, 'expected provider/model/hour bucket rows');
+    assert.ok(hourBuckets.every((row) => typeof row.bucket_provider === 'string' && row.bucket_provider.length > 0));
+    assert.ok(hourBuckets.every((row) => typeof row.bucket_model === 'string' && row.bucket_model.length > 0));
+    assert.ok(hourBuckets.every((row) => typeof row.bucket_hour_start === 'string' && row.bucket_hour_start.length > 0));
+    assert.ok(hourBuckets.some((row) => row.bucket_provider === 'codex' && row.bucket_model === 'gpt-5.4'));
+    assert.ok(hourBuckets.some((row) => row.bucket_provider === 'claude' && row.bucket_model === 'claude-sonnet-4'));
+    assert.ok(hourBuckets.some((row) => Number(row.total_tokens) > 0));
+    assert.ok(hourBuckets.some((row) => row.total_cost_usd != null), 'expected non-null bucket cost values');
+    assert.ok(hourBuckets.every((row) => typeof row.cost_quality === 'string' && row.cost_quality.length > 0));
+
     const knownBranches = all(dbPath, `
       SELECT branch, branch_kind, confidence, branch_resolution_tier, SUM(total_tokens) AS tokens
       FROM vibedeck_branch_usage_facts
@@ -227,16 +259,36 @@ test('phase A rebuild preserves rich usage, branch facts, and honest unknown fal
       unresolved.some((row) => row.branch_kind === 'unknown_git' || row.branch_kind === 'historical_unknown'),
       'expected unknown fallback kind to remain unresolved',
     );
+    const mixedSessionFacts = all(dbPath, `
+      SELECT branch, branch_kind, confidence, branch_resolution_tier
+      FROM vibedeck_branch_usage_facts
+      WHERE provider = 'codex' AND session_id LIKE '%rollout-mixed.jsonl'
+    `);
+    assert.ok(mixedSessionFacts.length >= 1, 'expected mixed-branch codex session facts');
+    assert.ok(
+      mixedSessionFacts.every((row) => row.branch === 'Unknown branch' || row.branch === 'Historical unknown'),
+      'mixed clean provider branches must remain unresolved',
+    );
+    assert.ok(
+      mixedSessionFacts.every((row) => row.branch_kind === 'unknown_git' || row.branch_kind === 'historical_unknown'),
+      'mixed clean provider branches should keep unknown branch kinds',
+    );
+    assert.ok(
+      mixedSessionFacts.every((row) => row.branch !== 'main' && row.branch !== 'feature/mixed-clean'),
+      'mixed session must not resolve to one of the conflicting clean provider branches',
+    );
 
     const projectRows = all(dbPath, `
-      SELECT project_key, repo_root, branch, model, provider, SUM(total_tokens) AS tokens
+      SELECT project_key, repo_root, branch, model, provider, SUM(total_tokens) AS tokens, SUM(total_cost_usd) AS cost
       FROM vibedeck_branch_usage_facts
       GROUP BY project_key, repo_root, branch, model, provider
     `);
     assert.ok(projectRows.some((row) => row.repo_root === canonicalRepoA && row.branch === 'main'));
     assert.ok(projectRows.some((row) => row.repo_root === canonicalRepoA && row.branch === 'feature/claude'));
     assert.ok(projectRows.some((row) => row.repo_root === canonicalRepoB && row.branch === 'Unknown branch'));
+    assert.ok(projectRows.some((row) => row.repo_root === canonicalRepoC && row.branch === 'Unknown branch'));
     assert.ok(projectRows.every((row) => Number(row.tokens) >= 0));
+    assert.ok(projectRows.some((row) => row.cost != null), 'expected project-level cost attribution rows');
 
     const sessionDrawerRows = all(dbPath, `
       SELECT provider, session_id, branch, first_observed_at, last_observed_at

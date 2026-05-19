@@ -579,6 +579,190 @@ test("live rollups mark older same-provider same-cwd branch session as supersede
   assert.equal(release.audit_total_cost_usd, 0.25);
 });
 
+test("live rollups keep different providers active on different branches", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "codex-release",
+      started_at: "2026-05-19T05:00:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "release/0.1.3",
+      model: "gpt-5.5",
+      total_tokens: 50,
+      total_cost_usd: 0.5,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:10:00.000Z",
+      created_at: "2026-05-19T05:00:00.000Z",
+      updated_at: "2026-05-19T05:10:00.000Z",
+    },
+    {
+      provider: "claude",
+      session_id: "claude-entire",
+      started_at: "2026-05-19T05:05:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "entire/ui-fix",
+      model: "claude-sonnet-4",
+      total_tokens: 70,
+      total_cost_usd: 0.7,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:20:00.000Z",
+      created_at: "2026-05-19T05:05:00.000Z",
+      updated_at: "2026-05-19T05:20:00.000Z",
+    },
+  ], {
+    now: "2026-05-19T05:25:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.equal(payload.active_sessions.length, 2);
+  assert.equal(payload.superseded_sessions.length, 0);
+  assert.equal(ws.active_session_count, 2);
+  assert.equal(ws.recently_completed_count, 0);
+  assert.equal(ws.active_total_tokens, 120);
+  assert.equal(ws.audit_total_tokens, 120);
+
+  const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
+  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  assert.ok(release);
+  assert.ok(entire);
+  assert.equal(release.active_session_count, 1);
+  assert.equal(entire.active_session_count, 1);
+});
+
+test("live rollups keep same-provider different worktrees active", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "main-worktree-release",
+      started_at: "2026-05-19T05:00:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: "/repo/VibeDeck",
+      branch: "release/0.1.3",
+      model: "gpt-5.5",
+      total_tokens: 80,
+      total_cost_usd: 0.8,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:10:00.000Z",
+      created_at: "2026-05-19T05:00:00.000Z",
+      updated_at: "2026-05-19T05:10:00.000Z",
+    },
+    {
+      provider: "codex",
+      session_id: "side-worktree-entire",
+      started_at: "2026-05-19T05:05:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck/.worktrees/entire-ui-fix",
+      repo_root: "/repo/VibeDeck/.worktrees/entire-ui-fix",
+      parent_repo: "/repo/VibeDeck",
+      branch: "entire/ui-fix",
+      model: "gpt-5.5",
+      total_tokens: 90,
+      total_cost_usd: 0.9,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:20:00.000Z",
+      created_at: "2026-05-19T05:05:00.000Z",
+      updated_at: "2026-05-19T05:20:00.000Z",
+    },
+  ], {
+    now: "2026-05-19T05:25:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.equal(payload.active_sessions.length, 2);
+  assert.equal(payload.superseded_sessions.length, 0);
+  assert.equal(ws.project_ref, "/repo/VibeDeck");
+  assert.equal(ws.active_session_count, 2);
+  assert.equal(ws.recently_completed_count, 0);
+
+  const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
+  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  assert.ok(release);
+  assert.ok(entire);
+  assert.equal(release.active_session_count, 1);
+  assert.equal(entire.active_session_count, 1);
+});
+
+test("live rollups make the old branch active again when it has newest same-lane activity", () => {
+  const payload = buildLiveAuditRollups([
+    {
+      provider: "codex",
+      session_id: "release-before-return",
+      started_at: "2026-05-19T05:00:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: null,
+      branch: "release/0.1.3",
+      model: "gpt-5.5",
+      total_tokens: 40,
+      total_cost_usd: 0.4,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:10:00.000Z",
+      created_at: "2026-05-19T05:00:00.000Z",
+      updated_at: "2026-05-19T05:10:00.000Z",
+    },
+    {
+      provider: "codex",
+      session_id: "entire-after-return",
+      started_at: "2026-05-19T05:20:00.000Z",
+      ended_at: null,
+      cwd: "/repo/VibeDeck",
+      repo_root: "/repo/VibeDeck",
+      parent_repo: null,
+      branch: "entire/ui-fix",
+      model: "gpt-5.5",
+      total_tokens: 60,
+      total_cost_usd: 0.6,
+      cost_estimated: 0,
+      cost_quality: "stored",
+      last_observed_at: "2026-05-19T05:30:00.000Z",
+      created_at: "2026-05-19T05:20:00.000Z",
+      updated_at: "2026-05-19T05:30:00.000Z",
+    },
+  ], {
+    now: "2026-05-19T05:35:00.000Z",
+    idleTimeoutMin: 60,
+    recentEndedMs: 60 * 60 * 1000,
+  });
+
+  const ws = payload.workstreams[0];
+  assert.ok(ws);
+  assert.equal(payload.active_sessions.length, 1);
+  assert.equal(payload.active_sessions[0].session_id, "entire-after-return");
+  assert.equal(payload.superseded_sessions.length, 1);
+  assert.equal(payload.superseded_sessions[0].session_id, "release-before-return");
+
+  const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
+  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  assert.ok(release);
+  assert.ok(entire);
+  assert.equal(release.active_session_count, 0);
+  assert.equal(release.recently_completed_count, 1);
+  assert.equal(release.audit_total_tokens, 40);
+  assert.equal(entire.active_session_count, 1);
+  assert.equal(entire.recently_completed_count, 0);
+  assert.equal(entire.active_total_tokens, 60);
+});
+
 test("branch groups split one active session by canonical branch facts", () => {
   const payload = buildLiveAuditRollups([
     {

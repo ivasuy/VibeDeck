@@ -314,3 +314,45 @@ Flush batching reduced flush count from `409` to `10`, but it did not improve en
 - The next bottleneck is no longer flush count alone; the grouped flush work itself dominates and needs profiling inside `recent_lane_session_event_flush`.
 - UI smoke coverage for `/usage` remains uncovered on this branch because `UsageOverview.test.jsx` is absent.
 - The no-token-loss proof harness needs a compatible source-delta collector before it can prove source-vs-canonical token preservation on this lineage.
+
+### 0.1.3 PR - Phase H.2: Mixed-Lane Flush Splitting (Incomplete Speed Gate)
+
+**Status:** implemented, verified, speed target missed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h2-mixed-lane-flush-splitting.md`
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h2-smoke-evidence.md`
+**Artifacts:** `docs/superpowers/plans/phase-h2-smoke-artifacts/`
+
+#### What changed
+
+- Split grouped rebuild session-event buffers by lane so historical events can flush without forcing recent events in the same session to drain early.
+- Added `VIBEDECK_REBUILD_SESSION_BATCH_EVENTS=1000` as a rebuild-only cap for grouped session-event processor calls.
+- Added H.2 smoke artifacts for the benchmark profile, benchmark summary, and no-token-loss proof status.
+- Recorded explicit pass, fail, and uncovered gates instead of treating missing commands as silent success.
+
+#### Measured outcome on local corpus
+
+| Metric | Phase H.1 baseline | Phase H.2 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `6m 08.37s` | `6m 06.30s` | Fail |
+| Target wall clock | n/a | `5m 00s` | Missed by `66,301ms` |
+| `recent_lane_session_event_flush` | `309,554.010ms` | `307,974.929ms` | Fail |
+| Flush count | `10` | `11` | Pass |
+
+H.2 improved wall clock by only `2,065ms` and improved the dominant flush stage by only `1,579.081ms` versus H.1. The rebuild command itself exited cleanly, but the H.2 smoke gate remains failed because both speed targets were missed.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| Rebuild/parity-focused suites | Passed (`24` tests, `0` failed) |
+| H.2 benchmark gate | Failed (`366,301ms` wall clock; `307,974.929ms` `recent_lane_session_event_flush`) |
+| Dashboard targeted usage/branches command | Uncovered (`vitest` missing in this worktree; `UsageOverview.test.jsx` absent on this branch) |
+| No-token-loss proof gate | Uncovered (`missing_collect_rollout_source_deltas_api`) |
+
+#### What remains
+
+- `recent_lane_session_event_flush` is still the dominant bottleneck and needs inner-stage profiling or a deeper write-path redesign.
+- Flush count stayed bounded, so the remaining speed issue is not just number of flushes.
+- UI smoke coverage still needs installable dashboard test dependencies and an actual `/usage` test file on this branch.
+- The no-token-loss proof harness still needs a compatible source-delta collector before it can prove source-vs-canonical token preservation.

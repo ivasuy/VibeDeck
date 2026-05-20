@@ -75,6 +75,7 @@ const REBUILD_PROFILE_STAGE_NAMES = [
   "branch_fact_rebuild_pass",
 ];
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_REBUILD_FLUSH_SLICE_EVENTS = 2000;
 let autoBranchFactsRebuilt = false;
 
 function roundedProfileMs(value) {
@@ -126,6 +127,15 @@ function isRebuildDirtyPostDrainEnabled({ rebuildVibedeckDb = false } = {}) {
   return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN === "1";
 }
 
+function getRebuildFlushSliceEvents({ rebuildVibedeckDb = false } = {}) {
+  if (!rebuildVibedeckDb) return null;
+  const raw = process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
+  if (raw === undefined || raw === null || raw === "") return DEFAULT_REBUILD_FLUSH_SLICE_EVENTS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_REBUILD_FLUSH_SLICE_EVENTS;
+  return parsed;
+}
+
 function createRebuildProfile({ trackerDir } = {}) {
   if (!trackerDir) return null;
   const stages = new Map(
@@ -141,6 +151,8 @@ function createRebuildProfile({ trackerDir } = {}) {
   const counters = {
     recent_session_events_flushed: 0,
     historical_session_events_flushed: 0,
+    slice_threshold_flush_count: 0,
+    historical_slice_threshold_flush_count: 0,
     repair_candidates_attempted: 0,
     branch_facts_rebuilt_by_scope: {},
   };
@@ -162,14 +174,25 @@ function createRebuildProfile({ trackerDir } = {}) {
         events_aggregated: Number(meta.eventsAggregated) || 0,
       });
     },
-    recordSessionFlush({ recent = 0, historical = 0, flush_count = 0 } = {}) {
+    recordSessionFlush({
+      recent = 0,
+      historical = 0,
+      flush_count = 0,
+      slice_threshold_flush_count = 0,
+      historical_slice_threshold_flush_count = 0,
+    } = {}) {
       counters.recent_session_events_flushed += Number(recent) || 0;
       counters.historical_session_events_flushed += Number(historical) || 0;
+      counters.slice_threshold_flush_count += Number(slice_threshold_flush_count) || 0;
+      counters.historical_slice_threshold_flush_count +=
+        Number(historical_slice_threshold_flush_count) || 0;
       const flushCount = Number(flush_count) || 0;
       mergeProfileCounters(stages.get("recent_lane_session_event_flush")?.counters, {
         recent_session_events_flushed: Number(recent) || 0,
         historical_session_events_flushed: Number(historical) || 0,
         flush_count: flushCount,
+        slice_threshold_flush_count: Number(slice_threshold_flush_count) || 0,
+        historical_slice_threshold_flush_count: Number(historical_slice_threshold_flush_count) || 0,
       });
     },
     recordRepairCandidates(count, scope = "full") {
@@ -320,6 +343,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const recentFastPathEnabled = isRebuildRecentFastPathEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
+    const rebuildFlushSliceEvents = getRebuildFlushSliceEvents({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
     const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
@@ -332,6 +358,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
             onFlushComplete: rebuildProfile
               ? (summary) => rebuildProfile.recordSessionFlush(summary)
               : null,
+            flushSliceEvents: rebuildFlushSliceEvents,
           },
         )
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
@@ -343,11 +370,21 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
             if (recentFastPathEnabled && lane === "recent") {
               return Promise.resolve();
             }
+            const flushLane = recentFastPathEnabled && lane === "historical" ? "historical" : "all";
+            if (
+              Number.isFinite(rebuildFlushSliceEvents) &&
+              rebuildFlushSliceEvents > 0 &&
+              typeof sessionEventProcessor.getPendingEventCount === "function" &&
+              sessionEventProcessor.getPendingEventCount(flushLane) < rebuildFlushSliceEvents
+            ) {
+              return Promise.resolve();
+            }
             const flush = () =>
               sessionEventProcessor.flush({
-                lane: recentFastPathEnabled && lane === "historical" ? "historical" : "all",
+                lane: flushLane,
+                reason: "slice_threshold",
               });
-            if (rebuildProfile && lane === "recent") {
+            if (rebuildProfile && (lane === "recent" || recentFastPathEnabled)) {
               return rebuildProfile.measure("recent_lane_session_event_flush", flush);
             }
             return flush();
@@ -1436,7 +1473,10 @@ function createSessionEventProcessor(processor) {
   };
 }
 
-function createGroupedSessionEventProcessor(processor, { onFlushComplete = null } = {}) {
+function createGroupedSessionEventProcessor(
+  processor,
+  { onFlushComplete = null, flushSliceEvents = null } = {},
+) {
   if (typeof processor !== "function") {
     throw new TypeError("processor must be a function");
   }
@@ -1445,6 +1485,9 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
   const groups = new Map();
   const dirtySessions = new Map();
   const flushCallback = typeof onFlushComplete === "function" ? onFlushComplete : null;
+  const sliceEvents = Number.isFinite(flushSliceEvents) && flushSliceEvents > 0
+    ? Math.floor(flushSliceEvents)
+    : null;
   let total = 0;
   let processed = 0;
 
@@ -1473,21 +1516,34 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
     return Promise.resolve();
   };
 
-  const flush = async ({ onProgress, lane = "all" } = {}) => {
+  const normalizeFlushLane = (lane) => (lane === "recent" || lane === "historical" ? lane : "all");
+
+  const groupMatchesLane = (group, lane) => {
+    if (lane === "all") return true;
+    if (lane === "recent") return group.hasRecent;
+    return group.hasHistorical && !group.hasRecent;
+  };
+
+  const getPendingEventCount = (lane = "all") => {
+    const normalizedLane = normalizeFlushLane(lane);
+    let pending = 0;
+    for (const group of groups.values()) {
+      if (!groupMatchesLane(group, normalizedLane)) continue;
+      pending += group.events.length;
+    }
+    return pending;
+  };
+
+  const flush = async ({ onProgress, lane = "all", reason = "manual" } = {}) => {
     const progressCallback = typeof onProgress === "function" ? onProgress : null;
     if (progressCallback) {
       progressCallback({ processed, total, pending: Math.max(0, total - processed) });
     }
 
-    const normalizedLane = lane === "recent" || lane === "historical" ? lane : "all";
-    const shouldFlushGroup = (group) => {
-      if (normalizedLane === "all") return true;
-      if (normalizedLane === "recent") return group.hasRecent;
-      return group.hasHistorical && !group.hasRecent;
-    };
+    const normalizedLane = normalizeFlushLane(lane);
     const pendingGroups = [];
     for (const [key, group] of groups.entries()) {
-      if (!shouldFlushGroup(group)) continue;
+      if (!groupMatchesLane(group, normalizedLane)) continue;
       pendingGroups.push(group);
       groups.delete(key);
     }
@@ -1515,7 +1571,15 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
     }
 
     if (pendingGroups.length > 0) {
-      flushCallback?.({ recent: recentFlushed, historical: historicalFlushed, flush_count: 1 });
+      const thresholdFlush = reason === "slice_threshold" && sliceEvents !== null ? 1 : 0;
+      flushCallback?.({
+        recent: recentFlushed,
+        historical: historicalFlushed,
+        flush_count: 1,
+        slice_threshold_flush_count: thresholdFlush,
+        historical_slice_threshold_flush_count:
+          thresholdFlush && normalizedLane === "historical" ? 1 : 0,
+      });
     }
 
     return { errors, processed, total };
@@ -1541,6 +1605,7 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
     flush,
     drain,
     errors,
+    getPendingEventCount,
     getDirtySessionScope() {
       if (total <= 0) return null;
       return Array.from(dirtySessions.values()).sort((a, b) => {

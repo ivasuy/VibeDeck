@@ -62,6 +62,7 @@ async function runProfiledRebuildFixture() {
     GEMINI_HOME: process.env.GEMINI_HOME,
     OPENCODE_HOME: process.env.OPENCODE_HOME,
     VIBEDECK_REBUILD_PROFILE: process.env.VIBEDECK_REBUILD_PROFILE,
+    VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS: process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS,
   };
   const recentDate = new Date();
   const historicalDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -73,6 +74,7 @@ async function runProfiledRebuildFixture() {
   process.env.GEMINI_HOME = path.join(root, '.gemini');
   process.env.OPENCODE_HOME = path.join(root, '.opencode');
   process.env.VIBEDECK_REBUILD_PROFILE = '1';
+  process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = '6';
 
   const recentIso = recentDate.toISOString();
   const historicalIso = historicalDate.toISOString();
@@ -135,6 +137,8 @@ test('rebuild profile records hard counters for flushed events and post-drain sc
 
   assert.equal(typeof profile.counters.recent_session_events_flushed, 'number');
   assert.equal(typeof profile.counters.historical_session_events_flushed, 'number');
+  assert.equal(typeof profile.counters.slice_threshold_flush_count, 'number');
+  assert.equal(typeof profile.counters.historical_slice_threshold_flush_count, 'number');
   assert.ok(profile.counters.recent_session_events_flushed > 0);
   assert.ok(profile.counters.historical_session_events_flushed > 0);
   assert.equal(typeof profile.counters.repair_candidates_attempted, 'number');

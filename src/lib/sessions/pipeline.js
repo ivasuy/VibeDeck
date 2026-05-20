@@ -281,7 +281,7 @@ function restoreSessionUpdatedAt(dbPath, { provider, session_id, updated_at } = 
   }
 }
 
-async function processSessionEvent(dbPath, event) {
+async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = false } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEvent: dbPath must be a non-empty string');
   if (!event || typeof event !== 'object') return;
   if (!isNonEmptyString(event.provider) || !isNonEmptyString(event.session_id)) return;
@@ -437,7 +437,7 @@ async function processSessionEvent(dbPath, event) {
           recomputeSessionLedger(db, latest);
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         }
-        if (latest) {
+        if (latest && !deferBranchFactRebuild) {
           await rebuildBranchUsageFactsForSession(db, {
             dbPath,
             provider: latest.provider,
@@ -482,7 +482,7 @@ function assertBatchEvents(batch) {
   }
 }
 
-async function processSessionEventBatch(dbPath, events, { cache = null } = {}) {
+async function processSessionEventBatch(dbPath, events, { cache = null, deferBranchFactRebuild = false } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
   assertBatchEvents(events);
   const enrichedEvents = events.map((event) => enrichEventFromSessionMetadata(event, { cache }));
@@ -491,7 +491,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null } = {}) {
   // Preserve compatibility with test harnesses that monkeypatch the single-event processor.
   if (module.exports.processSessionEvent !== processSessionEvent) {
     for (const event of enrichedEvents) {
-      await module.exports.processSessionEvent(dbPath, event);
+      await module.exports.processSessionEvent(dbPath, event, { deferBranchFactRebuild });
     }
     return;
   }
@@ -630,7 +630,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null } = {}) {
 
       recomputeSessionLedger(db, session);
       const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
-      if (latest) {
+      if (latest && !deferBranchFactRebuild) {
         await rebuildBranchUsageFactsForSession(db, {
           dbPath,
           provider: latest.provider,

@@ -363,10 +363,12 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const sessionEventProcessor = opts.rebuildVibedeckDb
-      ? createGroupedSessionEventProcessor((events) =>
-          require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events, {
-            cache: rebuildBranchCache,
-          }),
+      ? createGroupedSessionEventProcessor(
+          (events) =>
+            require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events, {
+              cache: rebuildBranchCache,
+              deferBranchFactRebuild: dirtyPostDrainEnabled,
+            }),
           {
             onFlushComplete: rebuildProfile
               ? (summary) => rebuildProfile.recordSessionFlush(summary)

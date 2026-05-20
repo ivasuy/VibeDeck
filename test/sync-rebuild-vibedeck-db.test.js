@@ -1415,6 +1415,94 @@ test('sync rebuild dirty post-drain scopes repair and branch-fact rebuild to dra
   }
 });
 
+test('sync rebuild dirty post-drain defers inline branch-fact rebuilds to post-drain pass', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-defer-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  const syncPath = require.resolve('../src/commands/sync');
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const branchFacts = require(branchFactsPath);
+  const originalRebuildBranchUsageFactsForSession = branchFacts.rebuildBranchUsageFactsForSession;
+  const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
+  const inlineCalls = [];
+  const postDrainScopes = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+
+    const repoRoot = path.join(tmp, 'repo');
+    await fs.mkdir(repoRoot, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot, stdio: 'ignore' });
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rolloutPath = path.join(rolloutDir, 'rollout-dirty-defer.jsonl');
+    const usage = {
+      input_tokens: 4,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 6,
+    };
+    await fs.writeFile(
+      rolloutPath,
+      `${JSON.stringify({ type: 'session_meta', payload: { cwd: repoRoot, model: 'gpt-5.4', git: { branch: 'main' } } })}\n${buildTokenCountLine({ ts: new Date().toISOString(), last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    branchFacts.rebuildBranchUsageFactsForSession = async (db, options = {}) => {
+      inlineCalls.push({ provider: options.provider, session_id: options.session_id });
+      return 0;
+    };
+    branchFacts.rebuildAllBranchUsageFacts = async (dbPath, options = {}) => {
+      postDrainScopes.push(options.sessions);
+      return originalRebuildAllBranchUsageFacts(dbPath, options);
+    };
+
+    delete require.cache[pipelinePath];
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(inlineCalls, []);
+    assert.deepEqual(postDrainScopes, [[{ provider: 'codex', session_id: rolloutPath }]]);
+
+    const dbPath = path.join(tmp, '.vibedeck', 'tracker', 'vibedeck.sqlite3');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const fact = db
+        .prepare('SELECT total_tokens, branch FROM vibedeck_branch_usage_facts WHERE provider = ? AND session_id = ?')
+        .get('codex', rolloutPath);
+      assert.ok(fact);
+      assert.equal(fact.total_tokens, 6);
+      assert.equal(fact.branch, 'main');
+    } finally {
+      db.close();
+    }
+  } finally {
+    branchFacts.rebuildBranchUsageFactsForSession = originalRebuildBranchUsageFactsForSession;
+    branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
+    delete require.cache[pipelinePath];
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync rebuild dirty post-drain falls back to full branch rebuild when dirty scope is unavailable', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-fallback-'));
   const prevHome = process.env.HOME;

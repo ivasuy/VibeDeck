@@ -136,9 +136,11 @@ async function createParityCorpus(root) {
 
 async function runRebuild({
   fastPath,
+  dirtyPostDrain = false,
   flushSliceEvents = null,
   sessionBatchEvents = null,
   captureBatchSizes = false,
+  captureBatchOptions = false,
 }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), fastPath ? 'vd-rebuild-fast-' : 'vd-rebuild-base-'));
   const previous = {
@@ -150,6 +152,7 @@ async function runRebuild({
     OPENCODE_HOME: process.env.OPENCODE_HOME,
     VIBEDECK_REBUILD_PROFILE: process.env.VIBEDECK_REBUILD_PROFILE,
     VIBEDECK_REBUILD_RECENT_FASTPATH: process.env.VIBEDECK_REBUILD_RECENT_FASTPATH,
+    VIBEDECK_REBUILD_DIRTY_POST_DRAIN: process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
     VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS: process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS,
     VIBEDECK_REBUILD_SESSION_BATCH_EVENTS: process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS,
   };
@@ -157,6 +160,7 @@ async function runRebuild({
   const pipeline = require(pipelinePath);
   const originalBatch = pipeline.processSessionEventBatch;
   const batchSizes = [];
+  const batchOptions = [];
 
   try {
     const codexHome = await createParityCorpus(root);
@@ -169,14 +173,21 @@ async function runRebuild({
     process.env.VIBEDECK_REBUILD_PROFILE = '1';
     if (fastPath) process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
     else delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    if (dirtyPostDrain) process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+    else delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = String(flushSliceEvents);
     if (sessionBatchEvents == null) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
     else process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS = String(sessionBatchEvents);
 
-    if (captureBatchSizes) {
+    if (captureBatchSizes || captureBatchOptions) {
       pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
-        batchSizes.push(events.length);
+        if (captureBatchSizes) batchSizes.push(events.length);
+        if (captureBatchOptions) {
+          batchOptions.push({
+            deferBranchFactRebuild: options.deferBranchFactRebuild === true,
+          });
+        }
         return originalBatch(dbPath, events, options);
       };
     }
@@ -225,6 +236,7 @@ async function runRebuild({
       const profile = await readJson(path.join(trackerDir, 'rebuild_profile.json'));
       summary.recentFlush = profile.stages.find((stage) => stage.name === 'recent_lane_session_event_flush')?.counters || {};
       summary.batchSizes = batchSizes;
+      summary.batchOptions = batchOptions;
       return summary;
     } finally {
       db.close();
@@ -307,9 +319,93 @@ function normalizeSessionPathRow(row) {
   };
 }
 
+test('phase h3 smoke summary records defer-branch-fact benchmark gates', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h3-smoke-test-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            { name: 'recent_codex_parse', duration_ms: 20, counters: { files_processed: 2 } },
+            {
+              name: 'recent_lane_session_event_flush',
+              duration_ms: 210_000,
+              counters: {
+                recent_session_events_flushed: 6,
+                historical_session_events_flushed: 4,
+                flush_count: 11,
+                slice_threshold_flush_count: 8,
+                historical_slice_threshold_flush_count: 8,
+              },
+            },
+            {
+              name: 'branch_fact_rebuild_pass',
+              duration_ms: 20_000,
+              counters: { dirty_branch_facts_rebuilt: 2 },
+            },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+            branch_facts_rebuilt_by_scope: { dirty: 2 },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const smokeHarness = require('../scripts/smoke/rebuild-hot-path-phase-h3.cjs');
+    const summary = await smokeHarness.writePhaseH3SmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 299_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'pass');
+    assert.equal(summary.performance_gate.baseline_ms, 366_301);
+    assert.equal(summary.performance_gate.target_ms, 300_000);
+    assert.equal(summary.performance_gate.passed, true);
+    assert.equal(summary.flush_stage_gate.stage_name, 'recent_lane_session_event_flush');
+    assert.equal(summary.flush_stage_gate.baseline_ms, 307_974.929);
+    assert.equal(summary.flush_stage_gate.target_ms, 220_000);
+    assert.equal(summary.flush_stage_gate.passed, true);
+    assert.equal(summary.branch_fact_gate.stage_name, 'branch_fact_rebuild_pass');
+    assert.equal(summary.branch_fact_gate.baseline_ms, 25_939.595);
+    assert.equal(summary.branch_fact_gate.current_ms, 20_000);
+    assert.equal(summary.branch_fact_gate.passed, true);
+
+    const copiedProfile = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h3-rebuild-profile.json'), 'utf8'),
+    );
+    assert.equal(copiedProfile.counters.branch_facts_rebuilt_by_scope.dirty, 2);
+
+    const writtenSummary = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h3-rebuild-summary.json'), 'utf8'),
+    );
+    assert.equal(writtenSummary.flush_stage_gate.current_ms, 210_000);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('recent fast path preserves rebuild canonical parity while reducing flush boundaries', async () => {
   const baseline = await runRebuild({ fastPath: false });
   const fastPath = await runRebuild({ fastPath: true });
+  const dirtyDeferred = await runRebuild({
+    fastPath: true,
+    dirtyPostDrain: true,
+    flushSliceEvents: 1,
+    sessionBatchEvents: 1,
+    captureBatchSizes: true,
+    captureBatchOptions: true,
+  });
   const sliceBatch = await runRebuild({ fastPath: true, flushSliceEvents: 1 });
   const laneSplitChunked = await runRebuild({
     fastPath: true,
@@ -324,6 +420,12 @@ test('recent fast path preserves rebuild canonical parity while reducing flush b
   assert.deepEqual(fastPath.branchWindows, baseline.branchWindows);
   assert.deepEqual(fastPath.totals, baseline.totals);
   assert.deepEqual(fastPath.unknownBuckets, baseline.unknownBuckets);
+  assert.deepEqual(dirtyDeferred.sessions, baseline.sessions);
+  assert.deepEqual(dirtyDeferred.sessionEvents, baseline.sessionEvents);
+  assert.deepEqual(dirtyDeferred.branchFacts, baseline.branchFacts);
+  assert.deepEqual(dirtyDeferred.branchWindows, baseline.branchWindows);
+  assert.deepEqual(dirtyDeferred.totals, baseline.totals);
+  assert.deepEqual(dirtyDeferred.unknownBuckets, baseline.unknownBuckets);
   assert.deepEqual(sliceBatch.sessions, fastPath.sessions);
   assert.deepEqual(sliceBatch.sessionEvents, fastPath.sessionEvents);
   assert.deepEqual(sliceBatch.branchFacts, fastPath.branchFacts);
@@ -340,6 +442,11 @@ test('recent fast path preserves rebuild canonical parity while reducing flush b
   assert.ok(
     laneSplitChunked.batchSizes.every((size) => size <= 1),
     `batch sizes: ${laneSplitChunked.batchSizes.join(',')}`,
+  );
+  assert.ok(dirtyDeferred.batchOptions.length > 0);
+  assert.ok(
+    dirtyDeferred.batchOptions.every((options) => options.deferBranchFactRebuild),
+    `batch options: ${JSON.stringify(dirtyDeferred.batchOptions)}`,
   );
   assert.ok(sliceBatch.recentFlush.slice_threshold_flush_count > 0);
   assert.ok(laneSplitChunked.recentFlush.historical_slice_threshold_flush_count > 0);

@@ -136,6 +136,7 @@ async function runRebuild({
   flushSliceEvents = null,
   sessionBatchEvents = null,
   captureBatchSizes = false,
+  captureBatchOptions = false,
 }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), dirtyPostDrain ? 'vd-dirty-post-' : 'vd-full-post-'));
   const previous = {
@@ -156,6 +157,7 @@ async function runRebuild({
   const pipeline = require(pipelinePath);
   const originalBatch = pipeline.processSessionEventBatch;
   const batchSizes = [];
+  const batchOptions = [];
 
   try {
     const codexHome = await createCorpus(root);
@@ -175,9 +177,14 @@ async function runRebuild({
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = String(flushSliceEvents);
     if (sessionBatchEvents == null) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
     else process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS = String(sessionBatchEvents);
-    if (captureBatchSizes) {
+    if (captureBatchSizes || captureBatchOptions) {
       pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
-        batchSizes.push(events.length);
+        if (captureBatchSizes) batchSizes.push(events.length);
+        if (captureBatchOptions) {
+          batchOptions.push({
+            deferBranchFactRebuild: options.deferBranchFactRebuild === true,
+          });
+        }
         return originalBatch(dbPath, events, options);
       };
     }
@@ -187,7 +194,7 @@ async function runRebuild({
     const trackerDir = path.join(root, '.vibedeck', 'tracker');
     const db = new DatabaseSync(path.join(trackerDir, 'vibedeck.sqlite3'), { readOnly: true });
     try {
-      return { ...readCanonicalSummary(db), batchSizes };
+      return { ...readCanonicalSummary(db), batchSizes, batchOptions };
     } finally {
       db.close();
     }
@@ -317,6 +324,7 @@ test('dirty post-drain rebuild preserves canonical parity with parallel parse en
     flushSliceEvents: 1,
     sessionBatchEvents: 1,
     captureBatchSizes: true,
+    captureBatchOptions: true,
   });
 
   assert.deepEqual(dirtyScoped.sessions, baseline.sessions);
@@ -335,5 +343,10 @@ test('dirty post-drain rebuild preserves canonical parity with parallel parse en
   assert.ok(
     sliceBatched.batchSizes.every((size) => size <= 1),
     `batch sizes: ${sliceBatched.batchSizes.join(',')}`,
+  );
+  assert.ok(sliceBatched.batchOptions.length > 0);
+  assert.ok(
+    sliceBatched.batchOptions.every((options) => options.deferBranchFactRebuild),
+    `batch options: ${JSON.stringify(sliceBatched.batchOptions)}`,
   );
 });

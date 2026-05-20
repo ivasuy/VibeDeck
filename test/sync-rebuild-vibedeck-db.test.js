@@ -1352,6 +1352,7 @@ test('sync rebuild dirty post-drain scopes repair and branch-fact rebuild to dra
   const originalRepairMissingProjectAttribution = branchFacts.repairMissingProjectAttribution;
   const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
   const repairScopes = [];
+  const repairRebuildFacts = [];
   const branchScopes = [];
 
   try {
@@ -1380,6 +1381,7 @@ test('sync rebuild dirty post-drain scopes repair and branch-fact rebuild to dra
 
     branchFacts.repairMissingProjectAttribution = async (dbPath, options = {}) => {
       repairScopes.push(options.sessions);
+      repairRebuildFacts.push(options.rebuildFacts);
       return originalRepairMissingProjectAttribution(dbPath, options);
     };
     branchFacts.rebuildAllBranchUsageFacts = async (dbPath, options = {}) => {
@@ -1392,6 +1394,7 @@ test('sync rebuild dirty post-drain scopes repair and branch-fact rebuild to dra
     await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
 
     assert.deepEqual(repairScopes, [[{ provider: 'codex', session_id: rolloutPath }]]);
+    assert.deepEqual(repairRebuildFacts, [false]);
     assert.deepEqual(branchScopes, [[{ provider: 'codex', session_id: rolloutPath }]]);
 
     const trackerDir = path.join(tmp, '.vibedeck', 'tracker');

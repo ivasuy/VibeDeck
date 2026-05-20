@@ -1026,6 +1026,17 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     lifecycle?.provider?.("Indexes", "recovering active session metadata");
     await recoverActiveSessionMetadata(dbPath);
     lifecycle?.providerDone?.("Indexes", "active session metadata recovered");
+    const runFullBranchFactRebuild = shouldRunFullBranchFactRebuild({
+      auto: opts.auto,
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+      autoBranchFactsRebuilt,
+      sessionEventProcessorMode: sessionEventProcessor.mode,
+    });
+    const runDirtyBranchFactRebuild = opts.rebuildVibedeckDb && dirtyPostDrainEnabled && canUseDirtySessionScope;
+    const fallbackToFullBranchFactRebuild =
+      opts.rebuildVibedeckDb && dirtyPostDrainEnabled && !canUseDirtySessionScope;
+    const willRunBranchFactPass =
+      runFullBranchFactRebuild || runDirtyBranchFactRebuild || fallbackToFullBranchFactRebuild;
     lifecycle?.provider?.("Indexes", "repairing missing project attribution");
     const repairMissingProjectAttributionRun = () =>
       repairMissingProjectAttribution(dbPath, {
@@ -1035,6 +1046,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
           lifecycle,
         }),
         cache: rebuildBranchCache,
+        rebuildFacts: !willRunBranchFactPass,
         ...(canUseDirtySessionScope ? { sessions: dirtySessionScope } : {}),
       });
     const repairedAttribution = rebuildProfile
@@ -1045,16 +1057,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       "Indexes",
       `missing project attribution repaired for ${formatNumber(repairedAttribution)} session${repairedAttribution === 1 ? "" : "s"}`,
     );
-    const runFullBranchFactRebuild = shouldRunFullBranchFactRebuild({
-      auto: opts.auto,
-      rebuildVibedeckDb: opts.rebuildVibedeckDb,
-      autoBranchFactsRebuilt,
-      sessionEventProcessorMode: sessionEventProcessor.mode,
-    });
-    const runDirtyBranchFactRebuild = opts.rebuildVibedeckDb && dirtyPostDrainEnabled && canUseDirtySessionScope;
-    const fallbackToFullBranchFactRebuild =
-      opts.rebuildVibedeckDb && dirtyPostDrainEnabled && !canUseDirtySessionScope;
-    if (runFullBranchFactRebuild || runDirtyBranchFactRebuild || fallbackToFullBranchFactRebuild) {
+    if (willRunBranchFactPass) {
       lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
       const rebuildAllBranchUsageFactsRun = () =>
         rebuildAllBranchUsageFacts(dbPath, {

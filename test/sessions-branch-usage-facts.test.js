@@ -1246,3 +1246,64 @@ test('repairMissingProjectAttribution backfills session repo metadata and rebuil
     tmp.cleanup();
   }
 });
+
+test('repairMissingProjectAttribution can backfill repo metadata without rebuilding branch facts', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    const nestedCwd = path.join(repoRoot, 'subdir', 'deep');
+    initGitRepo(repoRoot);
+    fs.mkdirSync(nestedCwd, { recursive: true });
+    const expectedRepoRoot = fs.realpathSync(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'repair-metadata-only',
+        started_at: '2026-05-10T20:00:00.000Z',
+        ended_at: '2026-05-10T20:05:00.000Z',
+        cwd: nestedCwd,
+        repo_root: null,
+        repo_common_dir: null,
+        parent_repo: null,
+        branch: 'main',
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 11,
+        total_cost_usd: 0.11,
+        last_observed_at: '2026-05-10T20:05:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+    } finally {
+      db.close();
+    }
+
+    const repaired = await repairMissingProjectAttribution(tmp.dbPath, { rebuildFacts: false });
+    assert.equal(repaired, 1);
+
+    const checkDb = new DatabaseSync(tmp.dbPath, { readOnly: true });
+    try {
+      const session = checkDb
+        .prepare(
+          'SELECT repo_root, repo_common_dir, parent_repo FROM vibedeck_sessions WHERE provider = ? AND session_id = ?',
+        )
+        .get('codex', 'repair-metadata-only');
+      assert.equal(session.repo_root, expectedRepoRoot);
+      assert.ok(typeof session.repo_common_dir === 'string' && session.repo_common_dir.trim() !== '');
+
+      const facts = checkDb
+        .prepare(
+          "SELECT COUNT(*) AS n FROM vibedeck_branch_usage_facts WHERE provider = 'codex' AND session_id = 'repair-metadata-only'",
+        )
+        .get();
+      assert.equal(Number(facts.n), 0);
+    } finally {
+      checkDb.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});

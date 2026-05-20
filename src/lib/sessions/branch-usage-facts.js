@@ -684,7 +684,10 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
   }
 }
 
-async function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null, cache = null, sessions = null } = {}) {
+async function repairMissingProjectAttribution(
+  dbPath,
+  { provider = null, onProgress = null, cache = null, sessions = null, rebuildFacts = true } = {},
+) {
   if (!isNonEmptyString(dbPath) || !fs.existsSync(dbPath)) return 0;
 
   const progress = typeof onProgress === 'function' ? onProgress : null;
@@ -780,12 +783,14 @@ async function repairMissingProjectAttribution(dbPath, { provider = null, onProg
           }
         }
 
-        await rebuildBranchUsageFactsForSession(db, {
-          dbPath,
-          provider: row.provider,
-          session_id: row.session_id,
-          cache,
-        });
+        if (rebuildFacts) {
+          await rebuildBranchUsageFactsForSession(db, {
+            dbPath,
+            provider: row.provider,
+            session_id: row.session_id,
+            cache,
+          });
+        }
         progress?.({
           index: index + 1,
           total: rows.length,

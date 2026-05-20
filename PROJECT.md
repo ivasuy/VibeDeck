@@ -492,3 +492,47 @@ Raw artifact values: `wall_clock_ms=285133`, `wall_clock_target_ms=300000`, `rep
 - The prior dirty `branch_fact_rebuild_pass` bottleneck improved enough to pass its H.4 gate.
 - The remaining failed gate is `repair_pass`, and the profile still shows `recent_lane_session_event_flush` as the largest stage at `213,642.585ms`.
 - The next phase should reduce or stabilize `repair_pass` while preserving the H.5 `branch_fact_rebuild_pass` improvement.
+
+### 0.1.3 PR - Phase H.6: Repair Resolve Cache (Gate Passed)
+
+**Status:** implemented, benchmarked, overall gate passed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h6-repair-resolve-cache.md`
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h6-smoke-evidence.md`
+**Artifacts:** `docs/superpowers/plans/phase-h6-smoke-artifacts/`
+
+#### What changed
+
+- Memoized `resolveRepo(cwd)` results inside the repair attribution pass for the duration of one rebuild run.
+- Cached both successful repo resolutions and null/negative outcomes by CWD.
+- Preserved repair callbacks, dirty post-drain scope behavior, and canonical rebuild parity.
+- Added H.6 smoke artifacts for benchmark profile and benchmark summary.
+- Recorded the artifact result honestly as `pass` because wall clock, `repair_pass`, and `branch_fact_rebuild_pass` all passed their gates.
+
+#### Measured outcome on local corpus
+
+| Metric | H.5 baseline | H.6 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `285,133ms` | `242,596ms` | Pass |
+| Target wall clock | n/a | `300,000ms` | Passed by `57,404ms` |
+| `repair_pass` | `37,710.939ms` | `1,034.142ms` | Pass |
+| `branch_fact_rebuild_pass` | `25,900.448ms` | `25,640.601ms` | Pass |
+
+H.6 improved wall clock by `42,537ms` versus H.5 and reduced `repair_pass` by `36,676.797ms`. The H.5 failed `repair_pass` gate is solved in this artifact, and the H.5 `branch_fact_rebuild_pass` improvement was preserved with another `259.847ms` reduction. The remaining dominant stage is back to `recent_lane_session_event_flush` at `208,729.248ms`, so the next bottleneck is no longer resolver work inside `repair_pass`.
+
+Raw artifact values: `wall_clock_ms=242596`, `wall_clock_target_ms=300000`, `repair_pass_ms=1034.142`, `branch_fact_rebuild_pass_ms=25640.601`, `overall result=pass`.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| H.6 benchmark gate | Passed overall (`242,596ms` wall clock; target `300,000ms`) |
+| Wall-clock gate | Passed (`242,596ms`; target `300,000ms`) |
+| Repair-pass gate | Passed (`1,034.142ms`; baseline/target `37,710.939ms`) |
+| Branch-fact gate | Passed (`25,640.601ms`; baseline/target `25,900.448ms`) |
+
+#### What remains
+
+- H.6 should be treated as the phase where the repair resolver bottleneck was solved for the measured corpus.
+- `recent_lane_session_event_flush` remains the dominant measured stage at `208,729.248ms`.
+- The H.6 gate passed, but the broader user-feel target of a `1-2 minute` rebuild is still not proven by this artifact.

@@ -34,6 +34,13 @@ const BUCKET_SEPARATOR = "|";
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.vibedeck/claude-mem/observer-sessions";
+const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
+  const mtimeMs = Number(stat?.mtimeMs);
+  if (!Number.isFinite(mtimeMs)) return "historical";
+  return mtimeMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS ? "recent" : "historical";
+}
 
 function emitSessionEvents(extractFn, batch, onSessionEvent) {
   if (typeof onSessionEvent !== "function") return;
@@ -133,6 +140,7 @@ async function parseRolloutIncremental({
   onProgress,
   onSessionEvent,
   onFileComplete,
+  onFileProfile,
   source,
   publicRepoResolver,
 }) {
@@ -185,6 +193,7 @@ async function parseRolloutIncremental({
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
 
+    const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseRolloutFile({
       filePath,
       startOffset,
@@ -202,9 +211,27 @@ async function parseRolloutIncremental({
       publicRepoResolver,
       onSessionEvent,
     });
+    const profileDurationMs =
+      profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
+    const profileLane = rebuildProfileLaneForStat(st);
+
+    if (typeof onFileProfile === "function") {
+      onFileProfile({
+        provider: fileSource,
+        filePath,
+        lane: profileLane,
+        durationMs: profileDurationMs,
+        eventsAggregated: result.eventsAggregated,
+      });
+    }
 
     if (typeof onFileComplete === "function") {
-      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+      await onFileComplete({
+        provider: fileSource,
+        filePath,
+        lane: profileLane,
+        eventsAggregated: result.eventsAggregated,
+      });
     }
 
     cursors.files[key] = {
@@ -252,6 +279,7 @@ async function parseClaudeIncremental({
   onProgress,
   onSessionEvent,
   onFileComplete,
+  onFileProfile,
   source,
   publicRepoResolver,
 }) {
@@ -307,6 +335,7 @@ async function parseClaudeIncremental({
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
 
+    const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseClaudeFile({
       filePath,
       startOffset,
@@ -320,9 +349,27 @@ async function parseClaudeIncremental({
       seenMessageHashes,
       onSessionEvent,
     });
+    const profileDurationMs =
+      profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
+    const profileLane = rebuildProfileLaneForStat(st);
+
+    if (typeof onFileProfile === "function") {
+      onFileProfile({
+        provider: fileSource,
+        filePath,
+        lane: profileLane,
+        durationMs: profileDurationMs,
+        eventsAggregated: result.eventsAggregated,
+      });
+    }
 
     if (typeof onFileComplete === "function") {
-      await onFileComplete({ provider: fileSource, filePath, eventsAggregated: result.eventsAggregated });
+      await onFileComplete({
+        provider: fileSource,
+        filePath,
+        lane: profileLane,
+        eventsAggregated: result.eventsAggregated,
+      });
     }
 
     cursors.files[key] = {

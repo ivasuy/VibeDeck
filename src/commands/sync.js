@@ -76,6 +76,7 @@ const REBUILD_PROFILE_STAGE_NAMES = [
 ];
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_REBUILD_FLUSH_SLICE_EVENTS = 2000;
+const DEFAULT_REBUILD_SESSION_BATCH_EVENTS = 1000;
 let autoBranchFactsRebuilt = false;
 
 function roundedProfileMs(value) {
@@ -133,6 +134,15 @@ function getRebuildFlushSliceEvents({ rebuildVibedeckDb = false } = {}) {
   if (raw === undefined || raw === null || raw === "") return DEFAULT_REBUILD_FLUSH_SLICE_EVENTS;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_REBUILD_FLUSH_SLICE_EVENTS;
+  return parsed;
+}
+
+function getRebuildSessionBatchEvents({ rebuildVibedeckDb = false } = {}) {
+  if (!rebuildVibedeckDb) return null;
+  const raw = process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
+  if (raw === undefined || raw === null || raw === "") return DEFAULT_REBUILD_SESSION_BATCH_EVENTS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_REBUILD_SESSION_BATCH_EVENTS;
   return parsed;
 }
 
@@ -346,6 +356,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const rebuildFlushSliceEvents = getRebuildFlushSliceEvents({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
+    const rebuildSessionBatchEvents = getRebuildSessionBatchEvents({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
     const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
@@ -359,6 +372,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
               ? (summary) => rebuildProfile.recordSessionFlush(summary)
               : null,
             flushSliceEvents: rebuildFlushSliceEvents,
+            sessionBatchEvents: rebuildSessionBatchEvents,
           },
         )
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
@@ -1475,7 +1489,7 @@ function createSessionEventProcessor(processor) {
 
 function createGroupedSessionEventProcessor(
   processor,
-  { onFlushComplete = null, flushSliceEvents = null } = {},
+  { onFlushComplete = null, flushSliceEvents = null, sessionBatchEvents = null } = {},
 ) {
   if (typeof processor !== "function") {
     throw new TypeError("processor must be a function");
@@ -1487,6 +1501,9 @@ function createGroupedSessionEventProcessor(
   const flushCallback = typeof onFlushComplete === "function" ? onFlushComplete : null;
   const sliceEvents = Number.isFinite(flushSliceEvents) && flushSliceEvents > 0
     ? Math.floor(flushSliceEvents)
+    : null;
+  const batchEvents = Number.isFinite(sessionBatchEvents) && sessionBatchEvents > 0
+    ? Math.floor(sessionBatchEvents)
     : null;
   let total = 0;
   let processed = 0;
@@ -1559,7 +1576,13 @@ function createGroupedSessionEventProcessor(
 
     for (const events of pendingGroups) {
       try {
-        await processor(events);
+        if (batchEvents === null || events.length <= batchEvents) {
+          await processor(events);
+        } else {
+          for (let offset = 0; offset < events.length; offset += batchEvents) {
+            await processor(events.slice(offset, offset + batchEvents));
+          }
+        }
       } catch (err) {
         for (const event of events) {
           errors.push(eventFailureRecord(event, err));

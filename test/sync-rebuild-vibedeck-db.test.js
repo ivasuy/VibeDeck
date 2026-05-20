@@ -1113,6 +1113,135 @@ test('grouped rebuild processor flushes historical subset of mixed-lane session 
   ]);
 });
 
+test('grouped rebuild processor chunks lane subset flushes before processor writes', async () => {
+  const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
+  const batches = [];
+  const processor = createGroupedSessionEventProcessor(
+    async (events) => {
+      batches.push(events.map((event) => event.kind));
+    },
+    { sessionBatchEvents: 2 },
+  );
+
+  for (let i = 0; i < 5; i += 1) {
+    await processor.onSessionEvent({
+      provider: 'codex',
+      session_id: 'chunked-session',
+      kind: `historical-${i}`,
+      observed_at: '2024-01-01T00:00:00.000Z',
+    });
+  }
+
+  await processor.flush({ lane: 'historical' });
+
+  assert.deepEqual(batches, [
+    ['historical-0', 'historical-1'],
+    ['historical-2', 'historical-3'],
+    ['historical-4'],
+  ]);
+  assert.equal(processor.processed, 5);
+});
+
+test('sync rebuild caps grouped batch writes from VIBEDECK_REBUILD_SESSION_BATCH_EVENTS and preserves totals', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-session-batch-events-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevCodeHome = process.env.CODE_HOME;
+  const prevGeminiHome = process.env.GEMINI_HOME;
+  const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const prevSessionBatchEvents = process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const pipeline = require(pipelinePath);
+  const originalBatch = pipeline.processSessionEventBatch;
+  const batchSizes = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.CODE_HOME = path.join(tmp, '.code');
+    process.env.GEMINI_HOME = path.join(tmp, '.gemini');
+    process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+    process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS = '3';
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rolloutPath = path.join(rolloutDir, 'rollout-chunked.jsonl');
+    const lines = [];
+    for (let i = 1; i <= 8; i += 1) {
+      const last = {
+        input_tokens: 1,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: 1,
+      };
+      const total = {
+        input_tokens: i,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 0,
+        reasoning_output_tokens: 0,
+        total_tokens: i,
+      };
+      lines.push(
+        buildTokenCountLine({
+          ts: new Date(Date.UTC(2026, 4, 20, 12, 0, i)).toISOString(),
+          last,
+          total,
+        }),
+      );
+    }
+    await fs.writeFile(rolloutPath, `${lines.join('\n')}\n`, 'utf8');
+
+    pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+      batchSizes.push(events.length);
+      return originalBatch(dbPath, events, options);
+    };
+
+    await cmdSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.ok(batchSizes.length > 1);
+    assert.ok(batchSizes.every((size) => size <= 3), `batch sizes: ${batchSizes.join(',')}`);
+
+    const dbPath = path.join(tmp, '.vibedeck', 'tracker', 'vibedeck.sqlite3');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const session = db
+        .prepare('SELECT total_tokens FROM vibedeck_sessions WHERE provider = ? AND session_id = ?')
+        .get('codex', rolloutPath);
+      assert.ok(session);
+      assert.equal(session.total_tokens, 8);
+
+      const storedEvents = db
+        .prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events WHERE provider = ? AND session_id = ?')
+        .get('codex', rolloutPath);
+      assert.equal(storedEvents.n, batchSizes.reduce((sum, size) => sum + size, 0));
+    } finally {
+      db.close();
+    }
+  } finally {
+    pipeline.processSessionEventBatch = originalBatch;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevCodeHome === undefined) delete process.env.CODE_HOME;
+    else process.env.CODE_HOME = prevCodeHome;
+    if (prevGeminiHome === undefined) delete process.env.GEMINI_HOME;
+    else process.env.GEMINI_HOME = prevGeminiHome;
+    if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
+    else process.env.OPENCODE_HOME = prevOpencodeHome;
+    if (prevSessionBatchEvents === undefined) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
+    else process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS = prevSessionBatchEvents;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync --rebuild-vibedeck-db batches many events for one session into one rich-fact rebuild shape', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-batch-shape-unit-'));
   const pipelinePath = require.resolve('../src/lib/sessions/pipeline');

@@ -1,0 +1,126 @@
+{
+  "generated_at": "2026-05-20T19:27:53.602Z",
+  "command": "/opt/homebrew/Cellar/node/26.0.0/bin/node \"/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-h6-repair-resolve-cache/bin/vibedeck.js\" \"sync\" \"--rebuild-vibedeck-db\"",
+  "phase_h6_flags": {
+    "VIBEDECK_REBUILD_PROFILE": "1",
+    "VIBEDECK_FRESH_STAGED_REBUILD": "1",
+    "VIBEDECK_REBUILD_CACHE": "1",
+    "VIBEDECK_SINGLE_REBUILD_WRITER": "1",
+    "VIBEDECK_PARALLEL_PARSE": "1",
+    "VIBEDECK_PROVIDER_BRANCH_FIX": "1",
+    "VIBEDECK_REBUILD_RECENT_FASTPATH": "1",
+    "VIBEDECK_REBUILD_DIRTY_POST_DRAIN": "1",
+    "VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS": "2000",
+    "VIBEDECK_REBUILD_SESSION_BATCH_EVENTS": "1000"
+  },
+  "phase_h5_baseline": {
+    "wall_clock_ms": 285133,
+    "repair_pass_stage_name": "repair_pass",
+    "repair_pass_ms": 37710.939,
+    "branch_fact_stage_name": "branch_fact_rebuild_pass",
+    "branch_fact_stage_ms": 25900.448
+  },
+  "result": "pass",
+  "exit_code": 0,
+  "wall_clock_ms": 242596,
+  "wall_clock_s": 242.6,
+  "wall_clock_gate": {
+    "baseline_ms": 285133,
+    "target_ms": 300000,
+    "current_ms": 242596,
+    "passed": true,
+    "delta_vs_baseline_ms": -42537,
+    "delta_vs_target_ms": -57404
+  },
+  "repair_pass_gate": {
+    "stage_name": "repair_pass",
+    "baseline_ms": 37710.939,
+    "target_ms": 37710.939,
+    "current_ms": 1034.142,
+    "covered": true,
+    "passed": true,
+    "delta_vs_baseline_ms": -36676.797
+  },
+  "branch_fact_gate": {
+    "stage_name": "branch_fact_rebuild_pass",
+    "baseline_ms": 25900.448,
+    "target_ms": 25900.448,
+    "current_ms": 25640.601,
+    "covered": true,
+    "passed": true,
+    "delta_vs_baseline_ms": -259.847
+  },
+  "totals": {
+    "recent_session_events_flushed": 23996,
+    "historical_session_events_flushed": 24486,
+    "slice_threshold_flush_count": 10,
+    "historical_slice_threshold_flush_count": 10,
+    "repair_candidates_attempted": 902,
+    "branch_facts_rebuilt_by_scope": {
+      "dirty": 1147
+    },
+    "profile_stage_total_ms": 238930,
+    "profile_stage_count": 7
+  },
+  "top_stages": [
+    {
+      "name": "recent_lane_session_event_flush",
+      "duration_ms": 208729.248,
+      "counters": {
+        "recent_session_events_flushed": 23996,
+        "historical_session_events_flushed": 24486,
+        "flush_count": 11,
+        "slice_threshold_flush_count": 10,
+        "historical_slice_threshold_flush_count": 10
+      }
+    },
+    {
+      "name": "branch_fact_rebuild_pass",
+      "duration_ms": 25640.601,
+      "counters": {
+        "dirty_branch_facts_rebuilt": 1147
+      }
+    },
+    {
+      "name": "recent_codex_parse",
+      "duration_ms": 1188.255,
+      "counters": {
+        "files_processed": 482,
+        "events_aggregated": 21700
+      }
+    },
+    {
+      "name": "repair_pass",
+      "duration_ms": 1034.142,
+      "counters": {
+        "repair_candidates_attempted": 902,
+        "dirty_repair_candidates_attempted": 902
+      }
+    },
+    {
+      "name": "recent_claude_parse",
+      "duration_ms": 969.14,
+      "counters": {
+        "files_processed": 38,
+        "events_aggregated": 2549
+      }
+    },
+    {
+      "name": "historical_codex_parse",
+      "duration_ms": 908.782,
+      "counters": {
+        "files_processed": 376,
+        "events_aggregated": 19799
+      }
+    },
+    {
+      "name": "historical_claude_parse",
+      "duration_ms": 460.104,
+      "counters": {
+        "files_processed": 69,
+        "events_aggregated": 1899
+      }
+    }
+  ],
+  "error": null
+}

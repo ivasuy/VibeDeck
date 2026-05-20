@@ -447,3 +447,48 @@ Raw artifact values: `wall_clock_ms=284982`, `wall_clock_target_ms=300000`, `rep
 - The bottleneck has shifted to dirty `branch_fact_rebuild_pass` cost.
 - The next phase should reduce dirty branch-fact rebuild work or split its cost further before claiming the rebuild speed gate is solved.
 - H.4 needs separately recorded parity and no-token-loss evidence before those checks can be claimed as covered for this phase.
+
+### 0.1.3 PR - Phase H.5: Branch-Fact Head-History Cache (Incomplete Gate)
+
+**Status:** implemented, benchmarked, overall gate failed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h5-branch-fact-head-history-cache.md`
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h5-smoke-evidence.md`
+**Artifacts:** `docs/superpowers/plans/phase-h5-smoke-artifacts/`
+
+#### What changed
+
+- Routed Tier-B head-history branch lookups in the branch-fact rebuild pass through the active rebuild DB handle and a shared per-run cache.
+- Cached head-history transitions by `worktree_root` and resolved the branch in memory with binary search.
+- Preserved the existing `findBranchAt` fallback for call sites that do not provide the active DB/cache path.
+- Added H.5 smoke artifacts for benchmark profile and benchmark summary.
+- Recorded the artifact result honestly as `fail`, even though the targeted `branch_fact_rebuild_pass` gate passed.
+
+#### Measured outcome on local corpus
+
+| Metric | H.4 baseline | H.5 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `284,982ms` | `285,133ms` | Pass |
+| Target wall clock | n/a | `300,000ms` | Passed by `14,867ms` |
+| `repair_pass` | `36,400.351ms` | `37,710.939ms` | Fail |
+| `branch_fact_rebuild_pass` | `28,946.879ms` | `25,900.448ms` | Pass |
+
+H.5 improved the targeted `branch_fact_rebuild_pass` by `3,046.431ms` versus H.4, so the branch-fact bottleneck moved in the right direction. The overall result is still `fail` because `repair_pass` regressed by `1,310.588ms` versus the H.4 target, and wall clock was essentially flat at `+151ms` versus H.4.
+
+Raw artifact values: `wall_clock_ms=285133`, `wall_clock_target_ms=300000`, `repair_pass_ms=37710.939`, `branch_fact_rebuild_pass_ms=25900.448`, `overall result=fail`.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| H.5 benchmark gate | Failed overall (`repair_pass` `37,710.939ms`; target `36,400.351ms`) |
+| Wall-clock gate | Passed (`285,133ms`; target `300,000ms`) |
+| Repair-pass gate | Failed (`37,710.939ms`; baseline/target `36,400.351ms`) |
+| Branch-fact gate | Passed (`25,900.448ms`; baseline/target `28,946.879ms`) |
+
+#### What remains
+
+- H.5 should be treated as a targeted branch-fact-pass improvement, not as a full rebuild-speed success.
+- The prior dirty `branch_fact_rebuild_pass` bottleneck improved enough to pass its H.4 gate.
+- The remaining failed gate is `repair_pass`, and the profile still shows `recent_lane_session_event_flush` as the largest stage at `213,642.585ms`.
+- The next phase should reduce or stabilize `repair_pass` while preserving the H.5 `branch_fact_rebuild_pass` improvement.

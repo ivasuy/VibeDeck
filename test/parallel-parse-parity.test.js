@@ -105,10 +105,38 @@ async function createCorpus(root) {
     ].join('\n'),
     historicalDate,
   );
+  await writeSessionFile(
+    path.join(recentDir, 'rollout-mixed-lane.jsonl'),
+    [
+      sessionMetaLine({ cwd: repoRoot, branch: 'main' }),
+      tokenCountLine({ ts: historicalTs, last: usages[1], total: usages[1] }),
+      tokenCountLine({
+        ts: recentTs,
+        last: usages[2],
+        total: {
+          input_tokens: usages[1].input_tokens + usages[2].input_tokens,
+          cached_input_tokens: usages[1].cached_input_tokens + usages[2].cached_input_tokens,
+          cache_creation_input_tokens:
+            usages[1].cache_creation_input_tokens + usages[2].cache_creation_input_tokens,
+          output_tokens: usages[1].output_tokens + usages[2].output_tokens,
+          reasoning_output_tokens:
+            usages[1].reasoning_output_tokens + usages[2].reasoning_output_tokens,
+          total_tokens: usages[1].total_tokens + usages[2].total_tokens,
+        },
+      }),
+    ].join('\n'),
+    recentDate,
+  );
   return codexHome;
 }
 
-async function runRebuild({ dirtyPostDrain, recentFastPath = false, flushSliceEvents = null }) {
+async function runRebuild({
+  dirtyPostDrain,
+  recentFastPath = false,
+  flushSliceEvents = null,
+  sessionBatchEvents = null,
+  captureBatchSizes = false,
+}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), dirtyPostDrain ? 'vd-dirty-post-' : 'vd-full-post-'));
   const previous = {
     HOME: process.env.HOME,
@@ -121,8 +149,13 @@ async function runRebuild({ dirtyPostDrain, recentFastPath = false, flushSliceEv
     VIBEDECK_REBUILD_DIRTY_POST_DRAIN: process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
     VIBEDECK_REBUILD_RECENT_FASTPATH: process.env.VIBEDECK_REBUILD_RECENT_FASTPATH,
     VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS: process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS,
+    VIBEDECK_REBUILD_SESSION_BATCH_EVENTS: process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS,
     VIBEDECK_PARALLEL_PARSE: process.env.VIBEDECK_PARALLEL_PARSE,
   };
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const pipeline = require(pipelinePath);
+  const originalBatch = pipeline.processSessionEventBatch;
+  const batchSizes = [];
 
   try {
     const codexHome = await createCorpus(root);
@@ -140,17 +173,26 @@ async function runRebuild({ dirtyPostDrain, recentFastPath = false, flushSliceEv
     else delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = String(flushSliceEvents);
+    if (sessionBatchEvents == null) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
+    else process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS = String(sessionBatchEvents);
+    if (captureBatchSizes) {
+      pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+        batchSizes.push(events.length);
+        return originalBatch(dbPath, events, options);
+      };
+    }
 
     await cmdSync(['--auto', '--rebuild-vibedeck-db']);
 
     const trackerDir = path.join(root, '.vibedeck', 'tracker');
     const db = new DatabaseSync(path.join(trackerDir, 'vibedeck.sqlite3'), { readOnly: true });
     try {
-      return readCanonicalSummary(db);
+      return { ...readCanonicalSummary(db), batchSizes };
     } finally {
       db.close();
     }
   } finally {
+    pipeline.processSessionEventBatch = originalBatch;
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -273,6 +315,8 @@ test('dirty post-drain rebuild preserves canonical parity with parallel parse en
     dirtyPostDrain: true,
     recentFastPath: true,
     flushSliceEvents: 1,
+    sessionBatchEvents: 1,
+    captureBatchSizes: true,
   });
 
   assert.deepEqual(dirtyScoped.sessions, baseline.sessions);
@@ -287,4 +331,9 @@ test('dirty post-drain rebuild preserves canonical parity with parallel parse en
   assert.deepEqual(sliceBatched.branchWindows, baseline.branchWindows);
   assert.deepEqual(sliceBatched.totals, baseline.totals);
   assert.deepEqual(sliceBatched.unknownBuckets, baseline.unknownBuckets);
+  assert.ok(sliceBatched.batchSizes.length > 1);
+  assert.ok(
+    sliceBatched.batchSizes.every((size) => size <= 1),
+    `batch sizes: ${sliceBatched.batchSizes.join(',')}`,
+  );
 });

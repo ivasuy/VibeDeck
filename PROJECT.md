@@ -402,3 +402,48 @@ Raw artifact values: `wall_clock_ms=337412`, `wall_clock_target_ms=300000`, `flu
 - `repair_pass` (`65,127.053ms`) and `branch_fact_rebuild_pass` (`27,321.343ms`) are now the largest non-flush stages after the H.3 flush improvement.
 - The branch-fact pass regressed against the H.2 baseline target, so the next phase should profile or reduce dirty branch-fact rebuild cost.
 - H.3 needs separately recorded parity, dashboard, and no-token-loss evidence before those checks can be claimed as covered for this phase.
+
+### 0.1.3 PR - Phase H.4: Repair Pass De-Duplication (Incomplete Gate)
+
+**Status:** implemented, benchmarked, overall gate failed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h4-repair-pass-dedupe.md`  
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h4-smoke-evidence.md`  
+**Artifacts:** `docs/superpowers/plans/phase-h4-smoke-artifacts/`
+
+#### What changed
+
+- Removed duplicate branch-fact rebuild work from the dirty rebuild repair path when the post-drain branch-fact pass is guaranteed to run.
+- Kept `repair_pass` responsible for recovering project/repo attribution, while `branch_fact_rebuild_pass` remains the single materialization pass for dirty branch facts in this mode.
+- Added H.4 smoke artifacts for benchmark profile and benchmark summary.
+- Recorded the artifact result honestly as `fail`, even though the wall-clock and repair-pass gates passed.
+
+#### Measured outcome on local corpus
+
+| Metric | H.3 baseline | H.4 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `337,412ms` | `284,982ms` | Pass |
+| Target wall clock | n/a | `300,000ms` | Passed by `15,018ms` |
+| `repair_pass` | `65,127.053ms` | `36,400.351ms` | Pass |
+| `branch_fact_rebuild_pass` | `27,321.343ms` | `28,946.879ms` | Fail |
+
+H.4 improved wall clock by `52,430ms` versus H.3 and reduced `repair_pass` by `28,726.702ms`. The overall summary result is still `fail` because `branch_fact_rebuild_pass` regressed by `1,625.536ms` versus the H.3 baseline target.
+
+Raw artifact values: `wall_clock_ms=284982`, `wall_clock_target_ms=300000`, `repair_pass_ms=36400.351`, `branch_fact_rebuild_pass_ms=28946.879`.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| H.4 benchmark gate | Failed overall (`branch_fact_rebuild_pass` `28,946.879ms`; target `27,321.343ms`) |
+| Wall-clock gate | Passed (`284,982ms`; target `300,000ms`) |
+| Repair-pass gate | Passed (`36,400.351ms`; baseline/target `65,127.053ms`) |
+| Branch-fact gate | Failed (`28,946.879ms`; baseline/target `27,321.343ms`) |
+| Parity/no-token-loss proof | Uncovered in the current H.4 evidence artifacts; the available artifacts only record benchmark summary/profile output |
+
+#### What remains
+
+- The prior `repair_pass` bottleneck is materially reduced but not a full phase success because the artifact's overall result is `fail`.
+- The bottleneck has shifted to dirty `branch_fact_rebuild_pass` cost.
+- The next phase should reduce dirty branch-fact rebuild work or split its cost further before claiming the rebuild speed gate is solved.
+- H.4 needs separately recorded parity and no-token-loss evidence before those checks can be claimed as covered for this phase.

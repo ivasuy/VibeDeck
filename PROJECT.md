@@ -500,6 +500,7 @@ Raw artifact values: `wall_clock_ms=285133`, `wall_clock_target_ms=300000`, `rep
 **Plan:** `docs/superpowers/plans/2026-05-20-phase-h6-repair-resolve-cache.md`
 **Evidence:** `docs/superpowers/plans/2026-05-20-phase-h6-smoke-evidence.md`
 **Artifacts:** `docs/superpowers/plans/phase-h6-smoke-artifacts/`
+**Pre-merge audit:** `docs/superpowers/plans/2026-05-21-phase-h6-pre-merge-audit.md`
 
 #### What changed
 
@@ -536,3 +537,72 @@ Raw artifact values: `wall_clock_ms=242596`, `wall_clock_target_ms=300000`, `rep
 - H.6 should be treated as the phase where the repair resolver bottleneck was solved for the measured corpus.
 - `recent_lane_session_event_flush` remains the dominant measured stage at `208,729.248ms`.
 - The H.6 gate passed, but the broader user-feel target of a `1-2 minute` rebuild is still not proven by this artifact.
+
+#### Pre-merge audit on local machine
+
+**Date:** 2026-05-21 IST
+
+Before merging H.6 to the release branch, the worktree was audited again on the local machine with a fresh rebuild smoke, API checks, DB checks, and a source-worktree serve smoke.
+
+| Check | Result |
+|---|---|
+| Rebuild/parity-focused tests | Passed (`35` tests, `0` failed) |
+| Fresh H.6 rebuild command | Exited `0` and promoted data |
+| Fresh H.6 wall clock | `249,396ms` (`4m 09.4s`), under the `300,000ms` gate |
+| Fresh H.6 `repair_pass` | `1,015.193ms`, still solved versus H.5 baseline `37,710.939ms` |
+| Fresh H.6 `branch_fact_rebuild_pass` | `26,290.685ms`, `390.237ms` slower than the strict H.5 baseline gate |
+| Strict summary result | `fail` because of the `390.237ms` branch-fact micro-regression |
+| Repeated `serve --no-sync` after dashboard build | Ready in `570ms` |
+| API endpoints checked | `/sync-status`, `/usage-summary`, `/usage-daily`, `/usage-monthly`, `/usage-model-breakdown`, `/project-usage-summary`, `/branch-usage` all returned 200 |
+| SQLite health | `PRAGMA quick_check = ok` |
+| Unknown branch | Preserved: `1` row, `143,889,980` tokens, `$97.4731` |
+| Historical unknown | Preserved: `58` rows, `867,703,265` tokens, `$380.4749` |
+
+The audit confirms H.6 is still a real repair-pass speed fix, but it is not the complete rebuild speedup. On this machine the audited full rebuild is about `4m 09s`, not `1-2m`, and the remaining dominant stage is still `recent_lane_session_event_flush` at `215,845ms`.
+
+The source worktree initially could not serve the UI because `dashboard/dist` was missing. After `npm --prefix dashboard ci` and `npm run dashboard:build`, serve worked and the repeated readiness check was fast. The dashboard build passed but reported a large Vite chunk (`1,011.35 kB`) and npm reported `9` dependency audit warnings (`7` moderate, `2` high). Those are packaging/frontend follow-ups, not H.6 data-integrity failures.
+
+Data surface audit results:
+
+| Surface | Evidence |
+|---|---|
+| `/usage` monthly backend | May 2026 row populated with `5,176,459,586` tokens and `$3,286.915378` |
+| Codex in `/usage` model breakdown | Present with `4,204,597,474` May bucket tokens |
+| Claude in `/usage` model breakdown | Present with `857,114,865` May bucket tokens |
+| `/dashboard` top project | VibeDeck with `2,650,882,496` tokens, `6` branches, Codex and Claude provider detail |
+| `/branches` | `263` repos, `282` branch rows, date buckets and session detail returned |
+| VibeDeck `main` data consistency sample | Branch fact tokens exactly match session tokens at `1,487,998,879` |
+
+Verdict for H.6 before release merge: mergeable with this audit note attached. It fixes repair resolver cost and keeps `/usage`, `/dashboard`, `/branches`, Unknown branch, and Historical unknown data intact. It does not solve the remaining flush/write bottleneck and should not be advertised as a complete rebuild speed solution.
+
+### 0.1.3 PR - Phase H.7: Bucket-Cost Batch Recompute (Experiment, Not Accepted)
+
+**Status:** investigated, implemented in a separate worktree, benchmark failed, not part of the H.6 merge candidate.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h7-bucket-cost-batch-recompute.md`
+**External worktree:** `.worktrees/phase-h7-bucket-cost-batch-recompute`
+**Artifacts:** `.worktrees/phase-h7-bucket-cost-batch-recompute/docs/superpowers/plans/phase-h7-smoke-artifacts/`
+
+#### What we were trying to solve
+
+After H.6, `repair_pass` was no longer the bottleneck. The remaining dominant stage was `recent_lane_session_event_flush`, still taking about `208-216s` by itself. H.7 tried to reduce repeated bucket-cost recomputation inside that flush/write path by recomputing bucket costs once per session batch instead of repeatedly per event.
+
+This was worth testing because it targeted the only stage large enough to move rebuild time materially. It was not a branch/data correctness fix; it was a speed experiment on the rebuild write path.
+
+#### Measured outcome on local corpus
+
+| Metric | H.6 baseline | H.7 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `242,596ms` | `471,991ms` | Fail |
+| Target wall clock | n/a | `300,000ms` | Missed by `171,991ms` |
+| `recent_lane_session_event_flush` | `208,729.248ms` | `440,355.683ms` | Fail |
+| `repair_pass` | `1,034.142ms` | `976.273ms` | Pass |
+| `branch_fact_rebuild_pass` | `25,640.601ms` | `24,630.661ms` | Pass |
+
+H.7 confirmed the right area to study, but the implementation made the app slower. It should not be merged into the release branch. Keep the branch as an investigation trail only.
+
+#### What remains
+
+- Do not reject the idea that the flush path needs work; reject only the current H.7 implementation as a merge candidate.
+- Before retrying, add inner-stage profiling inside `recent_lane_session_event_flush` so we know whether the actual cost is SQLite writes, bucket-cost calculation, transaction boundaries, indexes, or object allocation.
+- Continue to preserve `/usage`, `/dashboard`, `/branches`, Unknown branch, Historical unknown, and branch/date richness as acceptance gates for any future flush-path rewrite.

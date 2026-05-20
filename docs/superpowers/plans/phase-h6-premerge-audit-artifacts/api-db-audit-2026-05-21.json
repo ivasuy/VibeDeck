@@ -1,0 +1,1499 @@
+{
+  "generated_at": "2026-05-20T20:23:00.990Z",
+  "repoRoot": "/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-h6-repair-resolve-cache",
+  "port": 7818,
+  "range": {
+    "from": "2026-05-01",
+    "to": "2026-05-21",
+    "tz": "Asia/Kolkata"
+  },
+  "server": {
+    "ready_ms": 570,
+    "logs_tail": [
+      "Preparing local database...",
+      "Starting branch watcher...",
+      "Refreshing local runtime...",
+      "Indexing skill metadata...",
+      "  Skills: using cached index for 252 skill metadata rows",
+      "Starting dashboard server...",
+      "Dashboard ready: http://127.0.0.1:7818",
+      "  VibeDeck dashboard running at:",
+      "    http://127.0.0.1:7818",
+      "  Data: /Users/vasuyadav/.vibedeck/tracker/queue.jsonl",
+      "  Sync: disabled (--no-sync); run without --no-sync for live data refresh.",
+      "  Press Ctrl+C to stop."
+    ]
+  },
+  "endpoint_statuses": {
+    "sync_status": {
+      "status": 200,
+      "ms": 7,
+      "ok": true,
+      "error": null
+    },
+    "usage_summary": {
+      "status": 200,
+      "ms": 76,
+      "ok": true,
+      "error": null
+    },
+    "usage_daily": {
+      "status": 200,
+      "ms": 41,
+      "ok": true,
+      "error": null
+    },
+    "usage_monthly": {
+      "status": 200,
+      "ms": 43,
+      "ok": true,
+      "error": null
+    },
+    "usage_model_breakdown": {
+      "status": 200,
+      "ms": 37,
+      "ok": true,
+      "error": null
+    },
+    "dashboard_projects": {
+      "status": 200,
+      "ms": 26,
+      "ok": true,
+      "error": null
+    },
+    "branches": {
+      "status": 200,
+      "ms": 16,
+      "ok": true,
+      "error": null
+    }
+  },
+  "usage": {
+    "summary_totals": {
+      "total_tokens": 5176459586,
+      "billable_total_tokens": 5176459586,
+      "total_cost_usd": "3286.915378",
+      "input_tokens": 188737249,
+      "output_tokens": 21163503,
+      "cached_input_tokens": 4827544193,
+      "cache_creation_input_tokens": 23279916,
+      "reasoning_output_tokens": 6164801,
+      "conversation_count": 0
+    },
+    "daily_rows": 19,
+    "monthly_rows": 1,
+    "monthly": [
+      {
+        "month": "2026-05",
+        "total_tokens": 5176459586,
+        "billable_total_tokens": 5176459586,
+        "input_tokens": 188737249,
+        "output_tokens": 21163503,
+        "cached_input_tokens": 4827544193,
+        "cache_creation_input_tokens": 23279916,
+        "reasoning_output_tokens": 6164801,
+        "conversation_count": 0
+      }
+    ],
+    "model_breakdown_by_provider": [
+      {
+        "source": "codex",
+        "source_scope": "local",
+        "total_tokens": 4204597474,
+        "total_cost_usd": 0,
+        "models": 7
+      },
+      {
+        "source": "claude",
+        "source_scope": "local",
+        "total_tokens": 857114865,
+        "total_cost_usd": 599.773231,
+        "models": 3
+      },
+      {
+        "source": "cursor",
+        "source_scope": "account",
+        "total_tokens": 114747247,
+        "total_cost_usd": 0,
+        "models": 11
+      }
+    ],
+    "codex_present_in_model_breakdown": true,
+    "claude_present_in_model_breakdown": true
+  },
+  "dashboard": {
+    "count": 10,
+    "top": {
+      "project_key": "VibeDeck",
+      "project_ref": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+      "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+      "project_state": "git_existing",
+      "archived": false,
+      "total_tokens": "2650882496",
+      "billable_total_tokens": "2650882496",
+      "estimated_total_cost_usd": "1674.305000",
+      "cost_estimated": false,
+      "cost_quality": "stored",
+      "last_seen_at": "2026-05-20T20:10:56.942Z",
+      "branch_count": 6,
+      "branches": [
+        "agent/phase-c-session-drain",
+        "agent/phase-d-fast-serve-dirty-index",
+        "entire/ui-fix",
+        "main",
+        "project-sync",
+        "release/0.1.3"
+      ],
+      "git_branch_count": 6,
+      "git_branches": [
+        "agent/phase-c-session-drain",
+        "agent/phase-d-fast-serve-dirty-index",
+        "entire/ui-fix",
+        "main",
+        "project-sync",
+        "release/0.1.3"
+      ],
+      "providers": [
+        {
+          "provider": "codex",
+          "total_tokens": "2417539640",
+          "billable_total_tokens": "2417539640",
+          "estimated_total_cost_usd": "1510.468000",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 371,
+          "models": [
+            {
+              "model": "gpt-5.5",
+              "total_tokens": "1535033914",
+              "billable_total_tokens": "1535033914",
+              "estimated_total_cost_usd": "1192.506100",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 106
+            },
+            {
+              "model": "gpt-5.4",
+              "total_tokens": "351499541",
+              "billable_total_tokens": "351499541",
+              "estimated_total_cost_usd": "163.940500",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 136
+            },
+            {
+              "model": "gpt-5.3-codex",
+              "total_tokens": "248130546",
+              "billable_total_tokens": "248130546",
+              "estimated_total_cost_usd": "75.213900",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 68
+            },
+            {
+              "model": "gpt-5.3-codex-spark",
+              "total_tokens": "135736812",
+              "billable_total_tokens": "135736812",
+              "estimated_total_cost_usd": "43.381500",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 31
+            },
+            {
+              "model": "gpt-5.2",
+              "total_tokens": "130462100",
+              "billable_total_tokens": "130462100",
+              "estimated_total_cost_usd": "32.855100",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 21
+            },
+            {
+              "model": "gpt-5.4-mini",
+              "total_tokens": "16676727",
+              "billable_total_tokens": "16676727",
+              "estimated_total_cost_usd": "2.570900",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 9
+            }
+          ]
+        },
+        {
+          "provider": "claude",
+          "total_tokens": "233342856",
+          "billable_total_tokens": "233342856",
+          "estimated_total_cost_usd": "163.837000",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 17,
+          "models": [
+            {
+              "model": "claude-opus-4-7",
+              "total_tokens": "151299452",
+              "billable_total_tokens": "151299452",
+              "estimated_total_cost_usd": "121.500800",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 11
+            },
+            {
+              "model": "claude-sonnet-4-6",
+              "total_tokens": "80285331",
+              "billable_total_tokens": "80285331",
+              "estimated_total_cost_usd": "39.362600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 4
+            },
+            {
+              "model": "claude-opus-4-6",
+              "total_tokens": "1758073",
+              "billable_total_tokens": "1758073",
+              "estimated_total_cost_usd": "2.973600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 2
+            }
+          ]
+        }
+      ],
+      "top_models": [
+        {
+          "provider": "codex",
+          "model": "gpt-5.5",
+          "total_tokens": "1535033914",
+          "billable_total_tokens": "1535033914",
+          "estimated_total_cost_usd": "1192.506100",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 106
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5.4",
+          "total_tokens": "351499541",
+          "billable_total_tokens": "351499541",
+          "estimated_total_cost_usd": "163.940500",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 136
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5.3-codex",
+          "total_tokens": "248130546",
+          "billable_total_tokens": "248130546",
+          "estimated_total_cost_usd": "75.213900",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 68
+        },
+        {
+          "provider": "claude",
+          "model": "claude-opus-4-7",
+          "total_tokens": "151299452",
+          "billable_total_tokens": "151299452",
+          "estimated_total_cost_usd": "121.500800",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 11
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5.3-codex-spark",
+          "total_tokens": "135736812",
+          "billable_total_tokens": "135736812",
+          "estimated_total_cost_usd": "43.381500",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 31
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5.2",
+          "total_tokens": "130462100",
+          "billable_total_tokens": "130462100",
+          "estimated_total_cost_usd": "32.855100",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 21
+        },
+        {
+          "provider": "claude",
+          "model": "claude-sonnet-4-6",
+          "total_tokens": "80285331",
+          "billable_total_tokens": "80285331",
+          "estimated_total_cost_usd": "39.362600",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 4
+        },
+        {
+          "provider": "codex",
+          "model": "gpt-5.4-mini",
+          "total_tokens": "16676727",
+          "billable_total_tokens": "16676727",
+          "estimated_total_cost_usd": "2.570900",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 9
+        },
+        {
+          "provider": "claude",
+          "model": "claude-opus-4-6",
+          "total_tokens": "1758073",
+          "billable_total_tokens": "1758073",
+          "estimated_total_cost_usd": "2.973600",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "session_count": 2
+        }
+      ],
+      "worktree_count": 3,
+      "worktrees": [
+        {
+          "project_key": "VibeDeck",
+          "project_ref": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+          "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+          "project_state": "git_existing",
+          "archived": false,
+          "total_tokens": "2650757514",
+          "billable_total_tokens": "2650757514",
+          "estimated_total_cost_usd": "1673.790700",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "last_seen_at": "2026-05-20T20:10:56.942Z",
+          "branch_count": 4,
+          "branches": [
+            "entire/ui-fix",
+            "main",
+            "project-sync",
+            "release/0.1.3"
+          ],
+          "git_branch_count": 4,
+          "git_branches": [
+            "entire/ui-fix",
+            "main",
+            "project-sync",
+            "release/0.1.3"
+          ],
+          "providers": [
+            {
+              "provider": "codex",
+              "total_tokens": "2417414658",
+              "billable_total_tokens": "2417414658",
+              "estimated_total_cost_usd": "1509.953700",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 366,
+              "models": [
+                {
+                  "model": "gpt-5.5",
+                  "total_tokens": "1534908932",
+                  "billable_total_tokens": "1534908932",
+                  "estimated_total_cost_usd": "1191.991800",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 101
+                },
+                {
+                  "model": "gpt-5.4",
+                  "total_tokens": "351499541",
+                  "billable_total_tokens": "351499541",
+                  "estimated_total_cost_usd": "163.940500",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 136
+                },
+                {
+                  "model": "gpt-5.3-codex",
+                  "total_tokens": "248130546",
+                  "billable_total_tokens": "248130546",
+                  "estimated_total_cost_usd": "75.213900",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 68
+                },
+                {
+                  "model": "gpt-5.3-codex-spark",
+                  "total_tokens": "135736812",
+                  "billable_total_tokens": "135736812",
+                  "estimated_total_cost_usd": "43.381500",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 31
+                },
+                {
+                  "model": "gpt-5.2",
+                  "total_tokens": "130462100",
+                  "billable_total_tokens": "130462100",
+                  "estimated_total_cost_usd": "32.855100",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 21
+                },
+                {
+                  "model": "gpt-5.4-mini",
+                  "total_tokens": "16676727",
+                  "billable_total_tokens": "16676727",
+                  "estimated_total_cost_usd": "2.570900",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 9
+                }
+              ]
+            },
+            {
+              "provider": "claude",
+              "total_tokens": "233342856",
+              "billable_total_tokens": "233342856",
+              "estimated_total_cost_usd": "163.837000",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 17,
+              "models": [
+                {
+                  "model": "claude-opus-4-7",
+                  "total_tokens": "151299452",
+                  "billable_total_tokens": "151299452",
+                  "estimated_total_cost_usd": "121.500800",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 11
+                },
+                {
+                  "model": "claude-sonnet-4-6",
+                  "total_tokens": "80285331",
+                  "billable_total_tokens": "80285331",
+                  "estimated_total_cost_usd": "39.362600",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 4
+                },
+                {
+                  "model": "claude-opus-4-6",
+                  "total_tokens": "1758073",
+                  "billable_total_tokens": "1758073",
+                  "estimated_total_cost_usd": "2.973600",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 2
+                }
+              ]
+            }
+          ],
+          "top_models": [
+            {
+              "provider": "codex",
+              "model": "gpt-5.5",
+              "total_tokens": "1534908932",
+              "billable_total_tokens": "1534908932",
+              "estimated_total_cost_usd": "1191.991800",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 101
+            },
+            {
+              "provider": "codex",
+              "model": "gpt-5.4",
+              "total_tokens": "351499541",
+              "billable_total_tokens": "351499541",
+              "estimated_total_cost_usd": "163.940500",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 136
+            },
+            {
+              "provider": "codex",
+              "model": "gpt-5.3-codex",
+              "total_tokens": "248130546",
+              "billable_total_tokens": "248130546",
+              "estimated_total_cost_usd": "75.213900",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 68
+            },
+            {
+              "provider": "claude",
+              "model": "claude-opus-4-7",
+              "total_tokens": "151299452",
+              "billable_total_tokens": "151299452",
+              "estimated_total_cost_usd": "121.500800",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 11
+            },
+            {
+              "provider": "codex",
+              "model": "gpt-5.3-codex-spark",
+              "total_tokens": "135736812",
+              "billable_total_tokens": "135736812",
+              "estimated_total_cost_usd": "43.381500",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 31
+            },
+            {
+              "provider": "codex",
+              "model": "gpt-5.2",
+              "total_tokens": "130462100",
+              "billable_total_tokens": "130462100",
+              "estimated_total_cost_usd": "32.855100",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 21
+            },
+            {
+              "provider": "claude",
+              "model": "claude-sonnet-4-6",
+              "total_tokens": "80285331",
+              "billable_total_tokens": "80285331",
+              "estimated_total_cost_usd": "39.362600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 4
+            },
+            {
+              "provider": "codex",
+              "model": "gpt-5.4-mini",
+              "total_tokens": "16676727",
+              "billable_total_tokens": "16676727",
+              "estimated_total_cost_usd": "2.570900",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 9
+            },
+            {
+              "provider": "claude",
+              "model": "claude-opus-4-6",
+              "total_tokens": "1758073",
+              "billable_total_tokens": "1758073",
+              "estimated_total_cost_usd": "2.973600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 2
+            }
+          ]
+        },
+        {
+          "project_key": "phase-d-fast-serve-dirty-index",
+          "project_ref": "/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-d-fast-serve-dirty-index",
+          "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-d-fast-serve-dirty-index",
+          "project_state": "git_existing",
+          "archived": false,
+          "total_tokens": "99996",
+          "billable_total_tokens": "99996",
+          "estimated_total_cost_usd": "0.422700",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "last_seen_at": "2026-05-20T02:24:36.758Z",
+          "branch_count": 1,
+          "branches": [
+            "agent/phase-d-fast-serve-dirty-index"
+          ],
+          "git_branch_count": 1,
+          "git_branches": [
+            "agent/phase-d-fast-serve-dirty-index"
+          ],
+          "providers": [
+            {
+              "provider": "codex",
+              "total_tokens": "99996",
+              "billable_total_tokens": "99996",
+              "estimated_total_cost_usd": "0.422700",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 4,
+              "models": [
+                {
+                  "model": "gpt-5.5",
+                  "total_tokens": "99996",
+                  "billable_total_tokens": "99996",
+                  "estimated_total_cost_usd": "0.422700",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 4
+                }
+              ]
+            }
+          ],
+          "top_models": [
+            {
+              "provider": "codex",
+              "model": "gpt-5.5",
+              "total_tokens": "99996",
+              "billable_total_tokens": "99996",
+              "estimated_total_cost_usd": "0.422700",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 4
+            }
+          ]
+        },
+        {
+          "project_key": "phase-c-session-drain",
+          "project_ref": "/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-c-session-drain",
+          "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-c-session-drain",
+          "project_state": "git_existing",
+          "archived": false,
+          "total_tokens": "24986",
+          "billable_total_tokens": "24986",
+          "estimated_total_cost_usd": "0.091600",
+          "cost_estimated": false,
+          "cost_quality": "stored",
+          "last_seen_at": "2026-05-20T00:40:52.311Z",
+          "branch_count": 1,
+          "branches": [
+            "agent/phase-c-session-drain"
+          ],
+          "git_branch_count": 1,
+          "git_branches": [
+            "agent/phase-c-session-drain"
+          ],
+          "providers": [
+            {
+              "provider": "codex",
+              "total_tokens": "24986",
+              "billable_total_tokens": "24986",
+              "estimated_total_cost_usd": "0.091600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 1,
+              "models": [
+                {
+                  "model": "gpt-5.5",
+                  "total_tokens": "24986",
+                  "billable_total_tokens": "24986",
+                  "estimated_total_cost_usd": "0.091600",
+                  "cost_estimated": false,
+                  "cost_quality": "stored",
+                  "session_count": 1
+                }
+              ]
+            }
+          ],
+          "top_models": [
+            {
+              "provider": "codex",
+              "model": "gpt-5.5",
+              "total_tokens": "24986",
+              "billable_total_tokens": "24986",
+              "estimated_total_cost_usd": "0.091600",
+              "cost_estimated": false,
+              "cost_quality": "stored",
+              "session_count": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "branches": {
+    "repo_count": 263,
+    "branch_count": 282,
+    "totals": {
+      "total_tokens": 4891519737,
+      "total_cost_usd": null,
+      "cost_estimated": true,
+      "cost_quality": "partial_unknown",
+      "session_count": 950
+    },
+    "top_10": [
+      {
+        "project_key": "vasuyadav",
+        "repo_root": null,
+        "project_state": "non_git_existing",
+        "branch": "No branch",
+        "branch_kind": "no_git",
+        "total_tokens": 4460962,
+        "total_cost_usd": 4.2036,
+        "session_count": 10,
+        "last_seen_at": "2026-05-17T01:47:05.498Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 10,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-17",
+            "total_tokens": 30872,
+            "total_cost_usd": 0.0425,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-16",
+            "total_tokens": 170663,
+            "total_cost_usd": 0.4849,
+            "session_count": 2
+          },
+          {
+            "date": "2026-05-12",
+            "total_tokens": 143462,
+            "total_cost_usd": 0.1021,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-05",
+            "total_tokens": 159419,
+            "total_cost_usd": 0.4034,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-04",
+            "total_tokens": 1324658,
+            "total_cost_usd": 1.5030999999999999,
+            "session_count": 2
+          },
+          {
+            "date": "2026-04-03",
+            "total_tokens": 2009387,
+            "total_cost_usd": 1.1925,
+            "session_count": 1
+          },
+          {
+            "date": "2026-03-23",
+            "total_tokens": 14926,
+            "total_cost_usd": 0.0188,
+            "session_count": 1
+          },
+          {
+            "date": "2026-03-18",
+            "total_tokens": 607575,
+            "total_cost_usd": 0.4563,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 8687,
+        "total_cost_usd": 0.0009,
+        "session_count": 1,
+        "last_seen_at": "2026-04-04T22:58:11.309Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-04",
+            "total_tokens": 8687,
+            "total_cost_usd": 0.0009,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 0,
+        "total_cost_usd": 0,
+        "session_count": 1,
+        "last_seen_at": "2026-04-04T22:58:27.981Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-04",
+            "total_tokens": 0,
+            "total_cost_usd": 0,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 22705,
+        "total_cost_usd": 0.0284,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T16:22:39.513Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 22705,
+            "total_cost_usd": 0.0284,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 96305,
+        "total_cost_usd": 0.1204,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T16:23:17.849Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 96305,
+            "total_cost_usd": 0.1204,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 197375,
+        "total_cost_usd": 0,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T17:20:02.806Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 197375,
+            "total_cost_usd": 0,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 2700164,
+        "total_cost_usd": 0,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T17:23:51.172Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 2700164,
+            "total_cost_usd": 0,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 136837,
+        "total_cost_usd": 0.3421,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T17:29:44.637Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 136837,
+            "total_cost_usd": 0.3421,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 88191,
+        "total_cost_usd": 0.2205,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T17:36:57.738Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 88191,
+            "total_cost_usd": 0.2205,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "Unattributed",
+        "repo_root": null,
+        "project_state": "unattributed",
+        "branch": "Unattributed",
+        "branch_kind": "unattributed",
+        "total_tokens": 318384,
+        "total_cost_usd": 0.796,
+        "session_count": 1,
+        "last_seen_at": "2026-04-09T17:37:55.253Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "unattributed": 1
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-09",
+            "total_tokens": 318384,
+            "total_cost_usd": 0.796,
+            "session_count": 1
+          }
+        ]
+      }
+    ],
+    "unknown_rows": [
+      {
+        "project_key": "quickwatch",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/quickwatch",
+        "project_state": "git_existing",
+        "branch": "Historical unknown",
+        "branch_kind": "historical_unknown",
+        "total_tokens": 871158,
+        "total_cost_usd": 0.4212,
+        "session_count": 1,
+        "last_seen_at": "2026-04-19T03:21:35.063Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 1,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-04-19",
+            "total_tokens": 871158,
+            "total_cost_usd": 0.4212,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "cli",
+        "repo_root": "/Users/vasuyadav/Downloads/OSS/cli",
+        "project_state": "git_existing",
+        "branch": "Unknown branch",
+        "branch_kind": "unknown_git",
+        "total_tokens": 6315197,
+        "total_cost_usd": 5.5484,
+        "session_count": 1,
+        "last_seen_at": "2026-05-08T06:41:52.207Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 1,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-08",
+            "total_tokens": 6315197,
+            "total_cost_usd": 5.5484,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "project-starter",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/project-starter",
+        "project_state": "git_existing",
+        "branch": "Historical unknown",
+        "branch_kind": "historical_unknown",
+        "total_tokens": 866832107,
+        "total_cost_usd": 380.05369999999994,
+        "session_count": 57,
+        "last_seen_at": "2026-05-16T14:38:50.983Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 57,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-16",
+            "total_tokens": 5192406,
+            "total_cost_usd": 9.684000000000001,
+            "session_count": 17
+          },
+          {
+            "date": "2026-05-15",
+            "total_tokens": 861639701,
+            "total_cost_usd": 370.36969999999997,
+            "session_count": 40
+          }
+        ]
+      },
+      {
+        "project_key": "project-starter",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/project-starter",
+        "project_state": "git_existing",
+        "branch": "Unknown branch",
+        "branch_kind": "unknown_git",
+        "total_tokens": 143889980,
+        "total_cost_usd": 97.4731,
+        "session_count": 1,
+        "last_seen_at": "2026-05-16T20:27:30.745Z",
+        "confidence": {
+          "high": 0,
+          "medium": 0,
+          "low": 1,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-16",
+            "total_tokens": 143889980,
+            "total_cost_usd": 97.4731,
+            "session_count": 1
+          }
+        ]
+      }
+    ],
+    "vibedeck_rows": [
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "main",
+        "branch_kind": "known",
+        "total_tokens": 1487998879,
+        "total_cost_usd": 821.8368999999998,
+        "session_count": 159,
+        "last_seen_at": "2026-05-16T00:16:16.337Z",
+        "confidence": {
+          "high": 0,
+          "medium": 159,
+          "low": 0,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-16",
+            "total_tokens": 102268483,
+            "total_cost_usd": 78.6574,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-14",
+            "total_tokens": 190994064,
+            "total_cost_usd": 157.7096,
+            "session_count": 2
+          },
+          {
+            "date": "2026-05-13",
+            "total_tokens": 90256703,
+            "total_cost_usd": 43.2934,
+            "session_count": 2
+          },
+          {
+            "date": "2026-05-12",
+            "total_tokens": 133299808,
+            "total_cost_usd": 41.8597,
+            "session_count": 5
+          },
+          {
+            "date": "2026-05-11",
+            "total_tokens": 637282077,
+            "total_cost_usd": 357.2838,
+            "session_count": 43
+          },
+          {
+            "date": "2026-05-10",
+            "total_tokens": 145025872,
+            "total_cost_usd": 62.01709999999998,
+            "session_count": 84
+          },
+          {
+            "date": "2026-05-09",
+            "total_tokens": 186203906,
+            "total_cost_usd": 78.1389,
+            "session_count": 21
+          },
+          {
+            "date": "2026-05-08",
+            "total_tokens": 2667966,
+            "total_cost_usd": 2.877,
+            "session_count": 1
+          }
+        ]
+      },
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "release/0.1.3",
+        "branch_kind": "known",
+        "total_tokens": 820359393,
+        "total_cost_usd": 597.4616000000001,
+        "session_count": 189,
+        "last_seen_at": "2026-05-20T20:10:56.942Z",
+        "confidence": {
+          "high": 0,
+          "medium": 188,
+          "low": 1,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-20",
+            "total_tokens": 607808843,
+            "total_cost_usd": 463.13149999999996,
+            "session_count": 85
+          },
+          {
+            "date": "2026-05-19",
+            "total_tokens": 119149881,
+            "total_cost_usd": 71.69670000000002,
+            "session_count": 43
+          },
+          {
+            "date": "2026-05-18",
+            "total_tokens": 39979003,
+            "total_cost_usd": 18.059100000000004,
+            "session_count": 36
+          },
+          {
+            "date": "2026-05-17",
+            "total_tokens": 47838393,
+            "total_cost_usd": 37.9582,
+            "session_count": 16
+          },
+          {
+            "date": "2026-05-16",
+            "total_tokens": 5583273,
+            "total_cost_usd": 6.6161,
+            "session_count": 9
+          }
+        ]
+      },
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "entire/ui-fix",
+        "branch_kind": "known",
+        "total_tokens": 330050417,
+        "total_cost_usd": 249.25869999999998,
+        "session_count": 24,
+        "last_seen_at": "2026-05-19T12:08:49.216Z",
+        "confidence": {
+          "high": 0,
+          "medium": 22,
+          "low": 2,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-19",
+            "total_tokens": 262821460,
+            "total_cost_usd": 207.0066,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-16",
+            "total_tokens": 23435979,
+            "total_cost_usd": 20.5868,
+            "session_count": 1
+          },
+          {
+            "date": "2026-05-15",
+            "total_tokens": 43792978,
+            "total_cost_usd": 21.6653,
+            "session_count": 22
+          }
+        ]
+      },
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "project-sync",
+        "branch_kind": "known",
+        "total_tokens": 12348825,
+        "total_cost_usd": 5.233500000000001,
+        "session_count": 11,
+        "last_seen_at": "2026-05-15T10:39:04.163Z",
+        "confidence": {
+          "high": 0,
+          "medium": 11,
+          "low": 0,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-15",
+            "total_tokens": 12348825,
+            "total_cost_usd": 5.233500000000001,
+            "session_count": 11
+          }
+        ]
+      },
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "agent/phase-d-fast-serve-dirty-index",
+        "branch_kind": "known",
+        "total_tokens": 99996,
+        "total_cost_usd": 0.4227,
+        "session_count": 4,
+        "last_seen_at": "2026-05-20T02:24:36.758Z",
+        "confidence": {
+          "high": 0,
+          "medium": 4,
+          "low": 0,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-20",
+            "total_tokens": 99996,
+            "total_cost_usd": 0.4227,
+            "session_count": 4
+          }
+        ]
+      },
+      {
+        "project_key": "VibeDeck",
+        "repo_root": "/Users/vasuyadav/Downloads/Projects/VibeDeck",
+        "project_state": "git_existing",
+        "branch": "agent/phase-c-session-drain",
+        "branch_kind": "known",
+        "total_tokens": 24986,
+        "total_cost_usd": 0.0916,
+        "session_count": 1,
+        "last_seen_at": "2026-05-20T00:40:52.311Z",
+        "confidence": {
+          "high": 0,
+          "medium": 1,
+          "low": 0,
+          "unattributed": 0
+        },
+        "date_buckets": [
+          {
+            "date": "2026-05-20",
+            "total_tokens": 24986,
+            "total_cost_usd": 0.0916,
+            "session_count": 1
+          }
+        ]
+      }
+    ]
+  },
+  "db": {
+    "quick_check": "ok",
+    "provider_buckets_may": [
+      {
+        "provider": "codex",
+        "bucket_rows": 1408,
+        "tokens": 4204597474,
+        "cost": 2445.019269
+      },
+      {
+        "provider": "claude",
+        "bucket_rows": 230,
+        "tokens": 857114865,
+        "cost": 599.773231
+      },
+      {
+        "provider": "cursor",
+        "bucket_rows": 125,
+        "tokens": 114747247,
+        "cost": 242.122877
+      }
+    ],
+    "provider_sessions_total": [
+      {
+        "provider": "codex",
+        "sessions": 812,
+        "tokens": 4450028224,
+        "cost": 2539.206181
+      },
+      {
+        "provider": "claude",
+        "sessions": 92,
+        "tokens": 857114865,
+        "cost": 599.773231
+      },
+      {
+        "provider": "cursor",
+        "sessions": 242,
+        "tokens": 279161511,
+        "cost": 586.175436
+      },
+      {
+        "provider": "gemini",
+        "sessions": 2,
+        "tokens": 8687,
+        "cost": 0.000869
+      }
+    ],
+    "unknowns": [
+      {
+        "branch": "Historical unknown",
+        "branch_kind": "historical_unknown",
+        "rows": 58,
+        "projects": 2,
+        "tokens": 867703265,
+        "cost": 380.4749
+      },
+      {
+        "branch": "Unknown branch",
+        "branch_kind": "unknown_git",
+        "rows": 1,
+        "projects": 1,
+        "tokens": 143889980,
+        "cost": 97.4731
+      }
+    ],
+    "vibedeck_top_branch_facts": [
+      {
+        "provider": "codex",
+        "branch": "main",
+        "branch_kind": "known",
+        "rows": 149,
+        "tokens": 1340033373,
+        "cost": 729.8125
+      },
+      {
+        "provider": "codex",
+        "branch": "release/0.1.3",
+        "branch_kind": "known",
+        "rows": 184,
+        "tokens": 777614044,
+        "cost": 558.9433
+      },
+      {
+        "provider": "codex",
+        "branch": "entire/ui-fix",
+        "branch_kind": "known",
+        "rows": 22,
+        "tokens": 287418416,
+        "cost": 215.9644
+      },
+      {
+        "provider": "claude",
+        "branch": "main",
+        "branch_kind": "known",
+        "rows": 10,
+        "tokens": 147965506,
+        "cost": 92.0244
+      },
+      {
+        "provider": "claude",
+        "branch": "release/0.1.3",
+        "branch_kind": "known",
+        "rows": 5,
+        "tokens": 42745349,
+        "cost": 38.5183
+      },
+      {
+        "provider": "claude",
+        "branch": "entire/ui-fix",
+        "branch_kind": "known",
+        "rows": 2,
+        "tokens": 42632001,
+        "cost": 33.2943
+      },
+      {
+        "provider": "codex",
+        "branch": "project-sync",
+        "branch_kind": "known",
+        "rows": 11,
+        "tokens": 12348825,
+        "cost": 5.2335
+      },
+      {
+        "provider": "codex",
+        "branch": "agent/phase-d-fast-serve-dirty-index",
+        "branch_kind": "known",
+        "rows": 4,
+        "tokens": 99996,
+        "cost": 0.4227
+      },
+      {
+        "provider": "codex",
+        "branch": "agent/phase-c-session-drain",
+        "branch_kind": "known",
+        "rows": 1,
+        "tokens": 24986,
+        "cost": 0.0916
+      }
+    ],
+    "vibe_main_coherence": {
+      "facts": {
+        "fact_rows": 159,
+        "tokens": 1487998879,
+        "cost": 821.8369
+      },
+      "sessions": {
+        "sessions": 159,
+        "tokens": 1487998879,
+        "cost": 821.836676
+      }
+    }
+  },
+  "pass": {
+    "endpoints_200": true,
+    "sqlite_quick_check_ok": true,
+    "usage_has_may_tokens": true,
+    "usage_monthly_has_may_row": true,
+    "codex_usage_model_breakdown_nonzero": true,
+    "claude_usage_model_breakdown_nonzero": true,
+    "branches_nonempty": true,
+    "branches_unknown_preserved": true,
+    "vibedeck_main_branch_fact_session_token_match": true
+  }
+}

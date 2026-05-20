@@ -1,17 +1,17 @@
 {
-  "generated_at": "2026-05-20T19:27:53.244Z",
+  "generated_at": "2026-05-20T20:13:18.079Z",
   "stages": [
     {
       "name": "recent_codex_parse",
-      "duration_ms": 1188.255,
+      "duration_ms": 1225.877,
       "counters": {
-        "files_processed": 482,
-        "events_aggregated": 21700
+        "files_processed": 484,
+        "events_aggregated": 21850
       }
     },
     {
       "name": "recent_claude_parse",
-      "duration_ms": 969.14,
+      "duration_ms": 964.89,
       "counters": {
         "files_processed": 38,
         "events_aggregated": 2549
@@ -19,9 +19,9 @@
     },
     {
       "name": "recent_lane_session_event_flush",
-      "duration_ms": 208729.248,
+      "duration_ms": 215845,
       "counters": {
-        "recent_session_events_flushed": 23996,
+        "recent_session_events_flushed": 24150,
         "historical_session_events_flushed": 24486,
         "flush_count": 11,
         "slice_threshold_flush_count": 10,
@@ -30,7 +30,7 @@
     },
     {
       "name": "historical_codex_parse",
-      "duration_ms": 908.782,
+      "duration_ms": 1012.386,
       "counters": {
         "files_processed": 376,
         "events_aggregated": 19799
@@ -38,7 +38,7 @@
     },
     {
       "name": "historical_claude_parse",
-      "duration_ms": 460.104,
+      "duration_ms": 456.168,
       "counters": {
         "files_processed": 69,
         "events_aggregated": 1899
@@ -46,28 +46,28 @@
     },
     {
       "name": "repair_pass",
-      "duration_ms": 1034.142,
+      "duration_ms": 1015.193,
       "counters": {
-        "repair_candidates_attempted": 902,
-        "dirty_repair_candidates_attempted": 902
+        "repair_candidates_attempted": 904,
+        "dirty_repair_candidates_attempted": 904
       }
     },
     {
       "name": "branch_fact_rebuild_pass",
-      "duration_ms": 25640.601,
+      "duration_ms": 26290.685,
       "counters": {
-        "dirty_branch_facts_rebuilt": 1147
+        "dirty_branch_facts_rebuilt": 1149
       }
     }
   ],
   "counters": {
-    "recent_session_events_flushed": 23996,
+    "recent_session_events_flushed": 24150,
     "historical_session_events_flushed": 24486,
     "slice_threshold_flush_count": 10,
     "historical_slice_threshold_flush_count": 10,
-    "repair_candidates_attempted": 902,
+    "repair_candidates_attempted": 904,
     "branch_facts_rebuilt_by_scope": {
-      "dirty": 1147
+      "dirty": 1149
     }
   }
 }

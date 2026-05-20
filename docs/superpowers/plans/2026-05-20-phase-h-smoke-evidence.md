@@ -22,7 +22,7 @@ Phase H implementation tasks are complete and verified, but the **performance ga
 | `node --test test/sync-rebuild-profile.test.js test/sync-rebuild-vibedeck-db.test.js test/rebuild-parity-harness.test.js test/parallel-parse-parity.test.js` | Passed | `19` tests passed, `0` failed |
 | `node scripts/smoke/rebuild-hot-path-phase-h.cjs` | Performance gate fail (script exit non-zero by design) | `phase-h-rebuild-summary.json`, `phase-h-rebuild-profile.json` |
 | `node scripts/smoke/no-token-loss-proof.cjs --output docs/superpowers/plans/phase-h-smoke-artifacts/no-token-loss-proof.json` | Uncovered | Missing API compatibility on this branch lineage (`missing_collect_rollout_source_deltas_api`) |
-| `npm --prefix dashboard test -- UsageOverview.test.jsx BranchesPage.test.jsx` | Passed | `17` tests passed, `0` failed |
+| `npm --prefix dashboard test -- UsageOverview.test.jsx BranchesPage.test.jsx` | Partial | `BranchesPage.test.jsx` ran and passed (`17` tests); `UsageOverview.test.jsx` was not present in this branch |
 
 ## Top Stage Movement
 
@@ -48,7 +48,7 @@ Hot-path diagnosis remains clear: synchronous recent-lane flush still dominates 
   - dirty-scoped repair + branch fact rebuild,
   - parity-focused rebuild tests,
   - branch-window preservation assertions in updated rebuild tests.
-- UI integrity command passed for branches/usage test surfaces.
+- UI integrity command only covered `BranchesPage` in this branch; `/usage` and `/dashboard` UI smoke remained uncovered in Phase H.
 
 ## No-Token-Loss Gate Status
 

@@ -267,7 +267,7 @@ Every release note should answer four questions:
 | Check | Result |
 |---|---|
 | Rebuild/parity-focused suites | Passed (`19` tests, `0` failed) |
-| Dashboard targeted usage/branches tests | Passed (`17` tests, `0` failed) |
+| Dashboard targeted usage/branches tests | Partial | `BranchesPage.test.jsx` passed (`17` tests); `UsageOverview.test.jsx` was not present in this branch, so `/usage` and `/dashboard` UI smoke coverage remains uncovered in Phase H |
 | No-token-loss proof gate | Uncovered on this branch lineage (`missing_collect_rollout_source_deltas_api`) |
 
 #### What remains

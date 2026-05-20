@@ -662,6 +662,103 @@ test('branch usage facts allow head-history fallback when provider log has no br
   }
 });
 
+test('rebuildAllBranchUsageFacts resolves Tier-B branches through shared head-history cache', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'main',
+      transitioned_at: '2026-05-18T03:00:00.000Z',
+    });
+    recordTransition(tmp.dbPath, {
+      repo_root: repoRoot,
+      worktree_root: repoRoot,
+      ref_name: 'feature/live',
+      transitioned_at: '2026-05-18T03:10:00.000Z',
+    });
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'cached-head-history',
+        started_at: '2026-05-18T03:00:00.000Z',
+        ended_at: '2026-05-18T03:20:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: 'D',
+        confidence: 'unattributed',
+        model: 'gpt-5.4',
+        total_tokens: 30,
+        total_cost_usd: 0.3,
+        last_observed_at: '2026-05-18T03:20:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'cached-head-history',
+        event_key: 'e1',
+        observed_at: '2026-05-18T03:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 10,
+        input_tokens: 8,
+        output_tokens: 2,
+      });
+      insertEvent(db, {
+        provider: 'codex',
+        session_id: 'cached-head-history',
+        event_key: 'e2',
+        observed_at: '2026-05-18T03:15:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: 'gpt-5.4',
+        delta_tokens: 20,
+        input_tokens: 16,
+        output_tokens: 4,
+      });
+    } finally {
+      db.close();
+    }
+
+    const cache = {};
+    await rebuildAllBranchUsageFacts(tmp.dbPath, { cache });
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.deepEqual(rows.map((row) => ({
+      branch: row.branch,
+      branch_resolution_tier: row.branch_resolution_tier,
+      confidence: row.confidence,
+      total_tokens: row.total_tokens,
+    })), [
+      {
+        branch: 'main',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        total_tokens: 10,
+      },
+      {
+        branch: 'feature/live',
+        branch_resolution_tier: 'B',
+        confidence: 'medium',
+        total_tokens: 20,
+      },
+    ]);
+    assert.ok(cache.headHistoryByWorktree instanceof Map);
+    assert.equal(cache.headHistoryByWorktree.get(fs.realpathSync(repoRoot)).length, 2);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('historical guard preserves project attribution and totals before repo history starts', async () => {
   const tmp = makeDb();
   try {

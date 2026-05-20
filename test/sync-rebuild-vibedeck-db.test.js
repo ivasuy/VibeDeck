@@ -8,6 +8,7 @@ const { test } = require('node:test');
 
 const { cmdSync } = require('../src/commands/sync');
 const { ensureSchema } = require('../src/lib/db');
+const { recordTransition } = require('../src/lib/sessions/head-history');
 
 function buildTokenCountLine({ ts, last, total }) {
   return JSON.stringify({
@@ -1493,6 +1494,116 @@ test('sync rebuild dirty post-drain defers inline branch-fact rebuilds to post-d
     branchFacts.rebuildBranchUsageFactsForSession = originalRebuildBranchUsageFactsForSession;
     branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
     delete require.cache[pipelinePath];
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync rebuild dirty post-drain preserves canonical branch fact totals with shared head-history cache', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-head-cache-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  const syncPath = require.resolve('../src/commands/sync');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const branchFacts = require(branchFactsPath);
+  const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+
+    const repoRoot = path.join(tmp, 'repo');
+    await fs.mkdir(repoRoot, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot, stdio: 'ignore' });
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rolloutPath = path.join(rolloutDir, 'rollout-dirty-head-cache.jsonl');
+    const usage = {
+      input_tokens: 7,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 3,
+      reasoning_output_tokens: 0,
+      total_tokens: 10,
+    };
+    await fs.writeFile(
+      rolloutPath,
+      `${JSON.stringify({ type: 'session_meta', payload: { cwd: repoRoot, model: 'gpt-5.4' } })}\n${buildTokenCountLine({ ts: '2026-05-20T12:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    branchFacts.rebuildAllBranchUsageFacts = async (dbPath, options = {}) => {
+      const db = new DatabaseSync(dbPath);
+      try {
+        db
+          .prepare(
+            `
+            UPDATE vibedeck_sessions
+            SET branch = NULL, branch_resolution_tier = 'D', confidence = 'unattributed'
+            WHERE provider = ? AND session_id = ?
+            `,
+          )
+          .run('codex', rolloutPath);
+        db
+          .prepare(
+            `
+            UPDATE vibedeck_session_events
+            SET branch = NULL, branch_resolution_tier = NULL, confidence = NULL
+            WHERE provider = ? AND session_id = ?
+            `,
+          )
+          .run('codex', rolloutPath);
+      } finally {
+        db.close();
+      }
+      recordTransition(dbPath, {
+        repo_root: repoRoot,
+        worktree_root: repoRoot,
+        ref_name: 'main',
+        transitioned_at: '2026-05-20T11:59:00.000Z',
+      });
+      const rebuilt = await originalRebuildAllBranchUsageFacts(dbPath, options);
+      assert.ok(options.cache?.headHistoryByWorktree instanceof Map);
+      return rebuilt;
+    };
+
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    const dbPath = path.join(tmp, '.vibedeck', 'tracker', 'vibedeck.sqlite3');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const fact = db
+        .prepare(
+          'SELECT branch, branch_resolution_tier, total_tokens, input_tokens, output_tokens, event_count FROM vibedeck_branch_usage_facts WHERE provider = ? AND session_id = ?',
+        )
+        .get('codex', rolloutPath);
+      assert.ok(fact);
+      assert.equal(fact.branch, 'main');
+      assert.equal(fact.branch_resolution_tier, 'B');
+      assert.equal(fact.total_tokens, 10);
+      assert.equal(fact.input_tokens, 7);
+      assert.equal(fact.output_tokens, 3);
+      assert.equal(fact.event_count, 1);
+    } finally {
+      db.close();
+    }
+  } finally {
+    branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
     delete require.cache[syncPath];
     if (prevHome === undefined) delete process.env.HOME;
     else process.env.HOME = prevHome;

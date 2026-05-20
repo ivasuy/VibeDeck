@@ -133,9 +133,77 @@ function mergeProjectRow(event, session) {
   };
 }
 
-function headHistoryBranch(dbPath, project, observedAt) {
+function safeRealpath(p) {
+  if (!isNonEmptyString(p)) return p;
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+function getHeadHistoryCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.headHistoryByWorktree instanceof Map)) {
+    cache.headHistoryByWorktree = new Map();
+  }
+  return cache.headHistoryByWorktree;
+}
+
+function readHeadHistoryTransitions(db, worktreeRoot) {
+  return db
+    .prepare(
+      `
+      SELECT transitioned_at, ref_name
+      FROM vibedeck_head_history
+      WHERE worktree_root = ?
+      ORDER BY transitioned_at ASC
+      `,
+    )
+    .all(worktreeRoot)
+    .map((row) => ({
+      transitioned_at: row.transitioned_at,
+      ref_name: row.ref_name,
+    }));
+}
+
+function findBranchInTransitions(transitions, observedAt) {
+  if (!Array.isArray(transitions) || transitions.length === 0) return null;
+
+  let lo = 0;
+  let hi = transitions.length - 1;
+  let best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (transitions[mid].transitioned_at <= observedAt) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best === -1 ? null : transitions[best].ref_name;
+}
+
+function cachedHeadHistoryBranch(db, cache, project, observedAt) {
+  if (!db || typeof db.prepare !== 'function') return undefined;
+  const historyCache = getHeadHistoryCache(cache);
+  if (!historyCache) return undefined;
+
+  const worktreeRoot = safeRealpath(project.repo_root);
+  if (!historyCache.has(worktreeRoot)) {
+    historyCache.set(worktreeRoot, readHeadHistoryTransitions(db, worktreeRoot));
+  }
+  return findBranchInTransitions(historyCache.get(worktreeRoot), observedAt);
+}
+
+function headHistoryBranch(dbPath, project, observedAt, { db = null, cache = null } = {}) {
   if (!dbPath || !project || project.branch_kind !== 'unknown_git') return null;
   if (!isNonEmptyString(project.repo_root) || !isNonEmptyString(observedAt)) return null;
+  try {
+    const cachedBranch = cachedHeadHistoryBranch(db, cache, project, observedAt);
+    if (cachedBranch !== undefined) return normalizeBranchName(cachedBranch);
+  } catch {}
   try {
     return normalizeBranchName(findBranchAt(dbPath, { worktree_root: project.repo_root, when: observedAt }));
   } catch {
@@ -162,6 +230,7 @@ async function factBranch({
   session,
   providerBranch = null,
   providerAmbiguous = false,
+  db = null,
   cache = null,
 }) {
   if (!project || project.branch_kind !== 'unknown_git') return null;
@@ -186,7 +255,7 @@ async function factBranch({
 
   if (providerAmbiguous) return null;
 
-  const historyBranch = headHistoryBranch(dbPath, project, observedAt);
+  const historyBranch = headHistoryBranch(dbPath, project, observedAt, { db, cache });
   if (historyBranch) {
     return knownBranchResult(historyBranch, {
       confidence: 'medium',
@@ -236,7 +305,7 @@ function baseTimestamps(session) {
   return { first, last };
 }
 
-async function buildSyntheticGroup(session, { dbPath, provider, session_id, cache = null }) {
+async function buildSyntheticGroup(session, { dbPath, provider, session_id, db = null, cache = null }) {
   const project = projectShape(session, provider, session_id);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
   const sessionBranch = knownBranchResult(session?.branch);
@@ -257,6 +326,7 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, cach
     session,
     providerBranch: providerRead.branch,
     providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+    db,
     cache,
   });
   const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
@@ -295,7 +365,7 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, cach
   };
 }
 
-async function buildEventGroups(session, events, { dbPath, provider, session_id, cache = null }) {
+async function buildEventGroups(session, events, { dbPath, provider, session_id, db = null, cache = null }) {
   const groups = new Map();
   const missingEventBranch = events.some((event) => !knownBranchResult(event?.branch));
   const missingSessionBranch = !knownBranchResult(session?.branch);
@@ -322,6 +392,7 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
       session,
       providerBranch: providerRead.branch,
       providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+      db,
       cache,
     });
     const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
@@ -600,8 +671,8 @@ async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session
 
   const events = readUpdateEvents(db, { provider, session_id });
   const groups = events.length > 0
-    ? await buildEventGroups(session, events, { dbPath, provider, session_id, cache })
-    : [await buildSyntheticGroup(session, { dbPath, provider, session_id, cache })];
+    ? await buildEventGroups(session, events, { dbPath, provider, session_id, db, cache })
+    : [await buildSyntheticGroup(session, { dbPath, provider, session_id, db, cache })];
 
   reconcileGroupTokens(groups, session);
   if (!allocateStoredSessionCost(groups, session)) {

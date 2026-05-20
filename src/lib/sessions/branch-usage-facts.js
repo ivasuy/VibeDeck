@@ -55,6 +55,20 @@ function dropSessionScope(db) {
   } catch {}
 }
 
+function repairResolveRepo(resolveCache, cwd) {
+  const key = String(cwd || '').trim();
+  if (resolveCache.has(key)) return resolveCache.get(key);
+
+  let repo = null;
+  try {
+    repo = resolveRepo(cwd);
+  } catch {
+    repo = null;
+  }
+  resolveCache.set(key, repo);
+  return repo;
+}
+
 function toFiniteNumber(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
@@ -836,15 +850,11 @@ async function repairMissingProjectAttribution(
 
     db.exec('BEGIN IMMEDIATE');
     try {
+      const resolveCache = new Map();
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
         if (isNonEmptyString(row.cwd)) {
-          let repo = null;
-          try {
-            repo = resolveRepo(row.cwd);
-          } catch {
-            repo = null;
-          }
+          const repo = repairResolveRepo(resolveCache, row.cwd);
           if (repo && isNonEmptyString(repo.repo_root)) {
             persistSessionRepoMetadata(db, {
               provider: row.provider,

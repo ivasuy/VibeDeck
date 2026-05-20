@@ -1617,6 +1617,74 @@ test('sync rebuild dirty post-drain preserves canonical branch fact totals with 
   }
 });
 
+test('sync rebuild dirty post-drain preserves counts and totals for repeated cwd repair candidates', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-repeated-cwd-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+
+    const repoRoot = path.join(tmp, 'repo');
+    await fs.mkdir(repoRoot, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot, stdio: 'ignore' });
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const rows = [
+      { name: 'rollout-repeated-cwd-a.jsonl', ts: '2026-05-20T13:00:00.000Z', total: 10 },
+      { name: 'rollout-repeated-cwd-b.jsonl', ts: '2026-05-20T13:05:00.000Z', total: 12 },
+    ];
+    for (const row of rows) {
+      const usage = {
+        input_tokens: row.total - 3,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 3,
+        reasoning_output_tokens: 0,
+        total_tokens: row.total,
+      };
+      await fs.writeFile(
+        path.join(rolloutDir, row.name),
+        `${JSON.stringify({ type: 'session_meta', payload: { cwd: repoRoot, model: 'gpt-5.4', git: { branch: 'main' } } })}\n${buildTokenCountLine({ ts: row.ts, last: usage, total: usage })}\n`,
+        'utf8',
+      );
+    }
+
+    await cmdSync(['--auto', '--rebuild-vibedeck-db']);
+
+    const dbPath = path.join(tmp, '.vibedeck', 'tracker', 'vibedeck.sqlite3');
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const sessions = db.prepare('SELECT COUNT(*) AS n, SUM(total_tokens) AS total FROM vibedeck_sessions').get();
+      const events = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events').get();
+      const facts = db.prepare('SELECT COUNT(*) AS n, SUM(total_tokens) AS total FROM vibedeck_branch_usage_facts').get();
+      assert.equal(Number(sessions.n), 2);
+      assert.equal(Number(sessions.total), 22);
+      assert.equal(Number(events.n), 6);
+      assert.equal(Number(facts.n), 2);
+      assert.equal(Number(facts.total), 22);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync rebuild dirty post-drain falls back to full branch rebuild when dirty scope is unavailable', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-fallback-'));
   const prevHome = process.env.HOME;

@@ -209,6 +209,109 @@ test('repairMissingProjectAttribution reports attribution repair progress', asyn
   }
 });
 
+test('repairMissingProjectAttribution reuses cwd repo-resolution results including negative outcomes', async () => {
+  const fixture = makeDb();
+  const Module = require('node:module');
+  const originalLoad = Module._load;
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const repoResolverPath = require.resolve('../src/lib/sessions/repo-resolver');
+  const gitCwd = path.join(fixture.dir, 'repo');
+  const missingCwd = path.join(fixture.dir, 'not-a-repo');
+  const calls = [];
+
+  try {
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      for (const session_id of ['git-a', 'git-b']) {
+        insertSession(db, {
+          provider: 'codex',
+          session_id,
+          started_at: '2026-05-17T12:00:00.000Z',
+          ended_at: '2026-05-17T12:05:00.000Z',
+          cwd: gitCwd,
+          repo_root: null,
+          model: 'gpt-5.4',
+          total_tokens: 10,
+          last_observed_at: '2026-05-17T12:05:00.000Z',
+        });
+      }
+      for (const session_id of ['missing-a', 'missing-b']) {
+        insertSession(db, {
+          provider: 'codex',
+          session_id,
+          started_at: '2026-05-17T12:10:00.000Z',
+          ended_at: '2026-05-17T12:15:00.000Z',
+          cwd: missingCwd,
+          repo_root: null,
+          model: 'gpt-5.4',
+          total_tokens: 20,
+          last_observed_at: '2026-05-17T12:15:00.000Z',
+        });
+      }
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    Module._load = function loadWithFakeRepoResolver(request, parent, isMain) {
+      if (parent?.filename === branchFactsPath && request === './repo-resolver') {
+        return {
+          resolveRepo(cwd) {
+            calls.push(cwd);
+            if (cwd === gitCwd) {
+              return {
+                repo_root: gitCwd,
+                repo_common_dir: path.join(gitCwd, '.git'),
+                parent_repo: null,
+                status: 'ok',
+              };
+            }
+            if (cwd === missingCwd) return null;
+            throw new Error(`unexpected cwd ${cwd}`);
+          },
+        };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const freshBranchFacts = require(branchFactsPath);
+    const progress = [];
+    const repaired = await freshBranchFacts.repairMissingProjectAttribution(fixture.dbPath, {
+      rebuildFacts: false,
+      onProgress(payload) {
+        progress.push(payload);
+      },
+    });
+
+    assert.equal(repaired, 4);
+    assert.equal(progress.length, 4);
+    assert.equal(calls.filter((cwd) => cwd === gitCwd).length, 1);
+    assert.equal(calls.filter((cwd) => cwd === missingCwd).length, 1);
+
+    const readDb = new DatabaseSync(fixture.dbPath, { readOnly: true });
+    try {
+      const rows = readDb
+        .prepare('SELECT session_id, repo_root FROM vibedeck_sessions ORDER BY session_id')
+        .all()
+        .map((row) => ({ session_id: row.session_id, repo_root: row.repo_root }));
+      assert.deepEqual(rows, [
+        { session_id: 'git-a', repo_root: gitCwd },
+        { session_id: 'git-b', repo_root: gitCwd },
+        { session_id: 'missing-a', repo_root: null },
+        { session_id: 'missing-b', repo_root: null },
+      ]);
+    } finally {
+      readDb.close();
+    }
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    fixture.cleanup();
+  }
+});
+
 test('branch fact rebuild uses shared provider branch helper cache for fallback evidence', async () => {
   const fixture = makeDb();
   const originalRead = providerBranch.readProviderBranchEvidenceFromSessionFile;

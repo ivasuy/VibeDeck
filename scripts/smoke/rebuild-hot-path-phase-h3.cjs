@@ -74,7 +74,8 @@ function buildPhaseH3SmokeSummary({
     exitCode === 0 && flushStageMs !== null && flushStageMs <= TARGET_FLUSH_STAGE_MS;
   const branchFactPassed =
     exitCode === 0 &&
-    (branchFactStageMs === null || branchFactStageMs <= H2_BASELINE_BRANCH_FACT_STAGE_MS);
+    branchFactStageMs !== null &&
+    branchFactStageMs <= H2_BASELINE_BRANCH_FACT_STAGE_MS;
   const gatePassed = performancePassed && flushStagePassed && branchFactPassed;
 
   return {

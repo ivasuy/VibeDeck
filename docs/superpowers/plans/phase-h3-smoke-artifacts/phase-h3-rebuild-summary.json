@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-20T17:56:22.685Z",
+  "generated_at": "2026-05-20T18:14:36.267Z",
   "command": "/opt/homebrew/Cellar/node/26.0.0/bin/node \"/Users/vasuyadav/Downloads/Projects/VibeDeck/.worktrees/phase-h3-defer-branch-facts/bin/vibedeck.js\" \"sync\" \"--rebuild-vibedeck-db\"",
   "phase_h3_flags": {
     "VIBEDECK_REBUILD_PROFILE": "1",
@@ -22,50 +22,50 @@
   },
   "result": "fail",
   "exit_code": 0,
-  "wall_clock_ms": 316759,
-  "wall_clock_s": 316.76,
+  "wall_clock_ms": 337412,
+  "wall_clock_s": 337.41,
   "performance_gate": {
     "baseline_ms": 366301,
     "target_ms": 300000,
     "passed": false,
-    "delta_vs_baseline_ms": -49542,
-    "delta_vs_target_ms": 16759
+    "delta_vs_baseline_ms": -28889,
+    "delta_vs_target_ms": 37412
   },
   "flush_stage_gate": {
     "stage_name": "recent_lane_session_event_flush",
     "baseline_ms": 307974.929,
     "target_ms": 220000,
-    "current_ms": 218967.771,
+    "current_ms": 218370.394,
     "passed": true,
-    "delta_vs_baseline_ms": -89007.158,
-    "delta_vs_target_ms": -1032.229
+    "delta_vs_baseline_ms": -89604.535,
+    "delta_vs_target_ms": -1629.606
   },
   "branch_fact_gate": {
     "stage_name": "branch_fact_rebuild_pass",
     "baseline_ms": 25939.595,
     "target_ms": 25939.595,
-    "current_ms": 26534.098,
+    "current_ms": 27321.343,
     "passed": false,
-    "delta_vs_baseline_ms": 594.503
+    "delta_vs_baseline_ms": 1381.748
   },
   "totals": {
-    "recent_session_events_flushed": 23558,
+    "recent_session_events_flushed": 23620,
     "historical_session_events_flushed": 24486,
     "slice_threshold_flush_count": 10,
     "historical_slice_threshold_flush_count": 10,
-    "repair_candidates_attempted": 895,
+    "repair_candidates_attempted": 896,
     "branch_facts_rebuilt_by_scope": {
-      "dirty": 1140
+      "dirty": 1141
     },
-    "profile_stage_total_ms": 313415,
+    "profile_stage_total_ms": 314503,
     "profile_stage_count": 7
   },
   "top_stages": [
     {
       "name": "recent_lane_session_event_flush",
-      "duration_ms": 218967.771,
+      "duration_ms": 218370.394,
       "counters": {
-        "recent_session_events_flushed": 23558,
+        "recent_session_events_flushed": 23620,
         "historical_session_events_flushed": 24486,
         "flush_count": 11,
         "slice_threshold_flush_count": 10,
@@ -74,46 +74,46 @@
     },
     {
       "name": "repair_pass",
-      "duration_ms": 64117.443,
+      "duration_ms": 65127.053,
       "counters": {
-        "repair_candidates_attempted": 895,
-        "dirty_repair_candidates_attempted": 895
+        "repair_candidates_attempted": 896,
+        "dirty_repair_candidates_attempted": 896
       }
     },
     {
       "name": "branch_fact_rebuild_pass",
-      "duration_ms": 26534.098,
+      "duration_ms": 27321.343,
       "counters": {
-        "dirty_branch_facts_rebuilt": 1140
+        "dirty_branch_facts_rebuilt": 1141
       }
     },
     {
       "name": "recent_codex_parse",
-      "duration_ms": 1275.265,
+      "duration_ms": 1196.842,
       "counters": {
-        "files_processed": 475,
-        "events_aggregated": 21276
-      }
-    },
-    {
-      "name": "historical_codex_parse",
-      "duration_ms": 1057.539,
-      "counters": {
-        "files_processed": 376,
-        "events_aggregated": 19799
+        "files_processed": 476,
+        "events_aggregated": 21336
       }
     },
     {
       "name": "recent_claude_parse",
-      "duration_ms": 1003.279,
+      "duration_ms": 1012.835,
       "counters": {
         "files_processed": 38,
         "events_aggregated": 2549
       }
     },
     {
+      "name": "historical_codex_parse",
+      "duration_ms": 1008.648,
+      "counters": {
+        "files_processed": 376,
+        "events_aggregated": 19799
+      }
+    },
+    {
       "name": "historical_claude_parse",
-      "duration_ms": 459.436,
+      "duration_ms": 465.974,
       "counters": {
         "files_processed": 69,
         "events_aggregated": 1899

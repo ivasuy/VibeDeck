@@ -395,6 +395,55 @@ test('phase h3 smoke summary records defer-branch-fact benchmark gates', async (
   }
 });
 
+test('phase h3 smoke summary fails branch-fact gate when branch rebuild stage is missing', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h3-smoke-missing-branch-stage-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            { name: 'recent_codex_parse', duration_ms: 20, counters: { files_processed: 2 } },
+            {
+              name: 'recent_lane_session_event_flush',
+              duration_ms: 210_000,
+              counters: {
+                recent_session_events_flushed: 6,
+                historical_session_events_flushed: 4,
+                flush_count: 11,
+              },
+            },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const smokeHarness = require('../scripts/smoke/rebuild-hot-path-phase-h3.cjs');
+    const summary = await smokeHarness.writePhaseH3SmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 299_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'fail');
+    assert.equal(summary.branch_fact_gate.current_ms, null);
+    assert.equal(summary.branch_fact_gate.passed, false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('recent fast path preserves rebuild canonical parity while reducing flush boundaries', async () => {
   const baseline = await runRebuild({ fastPath: false });
   const fastPath = await runRebuild({ fastPath: true });

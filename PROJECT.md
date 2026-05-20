@@ -1,7 +1,7 @@
 # VibeDeck
 
 **Version:** 0.1.3 (PR, unreleased)
-**Last updated:** 2026-05-19
+**Last updated:** 2026-05-20
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -275,3 +275,42 @@ Every release note should answer four questions:
 - The hot bottleneck is still synchronous recent-lane session-event flush.
 - Branch-fact and repair passes are still expensive even after dirty scoping.
 - Phase H should be treated as observability + correctness-hardening for the next speed iteration, not as a final speed win.
+
+### 0.1.3 PR - Phase H.1: Recent Flush Batching (Incomplete Speed Gate)
+
+**Status:** implemented, verified, speed target missed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h1-recent-flush-batching.md`  
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h1-smoke-evidence.md`  
+**Artifacts:** `docs/superpowers/plans/phase-h1-smoke-artifacts/`
+
+#### What changed
+
+- Added rebuild-only flush slice controls so grouped historical session events are flushed by bounded slices instead of every file completion.
+- Kept recent-lane grouped events deferred until explicit lane drain while preserving canonical totals and branch/window parity in rebuild tests.
+- Added a Phase H.1 smoke artifact pack that reports wall clock, top stages, flush-count movement, and explicit gate pass/fail.
+
+#### Measured outcome on local corpus
+
+| Metric | Phase H baseline | Phase H.1 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `5m 48.98s` | `6m 08.37s` | Fail |
+| Target wall clock | n/a | `4m 00s` | Missed by `128,366ms` |
+| `recent_lane_session_event_flush` | `127,905.923ms` | `309,554.010ms` | Fail |
+| Flush count | `409` | `10` | Pass |
+
+Flush batching reduced flush count from `409` to `10`, but it did not improve end-to-end rebuild time. The dominant stage moved in the wrong direction, so Phase H.1 is not a speed win.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| Rebuild/parity-focused suites | Passed (`21` tests, `0` failed) |
+| Dashboard targeted usage/branches command | Uncovered at exact required command (`vitest` missing in this worktree); branch contains `BranchesPage.test.jsx` but no `UsageOverview.test.jsx` |
+| No-token-loss proof gate | Uncovered on this branch lineage (`missing_collect_rollout_source_deltas_api`) |
+
+#### What remains
+
+- The next bottleneck is no longer flush count alone; the grouped flush work itself dominates and needs profiling inside `recent_lane_session_event_flush`.
+- UI smoke coverage for `/usage` remains uncovered on this branch because `UsageOverview.test.jsx` is absent.
+- The no-token-loss proof harness needs a compatible source-delta collector before it can prove source-vs-canonical token preservation on this lineage.

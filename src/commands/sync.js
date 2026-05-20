@@ -1502,15 +1502,14 @@ function createGroupedSessionEventProcessor(
     const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
     const lane = isRecentRebuildSessionEvent(event) ? "recent" : "historical";
     const group = groups.get(key);
+    const entry = { event, sequence: total };
     if (group) {
-      group.events.push(event);
-      group.hasRecent = group.hasRecent || lane === "recent";
-      group.hasHistorical = group.hasHistorical || lane === "historical";
+      if (lane === "recent") group.recentEvents.push(entry);
+      else group.historicalEvents.push(entry);
     } else {
       groups.set(key, {
-        events: [event],
-        hasRecent: lane === "recent",
-        hasHistorical: lane === "historical",
+        recentEvents: lane === "recent" ? [entry] : [],
+        historicalEvents: lane === "historical" ? [entry] : [],
       });
     }
     return Promise.resolve();
@@ -1518,18 +1517,24 @@ function createGroupedSessionEventProcessor(
 
   const normalizeFlushLane = (lane) => (lane === "recent" || lane === "historical" ? lane : "all");
 
-  const groupMatchesLane = (group, lane) => {
-    if (lane === "all") return true;
-    if (lane === "recent") return group.hasRecent;
-    return group.hasHistorical && !group.hasRecent;
+  const countGroupEvents = (group, lane) => {
+    if (lane === "recent") return group.recentEvents.length;
+    if (lane === "historical") return group.historicalEvents.length;
+    return group.recentEvents.length + group.historicalEvents.length;
+  };
+
+  const takeGroupEntries = (group, lane) => {
+    if (lane === "recent") return group.recentEvents.splice(0);
+    if (lane === "historical") return group.historicalEvents.splice(0);
+    return [...group.historicalEvents.splice(0), ...group.recentEvents.splice(0)]
+      .sort((a, b) => a.sequence - b.sequence);
   };
 
   const getPendingEventCount = (lane = "all") => {
     const normalizedLane = normalizeFlushLane(lane);
     let pending = 0;
     for (const group of groups.values()) {
-      if (!groupMatchesLane(group, normalizedLane)) continue;
-      pending += group.events.length;
+      pending += countGroupEvents(group, normalizedLane);
     }
     return pending;
   };
@@ -1543,27 +1548,28 @@ function createGroupedSessionEventProcessor(
     const normalizedLane = normalizeFlushLane(lane);
     const pendingGroups = [];
     for (const [key, group] of groups.entries()) {
-      if (!groupMatchesLane(group, normalizedLane)) continue;
-      pendingGroups.push(group);
-      groups.delete(key);
+      if (countGroupEvents(group, normalizedLane) === 0) continue;
+      const events = takeGroupEntries(group, normalizedLane).map((entry) => entry.event);
+      pendingGroups.push(events);
+      if (countGroupEvents(group, "all") === 0) groups.delete(key);
     }
 
     let recentFlushed = 0;
     let historicalFlushed = 0;
 
-    for (const group of pendingGroups) {
+    for (const events of pendingGroups) {
       try {
-        await processor(group.events);
+        await processor(events);
       } catch (err) {
-        for (const event of group.events) {
+        for (const event of events) {
           errors.push(eventFailureRecord(event, err));
         }
       } finally {
-        for (const event of group.events) {
+        for (const event of events) {
           if (isRecentRebuildSessionEvent(event)) recentFlushed += 1;
           else historicalFlushed += 1;
         }
-        processed += group.events.length;
+        processed += events.length;
         if (progressCallback) {
           progressCallback({ processed, total, pending: Math.max(0, total - processed) });
         }

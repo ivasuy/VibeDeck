@@ -1041,6 +1041,78 @@ test('grouped rebuild processor can flush batches before final drain', async () 
   assert.equal(drain.total, 3);
 });
 
+test('grouped rebuild processor flushes historical subset of mixed-lane session while recent stays pending', async () => {
+  const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
+  const batches = [];
+  const flushSummaries = [];
+  const processor = createGroupedSessionEventProcessor(
+    async (events) => {
+      batches.push(events.map((event) => event.kind));
+    },
+    {
+      onFlushComplete: (summary) => {
+        flushSummaries.push(summary);
+      },
+    },
+  );
+
+  await processor.onSessionEvent({
+    provider: 'codex',
+    session_id: 'mixed-session',
+    kind: 'historical-start',
+    observed_at: '2024-01-01T00:00:00.000Z',
+  });
+  await processor.onSessionEvent({
+    provider: 'codex',
+    session_id: 'mixed-session',
+    kind: 'recent-update',
+    observed_at: new Date().toISOString(),
+  });
+
+  assert.equal(processor.total, 2);
+  assert.equal(processor.processed, 0);
+  assert.equal(processor.getPendingEventCount('historical'), 1);
+  assert.equal(processor.getPendingEventCount('recent'), 1);
+
+  await processor.flush({ lane: 'historical' });
+
+  assert.deepEqual(batches, [['historical-start']]);
+  assert.equal(processor.processed, 1);
+  assert.equal(processor.getPendingEventCount('historical'), 0);
+  assert.equal(processor.getPendingEventCount('recent'), 1);
+  assert.deepEqual(flushSummaries, [
+    {
+      recent: 0,
+      historical: 1,
+      flush_count: 1,
+      slice_threshold_flush_count: 0,
+      historical_slice_threshold_flush_count: 0,
+    },
+  ]);
+
+  const drain = await processor.drain();
+
+  assert.deepEqual(batches, [['historical-start'], ['recent-update']]);
+  assert.equal(drain.processed, 2);
+  assert.equal(drain.total, 2);
+  assert.deepEqual(flushSummaries, [
+    {
+      recent: 0,
+      historical: 1,
+      flush_count: 1,
+      slice_threshold_flush_count: 0,
+      historical_slice_threshold_flush_count: 0,
+    },
+    {
+      recent: 1,
+      historical: 0,
+      flush_count: 1,
+      slice_threshold_flush_count: 0,
+      historical_slice_threshold_flush_count: 0,
+    },
+  ]);
+});
+
 test('sync --rebuild-vibedeck-db batches many events for one session into one rich-fact rebuild shape', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-batch-shape-unit-'));
   const pipelinePath = require.resolve('../src/lib/sessions/pipeline');

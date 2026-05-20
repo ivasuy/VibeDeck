@@ -356,3 +356,49 @@ H.2 improved wall clock by only `2,065ms` and improved the dominant flush stage 
 - Flush count stayed bounded, so the remaining speed issue is not just number of flushes.
 - UI smoke coverage still needs installable dashboard test dependencies and an actual `/usage` test file on this branch.
 - The no-token-loss proof harness still needs a compatible source-delta collector before it can prove source-vs-canonical token preservation.
+
+### 0.1.3 PR - Phase H.3: Defer Branch-Fact Rebuild In Flush Path (Incomplete Speed Gate)
+
+**Status:** implemented, benchmarked, overall speed target missed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h3-defer-branch-fact-rebuild.md`
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h3-smoke-evidence.md`
+**Artifacts:** `docs/superpowers/plans/phase-h3-smoke-artifacts/`
+
+#### What changed
+
+- Deferred inline branch-fact rebuild work during rebuild session-event flushing when dirty post-drain rebuild is enabled.
+- Kept the post-drain dirty branch-fact rebuild pass as the single rebuild source of truth for the affected mode.
+- Added H.3 smoke artifacts for the benchmark profile and benchmark summary.
+- Recorded that the flush-stage gate passed while the wall-clock and branch-fact gates failed.
+
+#### Measured outcome on local corpus
+
+| Metric | Phase H.2 baseline | Phase H.3 result | Gate |
+|---|---:|---:|---|
+| Wall clock | `366,301ms` | `337,412ms` | Fail |
+| Target wall clock | n/a | `300,000ms` | Missed by `37,412ms` |
+| `recent_lane_session_event_flush` | `307,974.929ms` | `218,370.394ms` | Pass |
+| `branch_fact_rebuild_pass` | `25,939.595ms` | `27,321.343ms` | Fail |
+
+H.3 improved wall clock by `28,889ms` versus H.2 and reduced `recent_lane_session_event_flush` by `89,604.535ms`, but it did not meet the `300,000ms` wall-clock target. The benchmark result remains failed, and this phase should not be described as a target success.
+
+Raw artifact values: `wall_clock_ms=337412`, `wall_clock_target_ms=300000`, `flush_stage_ms=218370.394`, `branch_fact_stage_ms=27321.343`.
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| H.3 benchmark gate | Failed (`337,412ms` wall clock; target `300,000ms`) |
+| Flush-stage gate | Passed (`218,370.394ms`; target `220,000ms`) |
+| Branch-fact gate | Failed (`27,321.343ms`; baseline/target `25,939.595ms`) |
+| Rebuild/parity-focused suites | Uncovered in the current H.3 evidence artifacts; the available artifacts only record benchmark summary/profile output |
+| Dashboard targeted usage/branches command | Uncovered in the current H.3 evidence artifacts |
+| No-token-loss proof gate | Uncovered in the current H.3 evidence artifacts |
+
+#### What remains
+
+- Overall rebuild time still needs another reduction of at least `37,412ms` to meet the current target.
+- `repair_pass` (`65,127.053ms`) and `branch_fact_rebuild_pass` (`27,321.343ms`) are now the largest non-flush stages after the H.3 flush improvement.
+- The branch-fact pass regressed against the H.2 baseline target, so the next phase should profile or reduce dirty branch-fact rebuild cost.
+- H.3 needs separately recorded parity, dashboard, and no-token-loss evidence before those checks can be claimed as covered for this phase.

@@ -209,3 +209,85 @@ test('phase h smoke harness writes compact summary and copied profile artifact',
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test('phase h1 smoke harness writes flush movement gates and copied profile artifact', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h1-smoke-artifacts-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            { name: 'recent_codex_parse', duration_ms: 20, counters: { files_processed: 2 } },
+            {
+              name: 'recent_lane_session_event_flush',
+              duration_ms: 70_000,
+              counters: {
+                recent_session_events_flushed: 6,
+                historical_session_events_flushed: 4,
+                flush_count: 99,
+                slice_threshold_flush_count: 8,
+                historical_slice_threshold_flush_count: 8,
+              },
+            },
+            { name: 'repair_pass', duration_ms: 30, counters: { repair_candidates_attempted: 3 } },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+            slice_threshold_flush_count: 8,
+            historical_slice_threshold_flush_count: 8,
+            repair_candidates_attempted: 3,
+            branch_facts_rebuilt_by_scope: { dirty: 2 },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    let smokeHarness;
+    assert.doesNotThrow(() => {
+      smokeHarness = require('../scripts/smoke/rebuild-hot-path-phase-h1.cjs');
+    });
+    const summary = await smokeHarness.writePhaseH1SmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 239_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'pass');
+    assert.equal(summary.performance_gate.baseline_ms, 348_982);
+    assert.equal(summary.performance_gate.target_ms, 240_000);
+    assert.equal(summary.performance_gate.passed, true);
+    assert.equal(summary.flush_count_gate.baseline_count, 409);
+    assert.equal(summary.flush_count_gate.target_count, 120);
+    assert.equal(summary.flush_count_gate.current_count, 99);
+    assert.equal(summary.flush_count_gate.passed, true);
+    assert.equal(summary.flush_stage_gate.stage_name, 'recent_lane_session_event_flush');
+    assert.equal(summary.flush_stage_gate.baseline_ms, 127_905.923);
+    assert.equal(summary.flush_stage_gate.target_reduction_pct, 40);
+    assert.equal(summary.flush_stage_gate.passed, true);
+    assert.deepEqual(
+      summary.top_stages.map((stage) => stage.name),
+      ['recent_lane_session_event_flush', 'repair_pass', 'recent_codex_parse'],
+    );
+
+    const copiedProfile = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h1-rebuild-profile.json'), 'utf8'),
+    );
+    assert.equal(copiedProfile.counters.branch_facts_rebuilt_by_scope.dirty, 2);
+
+    const writtenSummary = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h1-rebuild-summary.json'), 'utf8'),
+    );
+    assert.equal(writtenSummary.flush_count_gate.current_count, 99);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

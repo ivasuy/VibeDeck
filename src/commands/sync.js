@@ -109,11 +109,17 @@ function isRecentRebuildSessionEvent(event, { now = Date.now() } = {}) {
       ? event.observed_at
       : typeof event?.started_at === "string" && event.started_at
         ? event.started_at
-        : null;
+        : typeof event?.ended_at === "string" && event.ended_at
+          ? event.ended_at
+          : null;
   if (!observedAt) return false;
   const observedMs = Date.parse(observedAt);
   if (!Number.isFinite(observedMs)) return false;
   return observedMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS;
+}
+
+function isRebuildRecentFastPathEnabled({ rebuildVibedeckDb = false } = {}) {
+  return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_RECENT_FASTPATH === "1";
 }
 
 function createRebuildProfile({ trackerDir } = {}) {
@@ -152,12 +158,14 @@ function createRebuildProfile({ trackerDir } = {}) {
         events_aggregated: Number(meta.eventsAggregated) || 0,
       });
     },
-    recordSessionFlush({ recent = 0, historical = 0 } = {}) {
+    recordSessionFlush({ recent = 0, historical = 0, flush_count = 0 } = {}) {
       counters.recent_session_events_flushed += Number(recent) || 0;
       counters.historical_session_events_flushed += Number(historical) || 0;
+      const flushCount = Number(flush_count) || 0;
       mergeProfileCounters(stages.get("recent_lane_session_event_flush")?.counters, {
         recent_session_events_flushed: Number(recent) || 0,
         historical_session_events_flushed: Number(historical) || 0,
+        flush_count: flushCount,
       });
     },
     recordRepairCandidates(count) {
@@ -303,6 +311,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
     const rebuildBranchCache = opts.rebuildVibedeckDb ? createProviderBranchCache() : null;
+    const recentFastPathEnabled = isRebuildRecentFastPathEnabled({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
     const sessionEventProcessor = opts.rebuildVibedeckDb
       ? createGroupedSessionEventProcessor((events) =>
           require("../lib/sessions/pipeline").processSessionEventBatch(dbPath, events, {
@@ -319,8 +330,12 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const onProviderFileComplete =
       opts.rebuildVibedeckDb && typeof sessionEventProcessor.flush === "function"
         ? (meta = {}) => {
+            const lane = normalizeRebuildProfileLane(meta.lane);
+            if (recentFastPathEnabled && lane === "recent") {
+              return Promise.resolve();
+            }
             const flush = () => sessionEventProcessor.flush();
-            if (rebuildProfile && normalizeRebuildProfileLane(meta.lane) === "recent") {
+            if (rebuildProfile && lane === "recent") {
               return rebuildProfile.measure("recent_lane_session_event_flush", flush);
             }
             return flush();
@@ -895,16 +910,21 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     if (opts.rebuildVibedeckDb) {
       lifecycle?.phase?.("Attributing grouped session events...");
     }
-    const sessionEventDrain = await sessionEventProcessor.drain({
-      onProgress: progress?.enabled
-        ? ({ processed, total }) => {
-            const pct = total > 0 ? processed / total : 1;
-            progress.update(
-              `Attributing sessions ${renderBar(pct)} ${formatNumber(processed)}/${formatNumber(total)} events`,
-            );
-          }
-        : null,
-    });
+    const drainSessionEvents = () =>
+      sessionEventProcessor.drain({
+        onProgress: progress?.enabled
+          ? ({ processed, total }) => {
+              const pct = total > 0 ? processed / total : 1;
+              progress.update(
+                `Attributing sessions ${renderBar(pct)} ${formatNumber(processed)}/${formatNumber(total)} events`,
+              );
+            }
+          : null,
+      });
+    const sessionEventDrain =
+      opts.rebuildVibedeckDb && recentFastPathEnabled && rebuildProfile
+        ? await rebuildProfile.measure("recent_lane_session_event_flush", drainSessionEvents)
+        : await drainSessionEvents();
     let failureDiagnosticsPath = null;
     if (sessionEventDrain.errors.length > 0) {
       failureDiagnosticsPath = await writeSessionFailureDiagnostics(trackerDir, sessionEventDrain.errors);
@@ -1448,7 +1468,9 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
       }
     }
 
-    flushCallback?.({ recent: recentFlushed, historical: historicalFlushed });
+    if (pendingGroups.length > 0) {
+      flushCallback?.({ recent: recentFlushed, historical: historicalFlushed, flush_count: 1 });
+    }
 
     return { errors, processed, total };
   };

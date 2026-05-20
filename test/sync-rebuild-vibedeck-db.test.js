@@ -752,6 +752,79 @@ test('sync rebuild passes one shared branch evidence cache to grouped batches', 
   }
 });
 
+test('sync rebuild recent fast path materializes recent files in one flush boundary', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-recent-fastpath-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevFastPath = process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const now = new Date().toISOString();
+    const fileCount = 12;
+    let expectedTokens = 0;
+    for (let i = 0; i < fileCount; i += 1) {
+      const usage = {
+        input_tokens: i + 2,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 1,
+        reasoning_output_tokens: 0,
+        total_tokens: i + 3,
+      };
+      expectedTokens += usage.total_tokens;
+      await fs.writeFile(
+        path.join(rolloutDir, `rollout-${String(i).padStart(2, '0')}.jsonl`),
+        `${buildTokenCountLine({ ts: now, last: usage, total: usage })}\n`,
+        'utf8',
+      );
+    }
+
+    await cmdSync(['--auto', '--rebuild-vibedeck-db']);
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const profile = await readJsonFile(path.join(trackerDir, 'rebuild_profile.json'));
+    const recentFlush = profile.stages.find((stage) => stage.name === 'recent_lane_session_event_flush');
+    assert.ok(recentFlush);
+    assert.equal(recentFlush.counters.flush_count, 1);
+    assert.equal(recentFlush.counters.recent_session_events_flushed, fileCount * 3);
+
+    const db = new DatabaseSync(path.join(trackerDir, 'vibedeck.sqlite3'), { readOnly: true });
+    try {
+      const sessions = db.prepare('SELECT COUNT(*) AS n, SUM(total_tokens) AS tokens FROM vibedeck_sessions').get();
+      const events = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events').get();
+      const facts = db.prepare('SELECT COUNT(*) AS n FROM vibedeck_branch_usage_facts').get();
+      assert.equal(Number(sessions.n), fileCount);
+      assert.equal(Number(sessions.tokens), expectedTokens);
+      assert.equal(Number(events.n), fileCount * 3);
+      assert.equal(Number(facts.n), fileCount);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevFastPath === undefined) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = prevFastPath;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('grouped rebuild processor can flush batches before final drain', async () => {
   const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
   const batches = [];

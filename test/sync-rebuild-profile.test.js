@@ -145,3 +145,63 @@ test('rebuild profile records hard counters for flushed events and post-drain sc
     ),
   );
 });
+
+test('phase h smoke harness writes compact summary and copied profile artifact', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h-smoke-artifacts-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            { name: 'recent_codex_parse', duration_ms: 20, counters: { files_processed: 2 } },
+            { name: 'recent_lane_session_event_flush', duration_ms: 80, counters: { flush_count: 1 } },
+            { name: 'repair_pass', duration_ms: 30, counters: { repair_candidates_attempted: 3 } },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+            repair_candidates_attempted: 3,
+            branch_facts_rebuilt_by_scope: { dirty: 2 },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const { writePhaseHSmokeArtifacts } = require('../scripts/smoke/rebuild-hot-path-phase-h.cjs');
+    const summary = await writePhaseHSmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 194_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'pass');
+    assert.equal(summary.performance_gate.passed, true);
+    assert.equal(summary.performance_gate.baseline_ms, 268_890);
+    assert.equal(summary.performance_gate.target_ms, 195_000);
+    assert.deepEqual(
+      summary.top_stages.map((stage) => stage.name),
+      ['recent_lane_session_event_flush', 'repair_pass', 'recent_codex_parse'],
+    );
+    assert.equal(summary.totals.recent_session_events_flushed, 6);
+
+    const copiedProfile = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h-rebuild-profile.json'), 'utf8'),
+    );
+    assert.equal(copiedProfile.counters.branch_facts_rebuilt_by_scope.dirty, 2);
+
+    const writtenSummary = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h-rebuild-summary.json'), 'utf8'),
+    );
+    assert.equal(writtenSummary.wall_clock_ms, 194_000);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

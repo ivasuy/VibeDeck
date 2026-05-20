@@ -424,3 +424,137 @@ test('phase h4 smoke summary marks missing key stages uncovered and failed', asy
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test('phase h5 smoke summary records wall-clock repair-pass and branch-fact gates', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h5-smoke-test-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            { name: 'recent_codex_parse', duration_ms: 20, counters: { files_processed: 2 } },
+            {
+              name: 'recent_lane_session_event_flush',
+              duration_ms: 210_000,
+              counters: {
+                recent_session_events_flushed: 6,
+                historical_session_events_flushed: 4,
+                flush_count: 11,
+              },
+            },
+            {
+              name: 'repair_pass',
+              duration_ms: 36_000,
+              counters: { repair_candidates_attempted: 3 },
+            },
+            {
+              name: 'branch_fact_rebuild_pass',
+              duration_ms: 28_000,
+              counters: { dirty_branch_facts_rebuilt: 2 },
+            },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+            repair_candidates_attempted: 3,
+            branch_facts_rebuilt_by_scope: { dirty: 2 },
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const smokeHarness = require('../scripts/smoke/rebuild-hot-path-phase-h5.cjs');
+    const summary = await smokeHarness.writePhaseH5SmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 299_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'pass');
+    assert.equal(summary.wall_clock_gate.baseline_ms, 284_982);
+    assert.equal(summary.wall_clock_gate.target_ms, 300_000);
+    assert.equal(summary.wall_clock_gate.current_ms, 299_000);
+    assert.equal(summary.wall_clock_gate.passed, true);
+    assert.equal(summary.repair_pass_gate.stage_name, 'repair_pass');
+    assert.equal(summary.repair_pass_gate.baseline_ms, 36_400.351);
+    assert.equal(summary.repair_pass_gate.current_ms, 36_000);
+    assert.equal(summary.repair_pass_gate.covered, true);
+    assert.equal(summary.repair_pass_gate.passed, true);
+    assert.equal(summary.branch_fact_gate.stage_name, 'branch_fact_rebuild_pass');
+    assert.equal(summary.branch_fact_gate.baseline_ms, 28_946.879);
+    assert.equal(summary.branch_fact_gate.current_ms, 28_000);
+    assert.equal(summary.branch_fact_gate.covered, true);
+    assert.equal(summary.branch_fact_gate.passed, true);
+
+    const copiedProfile = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h5-rebuild-profile.json'), 'utf8'),
+    );
+    assert.equal(copiedProfile.counters.branch_facts_rebuilt_by_scope.dirty, 2);
+
+    const writtenSummary = JSON.parse(
+      await fs.readFile(path.join(tmp, 'phase-h5-rebuild-summary.json'), 'utf8'),
+    );
+    assert.equal(writtenSummary.branch_fact_gate.current_ms, 28_000);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('phase h5 smoke summary marks missing key stages uncovered and failed', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-phase-h5-smoke-missing-stage-'));
+  try {
+    const profilePath = path.join(tmp, 'rebuild_profile.json');
+    await fs.writeFile(
+      profilePath,
+      JSON.stringify(
+        {
+          generated_at: '2026-05-20T00:00:00.000Z',
+          stages: [
+            {
+              name: 'recent_lane_session_event_flush',
+              duration_ms: 210_000,
+              counters: {
+                recent_session_events_flushed: 6,
+                historical_session_events_flushed: 4,
+              },
+            },
+          ],
+          counters: {
+            recent_session_events_flushed: 6,
+            historical_session_events_flushed: 4,
+          },
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const smokeHarness = require('../scripts/smoke/rebuild-hot-path-phase-h5.cjs');
+    const summary = await smokeHarness.writePhaseH5SmokeArtifacts({
+      artifactDir: tmp,
+      profilePath,
+      wallClockMs: 299_000,
+      command: 'node bin/vibedeck.js sync --rebuild-vibedeck-db',
+      exitCode: 0,
+    });
+
+    assert.equal(summary.result, 'fail');
+    assert.equal(summary.repair_pass_gate.current_ms, null);
+    assert.equal(summary.repair_pass_gate.covered, false);
+    assert.equal(summary.repair_pass_gate.passed, false);
+    assert.equal(summary.branch_fact_gate.current_ms, null);
+    assert.equal(summary.branch_fact_gate.covered, false);
+    assert.equal(summary.branch_fact_gate.passed, false);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});

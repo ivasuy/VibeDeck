@@ -236,3 +236,42 @@ Every release note should answer four questions:
 2. What changed to solve it?
 3. What evidence proves the fix?
 4. What is still deliberately not claimed?
+
+### 0.1.3 PR - Phase H: Rebuild Hot-Path Reduction (Incomplete Speed Gate)
+
+**Status:** implemented, verified, speed target missed.
+
+**Plan:** `docs/superpowers/plans/2026-05-20-phase-h-rebuild-hot-path-reduction.md`  
+**Evidence:** `docs/superpowers/plans/2026-05-20-phase-h-smoke-evidence.md`  
+**Artifacts:** `docs/superpowers/plans/phase-h-smoke-artifacts/`
+
+#### What changed
+
+- Added rebuild profile stage decomposition and scoped counters so the hot path is measurable and no longer hidden in broad stage names.
+- Added `VIBEDECK_REBUILD_RECENT_FASTPATH=1` and lane-aware grouped flush behavior to prevent recent-lane groups from being drained by historical file completions.
+- Added `VIBEDECK_REBUILD_DIRTY_POST_DRAIN=1` to scope repair and branch-fact rebuild to dirty sessions when available, with safe full-rebuild fallback when scope is unavailable.
+- Added a Phase H rebuild smoke harness (`scripts/smoke/rebuild-hot-path-phase-h.cjs`) that captures wall clock, top stages, and explicit gate pass/fail.
+
+#### Measured outcome on local corpus
+
+| Metric | Value |
+|---|---:|
+| Baseline wall clock | `4m 28.89s` |
+| Phase H wall clock | `5m 48.98s` |
+| Phase H target | `3m 15s` |
+| Gate result | `fail` |
+| Dominant stage | `recent_lane_session_event_flush` (`127,905.923ms`) |
+
+#### Integrity checks
+
+| Check | Result |
+|---|---|
+| Rebuild/parity-focused suites | Passed (`19` tests, `0` failed) |
+| Dashboard targeted usage/branches tests | Passed (`17` tests, `0` failed) |
+| No-token-loss proof gate | Uncovered on this branch lineage (`missing_collect_rollout_source_deltas_api`) |
+
+#### What remains
+
+- The hot bottleneck is still synchronous recent-lane session-event flush.
+- Branch-fact and repair passes are still expensive even after dirty scoping.
+- Phase H should be treated as observability + correctness-hardening for the next speed iteration, not as a final speed win.

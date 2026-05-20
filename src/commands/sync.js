@@ -334,7 +334,10 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
             if (recentFastPathEnabled && lane === "recent") {
               return Promise.resolve();
             }
-            const flush = () => sessionEventProcessor.flush();
+            const flush = () =>
+              sessionEventProcessor.flush({
+                lane: recentFastPathEnabled && lane === "historical" ? "historical" : "all",
+              });
             if (rebuildProfile && lane === "recent") {
               return rebuildProfile.measure("recent_lane_session_event_flush", flush);
             }
@@ -1428,23 +1431,40 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
   const onSessionEvent = (event) => {
     total += 1;
     const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
+    const lane = isRecentRebuildSessionEvent(event) ? "recent" : "historical";
     const group = groups.get(key);
     if (group) {
       group.events.push(event);
+      group.hasRecent = group.hasRecent || lane === "recent";
+      group.hasHistorical = group.hasHistorical || lane === "historical";
     } else {
-      groups.set(key, { events: [event] });
+      groups.set(key, {
+        events: [event],
+        hasRecent: lane === "recent",
+        hasHistorical: lane === "historical",
+      });
     }
     return Promise.resolve();
   };
 
-  const flush = async ({ onProgress } = {}) => {
+  const flush = async ({ onProgress, lane = "all" } = {}) => {
     const progressCallback = typeof onProgress === "function" ? onProgress : null;
     if (progressCallback) {
       progressCallback({ processed, total, pending: Math.max(0, total - processed) });
     }
 
-    const pendingGroups = Array.from(groups.values());
-    groups.clear();
+    const normalizedLane = lane === "recent" || lane === "historical" ? lane : "all";
+    const shouldFlushGroup = (group) => {
+      if (normalizedLane === "all") return true;
+      if (normalizedLane === "recent") return group.hasRecent;
+      return group.hasHistorical && !group.hasRecent;
+    };
+    const pendingGroups = [];
+    for (const [key, group] of groups.entries()) {
+      if (!shouldFlushGroup(group)) continue;
+      pendingGroups.push(group);
+      groups.delete(key);
+    }
 
     let recentFlushed = 0;
     let historicalFlushed = 0;

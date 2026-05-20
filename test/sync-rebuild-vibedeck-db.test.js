@@ -825,6 +825,101 @@ test('sync rebuild recent fast path materializes recent files in one flush bound
   }
 });
 
+test('sync rebuild fast path keeps recent groups pending when a historical file completes next', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-lane-aware-flush-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevFastPath = process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const syncPath = require.resolve('../src/commands/sync');
+  const pipeline = require(pipelinePath);
+  const originalBatch = pipeline.processSessionEventBatch;
+  const flushedOrder = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const recentPath = path.join(rolloutDir, 'rollout-a-recent.jsonl');
+    const historicalPath = path.join(rolloutDir, 'rollout-z-historical.jsonl');
+    const recentUsage = {
+      input_tokens: 10,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 5,
+      reasoning_output_tokens: 0,
+      total_tokens: 15,
+    };
+    const historicalUsage = {
+      input_tokens: 4,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 6,
+    };
+    const recentIso = new Date().toISOString();
+    const historicalIso = '2024-01-01T00:00:00.000Z';
+
+    await fs.writeFile(
+      recentPath,
+      `${buildTokenCountLine({ ts: recentIso, last: recentUsage, total: recentUsage })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(
+      historicalPath,
+      `${buildTokenCountLine({ ts: historicalIso, last: historicalUsage, total: historicalUsage })}\n`,
+      'utf8',
+    );
+    const oldDate = new Date('2024-01-01T00:00:00.000Z');
+    await fs.utimes(historicalPath, oldDate, oldDate);
+
+    pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+      flushedOrder.push(path.basename(events[0].session_id));
+      return originalBatch(dbPath, events, options);
+    };
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(flushedOrder, ['rollout-z-historical.jsonl', 'rollout-a-recent.jsonl']);
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const db = new DatabaseSync(path.join(trackerDir, 'vibedeck.sqlite3'), { readOnly: true });
+    try {
+      const events = Number(db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_events').get().n);
+      const facts = Number(db.prepare('SELECT COUNT(*) AS n FROM vibedeck_branch_usage_facts').get().n);
+      const windows = Number(db.prepare('SELECT COUNT(*) AS n FROM vibedeck_session_branch_windows').get().n);
+      assert.equal(events, 6);
+      assert.equal(facts, 2);
+      assert.equal(windows, 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    pipeline.processSessionEventBatch = originalBatch;
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevFastPath === undefined) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = prevFastPath;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('grouped rebuild processor can flush batches before final drain', async () => {
   const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
   const batches = [];

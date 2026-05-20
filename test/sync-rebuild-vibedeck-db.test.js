@@ -1040,6 +1040,142 @@ test('sync --rebuild-vibedeck-db batches many events for one session into one ri
   }
 });
 
+test('sync rebuild dirty post-drain scopes repair and branch-fact rebuild to drained sessions under flag', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  const syncPath = require.resolve('../src/commands/sync');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const branchFacts = require(branchFactsPath);
+  const originalRepairMissingProjectAttribution = branchFacts.repairMissingProjectAttribution;
+  const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
+  const repairScopes = [];
+  const branchScopes = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+
+    const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    await fs.mkdir(rolloutDir, { recursive: true });
+    const usage = {
+      input_tokens: 4,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 6,
+    };
+    const rolloutPath = path.join(rolloutDir, 'rollout-dirty.jsonl');
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: new Date().toISOString(), last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    branchFacts.repairMissingProjectAttribution = async (dbPath, options = {}) => {
+      repairScopes.push(options.sessions);
+      return originalRepairMissingProjectAttribution(dbPath, options);
+    };
+    branchFacts.rebuildAllBranchUsageFacts = async (dbPath, options = {}) => {
+      branchScopes.push(options.sessions);
+      return originalRebuildAllBranchUsageFacts(dbPath, options);
+    };
+
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(repairScopes, [[{ provider: 'codex', session_id: rolloutPath }]]);
+    assert.deepEqual(branchScopes, [[{ provider: 'codex', session_id: rolloutPath }]]);
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const profile = await readJsonFile(path.join(trackerDir, 'rebuild_profile.json'));
+    assert.equal(profile.counters.branch_facts_rebuilt_by_scope.dirty, 1);
+  } finally {
+    branchFacts.repairMissingProjectAttribution = originalRepairMissingProjectAttribution;
+    branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync rebuild dirty post-drain falls back to full branch rebuild when dirty scope is unavailable', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-post-drain-fallback-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  const syncPath = require.resolve('../src/commands/sync');
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const branchFacts = require(branchFactsPath);
+  const originalRepairMissingProjectAttribution = branchFacts.repairMissingProjectAttribution;
+  const originalRebuildAllBranchUsageFacts = branchFacts.rebuildAllBranchUsageFacts;
+  const repairScopes = [];
+  const branchScopes = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
+    await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+
+    branchFacts.repairMissingProjectAttribution = async (dbPath, options = {}) => {
+      repairScopes.push(options.sessions);
+      return originalRepairMissingProjectAttribution(dbPath, options);
+    };
+    branchFacts.rebuildAllBranchUsageFacts = async (dbPath, options = {}) => {
+      branchScopes.push(options.sessions);
+      return originalRebuildAllBranchUsageFacts(dbPath, options);
+    };
+
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(repairScopes, [undefined]);
+    assert.deepEqual(branchScopes, [undefined]);
+
+    const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+    const profile = await readJsonFile(path.join(trackerDir, 'rebuild_profile.json'));
+    assert.equal(profile.counters.branch_facts_rebuilt_by_scope.full, 0);
+  } finally {
+    branchFacts.repairMissingProjectAttribution = originalRepairMissingProjectAttribution;
+    branchFacts.rebuildAllBranchUsageFacts = originalRebuildAllBranchUsageFacts;
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sync --rebuild-vibedeck-db clears stale checkpoint match and link rows before backfill', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-entire-reset-'));
   const prevHome = process.env.HOME;

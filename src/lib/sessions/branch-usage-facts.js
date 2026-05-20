@@ -15,6 +15,46 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+function normalizeSessionScope(sessions) {
+  if (!Array.isArray(sessions)) return null;
+  const seen = new Set();
+  const rows = [];
+  for (const session of sessions) {
+    const provider = isNonEmptyString(session?.provider) ? session.provider.trim() : null;
+    const sessionId = isNonEmptyString(session?.session_id) ? session.session_id.trim() : null;
+    if (!provider || !sessionId) continue;
+    const key = `${provider}\u0000${sessionId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ provider, session_id: sessionId });
+  }
+  return rows;
+}
+
+function installSessionScope(db, scopeRows) {
+  db.exec(`
+    DROP TABLE IF EXISTS temp_vibedeck_dirty_session_scope;
+    CREATE TEMP TABLE temp_vibedeck_dirty_session_scope (
+      provider TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      PRIMARY KEY (provider, session_id)
+    );
+  `);
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO temp_vibedeck_dirty_session_scope (provider, session_id) VALUES (?, ?)',
+  );
+  for (const row of scopeRows) {
+    insert.run(row.provider, row.session_id);
+  }
+  return 'temp_vibedeck_dirty_session_scope';
+}
+
+function dropSessionScope(db) {
+  try {
+    db.exec('DROP TABLE IF EXISTS temp_vibedeck_dirty_session_scope');
+  } catch {}
+}
+
 function toFiniteNumber(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
@@ -572,17 +612,46 @@ async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session
   return groups.length;
 }
 
-async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null, cache = null } = {}) {
+async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null, cache = null, sessions = null } = {}) {
   if (!isNonEmptyString(dbPath)) {
     throw new TypeError('rebuildAllBranchUsageFacts: dbPath must be a non-empty string');
   }
   const progress = typeof onProgress === 'function' ? onProgress : null;
   const sharedCache = cache && typeof cache === 'object' ? cache : {};
+  const scopedSessions = normalizeSessionScope(sessions);
+  if (scopedSessions && scopedSessions.length === 0) return 0;
   const db = new DatabaseSync(dbPath);
   try {
-    const rows = provider
-      ? db.prepare('SELECT provider, session_id FROM vibedeck_sessions WHERE provider = ? ORDER BY started_at ASC').all(provider)
-      : db.prepare('SELECT provider, session_id FROM vibedeck_sessions ORDER BY started_at ASC').all();
+    let scopeTable = null;
+    if (scopedSessions) scopeTable = installSessionScope(db, scopedSessions);
+    const rows = scopeTable
+      ? provider
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              WHERE s.provider = ?
+              ORDER BY s.started_at ASC
+              `,
+            )
+            .all(provider)
+        : db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              ORDER BY s.started_at ASC
+              `,
+            )
+            .all()
+      : provider
+        ? db.prepare('SELECT provider, session_id FROM vibedeck_sessions WHERE provider = ? ORDER BY started_at ASC').all(provider)
+        : db.prepare('SELECT provider, session_id FROM vibedeck_sessions ORDER BY started_at ASC').all();
 
     db.exec('BEGIN IMMEDIATE');
     try {
@@ -610,18 +679,41 @@ async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress 
       throw error;
     }
   } finally {
+    dropSessionScope(db);
     db.close();
   }
 }
 
-async function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null, cache = null } = {}) {
+async function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null, cache = null, sessions = null } = {}) {
   if (!isNonEmptyString(dbPath) || !fs.existsSync(dbPath)) return 0;
 
   const progress = typeof onProgress === 'function' ? onProgress : null;
+  const scopedSessions = normalizeSessionScope(sessions);
+  if (scopedSessions && scopedSessions.length === 0) return 0;
   const db = new DatabaseSync(dbPath);
   try {
+    let scopeTable = null;
+    if (scopedSessions) scopeTable = installSessionScope(db, scopedSessions);
     const rows = provider
-      ? db
+      ? scopeTable
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              LEFT JOIN vibedeck_branch_usage_facts f
+                ON f.provider = s.provider AND f.session_id = s.session_id
+              WHERE s.provider = ?
+                AND s.cwd IS NOT NULL
+                AND TRIM(s.cwd) <> ''
+              GROUP BY s.provider, s.session_id
+              HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
+              `,
+            )
+            .all(provider)
+        : db
           .prepare(
             `
             SELECT s.provider, s.session_id, s.cwd, s.repo_root
@@ -636,7 +728,24 @@ async function repairMissingProjectAttribution(dbPath, { provider = null, onProg
             `,
           )
           .all(provider)
-      : db
+      : scopeTable
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              LEFT JOIN vibedeck_branch_usage_facts f
+                ON f.provider = s.provider AND f.session_id = s.session_id
+              WHERE s.cwd IS NOT NULL
+                AND TRIM(s.cwd) <> ''
+              GROUP BY s.provider, s.session_id
+              HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
+              `,
+            )
+            .all()
+        : db
           .prepare(
             `
             SELECT s.provider, s.session_id, s.cwd, s.repo_root
@@ -692,6 +801,7 @@ async function repairMissingProjectAttribution(dbPath, { provider = null, onProg
       throw error;
     }
   } finally {
+    dropSessionScope(db);
     db.close();
   }
 }

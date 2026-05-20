@@ -122,6 +122,10 @@ function isRebuildRecentFastPathEnabled({ rebuildVibedeckDb = false } = {}) {
   return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_RECENT_FASTPATH === "1";
 }
 
+function isRebuildDirtyPostDrainEnabled({ rebuildVibedeckDb = false } = {}) {
+  return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN === "1";
+}
+
 function createRebuildProfile({ trackerDir } = {}) {
   if (!trackerDir) return null;
   const stages = new Map(
@@ -168,11 +172,13 @@ function createRebuildProfile({ trackerDir } = {}) {
         flush_count: flushCount,
       });
     },
-    recordRepairCandidates(count) {
+    recordRepairCandidates(count, scope = "full") {
       const n = Number(count) || 0;
+      const key = typeof scope === "string" && scope.trim() ? scope.trim() : "full";
       counters.repair_candidates_attempted += n;
       mergeProfileCounters(stages.get("repair_pass")?.counters, {
         repair_candidates_attempted: n,
+        [`${key}_repair_candidates_attempted`]: n,
       });
     },
     recordBranchFacts(scope, count) {
@@ -312,6 +318,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     }
     const rebuildBranchCache = opts.rebuildVibedeckDb ? createProviderBranchCache() : null;
     const recentFastPathEnabled = isRebuildRecentFastPathEnabled({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
+    const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const sessionEventProcessor = opts.rebuildVibedeckDb
@@ -928,6 +937,11 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       opts.rebuildVibedeckDb && recentFastPathEnabled && rebuildProfile
         ? await rebuildProfile.measure("recent_lane_session_event_flush", drainSessionEvents)
         : await drainSessionEvents();
+    const dirtySessionScope =
+      dirtyPostDrainEnabled && typeof sessionEventProcessor.getDirtySessionScope === "function"
+        ? sessionEventProcessor.getDirtySessionScope()
+        : null;
+    const canUseDirtySessionScope = Array.isArray(dirtySessionScope) && dirtySessionScope.length > 0;
     let failureDiagnosticsPath = null;
     if (sessionEventDrain.errors.length > 0) {
       failureDiagnosticsPath = await writeSessionFailureDiagnostics(trackerDir, sessionEventDrain.errors);
@@ -968,11 +982,12 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
           lifecycle,
         }),
         cache: rebuildBranchCache,
+        ...(canUseDirtySessionScope ? { sessions: dirtySessionScope } : {}),
       });
     const repairedAttribution = rebuildProfile
       ? await rebuildProfile.measure("repair_pass", repairMissingProjectAttributionRun)
       : await repairMissingProjectAttributionRun();
-    rebuildProfile?.recordRepairCandidates(repairedAttribution);
+    rebuildProfile?.recordRepairCandidates(repairedAttribution, canUseDirtySessionScope ? "dirty" : "full");
     lifecycle?.providerDone?.(
       "Indexes",
       `missing project attribution repaired for ${formatNumber(repairedAttribution)} session${repairedAttribution === 1 ? "" : "s"}`,
@@ -983,7 +998,10 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       autoBranchFactsRebuilt,
       sessionEventProcessorMode: sessionEventProcessor.mode,
     });
-    if (runFullBranchFactRebuild) {
+    const runDirtyBranchFactRebuild = opts.rebuildVibedeckDb && dirtyPostDrainEnabled && canUseDirtySessionScope;
+    const fallbackToFullBranchFactRebuild =
+      opts.rebuildVibedeckDb && dirtyPostDrainEnabled && !canUseDirtySessionScope;
+    if (runFullBranchFactRebuild || runDirtyBranchFactRebuild || fallbackToFullBranchFactRebuild) {
       lifecycle?.provider?.("Indexes", "rebuilding branch usage facts");
       const rebuildAllBranchUsageFactsRun = () =>
         rebuildAllBranchUsageFacts(dbPath, {
@@ -993,11 +1011,12 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
             lifecycle,
           }),
           cache: rebuildBranchCache,
+          ...(runDirtyBranchFactRebuild ? { sessions: dirtySessionScope } : {}),
         });
       const branchFactsRebuilt = rebuildProfile
         ? await rebuildProfile.measure("branch_fact_rebuild_pass", rebuildAllBranchUsageFactsRun)
         : await rebuildAllBranchUsageFactsRun();
-      rebuildProfile?.recordBranchFacts("full", branchFactsRebuilt);
+      rebuildProfile?.recordBranchFacts(runDirtyBranchFactRebuild ? "dirty" : "full", branchFactsRebuilt);
       lifecycle?.providerDone?.(
         "Indexes",
         `branch usage facts rebuilt across ${formatNumber(branchFactsRebuilt)} branch row${branchFactsRebuilt === 1 ? "" : "s"}`,
@@ -1424,12 +1443,19 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
 
   const errors = [];
   const groups = new Map();
+  const dirtySessions = new Map();
   const flushCallback = typeof onFlushComplete === "function" ? onFlushComplete : null;
   let total = 0;
   let processed = 0;
 
   const onSessionEvent = (event) => {
     total += 1;
+    if (event?.provider && event?.session_id) {
+      dirtySessions.set(`${event.provider}\u0000${event.session_id}`, {
+        provider: event.provider,
+        session_id: event.session_id,
+      });
+    }
     const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
     const lane = isRecentRebuildSessionEvent(event) ? "recent" : "historical";
     const group = groups.get(key);
@@ -1515,6 +1541,14 @@ function createGroupedSessionEventProcessor(processor, { onFlushComplete = null 
     flush,
     drain,
     errors,
+    getDirtySessionScope() {
+      if (total <= 0) return null;
+      return Array.from(dirtySessions.values()).sort((a, b) => {
+        const providerCompare = String(a.provider).localeCompare(String(b.provider));
+        if (providerCompare !== 0) return providerCompare;
+        return String(a.session_id).localeCompare(String(b.session_id));
+      });
+    },
     get processed() {
       return processed;
     },

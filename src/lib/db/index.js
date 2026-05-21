@@ -15,6 +15,7 @@ const m007 = require('./migrations/007-known-repo-suppression');
 const m008 = require('./migrations/008-session-event-ledger');
 const m009 = require('./migrations/009-session-bucket-facts');
 const m010 = require('./migrations/010-entire-checkpoint-matches');
+const m011 = require('./migrations/011-branch-usage-facts');
 
 let registered = false;
 function registerAll() {
@@ -29,6 +30,7 @@ function registerAll() {
   registerMigration(m008);
   registerMigration(m009);
   registerMigration(m010);
+  registerMigration(m011);
   registered = true;
 }
 

@@ -99,7 +99,17 @@ function BranchOverridePlaceholder() {
 }
 
 export function LivePage() {
-  const { sessions, workstreams, totals, status, error, canonicalIncomplete } = useVibeDeckLiveSessions();
+  const {
+    sessions,
+    workstreams,
+    totals,
+    status,
+    error,
+    canonicalIncomplete,
+    initialLoading,
+    reconnecting,
+    stale,
+  } = useVibeDeckLiveSessions();
   const {
     data: usageLimits,
     error: limitsError,
@@ -199,6 +209,11 @@ export function LivePage() {
           {syncWarning}
         </div>
       ) : null}
+      {reconnecting || stale ? (
+        <div className="mb-4 inline-flex min-h-8 items-center rounded-md border border-oai-gray-200 bg-oai-gray-50/70 px-3 text-xs text-oai-gray-700 dark:border-oai-gray-800 dark:bg-oai-gray-900/60 dark:text-oai-gray-300">
+          {reconnecting ? "Reconnecting live stream; showing last data." : "Showing cached live data while VibeDeck refreshes."}
+        </div>
+      ) : null}
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="grid min-w-0 gap-6">
@@ -209,6 +224,7 @@ export function LivePage() {
             canonicalIncomplete={canonicalIncomplete}
             status={status}
             limits={usageLimits}
+            initialLoading={initialLoading}
           />
           <LiveOperationsPanel
             sessions={sessions}
@@ -218,6 +234,7 @@ export function LivePage() {
             onSelectSession={setSelectedKey}
             streamStatus={status}
             streamError={error}
+            initialLoading={initialLoading}
             limits={usageLimits}
             limitsLoading={limitsLoading}
             limitsError={limitsError}

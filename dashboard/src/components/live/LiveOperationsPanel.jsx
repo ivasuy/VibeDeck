@@ -10,6 +10,7 @@ export function LiveOperationsPanel({
   onSelectSession,
   streamStatus,
   streamError,
+  initialLoading = false,
   limits,
   limitsLoading,
   limitsError,
@@ -36,6 +37,7 @@ export function LiveOperationsPanel({
             onSelectSession={onSelectSession}
             streamStatus={streamStatus}
             streamError={streamError}
+            initialLoading={initialLoading}
             embedded
             className="h-full"
           />

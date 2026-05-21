@@ -113,6 +113,10 @@ function resolveTopModel(entry) {
   return provider ? `${model} · ${provider}` : model;
 }
 
+function isDecommissionedProject(entry) {
+  return entry?.archived === true || ["git_missing", "cwd_missing"].includes(String(entry?.project_state || ""));
+}
+
 function resolveRepoMeta(repoId) {
   if (!repoId) return null;
   return REPO_META_CACHE.get(repoId) || null;
@@ -197,6 +201,7 @@ export function ProjectUsagePanel({
     () => (Array.isArray(entries) ? entries.slice(0, Math.max(1, limit)) : []),
     [entries, limit],
   );
+  const initialLoading = loading && displayEntries.length === 0;
   const [expandedKey, setExpandedKey] = useState(null);
 
   const tokenFormatOptions = {
@@ -264,27 +269,66 @@ export function ProjectUsagePanel({
         </Select.Root>
       </div>
 
-      {displayEntries.length === 0 ? (
+      {initialLoading ? (
+        <ProjectUsageSkeleton />
+      ) : displayEntries.length === 0 ? (
         <div className="text-sm text-oai-gray-400 dark:text-oai-gray-400">{emptyLabel}</div>
       ) : (
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
-          {displayEntries.map((entry) => (
-            <ProjectUsageCard
-              key={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
-              entryKey={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
-              entry={entry}
-              placeholder={placeholder}
-              tokensLabel={tokensLabel}
-              starsLabel={starsLabel}
-              tokenFormatOptions={tokenFormatOptions}
-              expanded={expandedKey === `${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
-              onToggleExpand={(entryKey) =>
-                setExpandedKey((current) => (current === entryKey ? null : entryKey))
-              }
-            />
-          ))}
-        </div>
+        <>
+          {loading ? (
+            <div className="mb-3 text-xs font-medium text-oai-gray-500 dark:text-oai-gray-400">
+              Refreshing project usage...
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+            {displayEntries.map((entry) => (
+              <ProjectUsageCard
+                key={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
+                entryKey={`${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
+                entry={entry}
+                placeholder={placeholder}
+                tokensLabel={tokensLabel}
+                starsLabel={starsLabel}
+                tokenFormatOptions={tokenFormatOptions}
+                expanded={expandedKey === `${entry?.project_key || "repo"}-${entry?.project_ref || ""}`}
+                onToggleExpand={(entryKey) =>
+                  setExpandedKey((current) => (current === entryKey ? null : entryKey))
+                }
+              />
+            ))}
+          </div>
+        </>
       )}
+    </div>
+  );
+}
+
+function ProjectUsageSkeleton() {
+  return (
+    <div aria-busy="true">
+      <div className="mb-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+        Loading project usage...
+      </div>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((index) => (
+          <div
+            key={index}
+            className="vd-card-solid rounded-lg border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+          >
+            <div className="flex items-center gap-3">
+              <div className="shimmer h-10 w-10 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="shimmer h-3 w-32 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+                <div className="shimmer h-3 w-20 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-8 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -325,6 +369,7 @@ function ProjectUsageCard({
   const lastUsed = formatLastUsed(entry?.last_seen_at);
   const totalCost = formatProjectUsageCostLabel(resolveProjectCost(entry), entry?.cost_estimated === true);
   const topModelHint = resolveTopModel(entry);
+  const decommissioned = isDecommissionedProject(entry);
   const githubAria = copy("dashboard.projects.github_link_aria", { project: displayName });
   const providers = Array.isArray(entry?.providers) ? entry.providers : [];
   const showExternalLink = Boolean(href && href !== "#");
@@ -350,8 +395,15 @@ function ProjectUsageCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-oai-black dark:text-oai-white">
-                  {displayName}
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <span className="truncate text-sm font-medium text-oai-black dark:text-oai-white">
+                    {displayName}
+                  </span>
+                  {decommissioned ? (
+                    <span className="vd-chip inline-flex shrink-0 items-center rounded-md border border-amber-300/60 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                      {copy("shared.badge.decommissioned")}
+                    </span>
+                  ) : null}
                 </div>
                 {lastUsed ? (
                   <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">

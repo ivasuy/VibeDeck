@@ -29,36 +29,62 @@ async function _git(repoRoot, args) {
   return execa('git', ['-C', repoRoot, ...args], { stdio: 'pipe' });
 }
 
-async function _reflogLines(repoRoot) {
-  // Must run exactly per spec (even if %gI is unsupported by the user's git version).
-  const primary = await _git(repoRoot, ['reflog', 'show', '--date=iso-strict', '--format=%gd|%gs|%gI|%ad', 'HEAD']);
-  const lines = primary.stdout.trim() ? primary.stdout.trim().split('\n') : [];
-  if (lines.length === 0) return { lines: [], shas: [] };
-
-  const parsed = lines.map((line) => {
-    const parts = line.split('|');
-    return {
-      raw: line,
-      selector: parts[0] || '',
-      subject: parts[1] || '',
-      shaField: parts[2] || '',
-      dateField: parts[3] || '',
-    };
-  });
-
-  const needsFallback = parsed.some((p) => !isFullSha(p.shaField));
-  if (!needsFallback) return { lines: parsed, shas: parsed.map((p) => p.shaField.trim()) };
-
-  const shaOut = await _git(repoRoot, ['reflog', 'show', '--format=%H', 'HEAD']);
-  const shaLines = shaOut.stdout.trim() ? shaOut.stdout.trim().split('\n') : [];
-  const shas = parsed.map((p, i) => {
-    const candidate = (shaLines[i] || '').trim();
-    return isFullSha(candidate) ? candidate : p.shaField.trim();
-  });
-  return { lines: parsed, shas };
+function getCacheMap(cache, key) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache[key] instanceof Map)) {
+    cache[key] = new Map();
+  }
+  return cache[key];
 }
 
-async function resolveBranchTierC({ repoRoot, when } = {}) {
+async function computeWithCacheAsync(cache, key, cacheKey, compute) {
+  const map = getCacheMap(cache, key);
+  if (!map) return compute();
+  if (map.has(cacheKey)) return map.get(cacheKey);
+  const pending = Promise.resolve().then(compute);
+  map.set(cacheKey, pending);
+  try {
+    const value = await pending;
+    map.set(cacheKey, value);
+    return value;
+  } catch (error) {
+    map.delete(cacheKey);
+    throw error;
+  }
+}
+
+async function _reflogLines(repoRoot, cache = null) {
+  return computeWithCacheAsync(cache, 'tierCReflogByRepo', repoRoot, async () => {
+    // Must run exactly per spec (even if %gI is unsupported by the user's git version).
+    const primary = await _git(repoRoot, ['reflog', 'show', '--date=iso-strict', '--format=%gd|%gs|%gI|%ad', 'HEAD']);
+    const lines = primary.stdout.trim() ? primary.stdout.trim().split('\n') : [];
+    if (lines.length === 0) return { lines: [], shas: [] };
+
+    const parsed = lines.map((line) => {
+      const parts = line.split('|');
+      return {
+        raw: line,
+        selector: parts[0] || '',
+        subject: parts[1] || '',
+        shaField: parts[2] || '',
+        dateField: parts[3] || '',
+      };
+    });
+
+    const needsFallback = parsed.some((p) => !isFullSha(p.shaField));
+    if (!needsFallback) return { lines: parsed, shas: parsed.map((p) => p.shaField.trim()) };
+
+    const shaOut = await _git(repoRoot, ['reflog', 'show', '--format=%H', 'HEAD']);
+    const shaLines = shaOut.stdout.trim() ? shaOut.stdout.trim().split('\n') : [];
+    const shas = parsed.map((p, i) => {
+      const candidate = (shaLines[i] || '').trim();
+      return isFullSha(candidate) ? candidate : p.shaField.trim();
+    });
+    return { lines: parsed, shas };
+  });
+}
+
+async function resolveBranchTierC({ repoRoot, when, cache = null } = {}) {
   if (!isNonEmptyString(repoRoot)) throw new TypeError('resolveBranchTierC: repoRoot must be a non-empty string');
   if (!isNonEmptyString(when)) throw new TypeError('resolveBranchTierC: when must be a non-empty ISO string');
 
@@ -67,7 +93,7 @@ async function resolveBranchTierC({ repoRoot, when } = {}) {
 
   let reflog;
   try {
-    reflog = await _reflogLines(repoRoot);
+    reflog = await _reflogLines(repoRoot, cache);
   } catch (err) {
     const msg = err && err.stderr ? String(err.stderr) : String(err && err.message ? err.message : err);
     // Zero-commit repos often error on HEAD ambiguity; treat as empty reflog.
@@ -97,13 +123,14 @@ async function resolveBranchTierC({ repoRoot, when } = {}) {
   const fullSha = (reflog.shas[bestIdx] || '').trim();
   if (!isFullSha(fullSha)) return null;
 
-  let name;
-  try {
-    const res = await _git(repoRoot, ['name-rev', '--name-only', fullSha]);
-    name = res.stdout.trim();
-  } catch {
-    name = 'undefined';
-  }
+  const name = await computeWithCacheAsync(cache, 'tierCNameRevByRepoSha', `${repoRoot}\u0000${fullSha}`, async () => {
+    try {
+      const res = await _git(repoRoot, ['name-rev', '--name-only', fullSha]);
+      return res.stdout.trim();
+    } catch {
+      return 'undefined';
+    }
+  });
 
   let branch = name;
   if (!isNonEmptyString(branch) || branch === 'undefined') {

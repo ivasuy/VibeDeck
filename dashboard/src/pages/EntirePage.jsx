@@ -1,37 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { copy } from "../lib/copy";
 import { getBranchUsage, getCheckpoints, getEntireStatus, getKnownRepos, hideKnownRepo } from "../lib/vibedeck-api";
-import { RepoPathSelector } from "../components/entire/RepoPathSelector";
-import { EntireStatusCard } from "../components/entire/EntireStatusCard";
-import { CheckpointList } from "../components/entire/CheckpointList";
-import { EntireActionsPanel } from "../components/entire/EntireActionsPanel";
-import { AdvancedConfigurePanel } from "../components/entire/AdvancedConfigurePanel";
-import { EntireMaintenancePanel } from "../components/entire/EntireMaintenancePanel";
-import { RecentReposPane } from "../components/entire/RecentReposPane";
+import { EntireCommandCenter } from "../components/entire/EntireCommandCenter";
+import { CheckpointTimeline } from "../components/entire/CheckpointTimeline";
+import { EntireControlPanel } from "../components/entire/EntireControlPanel";
 import { PageFrame } from "../components/PageFrame.jsx";
-import { cn } from "../lib/cn";
-
-function WorkspacePanel({ title = "", subtitle = "", headerHidden = false, className = "", bodyClassName = "", children }) {
-  return (
-    <section className={cn(
-      "vd-card flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] shadow-glass",
-      className,
-    )}
-    >
-      {headerHidden ? null : (
-        <header className="shrink-0 border-b border-[var(--vd-border)] px-4 py-3">
-          {title ? <h2 className="text-sm font-semibold text-oai-black dark:text-white">{title}</h2> : null}
-          {subtitle ? (
-            <p className="mt-1 text-xs leading-5 text-oai-gray-500 dark:text-oai-gray-400">{subtitle}</p>
-          ) : null}
-        </header>
-      )}
-      <div className={cn("min-h-0 flex-1 overflow-auto p-5", bodyClassName)}>
-        {children}
-      </div>
-    </section>
-  );
-}
 
 export function EntirePage() {
   const [repoInput, setRepoInput] = useState("");
@@ -46,6 +19,7 @@ export function EntirePage() {
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const [checkpointsError, setCheckpointsError] = useState("");
   const [checkpointsData, setCheckpointsData] = useState(null);
+  const loadSeqRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +53,8 @@ export function EntirePage() {
       setRepoError(copy("entire.repo.validation.absolute_path"));
       return;
     }
+    const seq = loadSeqRef.current + 1;
+    loadSeqRef.current = seq;
     setRepoInput(repo);
     setRepoError("");
     setSelectedRepo(repo);
@@ -97,6 +73,8 @@ export function EntirePage() {
       getEntireStatus(repo),
       getCheckpoints(repo),
     ]);
+
+    if (loadSeqRef.current !== seq) return;
 
     if (statusResult.status === "fulfilled") {
       setStatusData(statusResult.value || null);
@@ -143,89 +121,43 @@ export function EntirePage() {
         setCheckpointsError("");
       }
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : copy("entire.repo.validation.absolute_path");
+      const message = cause instanceof Error ? cause.message : copy("entire.repo.remove.error_fallback");
       setRepoError(message);
     }
   }, [selectedRepo]);
 
   return (
-    <PageFrame hideHeader compact maxWidth="max-w-[1760px]">
-      <div className="flex h-full min-h-0 max-h-full flex-col gap-5 overflow-y-auto overflow-x-hidden pr-1">
-        <WorkspacePanel
-          headerHidden
-          className="shrink-0"
-          bodyClassName="overflow-hidden p-5"
-        >
-          <RepoPathSelector
-            value={repoInput}
-            onChange={setRepoInput}
-            onSubmit={loadRepo}
-            suggestions={repoSuggestions}
-            loading={statusLoading || checkpointsLoading}
-            error={repoError}
-            description={copy("entire.repo.subtitle")}
+    <PageFrame hideHeader compact maxWidth="max-w-[1680px]">
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col gap-5 overflow-hidden">
+        <EntireCommandCenter
+          repoInput={repoInput}
+          onRepoInputChange={setRepoInput}
+          onRepoSubmit={loadRepo}
+          repoSuggestions={repoSuggestions}
+          selectedRepo={selectedRepo}
+          onRecentRepoSelect={loadRepo}
+          onRecentRepoRemove={removeRepo}
+          repoLoading={statusLoading || checkpointsLoading}
+          repoError={repoError}
+          status={statusData}
+          statusLoading={statusLoading}
+          statusError={statusError}
+          className="shrink-0 xl:h-[280px]"
+        />
+
+        <div className="grid min-h-0 flex-1 gap-5 overflow-hidden xl:grid-cols-[minmax(0,1fr)_minmax(440px,520px)]">
+          <CheckpointTimeline
+            repo={selectedRepo}
+            checkpoints={checkpointsData}
+            loading={checkpointsLoading}
+            error={checkpointsError}
+            className="min-h-0"
           />
-        </WorkspacePanel>
-
-        <div className="grid shrink-0 gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
-          <div className="flex min-h-0 flex-col gap-5">
-            <RecentReposPane
-              className="h-[min(44dvh,440px)] min-h-[220px] shrink-0"
-              repos={repoSuggestions}
-              selectedRepo={selectedRepo}
-              onSelect={loadRepo}
-              onRemove={removeRepo}
-            />
-            <WorkspacePanel
-              title={copy("entire.status.title")}
-              className="shrink-0"
-              bodyClassName="overflow-hidden p-5"
-            >
-              <EntireStatusCard status={statusData} loading={statusLoading} error={statusError} />
-            </WorkspacePanel>
-          </div>
-
-          <div className="flex min-h-0 flex-col gap-5">
-            <WorkspacePanel
-              headerHidden
-              className="shrink-0"
-              bodyClassName="overflow-hidden p-5"
-            >
-              <h2 className="sr-only">Controls</h2>
-              {selectedRepo ? (
-                <div className="grid min-h-0 gap-4 xl:grid-cols-[250px_minmax(300px,1fr)_220px]">
-                  <section className="min-h-0 overflow-hidden">
-                    <h3 className="sr-only">Checkpoint id</h3>
-                    <EntireMaintenancePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                  </section>
-
-                  <section className="min-h-0 overflow-hidden border-t border-[var(--vd-border)] pt-4 xl:border-l xl:border-r xl:border-t-0 xl:px-4 xl:pt-0">
-                    <h3 className="sr-only">Actions</h3>
-                    <EntireActionsPanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                  </section>
-
-                  <section className="min-h-0 overflow-hidden border-t border-[var(--vd-border)] pt-4 xl:border-t-0 xl:pt-0">
-                    <h3 className="sr-only">Configure</h3>
-                    <AdvancedConfigurePanel repo={selectedRepo} onActionSuccess={refreshSelectedRepo} />
-                  </section>
-                </div>
-              ) : (
-                <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_300px]">
-                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.rewind.input_label")}</p>
-                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.actions.empty")}</p>
-                  <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.configure.empty")}</p>
-                </div>
-              )}
-            </WorkspacePanel>
-
-            <CheckpointList
-              className={cn("h-[clamp(420px,calc(100dvh-360px),620px)] min-h-0 shrink-0")}
-              repo={selectedRepo}
-              checkpoints={checkpointsData}
-              loading={checkpointsLoading}
-              error={checkpointsError}
-            />
-          </div>
+          <EntireControlPanel
+            repo={selectedRepo}
+            onActionSuccess={refreshSelectedRepo}
+            className="h-full min-h-0"
+          />
         </div>
       </div>
     </PageFrame>

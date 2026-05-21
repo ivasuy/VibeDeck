@@ -37,15 +37,15 @@ function deriveMissingFromState({ state, readmeSyncConfig, githubToken }) {
 
 async function collectMissingPrerequisites({
   bootstrapState = null,
-  readmeSyncConfig = null,
-  githubToken = null,
+  readmeSyncConfig,
+  githubToken,
   platform = DEFAULT_PLATFORM,
 } = {}) {
   if (platform !== 'darwin') return [];
 
   const state = bootstrapState || (await readBootstrapState());
-  const config = readmeSyncConfig === null ? await readReadmeSyncConfig() : readmeSyncConfig;
-  const token = githubToken === null ? await readGitHubToken() : githubToken;
+  const config = readmeSyncConfig === undefined ? await readReadmeSyncConfig() : readmeSyncConfig;
+  const token = githubToken === undefined ? await readGitHubToken() : githubToken;
 
   return deriveMissingFromState({
     state,

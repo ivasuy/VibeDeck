@@ -1,8 +1,8 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { cleanup, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "../../test/test-utils";
 import { CheckpointFileInspector } from "./CheckpointFileInspector";
 
@@ -29,6 +29,26 @@ describe("CheckpointFileInspector", () => {
     expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Raw" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Parsed" })).toBeNull();
+  });
+
+  it("shows parse errors in preview mode for json files", () => {
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/broken.json",
+          file_name: "broken.json",
+          kind: "json",
+          raw: "{\"broken\":",
+          parsed: null,
+          parse_error: "Unexpected end of JSON input",
+          size_bytes: 10,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Parse error")).toBeTruthy();
+    expect(screen.getByText("Unexpected end of JSON input")).toBeTruthy();
   });
 
   it("shows parsed for hash files", () => {
@@ -78,6 +98,51 @@ describe("CheckpointFileInspector", () => {
     expect(screen.queryByText("12,345")).toBeNull();
     expect(screen.queryByText("claude-sonnet-4-6")).toBeNull();
     expect(screen.queryByText("claude")).toBeNull();
+  });
+
+  it("caps large raw payload rendering and shows a truncation notice", async () => {
+    const longRaw = "x".repeat(12050);
+
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/large.txt",
+          file_name: "large.txt",
+          kind: "text",
+          raw: longRaw,
+          parsed: null,
+          size_bytes: longRaw.length,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+
+    expect(await screen.findByText("Preview truncated to 12,000 characters.")).toBeTruthy();
+    expect(screen.queryByText(longRaw)).toBeNull();
+  });
+
+  it("caps large text previews in the default preview tab", async () => {
+    const longRaw = "y".repeat(12050);
+
+    render(
+      <CheckpointFileInspector
+        file={{
+          path: "06/e2abdc1ec6/large.txt",
+          file_name: "large.txt",
+          kind: "text",
+          raw: longRaw,
+          parsed: null,
+          size_bytes: longRaw.length,
+          line_count: 1,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Preview" })).toBeTruthy();
+    expect(await screen.findByText("Preview truncated to 12,000 characters.")).toBeTruthy();
+    expect(screen.queryByText(longRaw)).toBeNull();
   });
 
   it("renders unmatched and ambiguous usage states without zero-dollar fallback", () => {
@@ -177,5 +242,77 @@ describe("CheckpointFileInspector", () => {
 
     expect(screen.getByText("Usage not linked")).toBeTruthy();
     expect(screen.queryByText("$0.00")).toBeNull();
+  });
+
+  it("shows copied status when clipboard writeText resolves", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const originalClipboard = navigator.clipboard;
+
+    try {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+
+      render(
+        <CheckpointFileInspector
+          file={{
+            path: "06/e2abdc1ec6/prompt.txt",
+            file_name: "prompt.txt",
+            kind: "text",
+            raw: "Quality review",
+            parsed: null,
+            size_bytes: 14,
+            line_count: 1,
+          }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+      expect(writeText).toHaveBeenCalledWith("Quality review");
+      await waitFor(() => expect(screen.getByText("Copied")).toBeTruthy());
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
+  it("shows copy failed status when clipboard writeText rejects", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    const originalClipboard = navigator.clipboard;
+
+    try {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+
+      render(
+        <CheckpointFileInspector
+          file={{
+            path: "06/e2abdc1ec6/prompt.txt",
+            file_name: "prompt.txt",
+            kind: "text",
+            raw: "Quality review",
+            parsed: null,
+            size_bytes: 14,
+            line_count: 1,
+          }}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+      expect(writeText).toHaveBeenCalledWith("Quality review");
+      await waitFor(() => expect(screen.getByText("Copy failed")).toBeTruthy());
+    } finally {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
   });
 });

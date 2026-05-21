@@ -2,6 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  LIVE_SESSIONS_CACHE_KEY,
   reduceLiveSessionEvent,
   useVibeDeckLiveSessions,
 } from "./use-vibedeck-live-sessions";
@@ -125,11 +126,13 @@ describe("useVibeDeckLiveSessions", () => {
 
   beforeEach(() => {
     MockEventSource.instances = [];
+    window.sessionStorage.clear();
     // @ts-expect-error test stub
     globalThis.EventSource = MockEventSource;
   });
 
   afterEach(() => {
+    window.sessionStorage.clear();
     globalThis.EventSource = originalEventSource;
     vi.restoreAllMocks();
   });
@@ -287,6 +290,49 @@ describe("useVibeDeckLiveSessions", () => {
 
     expect(result.current.status).toBe("degraded");
     expect(result.current.error).toBeTruthy();
+  });
+
+  it("hydrates from the last good snapshot and treats disconnects as reconnecting when data exists", () => {
+    window.sessionStorage.setItem(
+      `vibedeck.lastGood.${LIVE_SESSIONS_CACHE_KEY}`,
+      JSON.stringify({
+        savedAt: "2026-05-17T00:00:00.000Z",
+        value: {
+          sessions: [{ provider: "codex", session_id: "cached", total_tokens: 10 }],
+          workstreams: [{ id: "project:vibedeck", audit_total_tokens: 10 }],
+          totals: { audit_tokens: 10 },
+          generatedAt: "2026-05-17T00:00:00.000Z",
+          lastSyncAt: "2026-05-17T00:00:00.000Z",
+          canonicalIncomplete: false,
+          liveCanonical: { complete: true },
+        },
+      }),
+    );
+
+    const { result } = renderHook(() => useVibeDeckLiveSessions());
+    const source = MockEventSource.instances[0];
+
+    expect(result.current.hasData).toBe(true);
+    expect(result.current.initialLoading).toBe(false);
+    expect(result.current.stale).toBe(true);
+    expect(result.current.sessions[0]).toMatchObject({ session_id: "cached" });
+    expect(result.current.totals.audit_tokens).toBe(10);
+
+    act(() => {
+      source.emitError();
+    });
+
+    expect(result.current.status).toBe("reconnecting");
+    expect(result.current.reconnecting).toBe(true);
+    expect(result.current.error).toBeNull();
+    expect(result.current.sessions[0]).toMatchObject({ session_id: "cached" });
+
+    act(() => {
+      source.emitOpen();
+    });
+
+    expect(result.current.status).toBe("connected");
+    expect(result.current.reconnecting).toBe(false);
   });
 
   it("closes EventSource on cleanup", () => {

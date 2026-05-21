@@ -2,6 +2,20 @@
 
 const { getRepoFile, putRepoFile } = require('./github');
 
+function encodePathPart(value) {
+  return encodeURIComponent(String(value || '').trim());
+}
+
+function buildManagedImageUrl({ owner, repo, branch, svgPath, cacheKey }) {
+  const normalizedPath = String(svgPath || '')
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const base = `https://raw.githubusercontent.com/${encodePathPart(owner)}/${encodePathPart(repo)}/${encodePathPart(branch || 'main')}/${normalizedPath}`;
+  if (!cacheKey) return base;
+  return `${base}?v=${encodeURIComponent(String(cacheKey))}`;
+}
+
 function buildManagedReadmeBlock({ imagePath }) {
   return [
     '<!-- vibedeck:stats:start -->',
@@ -39,7 +53,7 @@ async function pushBannerAndReadme({ config, token, svg, fetchImpl = fetch }) {
     token,
     fetchImpl,
   });
-  await putRepoFile({
+  const svgWriteResult = await putRepoFile({
     owner,
     repo,
     path: svgPath,
@@ -49,6 +63,11 @@ async function pushBannerAndReadme({ config, token, svg, fetchImpl = fetch }) {
     sha: existingSvg?.sha || null,
     fetchImpl,
   });
+  const cacheKey =
+    svgWriteResult?.content?.sha ||
+    svgWriteResult?.commit?.sha ||
+    existingSvg?.sha ||
+    new Date().toISOString();
 
   const existingReadme = await getRepoFile({
     owner,
@@ -62,7 +81,13 @@ async function pushBannerAndReadme({ config, token, svg, fetchImpl = fetch }) {
     readme: existingReadme?.content || '',
     markerStart,
     markerEnd,
-    imagePath: `./${svgPath}`,
+    imagePath: buildManagedImageUrl({
+      owner,
+      repo,
+      branch,
+      svgPath,
+      cacheKey,
+    }),
   });
   await putRepoFile({
     owner,
@@ -78,6 +103,7 @@ async function pushBannerAndReadme({ config, token, svg, fetchImpl = fetch }) {
 }
 
 module.exports = {
+  buildManagedImageUrl,
   buildManagedReadmeBlock,
   upsertManagedReadmeBlock,
   pushBannerAndReadme,

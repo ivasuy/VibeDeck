@@ -78,6 +78,8 @@ export function DashboardView(props) {
     sortIconFor,
     pagedDetails,
     dailyBreakdownRows,
+    dailyBreakdownLoading,
+    dailyBreakdownError,
     dailyBreakdownColumns,
     dailyBreakdownAriaSortFor,
     dailyBreakdownSortIconFor,
@@ -90,6 +92,8 @@ export function DashboardView(props) {
     detailsPageCount,
     detailsPage,
     setDetailsPage,
+    projectUsageLoading,
+    projectUsageError,
   } = props;
 
 
@@ -250,7 +254,11 @@ export function DashboardView(props) {
                       projectEntries={projectUsageEntries}
                       projectLimit={projectUsageLimit}
                       onProjectLimitChange={setProjectUsageLimit}
+                      projectLoading={projectUsageLoading}
+                      projectError={projectUsageError}
                       copy={copy}
+                      dailyLoading={dailyBreakdownLoading}
+                      dailyError={dailyBreakdownError}
                       hasDetailsActual={hasDetailsActual}
                       dailyEmptyPrefix={dailyEmptyPrefix}
                       installSyncCmd={installSyncCmd}

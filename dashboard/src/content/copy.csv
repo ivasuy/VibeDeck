@@ -13,6 +13,7 @@ shared.confidence.high,shared,*,Shared,confidence_high,high,,active
 shared.confidence.medium,shared,*,Shared,confidence_medium,medium,,active
 shared.confidence.low,shared,*,Shared,confidence_low,low,,active
 shared.confidence.unattributed,shared,*,Shared,confidence_unattributed,unattributed,,active
+shared.badge.decommissioned,shared,*,Shared,badge_decommissioned,Decommissioned,,active
 brand.name,shared,*,Shared,brand_name,VibeDeck,,active
 error.boundary.title,shared,*,ErrorBoundary,title,Something went wrong,,active
 error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to render,,active
@@ -483,7 +484,7 @@ skills.browse.placeholder_skillssh,ui,SkillsPage,SkillsPage,browse_placeholder_s
 skills.browse.empty_sources,ui,SkillsPage,SkillsPage,browse_empty_sources,Add a GitHub repository below to start browsing skills.,,active
 skills.browse.manage_sources,ui,SkillsPage,SkillsPage,browse_manage_sources,Manage sources,,active
 skills.browse.hint_skillssh,ui,SkillsPage,SkillsPage,browse_hint_skillssh,Type at least 2 characters to search skills.sh.,,active
-skills.browse.loading_hint,ui,SkillsPage,SkillsPage,browse_loading_hint,Fetching skill metadata from GitHub. First load can take up to a minute; results are cached.,,active
+skills.browse.loading_hint,ui,SkillsPage,SkillsPage,browse_loading_hint,Loading skills from GitHub. Metadata indexing continues in the background.,,active
 skills.error.generic,ui,SkillsPage,SkillsPage,error_generic,Skill operation failed.,,active
 skills.confirm.remove_title,ui,SkillsPage,SkillsPage,confirm_remove_title,Remove {{name}}?,,active
 skills.confirm.remove_managed,ui,SkillsPage,SkillsPage,confirm_remove_managed,This skill will be removed from every connected AI tool. You'll have a few seconds to undo.,,active
@@ -494,11 +495,16 @@ shared.action.cancel,shared,*,Shared,action_cancel,Cancel,,active
 skills.empty.my,ui,SkillsPage,SkillsPage,empty_my,No skills yet. Open Discover to search and install.,,active
 skills.empty.my_cta,ui,SkillsPage,SkillsPage,empty_my_cta,Browse,,active
 skills.empty.browse,ui,SkillsPage,SkillsPage,empty_browse,No skills found.,,active
+skills.empty.repo_no_skills,ui,SkillsPage,SkillsPage,empty_repo_no_skills,No SKILL.md files found in {{repo}}. This repository may contain markdown docs, but VibeDeck can only install folders that include SKILL.md.,,active
 skills.empty.search,ui,SkillsPage,SkillsPage,empty_search,No matching skills found.,,active
 skills.repo.placeholder,ui,SkillsPage,SkillsPage,repo_placeholder,owner/repository,,active
 skills.repo.add,ui,SkillsPage,SkillsPage,repo_add,Add repository,,active
+skills.repo.adding,ui,SkillsPage,SkillsPage,repo_adding,Checking repository…,,active
+skills.repo.done,ui,SkillsPage,SkillsPage,repo_done,Done,,active
 skills.repo.invalid,ui,SkillsPage,SkillsPage,repo_invalid,Use owner/repository or a GitHub repository URL.,,active
 skills.repo.remove,ui,SkillsPage,RepoRow,repo_remove,Remove repository,,active
+skills.repo.subtitle,ui,SkillsPage,SkillsPage,repo_subtitle,Only repositories with SKILL.md files can be installed.,,active
+skills.repo.title,ui,SkillsPage,SkillsPage,repo_title,Skill repositories,,active
 settings.appearance.language.label,ui,SettingsPage,SettingsPage,language_label,Language,,active
 settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,Use System to follow your computer language by default.,,active
 settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,System,,active
@@ -513,6 +519,7 @@ entire.repo.input.placeholder,dashboard,EntirePage,RepoPathSelector,input_placeh
 entire.repo.action.load,dashboard,EntirePage,RepoPathSelector,action_load,Load repo,,active
 entire.repo.action.loading,dashboard,EntirePage,RepoPathSelector,action_loading,Loading…,,active
 entire.repo.validation.absolute_path,dashboard,EntirePage,RepoPathSelector,validation_absolute_path,Enter an absolute repository path.,,active
+entire.repo.remove.error_fallback,dashboard,EntirePage,RepoPathSelector,remove_error_fallback,Unable to remove recent repository.,,active
 entire.repo.suggestions.label,dashboard,EntirePage,RepoPathSelector,suggestions_label,Recent repos,,active
 entire.status.title,dashboard,EntirePage,EntireStatusCard,title,Entire status,,active
 entire.status.loading,dashboard,EntirePage,EntireStatusCard,loading,Loading status…,,active

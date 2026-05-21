@@ -42,9 +42,17 @@ test('processSessionEvent persists deduplicated session events', async () => {
     const count = db
       .prepare("SELECT COUNT(*) AS n FROM vibedeck_session_events WHERE provider = 'codex' AND session_id = 's1'")
       .get().n;
+    const facts = db
+      .prepare("SELECT branch, total_tokens FROM vibedeck_branch_usage_facts WHERE provider = 'codex' AND session_id = 's1'")
+      .all()
+      .map((row) => ({
+        branch: row.branch,
+        total_tokens: row.total_tokens,
+      }));
     db.close();
 
     assert.equal(count, 2);
+    assert.deepEqual(facts, [{ branch: 'No branch', total_tokens: 10 }]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

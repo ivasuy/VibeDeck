@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-05-20T12:18:51.476Z",
+  "stages": [
+    {
+      "name": "recent_codex_parse",
+      "duration_ms": 1013.624,
+      "counters": {
+        "files_processed": 453,
+        "events_aggregated": 20700
+      }
+    },
+    {
+      "name": "recent_claude_parse",
+      "duration_ms": 946.854,
+      "counters": {
+        "files_processed": 38,
+        "events_aggregated": 2549
+      }
+    },
+    {
+      "name": "recent_lane_session_event_flush",
+      "duration_ms": 127905.923,
+      "counters": {
+        "recent_session_events_flushed": 23054,
+        "historical_session_events_flushed": 24372,
+        "flush_count": 409
+      }
+    },
+    {
+      "name": "historical_codex_parse",
+      "duration_ms": 1240.289,
+      "counters": {
+        "files_processed": 376,
+        "events_aggregated": 19799
+      }
+    },
+    {
+      "name": "historical_claude_parse",
+      "duration_ms": 494.332,
+      "counters": {
+        "files_processed": 69,
+        "events_aggregated": 1899
+      }
+    },
+    {
+      "name": "repair_pass",
+      "duration_ms": 26732.312,
+      "counters": {
+        "repair_candidates_attempted": 238,
+        "dirty_repair_candidates_attempted": 238
+      }
+    },
+    {
+      "name": "branch_fact_rebuild_pass",
+      "duration_ms": 27335.112,
+      "counters": {
+        "dirty_branch_facts_rebuilt": 1119
+      }
+    }
+  ],
+  "counters": {
+    "recent_session_events_flushed": 23054,
+    "historical_session_events_flushed": 24372,
+    "repair_candidates_attempted": 238,
+    "branch_facts_rebuilt_by_scope": {
+      "dirty": 1119
+    }
+  }
+}

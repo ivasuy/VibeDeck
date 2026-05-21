@@ -8,6 +8,7 @@ const { test } = require("node:test");
 
 const { ensureSchema } = require("../src/lib/db");
 const { createLocalApiHandler } = require("../src/lib/local-api");
+const { rebuildAllBranchUsageFacts } = require("../src/lib/sessions/branch-usage-facts");
 
 async function writeJsonLines(filePath, rows) {
   await fs.promises.writeFile(
@@ -256,6 +257,7 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -264,12 +266,99 @@ test("project usage merges fresh local repo usage from SQLite ahead of stale pro
 
     assert.deepEqual(
       body.entries.map((entry) => entry.project_key),
-      ["VibeDeck", "acme/public-alpha"],
+      ["VibeDeck", "SWE-AF"],
     );
     assert.equal(body.entries[0].project_ref, liveRepo);
     assert.equal(body.entries[0].last_seen_at, "2026-05-10T12:55:00.000Z");
     assert.equal(body.entries[0].total_tokens, "525");
-    assert.equal(body.entries.some((entry) => entry.project_ref === missingRepo), false);
+    const missingEntry = body.entries.find((entry) => entry.project_ref === missingRepo);
+    assert.ok(missingEntry);
+    assert.equal(missingEntry.archived, true);
+    assert.equal(missingEntry.project_state, "git_missing");
+  } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage reads tracked existing and decommissioned projects from canonical branch facts", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-usage-"));
+  try {
+    const trackerDir = path.join(tmp, "tracker");
+    const repoRoot = path.join(tmp, "Projects", "repo");
+    const scratchDir = path.join(tmp, "Projects", "scratch");
+    const missingDir = path.join(tmp, "Projects", "gone");
+    initGitRepo(repoRoot, ["main"]);
+    await fs.promises.mkdir(scratchDir, { recursive: true });
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "git-existing",
+        started_at: "2026-05-10T09:00:00.000Z",
+        ended_at: "2026-05-10T09:15:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: "main",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 100,
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "non-git-existing",
+        started_at: "2026-05-10T10:00:00.000Z",
+        ended_at: "2026-05-10T10:15:00.000Z",
+        cwd: scratchDir,
+        repo_root: null,
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 80,
+      });
+      insertSession(db, {
+        provider: "codex",
+        session_id: "cwd-missing",
+        started_at: "2026-05-10T11:00:00.000Z",
+        ended_at: "2026-05-10T11:15:00.000Z",
+        cwd: missingDir,
+        repo_root: null,
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-5",
+        total_tokens: 60,
+      });
+    } finally {
+      db.close();
+    }
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    assert.deepEqual(
+      body.entries.map((entry) => entry.project_key).sort(),
+      ["gone", "repo", "scratch"],
+    );
+    const missing = body.entries.find((entry) => entry.project_ref === missingDir);
+    assert.ok(missing, "deleted cwd-only project must remain visible as historical usage");
+    assert.equal(missing.project_state, "cwd_missing");
+    assert.equal(missing.archived, true);
+    assert.deepEqual(missing.branches, ["No branch"]);
+    const scratch = body.entries.find((entry) => entry.project_ref === scratchDir);
+    assert.ok(scratch, "non-git existing folder must be present by folder ref");
+    assert.equal(scratch.project_state, "non_git_existing");
+    assert.equal(scratch.archived, false);
+    assert.deepEqual(scratch.branches, ["No branch"]);
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
@@ -322,6 +411,7 @@ test("project usage skips remote queue rows when a matching live local repo has 
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -330,12 +420,8 @@ test("project usage skips remote queue rows when a matching live local repo has 
     assert.equal(body.entries[0].project_ref, repoRoot);
     assert.equal(body.entries[0].repo_root, repoRoot);
     assert.equal(body.entries[0].total_tokens, "125");
-    assert.equal(body.entries[0].git_branch_count, 3);
-    assert.deepEqual(body.entries[0].git_branches, [
-      "entire/checkpoints/v1",
-      "main",
-      "publish-main",
-    ]);
+    assert.equal(body.entries[0].git_branch_count, 1);
+    assert.deepEqual(body.entries[0].git_branches, ["main"]);
     assert.deepEqual(
       body.entries[0].top_models.map((model) => model.model),
       ["gpt-5"],
@@ -429,6 +515,7 @@ test("project usage recent sort uses latest session activity instead of latest s
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -513,6 +600,7 @@ test("project usage enriches DB-backed entries with provider and model cost brea
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
 
@@ -643,6 +731,7 @@ test("project usage applies DB-backed from, to, and source filters without break
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const filtered = await callEndpoint(
       queuePath,
@@ -720,6 +809,7 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     } finally {
       db.close();
     }
+    await rebuildAllBranchUsageFacts(dbPath);
 
     const body = await callEndpoint(
       queuePath,
@@ -733,6 +823,58 @@ test("project usage applies timezone-consistent local day filters to DB-backed r
     assert.equal(body.entries[0].providers[0].provider, "codex");
     assert.equal(body.entries[0].providers[0].total_tokens, "120");
   } finally {
+    await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("project usage reads tracked branches without shelling out to git branch by default", async () => {
+  const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vibedeck-project-no-git-hot-path-"));
+  const cp = require("node:child_process");
+  const originalExecFileSync = cp.execFileSync;
+  try {
+    const repoRoot = path.join(tmp, "repo");
+    initGitRepo(repoRoot, ["main", "feature-unused"]);
+    const dbPath = path.join(tmp, "vibedeck.sqlite3");
+    ensureSchema(dbPath);
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "tracked-main",
+        started_at: "2026-05-10T00:00:00.000Z",
+        ended_at: "2026-05-10T00:10:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: "main",
+        branch_resolution_tier: "A",
+        confidence: "high",
+        model: "gpt-4o",
+        total_tokens: 100,
+        total_cost_usd: 0.1,
+      });
+    } finally {
+      db.close();
+    }
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    let gitBranchCalls = 0;
+    cp.execFileSync = (cmd, args, ...rest) => {
+      if (cmd === "git" && Array.isArray(args) && args.includes("branch")) gitBranchCalls += 1;
+      return originalExecFileSync(cmd, args, ...rest);
+    };
+    delete require.cache[require.resolve("../src/lib/project-usage")];
+    const { readProjectUsageEntries } = require("../src/lib/project-usage");
+
+    const entries = readProjectUsageEntries(dbPath);
+    assert.equal(gitBranchCalls, 0);
+    assert.equal(entries.length, 1);
+    assert.deepEqual(entries[0].branches, ["main"]);
+    assert.deepEqual(entries[0].git_branches, ["main"]);
+    assert.deepEqual(entries[0].worktrees[0].git_branches, ["main"]);
+  } finally {
+    cp.execFileSync = originalExecFileSync;
+    delete require.cache[require.resolve("../src/lib/project-usage")];
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
@@ -776,5 +918,109 @@ test("project usage filters project-queue rows by usage bucket day instead of ne
     assert.equal(body.entries[0].total_tokens, "25");
   } finally {
     await fs.promises.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+function insertEvent(db, row) {
+  db.prepare(`
+    INSERT INTO vibedeck_session_events (
+      provider, session_id, event_key, kind, observed_at,
+      started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence,
+      model, delta_tokens, input_tokens, cached_input_tokens,
+      cache_creation_input_tokens, output_tokens, reasoning_output_tokens,
+      conversation_count, total_tokens, created_at
+    ) VALUES (
+      @provider, @session_id, @event_key, 'update', @observed_at,
+      NULL, NULL, NULL,
+      @cwd, @repo_root, NULL, NULL,
+      @branch, @branch_resolution_tier, @confidence,
+      @model, @delta_tokens, @input_tokens, 0,
+      0, @output_tokens, 0,
+      1, @total_tokens, @observed_at
+    )
+  `).run({
+    branch: null,
+    branch_resolution_tier: null,
+    confidence: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: null,
+    delta_tokens: null,
+    ...row,
+  });
+}
+
+test("project usage total is unchanged when unknown branch becomes Historical unknown", async () => {
+  const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vd-project-historical-total-"));
+  const historicalBranchRecovery = require("../src/lib/sessions/historical-branch-recovery");
+  const originalRecover = historicalBranchRecovery.recoverHistoricalBranchForUnknownGit;
+  try {
+    const trackerDir = path.join(root, "tracker");
+    const repoRoot = path.join(root, "VibeDeck");
+    await fs.promises.mkdir(trackerDir, { recursive: true });
+    initGitRepo(repoRoot, ["main"]);
+
+    const queuePath = path.join(trackerDir, "queue.jsonl");
+    const projectQueuePath = path.join(trackerDir, "project.queue.jsonl");
+    const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+
+    await writeJsonLines(queuePath, []);
+    await writeJsonLines(projectQueuePath, []);
+
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    try {
+      insertSession(db, {
+        provider: "codex",
+        session_id: "historical-total",
+        started_at: "2026-05-10T00:00:00.000Z",
+        ended_at: "2026-05-10T00:10:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        branch_resolution_tier: "D",
+        confidence: "unattributed",
+        model: "gpt-5.5",
+        total_tokens: 1000,
+        total_cost_usd: 1.23,
+      });
+      insertEvent(db, {
+        provider: "codex",
+        session_id: "historical-total",
+        event_key: "e1",
+        observed_at: "2026-05-10T00:05:00.000Z",
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: null,
+        model: "gpt-5.5",
+        delta_tokens: 1000,
+        input_tokens: 800,
+        output_tokens: 200,
+      });
+    } finally {
+      db.close();
+    }
+
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = async () => ({
+      branch: "Historical unknown",
+      branch_kind: "historical_unknown",
+      confidence: "low",
+      branch_resolution_tier: "HISTORICAL_GUARD",
+    });
+
+    await rebuildAllBranchUsageFacts(dbPath);
+
+    const body = await callEndpoint(queuePath, "/functions/vibedeck-project-usage-summary");
+
+    const entry = body.entries.find((row) => row.project_key === "VibeDeck");
+    assert.ok(entry);
+    assert.equal(entry.total_tokens, "1000");
+    assert.equal(Number(entry.estimated_total_cost_usd), 1.23);
+    assert.deepEqual(entry.branches, ["Historical unknown"]);
+  } finally {
+    historicalBranchRecovery.recoverHistoricalBranchForUnknownGit = originalRecover;
+    await fs.promises.rm(root, { recursive: true, force: true });
   }
 });

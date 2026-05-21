@@ -43,6 +43,10 @@ function projectInitial(entry) {
   return (name[0] || "?").toUpperCase();
 }
 
+function isDecommissionedProject(entry) {
+  return entry?.archived === true || ["git_missing", "cwd_missing"].includes(String(entry?.project_state || ""));
+}
+
 function resolveBranchCount(entry) {
   const explicit = toKnownNumber(entry?.git_branch_count ?? entry?.worktree_count ?? entry?.branch_count);
   if (explicit != null) return Math.max(0, Math.round(explicit));
@@ -88,6 +92,7 @@ function ProjectUsageCard({ entry, copy }) {
   const providers = providerRows(entry);
   const maxTokens = maxModelTokens(providers);
   const projectTokens = toKnownNumber(resolveProjectTokens(entry)) || 0;
+  const decommissioned = isDecommissionedProject(entry);
   const href = typeof entry?.project_ref === "string" && /^https?:\/\//.test(entry.project_ref)
     ? entry.project_ref
     : null;
@@ -100,8 +105,15 @@ function ProjectUsageCard({ entry, copy }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="truncate oai-text-body-sm font-medium text-oai-black dark:text-oai-white">
-                {projectDisplayName(entry)}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="truncate oai-text-body-sm font-medium text-oai-black dark:text-oai-white">
+                  {projectDisplayName(entry)}
+                </span>
+                {decommissioned ? (
+                  <span className="vd-chip inline-flex shrink-0 items-center rounded-md border border-amber-300/60 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-200">
+                    {copy("shared.badge.decommissioned")}
+                  </span>
+                ) : null}
               </div>
               {entry?.project_ref ? (
                 <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
@@ -214,8 +226,12 @@ export function DataDetails({
   projectEntries = [],
   projectLimit = 3,
   onProjectLimitChange,
+  projectLoading = false,
+  projectError = null,
   // Daily breakdown props
   copy,
+  dailyLoading = false,
+  dailyError = null,
   hasDetailsActual,
   dailyEmptyPrefix,
   installSyncCmd,
@@ -291,20 +307,41 @@ export function DataDetails({
       {/* Projects Tab */}
       {activeTab === "projects" && (
         <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 oai-scrollbar">
-          {projectEntries.slice(0, projectLimit).map((entry) => (
-            <ProjectUsageCard
-              key={entry?.project_key || entry?.project_ref}
-              entry={entry}
-              copy={copy}
-            />
-          ))}
+          {projectLoading && projectEntries.length === 0 ? (
+            <InlineProjectSkeleton />
+          ) : projectError && projectEntries.length === 0 ? (
+            <div className="oai-text-body-sm text-red-700 dark:text-red-300">{projectError}</div>
+          ) : projectEntries.length === 0 ? (
+            <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300">
+              {copy("dashboard.projects.empty")}
+            </div>
+          ) : (
+            <>
+              {projectLoading ? (
+                <div className="oai-text-caption text-oai-gray-500 dark:text-oai-gray-400">
+                  Refreshing project usage...
+                </div>
+              ) : null}
+              {projectEntries.slice(0, projectLimit).map((entry) => (
+                <ProjectUsageCard
+                  key={entry?.project_key || entry?.project_ref}
+                  entry={entry}
+                  copy={copy}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
 
       {/* Daily Tab */}
       {activeTab === "daily" && (
         <div>
-          {dailyBreakdownRows?.length === 0 ? (
+          {dailyLoading && dailyBreakdownRows?.length === 0 ? (
+            <InlineDailySkeleton />
+          ) : dailyError && dailyBreakdownRows?.length === 0 ? (
+            <div className="oai-text-body-sm text-red-700 dark:text-red-300 mb-4">{dailyError}</div>
+          ) : dailyBreakdownRows?.length === 0 ? (
             <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 mb-4">
               {dailyEmptyPrefix}
               <code className="mx-1 rounded border border-oai-gray-300 dark:border-oai-gray-700 oai-bg-elevated px-1.5 py-0.5 font-mono oai-text-caption">
@@ -403,5 +440,52 @@ export function DataDetails({
         </div>
       )}
     </Card>
+  );
+}
+
+function InlineDailySkeleton() {
+  return (
+    <div aria-busy="true">
+      <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 mb-4">
+        Loading usage details...
+      </div>
+      <div className="grid gap-2">
+        {[0, 1, 2, 3, 4].map((index) => (
+          <div
+            key={index}
+            className="shimmer h-9 rounded-md bg-oai-gray-100 dark:bg-oai-gray-800"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InlineProjectSkeleton() {
+  return (
+    <div aria-busy="true" className="space-y-3">
+      <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300">
+        Loading project usage...
+      </div>
+      {[0, 1, 2].map((index) => (
+        <div
+          key={index}
+          className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900"
+        >
+          <div className="flex items-center gap-3">
+            <div className="shimmer h-9 w-9 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="shimmer h-3 w-36 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+              <div className="shimmer h-3 w-48 rounded bg-oai-gray-100 dark:bg-oai-gray-800" />
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {[0, 1, 2, 3].map((slot) => (
+              <div key={slot} className="shimmer h-12 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -89,6 +89,95 @@ test("parseRolloutIncremental ignores repeated token_count records with unchange
   }
 });
 
+test("parseRolloutIncremental emits Codex provider branch when one clean branch is present", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-"));
+  try {
+    const repoRoot = path.join(tmp, "repo");
+    await fs.mkdir(path.join(repoRoot, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoRoot, ".git", "config"),
+      `[remote "origin"]\n\turl = git@github.com:acme/alpha.git\n`,
+      "utf8",
+    );
+
+    const rolloutPath = path.join(repoRoot, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+    const usage = {
+      input_tokens: 1,
+      cached_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    const lines = [
+      buildCodexGitBranchLine("main"),
+      buildSessionMetaLine({ model: "gpt-5", cwd: repoRoot }),
+      buildTokenCountLine({ ts: "2026-01-01T00:00:00.000Z", last: usage, total: usage }),
+    ];
+    await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
+
+    await parseRolloutIncremental({
+      rolloutFiles: [rolloutPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const updateEvent = events.find((event) => event.kind === "update" && event.provider === "codex");
+    assert.ok(updateEvent);
+    assert.equal(updateEvent.branch, "main");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental leaves Codex provider branch null when raw log has mixed branches", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-"));
+  try {
+    const repoRoot = path.join(tmp, "repo");
+    await fs.mkdir(path.join(repoRoot, ".git"), { recursive: true });
+    await fs.writeFile(
+      path.join(repoRoot, ".git", "config"),
+      `[remote "origin"]\n\turl = git@github.com:acme/alpha.git\n`,
+      "utf8",
+    );
+
+    const rolloutPath = path.join(repoRoot, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+    const usage = {
+      input_tokens: 1,
+      cached_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    const lines = [
+      buildCodexGitBranchLine("main"),
+      buildCodexGitBranchLine("feature/changed"),
+      buildSessionMetaLine({ model: "gpt-5", cwd: repoRoot }),
+      buildTokenCountLine({ ts: "2026-01-01T00:00:00.000Z", last: usage, total: usage }),
+    ];
+    await fs.writeFile(rolloutPath, lines.join("\n") + "\n", "utf8");
+
+    await parseRolloutIncremental({
+      rolloutFiles: [rolloutPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const updateEvent = events.find((event) => event.kind === "update" && event.provider === "codex");
+    assert.ok(updateEvent);
+    assert.equal(updateEvent.branch, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental prefers cumulative total_token_usage delta over larger last_token_usage", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-"));
   try {
@@ -2241,6 +2330,148 @@ test("parseClaudeIncremental defaults missing model to unknown", async () => {
   }
 });
 
+test("parseClaudeIncremental emits Claude gitBranch when one clean branch is present", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-claude-"));
+  try {
+    const claudePath = path.join(tmp, "agent-claude.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+
+    const lines = [
+      buildClaudeUsageLine({
+        ts: "2026-01-02T02:05:00.000Z",
+        input: 10,
+        output: 5,
+        model: "claude-sonnet-4-5",
+        gitBranch: "main",
+      }),
+    ];
+    await fs.writeFile(claudePath, lines.join("\n") + "\n", "utf8");
+
+    await parseClaudeIncremental({
+      projectFiles: [{ path: claudePath, source: "claude" }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const updateEvent = events.find((event) => event.kind === "update" && event.provider === "claude");
+    assert.ok(updateEvent);
+    assert.equal(updateEvent.branch, "main");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClaudeIncremental emits Claude gitBranch when branch appears on non-usage line", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-claude-"));
+  try {
+    const claudePath = path.join(tmp, "agent-claude.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+
+    const lines = [
+      buildClaudeBranchOnlyLine({ ts: "2026-01-02T02:04:59.000Z", gitBranch: "main" }),
+      buildClaudeUsageLine({
+        ts: "2026-01-02T02:05:00.000Z",
+        input: 10,
+        output: 5,
+        model: "claude-sonnet-4-5",
+      }),
+    ];
+    await fs.writeFile(claudePath, lines.join("\n") + "\n", "utf8");
+
+    await parseClaudeIncremental({
+      projectFiles: [{ path: claudePath, source: "claude" }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const updateEvent = events.find((event) => event.kind === "update" && event.provider === "claude");
+    assert.ok(updateEvent);
+    assert.equal(updateEvent.branch, "main");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('parseRolloutIncremental calls onFileComplete after each Codex file emits events', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-rollout-file-complete-'));
+  try {
+    const file = path.join(tmp, 'rollout.jsonl');
+    const usage = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    await fs.writeFile(
+      file,
+      `${JSON.stringify({ type: 'session_meta', payload: { cwd: tmp, model: 'gpt-5.4', git: { branch: 'main' } } })}\n${buildTokenCountLine({ ts: '2026-05-11T09:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+
+    const seen = [];
+    const events = [];
+    await parseRolloutIncremental({
+      rolloutFiles: [file],
+      cursors: { version: 1, files: {} },
+      queuePath: path.join(tmp, 'queue.jsonl'),
+      onSessionEvent: (event) => events.push(event),
+      onFileComplete: (payload) => seen.push({ filePath: payload.filePath, events: events.length }),
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].filePath, file);
+    assert.ok(seen[0].events > 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('parseClaudeIncremental calls onFileComplete after each Claude file emits events', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-claude-file-complete-'));
+  try {
+    const file = path.join(tmp, 'claude.jsonl');
+    await fs.writeFile(
+      file,
+      `${JSON.stringify({ type: 'assistant', timestamp: '2026-05-11T09:00:00.000Z', gitBranch: 'main', message: { id: 'm1', model: 'claude-sonnet-4', usage: { input_tokens: 2, output_tokens: 1 } }, requestId: 'r1' })}\n`,
+      'utf8',
+    );
+
+    const seen = [];
+    const events = [];
+    await parseClaudeIncremental({
+      projectFiles: [file],
+      cursors: { version: 1, files: {} },
+      queuePath: path.join(tmp, 'queue.jsonl'),
+      onSessionEvent: (event) => events.push(event),
+      onFileComplete: (payload) => seen.push({ filePath: payload.filePath, events: events.length }),
+    });
+
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].filePath, file);
+    assert.ok(seen[0].events > 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+function buildCodexGitBranchLine(branch) {
+  return JSON.stringify({
+    payload: {
+      git: {
+        branch,
+      },
+    },
+  });
+}
+
 function buildTurnContextLine({ model, cwd }) {
   const payload = { model };
   if (typeof cwd === "string" && cwd.length > 0) {
@@ -2295,9 +2526,19 @@ function buildEveryCodeTokenCountLine({ ts, last, total }) {
   });
 }
 
-function buildClaudeUsageLine({ ts, input, output, model, total, cacheCreation, cacheRead }) {
+function buildClaudeBranchOnlyLine({ ts, gitBranch }) {
   return JSON.stringify({
     timestamp: ts,
+    type: "assistant",
+    gitBranch,
+    message: { content: "branch metadata" },
+  });
+}
+
+function buildClaudeUsageLine({ ts, input, output, model, total, cacheCreation, cacheRead, gitBranch }) {
+  return JSON.stringify({
+    timestamp: ts,
+    gitBranch,
     message: {
       model,
       usage: {

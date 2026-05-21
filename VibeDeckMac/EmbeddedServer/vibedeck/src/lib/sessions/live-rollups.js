@@ -38,6 +38,10 @@ function safeModel(value) {
   return model || 'unknown';
 }
 
+function sessionKey(row) {
+  return `${text(row?.provider)}:${text(row?.session_id)}`;
+}
+
 function projectScopeKey(row) {
   const projectRef = text(row?.parent_repo) || text(row?.repo_common_dir) || text(row?.repo_root);
   if (projectRef) {
@@ -151,11 +155,265 @@ function sumCost(rows) {
   }, { total_cost_usd: 0, known_cost_usd: 0, unknown_count: 0 });
 }
 
+function factCost(row) {
+  const total = row?.total_cost_usd == null ? null : Number(row.total_cost_usd);
+  if (!Number.isFinite(total)) {
+    return {
+      total_cost_usd: null,
+      known_cost_usd: 0,
+      unknown_count: 1,
+      cost_estimated: Boolean(Number(row?.cost_estimated || 0)),
+      cost_quality: text(row?.cost_quality) || 'partial_unknown',
+    };
+  }
+  return {
+    total_cost_usd: total,
+    known_cost_usd: total,
+    unknown_count: 0,
+    cost_estimated: Boolean(Number(row?.cost_estimated || 0)),
+    cost_quality: text(row?.cost_quality) || 'stored',
+  };
+}
+
 function compareLiveRowsActiveFirst(a, b) {
   const aActive = !isSessionEnded(a);
   const bActive = !isSessionEnded(b);
   if (aActive !== bActive) return aActive ? -1 : 1;
   return String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''));
+}
+
+function uniqueSortedSessions(sessionMap) {
+  return Array.from(sessionMap.values()).sort(compareLiveRowsActiveFirst);
+}
+
+function addSessionToSet(set, row) {
+  set.add(sessionKey(row));
+}
+
+function addContributionToBreakdown(entry, { tokens, cost, session, active }) {
+  entry.audit_total_tokens += tokens;
+  entry.audit_known_cost_usd += cost.known_cost_usd;
+  entry.audit_cost_unknown_count += cost.unknown_count;
+  addSessionToSet(entry.audit_session_keys, session);
+
+  if (active) {
+    entry.active_total_tokens += tokens;
+    entry.active_known_cost_usd += cost.known_cost_usd;
+    entry.active_cost_unknown_count += cost.unknown_count;
+    addSessionToSet(entry.active_session_keys, session);
+  } else if (isSessionEnded(session)) {
+    addSessionToSet(entry.recently_completed_keys, session);
+  }
+}
+
+function finalizeFactBreakdown(entry) {
+  return {
+    ...entry,
+    session_count: entry.audit_session_keys.size,
+    active_total_cost_usd: entry.active_cost_unknown_count > 0 ? null : entry.active_known_cost_usd,
+    audit_total_cost_usd: entry.audit_cost_unknown_count > 0 ? null : entry.audit_known_cost_usd,
+  };
+}
+
+function createFactBreakdown(fields) {
+  return {
+    ...fields,
+    session_count: 0,
+    active_total_tokens: 0,
+    audit_total_tokens: 0,
+    active_total_cost_usd: 0,
+    audit_total_cost_usd: 0,
+    active_known_cost_usd: 0,
+    audit_known_cost_usd: 0,
+    active_cost_unknown_count: 0,
+    audit_cost_unknown_count: 0,
+    active_session_keys: new Set(),
+    audit_session_keys: new Set(),
+    recently_completed_keys: new Set(),
+  };
+}
+
+function sortTime(row) {
+  return row?.last_observed_at || row?.first_observed_at || liveSortIso(row) || '';
+}
+
+function buildFactsBySessionKey(branchFacts) {
+  const factsBySessionKey = new Map();
+  for (const fact of Array.isArray(branchFacts) ? branchFacts : []) {
+    const key = sessionKey(fact);
+    if (key === ':') continue;
+    if (!factsBySessionKey.has(key)) factsBySessionKey.set(key, []);
+    factsBySessionKey.get(key).push(fact);
+  }
+  return factsBySessionKey;
+}
+
+function projectSessionToFact(session, fact) {
+  const total = fact?.total_cost_usd == null ? null : Number(fact.total_cost_usd);
+  const finiteCost = Number.isFinite(total) ? total : null;
+  const branch = safeBranch(fact?.branch);
+  const attribution = text(fact?.attribution_branch) || branch;
+  return {
+    ...session,
+    branch,
+    attribution_branch: attribution,
+    branch_kind: text(fact?.branch_kind) || session?.branch_kind || null,
+    branch_resolution_tier: text(fact?.branch_resolution_tier) || session?.branch_resolution_tier || null,
+    confidence: text(fact?.confidence) || session?.confidence || null,
+    model: text(fact?.model) || session?.model || null,
+    total_tokens: Number(fact?.total_tokens || 0) || 0,
+    total_cost_usd: finiteCost,
+    estimated_total_cost_usd: finiteCost,
+    cost_estimated: Boolean(Number(fact?.cost_estimated || 0)),
+    cost_quality: text(fact?.cost_quality) || (finiteCost == null ? 'partial_unknown' : 'stored'),
+  };
+}
+
+function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, visibleSessionKeys = null) {
+  const byBranch = new Map();
+
+  function addContribution({ branch, provider, model, tokens, cost, session, displaySession, sourceRow }) {
+    const key = sessionKey(session);
+    const active = activeSessionKeys.has(key);
+    const sessionForDisplay = displaySession || session;
+
+    if (!byBranch.has(branch)) {
+      byBranch.set(branch, {
+        branch,
+        active_session_count: 0,
+        recently_completed_count: 0,
+        audit_session_count: 0,
+        active_total_tokens: 0,
+        audit_total_tokens: 0,
+        active_total_cost_usd: 0,
+        audit_total_cost_usd: 0,
+        active_known_cost_usd: 0,
+        audit_known_cost_usd: 0,
+        active_cost_unknown_count: 0,
+        audit_cost_unknown_count: 0,
+        active_session_keys: new Set(),
+        audit_session_keys: new Set(),
+        recently_completed_keys: new Set(),
+        providers: new Map(),
+        models: new Map(),
+        sessions: new Map(),
+        newest_active_ms: 0,
+        newest_audit_ms: 0,
+      });
+    }
+
+    const branchEntry = byBranch.get(branch);
+    const sessionMs = toMs(liveSortIso(session)) || 0;
+    const sourceMs = toMs(sortTime(sourceRow)) || 0;
+    if (!visibleSessionKeys || visibleSessionKeys.has(key)) {
+      branchEntry.sessions.set(key, sessionForDisplay);
+    }
+    branchEntry.audit_session_keys.add(key);
+    branchEntry.audit_total_tokens += tokens;
+    branchEntry.audit_known_cost_usd += cost.known_cost_usd;
+    branchEntry.audit_cost_unknown_count += cost.unknown_count;
+    branchEntry.newest_audit_ms = Math.max(branchEntry.newest_audit_ms, sessionMs, sourceMs);
+
+    if (active) {
+      branchEntry.active_session_keys.add(key);
+      branchEntry.active_total_tokens += tokens;
+      branchEntry.active_known_cost_usd += cost.known_cost_usd;
+      branchEntry.active_cost_unknown_count += cost.unknown_count;
+      branchEntry.newest_active_ms = Math.max(branchEntry.newest_active_ms, sessionMs, sourceMs);
+    } else if (isSessionEnded(session)) {
+      branchEntry.recently_completed_keys.add(key);
+    }
+
+    if (!branchEntry.providers.has(provider)) {
+      branchEntry.providers.set(provider, createFactBreakdown({ provider }));
+    }
+    if (!branchEntry.models.has(model)) {
+      branchEntry.models.set(model, createFactBreakdown({ model }));
+    }
+    addContributionToBreakdown(branchEntry.providers.get(provider), { tokens, cost, session, active });
+    addContributionToBreakdown(branchEntry.models.get(model), { tokens, cost, session, active });
+  }
+
+  for (const session of rows) {
+    const facts = factsBySessionKey.get(sessionKey(session));
+    if (facts && facts.length > 0) {
+      for (const fact of facts) {
+        addContribution({
+          branch: safeBranch(fact?.branch),
+          provider: text(fact?.provider) || 'unknown',
+          model: safeModel(fact?.model),
+          tokens: Number(fact?.total_tokens || 0) || 0,
+          cost: factCost(fact),
+          session,
+          displaySession: projectSessionToFact(session, fact),
+          sourceRow: fact,
+        });
+      }
+      continue;
+    }
+
+    addContribution({
+      branch: safeBranch(session?.branch),
+      provider: text(session?.provider) || 'unknown',
+      model: safeModel(session?.model),
+      tokens: Number(session?.total_tokens || 0) || 0,
+      cost: sessionCost(session),
+      session,
+      sourceRow: session,
+    });
+  }
+
+  return Array.from(byBranch.values())
+    .map((row) => ({
+      branch: row.branch,
+      active_session_count: row.active_session_keys.size,
+      recently_completed_count: row.recently_completed_keys.size,
+      audit_session_count: row.audit_session_keys.size,
+      active_total_tokens: row.active_total_tokens,
+      audit_total_tokens: row.audit_total_tokens,
+      active_known_cost_usd: row.active_known_cost_usd,
+      audit_known_cost_usd: row.audit_known_cost_usd,
+      active_cost_unknown_count: row.active_cost_unknown_count,
+      audit_cost_unknown_count: row.audit_cost_unknown_count,
+      active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
+      audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
+      providers: Array.from(row.providers.values())
+        .map((providerRow) => {
+          const finalized = finalizeFactBreakdown(providerRow);
+          const {
+            active_session_keys,
+            audit_session_keys,
+            recently_completed_keys,
+            ...payload
+          } = finalized;
+          return payload;
+        })
+        .sort((a, b) => a.provider.localeCompare(b.provider)),
+      models: Array.from(row.models.values())
+        .map((modelRow) => {
+          const finalized = finalizeFactBreakdown(modelRow);
+          const {
+            active_session_keys,
+            audit_session_keys,
+            recently_completed_keys,
+            ...payload
+          } = finalized;
+          return payload;
+        })
+        .sort((a, b) => a.model.localeCompare(b.model)),
+      sessions: uniqueSortedSessions(row.sessions),
+      newest_active_ms: row.newest_active_ms,
+      newest_audit_ms: row.newest_audit_ms,
+    }))
+    .sort((a, b) => {
+      const aHasActive = a.active_session_count > 0;
+      const bHasActive = b.active_session_count > 0;
+      if (aHasActive !== bHasActive) return aHasActive ? -1 : 1;
+      if (a.newest_active_ms !== b.newest_active_ms) return b.newest_active_ms - a.newest_active_ms;
+      if (a.newest_audit_ms !== b.newest_audit_ms) return b.newest_audit_ms - a.newest_audit_ms;
+      return a.branch.localeCompare(b.branch);
+    })
+    .map(({ newest_active_ms, newest_audit_ms, ...row }) => row);
 }
 
 function buildBreakdowns(rows, activeRows) {
@@ -374,13 +632,14 @@ function buildBreakdowns(rows, activeRows) {
   };
 }
 
-function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentEndedMs } = {}) {
+function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentEndedMs, branchFacts = [] } = {}) {
   const enrichedRows = (Array.isArray(rows) ? rows : []).map((row) => withDisplayCost(row));
   const nowIso = now instanceof Date ? now.toISOString() : String(now);
   const nowMs = toMs(nowIso) ?? Date.now();
   const timeoutMin = getIdleTimeoutMin(idleTimeoutMin);
   const endedWindowMs = Number.isFinite(Number(recentEndedMs)) ? Number(recentEndedMs) : 60 * 60 * 1000;
   const recentCutoff = nowMs - endedWindowMs;
+  const factsBySessionKey = buildFactsBySessionKey(branchFacts);
 
   const activeSessions = enrichedRows.filter((row) => isLiveEligibleSession(row, { now: nowIso, idleTimeoutMin: timeoutMin }));
   const recentSessions = enrichedRows.filter((row) => {
@@ -416,11 +675,17 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       const endedMs = toMs(row?.ended_at);
       return Number.isFinite(endedMs) && endedMs >= recentCutoff;
     });
+    const scopePayloadRows = [...new Map(
+      [...scopeActiveRows, ...scopeRecentEnded].map((row) => [sessionKey(row), row]),
+    ).values()].sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || '')));
     const activeTokens = scopeActiveRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
     const auditTokens = auditRows.reduce((sum, row) => sum + (Number(row?.total_tokens || 0) || 0), 0);
     const activeCost = sumCost(scopeActiveRows);
     const auditCost = sumCost(auditRows);
     const breakdowns = buildBreakdowns(auditRows, scopeActiveRows);
+    const activeSessionKeys = new Set(scopeActiveRows.map((row) => sessionKey(row)));
+    const visibleSessionKeys = new Set(scopePayloadRows.map((row) => sessionKey(row)));
+    const branchGroups = buildEffectiveBranchGroups(auditRows, factsBySessionKey, activeSessionKeys, visibleSessionKeys);
     const updatedMs = auditRows.reduce((max, row) => Math.max(max, toMs(liveSortIso(row)) || 0), 0);
 
     workstreams.push({
@@ -430,9 +695,9 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       project_ref: scope.project_ref,
       repo_root: scope.repo_root,
       cwd: scope.cwd,
-      branches: Array.from(new Set(auditRows.map((row) => safeBranch(row?.branch)))).sort((a, b) => a.localeCompare(b)),
-      sessions: auditRows.sort((a, b) => String(liveSortIso(b) || '').localeCompare(String(liveSortIso(a) || ''))),
-      primary_session: scopeActiveRows[0] || auditRows[0] || null,
+      branches: Array.from(new Set(branchGroups.map((row) => row.branch))).sort((a, b) => a.localeCompare(b)),
+      sessions: scopePayloadRows,
+      primary_session: scopeActiveRows[0] || scopePayloadRows[0] || auditRows[0] || null,
       active_session_count: scopeActiveRows.length,
       recently_completed_count: scopeRecentEnded.length,
       audit_session_count: auditRows.length,
@@ -446,7 +711,7 @@ function buildLiveAuditRollups(rows, { now = new Date(), idleTimeoutMin, recentE
       audit_cost_unknown_count: auditCost.unknown_count,
       providers: breakdowns.providers,
       models: breakdowns.models,
-      branch_groups: breakdowns.branch_groups,
+      branch_groups: branchGroups,
       updated_at: toIsoFromMs(updatedMs),
     });
   }
@@ -491,7 +756,14 @@ function readLiveAuditRollups(dbPath, options = {}) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     const rows = db.prepare('SELECT * FROM vibedeck_sessions').all();
-    return buildLiveAuditRollups(rows, options);
+    let branchFacts = [];
+    try {
+      const { readBranchUsageFactRows } = require('./branch-usage-facts');
+      branchFacts = readBranchUsageFactRows(dbPath, { includeArchived: false, includeUnattributed: false });
+    } catch {
+      branchFacts = [];
+    }
+    return buildLiveAuditRollups(rows, { ...options, branchFacts });
   } finally {
     db.close();
   }

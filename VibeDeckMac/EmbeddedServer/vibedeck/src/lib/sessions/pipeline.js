@@ -6,7 +6,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { resolveRepo } = require('./repo-resolver');
 const { upsertSessionFromEvents } = require('./writer');
 const { resolveBranchForSession } = require('./resolve-branch');
-const { splitSessionByBranchTransitions } = require('./branch-windows');
+const { rebuildBranchUsageFactsForSession } = require('./branch-usage-facts');
 const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
@@ -398,24 +398,12 @@ async function processSessionEvent(dbPath, event) {
           recomputeSessionLedger(db, latest);
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         }
-        if (latest && latest.ended_at) {
-          const transitions = listTransitions(db, {
-            worktree_root: latest.repo_root,
-            started_at: latest.started_at,
-            ended_at: latest.ended_at,
+        if (latest) {
+          rebuildBranchUsageFactsForSession(db, {
+            dbPath,
+            provider: latest.provider,
+            session_id: latest.session_id,
           });
-          const windows = splitSessionByBranchTransitions({
-            session: {
-              started_at: latest.started_at,
-              ended_at: latest.ended_at,
-              total_tokens: latest.total_tokens,
-              total_cost_usd: latest.total_cost_usd,
-              branch: latest.branch,
-            },
-            transitions,
-          });
-          persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows });
-        } else if (latest) {
           persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
         }
 

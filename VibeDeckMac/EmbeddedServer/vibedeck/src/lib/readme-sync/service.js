@@ -7,10 +7,6 @@ const { renderReadmeBannerSvg } = require('./render-svg');
 const { pushBannerAndReadme } = require('./update-readme');
 const { writeFileAtomic } = require('../fs');
 
-function asResult(error) {
-  return error ? error.message || String(error) : null;
-}
-
 async function runReadmeSyncUpdate({
   fetchImpl = fetch,
   config = null,
@@ -46,26 +42,6 @@ async function runReadmeSyncUpdate({
   };
 }
 
-async function maybeRunPostSyncReadmeUpdate({
-  config = null,
-  token = null,
-  updateImpl = runReadmeSyncUpdate,
-} = {}) {
-  const resolvedConfig = config || (await readReadmeSyncConfig());
-  if (!resolvedConfig?.enabled) return { attempted: false, ok: true, skipped: 'disabled', warning: null };
-
-  const resolvedToken = token || (await readGitHubToken());
-  if (!resolvedToken) return { attempted: false, ok: true, skipped: 'missing_token', warning: null };
-
-  try {
-    await updateImpl({ config: resolvedConfig, token: resolvedToken });
-    return { attempted: true, ok: true, skipped: null, warning: null };
-  } catch (error) {
-    return { attempted: true, ok: false, skipped: null, warning: asResult(error) };
-  }
-}
-
 module.exports = {
   runReadmeSyncUpdate,
-  maybeRunPostSyncReadmeUpdate,
 };

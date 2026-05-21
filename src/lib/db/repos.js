@@ -36,7 +36,14 @@ function upsertEntireState(dbPath, { repoRoot, entire_state, entire_version }) {
 function getRepoState(dbPath, repoRoot) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
-    return db.prepare('SELECT * FROM vibedeck_repos WHERE repo_root = ?').get(repoRoot) || null;
+    const aliases = repoRootAliases(repoRoot);
+    if (!aliases.length) return null;
+    const stmt = db.prepare('SELECT * FROM vibedeck_repos WHERE repo_root = ?');
+    for (const alias of aliases) {
+      const row = stmt.get(alias);
+      if (row) return row;
+    }
+    return null;
   } finally {
     db.close();
   }

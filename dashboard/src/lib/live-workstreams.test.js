@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLiveWorkstreams, liveBranchLabel, liveScopeLabel } from "./live-workstreams.js";
+import { buildLiveWorkstreams, isActiveLiveSession, liveBranchLabel, liveScopeLabel } from "./live-workstreams.js";
 
 describe("buildLiveWorkstreams fallback ordering", () => {
   it("orders using observed activity instead of updated_at for open sessions", () => {
@@ -40,5 +40,57 @@ describe("buildLiveWorkstreams fallback ordering", () => {
     expect(liveBranchLabel({ audit_scope: "cwd_only", branches: ["unattributed"] }, { branch: "unattributed" }))
       .toBe("Branch unavailable");
     expect(liveBranchLabel({ branches: ["main"] }, {})).toBe("main");
+  });
+
+  it("treats superseded open sessions as stale in frontend fallback grouping", () => {
+    const sessions = [
+      {
+        provider: "codex",
+        session_id: "old-entire-ui-fix",
+        started_at: "2026-05-19T05:00:00.000Z",
+        ended_at: null,
+        cwd: "/repo/VibeDeck",
+        repo_root: "/repo/VibeDeck",
+        branch: "entire/ui-fix",
+        model: "gpt-5.5",
+        total_tokens: 100,
+        total_cost_usd: 1,
+        live_state: "superseded",
+        last_observed_at: "2026-05-19T05:10:00.000Z",
+      },
+      {
+        provider: "codex",
+        session_id: "new-release",
+        started_at: "2026-05-19T05:20:00.000Z",
+        ended_at: null,
+        cwd: "/repo/VibeDeck",
+        repo_root: "/repo/VibeDeck",
+        branch: "release/0.1.3",
+        model: "gpt-5.5",
+        total_tokens: 25,
+        total_cost_usd: 0.25,
+        last_observed_at: "2026-05-19T05:25:00.000Z",
+      },
+    ];
+
+    expect(isActiveLiveSession(sessions[0])).toBe(false);
+    expect(isActiveLiveSession(sessions[1])).toBe(true);
+
+    const workstreams = buildLiveWorkstreams(sessions, {
+      now: Date.parse("2026-05-19T05:30:00.000Z"),
+    });
+
+    expect(workstreams).toHaveLength(1);
+    expect(workstreams[0].active_session_count).toBe(1);
+    expect(workstreams[0].recently_completed_count).toBe(1);
+
+    const entire = workstreams[0].branch_groups.find((row) => row.branch === "entire/ui-fix");
+    const release = workstreams[0].branch_groups.find((row) => row.branch === "release/0.1.3");
+    expect(entire).toBeTruthy();
+    expect(release).toBeTruthy();
+    expect(entire.active_session_count).toBe(0);
+    expect(entire.recently_completed_count).toBe(1);
+    expect(release.active_session_count).toBe(1);
+    expect(release.recently_completed_count).toBe(0);
   });
 });

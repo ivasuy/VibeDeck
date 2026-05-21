@@ -19,6 +19,10 @@ const {
   buildCheckpointUsage,
   buildCheckpointUsageIndex,
 } = require("./entire-checkpoint-usage");
+const {
+  normalizeCheckpointPath,
+  isValidCheckpointPath,
+} = require("./entire-checkpoint-paths");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -860,6 +864,20 @@ function parsePositiveLimit(rawValue) {
   return Math.max(1, Math.trunc(value));
 }
 
+function parseNonNegativeOffset(rawValue) {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return Math.trunc(value);
+}
+
+function parsePagedRequest(url, { defaultLimit = 10, maxLimit = 50 } = {}) {
+  const requestedLimit = parsePositiveLimit(url.searchParams.get("limit")) ?? defaultLimit;
+  return {
+    offset: parseNonNegativeOffset(url.searchParams.get("offset")),
+    limit: Math.max(1, Math.min(maxLimit, requestedLimit)),
+  };
+}
+
 function compareProjectUsageEntries(a, b, sortMode) {
   if (sortMode === "recent") {
     const byRecent = String(b?.last_seen_at || "").localeCompare(String(a?.last_seen_at || ""));
@@ -1601,8 +1619,9 @@ function runSyncCommand(extraEnv = {}) {
       child.kill("SIGTERM");
       finish(
         reject,
-        Object.assign(new Error("Sync timed out"), {
+        Object.assign(new Error(`Sync timed out after ${SYNC_TIMEOUT_MS}ms`), {
           code: "SYNC_TIMEOUT",
+          timeout_ms: SYNC_TIMEOUT_MS,
           stdout: trimOutput(stdout),
           stderr: trimOutput(stderr),
         }),
@@ -1745,16 +1764,6 @@ function resolveRepoFromQuery(url) {
   } catch {
     return null;
   }
-}
-
-function isValidCheckpointPath(filePath) {
-  return (
-    typeof filePath === "string" &&
-    filePath.length > 0 &&
-    !filePath.includes("\0") &&
-    !filePath.startsWith("/") &&
-    !filePath.split("/").includes("..")
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2034,7 +2043,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         }
         json(res, { ok: true, ...result });
       } catch (e) {
-        json(res, { ok: false, error: e?.message, code: e?.code ?? null, stdout: e?.stdout || "", stderr: e?.stderr || "" }, 500);
+        const timeoutMs = e?.code === "SYNC_TIMEOUT" ? SYNC_TIMEOUT_MS : null;
+        const message = timeoutMs ? `Sync timed out after ${timeoutMs}ms` : e?.message;
+        json(
+          res,
+          {
+            ok: false,
+            error: message,
+            code: e?.code ?? null,
+            timeout_ms: timeoutMs,
+            stdout: e?.stdout || "",
+            stderr: e?.stderr || "",
+          },
+          500,
+        );
       }
       return true;
     }
@@ -2295,15 +2317,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "invalid_repo" }, 400);
         return true;
       }
-      const checkpointPath = String(url.searchParams.get("path") || "");
-      if (!isValidCheckpointPath(checkpointPath)) {
-        json(res, { error: "invalid_path" }, 400);
+      const rawCheckpointPath = String(url.searchParams.get("path") || "");
+      if (!isValidCheckpointPath(rawCheckpointPath)) {
+        json(res, { error: "invalid_checkpoint_path" }, 400);
         return true;
       }
+      const checkpointPath = normalizeCheckpointPath(rawCheckpointPath);
       const { readCheckpoint } = require("./entire-bridge");
       try {
         const data = await readCheckpoint(repoRoot, checkpointPath);
-        const isMetadata = String(checkpointPath || "").replace(/\\/g, "/").endsWith("/metadata.json");
+        const isMetadata = checkpointPath.endsWith("/metadata.json");
         if (!isMetadata) {
           json(res, data);
           return true;
@@ -2637,6 +2660,11 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           branch: url.searchParams.get("branch"),
           limit: url.searchParams.get("limit"),
           includeSessions: url.searchParams.get("include_sessions") === "1",
+          includeArchived: url.searchParams.get("include_archived") === "1",
+          includeUnattributed: url.searchParams.get("include_unattributed") === "1",
+          includeGitBranches: url.searchParams.get("include_git_branches") === "1",
+          includeDateBuckets: url.searchParams.get("include_date_buckets") === "1",
+          sessionDate: url.searchParams.get("session_date"),
         }),
       );
       return true;
@@ -2967,7 +2995,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         if (method === "GET") {
           const mode = url.searchParams.get("mode") || "installed";
           if (mode === "installed") {
-            json(res, { targets: skills.targetList(), skills: skills.listInstalledSkills() });
+            if (url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true") {
+              const data = skills.listInstalledSkillsAll({
+                q: url.searchParams.get("q") || "",
+              });
+              json(res, { targets: skills.targetList(), ...data });
+              return true;
+            }
+            const { offset, limit } = parsePagedRequest(url, { defaultLimit: 10, maxLimit: 100 });
+            const data = skills.listInstalledSkillsPage({
+              q: url.searchParams.get("q") || "",
+              offset,
+              limit,
+            });
+            json(res, { targets: skills.targetList(), ...data });
             return true;
           }
           if (mode === "repos") {
@@ -2975,15 +3016,26 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             return true;
           }
           if (mode === "discover") {
+            const { offset, limit } = parsePagedRequest(url, { defaultLimit: 10, maxLimit: 50 });
             const force = url.searchParams.get("force") === "1";
-            json(res, await skills.discoverSkills({ force }));
+            const source = url.searchParams.get("source") || "all";
+            json(res, await skills.discoverSkills({
+              all: url.searchParams.get("all") === "1" || url.searchParams.get("all") === "true",
+              force,
+              offset,
+              limit,
+              source,
+              q: url.searchParams.get("q") || "",
+            }));
+            skills.warmDiscoverCatalog({ source }).catch(() => {});
             return true;
           }
           if (mode === "search") {
+            const { offset, limit } = parsePagedRequest(url, { defaultLimit: 20, maxLimit: 50 });
             const data = await skills.searchSkillsSh(
               url.searchParams.get("q") || "",
-              Number(url.searchParams.get("limit") || 20),
-              Number(url.searchParams.get("offset") || 0),
+              limit,
+              offset,
             );
             json(res, data);
             return true;
@@ -3025,7 +3077,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
             return true;
           }
           if (action === "add_repo") {
-            json(res, { ok: true, repo: skills.addRepo(body.repo) });
+            json(res, { ok: true, repo: await skills.addRepoChecked(body.repo) });
             return true;
           }
           if (action === "remove_repo") {
@@ -3090,7 +3142,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           return true;
         }
         if (cmd === "addRepo") {
-          json(res, { ok: true, repo: skills.addRepo(body.repo) });
+          json(res, { ok: true, repo: await skills.addRepoChecked(body.repo) });
           return true;
         }
         if (cmd === "removeRepo") {

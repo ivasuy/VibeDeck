@@ -32,6 +32,33 @@ function makeRepo() {
   return dir;
 }
 
+function loadBridgeWithExecaStub(execaStub) {
+  const bridgePath = require.resolve("../src/lib/entire-bridge");
+  const execaPath = require.resolve("execa");
+  const originalBridge = require.cache[bridgePath];
+  const originalExeca = require.cache[execaPath];
+
+  require.cache[execaPath] = {
+    id: execaPath,
+    filename: execaPath,
+    loaded: true,
+    exports: execaStub,
+  };
+  delete require.cache[bridgePath];
+
+  const mod = require("../src/lib/entire-bridge");
+  return {
+    mod,
+    restore() {
+      delete require.cache[bridgePath];
+      if (originalBridge) require.cache[bridgePath] = originalBridge;
+      else delete require.cache[bridgePath];
+      if (originalExeca) require.cache[execaPath] = originalExeca;
+      else delete require.cache[execaPath];
+    },
+  };
+}
+
 test("readCheckpoint returns parsed JSON metadata", async () => {
   const repo = makeRepo();
   try {
@@ -182,5 +209,36 @@ test("readCheckpoint returns unknown kind for unsupported extension", async () =
     assert.equal(file.parse_error, null);
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("readCheckpoint rejects invalid checkpoint paths before shelling out", async () => {
+  const calls = [];
+  const { mod, restore } = loadBridgeWithExecaStub(async (...args) => {
+    calls.push(args);
+    throw new Error("git should not be called for invalid checkpoint paths");
+  });
+
+  try {
+    const invalidPaths = [
+      "../metadata.json",
+      "06/e2abdc1ec6/../metadata.json",
+      "06\\e2abdc1ec6\\..\\metadata.json",
+      "/06/e2abdc1ec6/metadata.json",
+      "C:\\repo\\metadata.json",
+      "06/%2e%2e/metadata.json",
+      "06/e2abdc1ec6/meta\0data.json",
+    ];
+
+    for (const filePath of invalidPaths) {
+      await assert.rejects(
+        mod.readCheckpoint("/tmp/repo", filePath),
+        /invalid filePath/i,
+      );
+    }
+
+    assert.equal(calls.length, 0);
+  } finally {
+    restore();
   }
 });

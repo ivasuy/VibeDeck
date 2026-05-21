@@ -7,10 +7,66 @@ const { findBranchAt } = require('./head-history');
 const { resolveRepo } = require('./repo-resolver');
 const { classifyProjectAttribution } = require('./project-attribution-state');
 const { normalizeBranchName } = require('./branch-name');
+const historicalBranchRecovery = require('./historical-branch-recovery');
+const providerBranch = require('./provider-branch');
 const { resolveUsageCost } = require('../cost-estimation');
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim() !== '';
+}
+
+function normalizeSessionScope(sessions) {
+  if (!Array.isArray(sessions)) return null;
+  const seen = new Set();
+  const rows = [];
+  for (const session of sessions) {
+    const provider = isNonEmptyString(session?.provider) ? session.provider.trim() : null;
+    const sessionId = isNonEmptyString(session?.session_id) ? session.session_id.trim() : null;
+    if (!provider || !sessionId) continue;
+    const key = `${provider}\u0000${sessionId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ provider, session_id: sessionId });
+  }
+  return rows;
+}
+
+function installSessionScope(db, scopeRows) {
+  db.exec(`
+    DROP TABLE IF EXISTS temp_vibedeck_dirty_session_scope;
+    CREATE TEMP TABLE temp_vibedeck_dirty_session_scope (
+      provider TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      PRIMARY KEY (provider, session_id)
+    );
+  `);
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO temp_vibedeck_dirty_session_scope (provider, session_id) VALUES (?, ?)',
+  );
+  for (const row of scopeRows) {
+    insert.run(row.provider, row.session_id);
+  }
+  return 'temp_vibedeck_dirty_session_scope';
+}
+
+function dropSessionScope(db) {
+  try {
+    db.exec('DROP TABLE IF EXISTS temp_vibedeck_dirty_session_scope');
+  } catch {}
+}
+
+function repairResolveRepo(resolveCache, cwd) {
+  const key = String(cwd || '').trim();
+  if (resolveCache.has(key)) return resolveCache.get(key);
+
+  let repo = null;
+  try {
+    repo = resolveRepo(cwd);
+  } catch {
+    repo = null;
+  }
+  resolveCache.set(key, repo);
+  return repo;
 }
 
 function toFiniteNumber(value) {
@@ -29,14 +85,38 @@ function roundCost(value) {
 }
 
 function branchUsageDisplayBranch({ branch, project }) {
+  if (branch && typeof branch === 'object') {
+    if (branch.branch_kind === 'historical_unknown') {
+      return {
+        branch: 'Historical unknown',
+        branch_kind: 'historical_unknown',
+        confidence: 'low',
+        branch_resolution_tier: branch.branch_resolution_tier || 'HISTORICAL_GUARD',
+      };
+    }
+
+    if (branch.branch_kind === 'known') {
+      const normalized = normalizeBranchName(branch.branch);
+      if (normalized) {
+        return {
+          branch: normalized,
+          branch_kind: 'known',
+          confidence: branch.confidence || 'low',
+          branch_resolution_tier: branch.branch_resolution_tier || null,
+        };
+      }
+    }
+  }
+
   const normalizedBranch = normalizeBranchName(branch);
   if (normalizedBranch) {
-    return { branch: normalizedBranch, branch_kind: 'known', confidence: 'high' };
+    return { branch: normalizedBranch, branch_kind: 'known', confidence: 'high', branch_resolution_tier: null };
   }
   return {
     branch: project.branch,
     branch_kind: project.branch_kind,
     confidence: project.branch_kind === 'unattributed' ? 'unattributed' : 'low',
+    branch_resolution_tier: null,
   };
 }
 
@@ -67,9 +147,77 @@ function mergeProjectRow(event, session) {
   };
 }
 
-function headHistoryBranch(dbPath, project, observedAt) {
+function safeRealpath(p) {
+  if (!isNonEmptyString(p)) return p;
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+function getHeadHistoryCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.headHistoryByWorktree instanceof Map)) {
+    cache.headHistoryByWorktree = new Map();
+  }
+  return cache.headHistoryByWorktree;
+}
+
+function readHeadHistoryTransitions(db, worktreeRoot) {
+  return db
+    .prepare(
+      `
+      SELECT transitioned_at, ref_name
+      FROM vibedeck_head_history
+      WHERE worktree_root = ?
+      ORDER BY transitioned_at ASC
+      `,
+    )
+    .all(worktreeRoot)
+    .map((row) => ({
+      transitioned_at: row.transitioned_at,
+      ref_name: row.ref_name,
+    }));
+}
+
+function findBranchInTransitions(transitions, observedAt) {
+  if (!Array.isArray(transitions) || transitions.length === 0) return null;
+
+  let lo = 0;
+  let hi = transitions.length - 1;
+  let best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (transitions[mid].transitioned_at <= observedAt) {
+      best = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return best === -1 ? null : transitions[best].ref_name;
+}
+
+function cachedHeadHistoryBranch(db, cache, project, observedAt) {
+  if (!db || typeof db.prepare !== 'function') return undefined;
+  const historyCache = getHeadHistoryCache(cache);
+  if (!historyCache) return undefined;
+
+  const worktreeRoot = safeRealpath(project.repo_root);
+  if (!historyCache.has(worktreeRoot)) {
+    historyCache.set(worktreeRoot, readHeadHistoryTransitions(db, worktreeRoot));
+  }
+  return findBranchInTransitions(historyCache.get(worktreeRoot), observedAt);
+}
+
+function headHistoryBranch(dbPath, project, observedAt, { db = null, cache = null } = {}) {
   if (!dbPath || !project || project.branch_kind !== 'unknown_git') return null;
   if (!isNonEmptyString(project.repo_root) || !isNonEmptyString(observedAt)) return null;
+  try {
+    const cachedBranch = cachedHeadHistoryBranch(db, cache, project, observedAt);
+    if (cachedBranch !== undefined) return normalizeBranchName(cachedBranch);
+  } catch {}
   try {
     return normalizeBranchName(findBranchAt(dbPath, { worktree_root: project.repo_root, when: observedAt }));
   } catch {
@@ -77,16 +225,68 @@ function headHistoryBranch(dbPath, project, observedAt) {
   }
 }
 
-function factBranch({ dbPath, project, observedAt, event, session }) {
+function knownBranchResult(branch, { confidence = 'low', branch_resolution_tier = null } = {}) {
+  const normalized = normalizeBranchName(branch);
+  if (!normalized) return null;
+  return {
+    branch: normalized,
+    branch_kind: 'known',
+    confidence: confidence || 'low',
+    branch_resolution_tier: branch_resolution_tier || null,
+  };
+}
+
+async function factBranch({
+  dbPath,
+  project,
+  observedAt,
+  event,
+  session,
+  providerBranch = null,
+  providerAmbiguous = false,
+  db = null,
+  cache = null,
+}) {
   if (!project || project.branch_kind !== 'unknown_git') return null;
 
-  const eventBranch = normalizeBranchName(event?.branch);
+  const eventBranch = knownBranchResult(event?.branch, {
+    confidence: event?.confidence || 'high',
+    branch_resolution_tier: event?.branch_resolution_tier || null,
+  });
   if (eventBranch) return eventBranch;
 
-  const historyBranch = headHistoryBranch(dbPath, project, observedAt);
-  if (historyBranch) return historyBranch;
+  const provider = knownBranchResult(providerBranch, {
+    confidence: 'medium',
+    branch_resolution_tier: 'PROVIDER_LOG',
+  });
+  if (provider) return provider;
 
-  return normalizeBranchName(session?.branch);
+  const sessionBranch = knownBranchResult(session?.branch, {
+    confidence: session?.confidence || 'low',
+    branch_resolution_tier: session?.branch_resolution_tier || null,
+  });
+  if (sessionBranch) return sessionBranch;
+
+  if (providerAmbiguous) return null;
+
+  const historyBranch = headHistoryBranch(dbPath, project, observedAt, { db, cache });
+  if (historyBranch) {
+    return knownBranchResult(historyBranch, {
+      confidence: 'medium',
+      branch_resolution_tier: 'B',
+    });
+  }
+
+  if (!isNonEmptyString(project.repo_root)) return null;
+
+  try {
+    return await historicalBranchRecovery.recoverHistoricalBranchForUnknownGit({
+      repoRoot: project.repo_root,
+      observedAt,
+    }, { cache });
+  } catch {
+    return null;
+  }
 }
 
 function eventTokenTotal(event) {
@@ -119,10 +319,30 @@ function baseTimestamps(session) {
   return { first, last };
 }
 
-function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
+async function buildSyntheticGroup(session, { dbPath, provider, session_id, db = null, cache = null }) {
   const project = projectShape(session, provider, session_id);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
-  const resolvedBranch = factBranch({ dbPath, project, observedAt: when, event: null, session });
+  const sessionBranch = knownBranchResult(session?.branch);
+  const providerEvidenceMap = cache && cache.providerBranchEvidenceBySession instanceof Map
+    ? cache.providerBranchEvidenceBySession
+    : null;
+  const providerEvidenceKey = `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
+  const providerRead = !sessionBranch
+    ? (providerEvidenceMap && providerEvidenceMap.has(providerEvidenceKey)
+      ? providerEvidenceMap.get(providerEvidenceKey)
+      : providerBranch.readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache }))
+    : { branch: null, checked: false, ambiguous: false };
+  const resolvedBranch = await factBranch({
+    dbPath,
+    project,
+    observedAt: when,
+    event: null,
+    session,
+    providerBranch: providerRead.branch,
+    providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+    db,
+    cache,
+  });
   const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
   const times = baseTimestamps(session);
 
@@ -138,7 +358,7 @@ function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
     branch: display.branch,
     attribution_branch: display.branch_kind === 'known' ? display.branch : null,
     branch_kind: display.branch_kind,
-    branch_resolution_tier: session.branch_resolution_tier || null,
+    branch_resolution_tier: display.branch_resolution_tier || session.branch_resolution_tier || null,
     confidence: display.confidence,
     model: isNonEmptyString(session.model) ? session.model.trim() : 'unknown',
     first_observed_at: times.first,
@@ -159,15 +379,36 @@ function buildSyntheticGroup(session, { dbPath, provider, session_id }) {
   };
 }
 
-function buildEventGroups(session, events, { dbPath, provider, session_id }) {
+async function buildEventGroups(session, events, { dbPath, provider, session_id, db = null, cache = null }) {
   const groups = new Map();
+  const missingEventBranch = events.some((event) => !knownBranchResult(event?.branch));
+  const missingSessionBranch = !knownBranchResult(session?.branch);
+  const providerEvidenceMap = cache && cache.providerBranchEvidenceBySession instanceof Map
+    ? cache.providerBranchEvidenceBySession
+    : null;
+  const providerEvidenceKey = `${String(provider || '').trim().toLowerCase()}\u0000${session_id}`;
+  const providerRead = missingEventBranch || missingSessionBranch
+    ? (providerEvidenceMap && providerEvidenceMap.has(providerEvidenceKey)
+      ? providerEvidenceMap.get(providerEvidenceKey)
+      : providerBranch.readProviderBranchEvidenceFromSessionFile({ provider, session_id, cache }))
+    : { branch: null, checked: false, ambiguous: false };
 
   for (const event of events) {
     const project = projectShape(mergeProjectRow(event, session), provider, session_id);
     const observedAt = isNonEmptyString(event.observed_at)
       ? event.observed_at
       : session.last_observed_at || session.ended_at || session.started_at;
-    const resolvedBranch = factBranch({ dbPath, project, observedAt, event, session });
+    const resolvedBranch = await factBranch({
+      dbPath,
+      project,
+      observedAt,
+      event,
+      session,
+      providerBranch: providerRead.branch,
+      providerAmbiguous: providerRead.checked && providerRead.ambiguous,
+      db,
+      cache,
+    });
     const display = branchUsageDisplayBranch({ branch: resolvedBranch, project });
     const model = isNonEmptyString(event.model)
       ? event.model.trim()
@@ -189,7 +430,7 @@ function buildEventGroups(session, events, { dbPath, provider, session_id }) {
         branch: display.branch,
         attribution_branch: display.branch_kind === 'known' ? display.branch : null,
         branch_kind: display.branch_kind,
-        branch_resolution_tier: event.branch_resolution_tier || session.branch_resolution_tier || null,
+        branch_resolution_tier: display.branch_resolution_tier || event.branch_resolution_tier || session.branch_resolution_tier || null,
         confidence: display.confidence,
         model,
         first_observed_at: observedAt,
@@ -423,7 +664,7 @@ function insertFacts(db, session, groups) {
   }
 }
 
-function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id } = {}) {
+async function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id, cache = null } = {}) {
   if (!db || typeof db.prepare !== 'function') {
     throw new TypeError('rebuildBranchUsageFactsForSession: db must be a writable sqlite connection');
   }
@@ -444,8 +685,8 @@ function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id } 
 
   const events = readUpdateEvents(db, { provider, session_id });
   const groups = events.length > 0
-    ? buildEventGroups(session, events, { dbPath, provider, session_id })
-    : [buildSyntheticGroup(session, { dbPath, provider, session_id })];
+    ? await buildEventGroups(session, events, { dbPath, provider, session_id, db, cache })
+    : [await buildSyntheticGroup(session, { dbPath, provider, session_id, db, cache })];
 
   reconcileGroupTokens(groups, session);
   if (!allocateStoredSessionCost(groups, session)) {
@@ -456,23 +697,58 @@ function rebuildBranchUsageFactsForSession(db, { dbPath, provider, session_id } 
   return groups.length;
 }
 
-function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null } = {}) {
+async function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null, cache = null, sessions = null } = {}) {
   if (!isNonEmptyString(dbPath)) {
     throw new TypeError('rebuildAllBranchUsageFacts: dbPath must be a non-empty string');
   }
   const progress = typeof onProgress === 'function' ? onProgress : null;
+  const sharedCache = cache && typeof cache === 'object' ? cache : {};
+  const scopedSessions = normalizeSessionScope(sessions);
+  if (scopedSessions && scopedSessions.length === 0) return 0;
   const db = new DatabaseSync(dbPath);
   try {
-    const rows = provider
-      ? db.prepare('SELECT provider, session_id FROM vibedeck_sessions WHERE provider = ? ORDER BY started_at ASC').all(provider)
-      : db.prepare('SELECT provider, session_id FROM vibedeck_sessions ORDER BY started_at ASC').all();
+    let scopeTable = null;
+    if (scopedSessions) scopeTable = installSessionScope(db, scopedSessions);
+    const rows = scopeTable
+      ? provider
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              WHERE s.provider = ?
+              ORDER BY s.started_at ASC
+              `,
+            )
+            .all(provider)
+        : db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              ORDER BY s.started_at ASC
+              `,
+            )
+            .all()
+      : provider
+        ? db.prepare('SELECT provider, session_id FROM vibedeck_sessions WHERE provider = ? ORDER BY started_at ASC').all(provider)
+        : db.prepare('SELECT provider, session_id FROM vibedeck_sessions ORDER BY started_at ASC').all();
 
     db.exec('BEGIN IMMEDIATE');
     try {
       let rebuilt = 0;
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
-        rebuilt += rebuildBranchUsageFactsForSession(db, { dbPath, provider: row.provider, session_id: row.session_id });
+        rebuilt += await rebuildBranchUsageFactsForSession(db, {
+          dbPath,
+          provider: row.provider,
+          session_id: row.session_id,
+          cache: sharedCache,
+        });
         progress?.({
           index: index + 1,
           total: rows.length,
@@ -488,18 +764,44 @@ function rebuildAllBranchUsageFacts(dbPath, { provider = null, onProgress = null
       throw error;
     }
   } finally {
+    dropSessionScope(db);
     db.close();
   }
 }
 
-function repairMissingProjectAttribution(dbPath, { provider = null, onProgress = null } = {}) {
+async function repairMissingProjectAttribution(
+  dbPath,
+  { provider = null, onProgress = null, cache = null, sessions = null, rebuildFacts = true } = {},
+) {
   if (!isNonEmptyString(dbPath) || !fs.existsSync(dbPath)) return 0;
 
   const progress = typeof onProgress === 'function' ? onProgress : null;
+  const scopedSessions = normalizeSessionScope(sessions);
+  if (scopedSessions && scopedSessions.length === 0) return 0;
   const db = new DatabaseSync(dbPath);
   try {
+    let scopeTable = null;
+    if (scopedSessions) scopeTable = installSessionScope(db, scopedSessions);
     const rows = provider
-      ? db
+      ? scopeTable
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              LEFT JOIN vibedeck_branch_usage_facts f
+                ON f.provider = s.provider AND f.session_id = s.session_id
+              WHERE s.provider = ?
+                AND s.cwd IS NOT NULL
+                AND TRIM(s.cwd) <> ''
+              GROUP BY s.provider, s.session_id
+              HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
+              `,
+            )
+            .all(provider)
+        : db
           .prepare(
             `
             SELECT s.provider, s.session_id, s.cwd, s.repo_root
@@ -514,7 +816,24 @@ function repairMissingProjectAttribution(dbPath, { provider = null, onProgress =
             `,
           )
           .all(provider)
-      : db
+      : scopeTable
+        ? db
+            .prepare(
+              `
+              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              FROM vibedeck_sessions s
+              INNER JOIN temp_vibedeck_dirty_session_scope scope
+                ON scope.provider = s.provider AND scope.session_id = s.session_id
+              LEFT JOIN vibedeck_branch_usage_facts f
+                ON f.provider = s.provider AND f.session_id = s.session_id
+              WHERE s.cwd IS NOT NULL
+                AND TRIM(s.cwd) <> ''
+              GROUP BY s.provider, s.session_id
+              HAVING TRIM(COALESCE(s.repo_root, '')) = '' OR COUNT(f.provider) = 0
+              `,
+            )
+            .all()
+        : db
           .prepare(
             `
             SELECT s.provider, s.session_id, s.cwd, s.repo_root
@@ -531,15 +850,11 @@ function repairMissingProjectAttribution(dbPath, { provider = null, onProgress =
 
     db.exec('BEGIN IMMEDIATE');
     try {
+      const resolveCache = new Map();
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
         if (isNonEmptyString(row.cwd)) {
-          let repo = null;
-          try {
-            repo = resolveRepo(row.cwd);
-          } catch {
-            repo = null;
-          }
+          const repo = repairResolveRepo(resolveCache, row.cwd);
           if (repo && isNonEmptyString(repo.repo_root)) {
             persistSessionRepoMetadata(db, {
               provider: row.provider,
@@ -549,11 +864,14 @@ function repairMissingProjectAttribution(dbPath, { provider = null, onProgress =
           }
         }
 
-        rebuildBranchUsageFactsForSession(db, {
-          dbPath,
-          provider: row.provider,
-          session_id: row.session_id,
-        });
+        if (rebuildFacts) {
+          await rebuildBranchUsageFactsForSession(db, {
+            dbPath,
+            provider: row.provider,
+            session_id: row.session_id,
+            cache,
+          });
+        }
         progress?.({
           index: index + 1,
           total: rows.length,
@@ -569,6 +887,7 @@ function repairMissingProjectAttribution(dbPath, { provider = null, onProgress =
       throw error;
     }
   } finally {
+    dropSessionScope(db);
     db.close();
   }
 }

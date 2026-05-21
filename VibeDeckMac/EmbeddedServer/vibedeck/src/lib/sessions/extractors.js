@@ -43,6 +43,7 @@ function extractSessionEvents({
   end_reason,
   cwd,
   model,
+  branch,
   updates,
   total_tokens,
 }) {
@@ -53,7 +54,18 @@ function extractSessionEvents({
   const endTs = coalesceString(ended_at);
 
   const out = [];
-  if (startTs) out.push(makeStart({ provider, session_id: sid, started_at: startTs, cwd: cwd ?? null, model: model ?? null }));
+  if (startTs) {
+    out.push(
+      makeStart({
+        provider,
+        session_id: sid,
+        started_at: startTs,
+        cwd: cwd ?? null,
+        model: model ?? null,
+        branch: branch ?? null,
+      }),
+    );
+  }
 
   for (const u of normalizeUpdates(updates)) {
     out.push(
@@ -70,6 +82,7 @@ function extractSessionEvents({
         output_tokens: u.output_tokens ?? null,
         reasoning_output_tokens: u.reasoning_output_tokens ?? null,
         conversation_count: u.conversation_count ?? null,
+        branch: branch ?? null,
       }),
     );
   }
@@ -84,6 +97,7 @@ function extractSessionEvents({
         end_reason: end_reason == null ? null : end_reason,
         cwd: cwd ?? null,
         model: model ?? null,
+        branch: branch ?? null,
       }),
     );
   }
@@ -100,6 +114,7 @@ function extractClaudeCodeSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -114,6 +129,7 @@ function extractCodexSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -128,6 +144,7 @@ function extractGeminiSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -142,6 +159,7 @@ function extractCursorSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -156,6 +174,7 @@ function extractOpenCodeSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -170,6 +189,7 @@ function extractOpenClawSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -184,6 +204,7 @@ function extractEveryCodeSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -198,6 +219,7 @@ function extractKiroSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -212,6 +234,7 @@ function extractHermesSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -226,6 +249,7 @@ function extractCopilotSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -240,6 +264,7 @@ function extractKimiSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -254,6 +279,7 @@ function extractOmpSessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });
@@ -268,6 +294,7 @@ function extractCodebuddySessionEvents(batch) {
     end_reason: batch.end_reason,
     cwd: batch.cwd ?? null,
     model: batch.model ?? null,
+    branch: batch.branch ?? null,
     updates: batch.updates,
     total_tokens: batch.total_tokens,
   });

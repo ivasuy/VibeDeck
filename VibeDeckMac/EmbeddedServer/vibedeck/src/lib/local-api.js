@@ -1619,8 +1619,9 @@ function runSyncCommand(extraEnv = {}) {
       child.kill("SIGTERM");
       finish(
         reject,
-        Object.assign(new Error("Sync timed out"), {
+        Object.assign(new Error(`Sync timed out after ${SYNC_TIMEOUT_MS}ms`), {
           code: "SYNC_TIMEOUT",
+          timeout_ms: SYNC_TIMEOUT_MS,
           stdout: trimOutput(stdout),
           stderr: trimOutput(stderr),
         }),
@@ -2042,7 +2043,20 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         }
         json(res, { ok: true, ...result });
       } catch (e) {
-        json(res, { ok: false, error: e?.message, code: e?.code ?? null, stdout: e?.stdout || "", stderr: e?.stderr || "" }, 500);
+        const timeoutMs = e?.code === "SYNC_TIMEOUT" ? SYNC_TIMEOUT_MS : null;
+        const message = timeoutMs ? `Sync timed out after ${timeoutMs}ms` : e?.message;
+        json(
+          res,
+          {
+            ok: false,
+            error: message,
+            code: e?.code ?? null,
+            timeout_ms: timeoutMs,
+            stdout: e?.stdout || "",
+            stderr: e?.stderr || "",
+          },
+          500,
+        );
       }
       return true;
     }

@@ -21,16 +21,58 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
 
+      - name: Resolve package metadata
+        id: package
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "name=$PACKAGE_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
       # Skip if this version is already published
       - name: Check if version exists on npm
         id: version-check
+        env:
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.package.outputs.version }}
         run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
           echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
-          if npm view vibedeck-cli@"$PACKAGE_VERSION" version 2>/dev/null; then
+          if npm view "$PACKAGE_NAME@$PACKAGE_VERSION" version 2>/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify npm publish credentials
+        if: steps.version-check.outputs.exists == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE_NAME: ${{ steps.package.outputs.name }}
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN secret is not configured."
+            exit 1
+          fi
+
+          if ! NPM_USER=$(npm whoami 2>/tmp/npm-whoami.log); then
+            echo "::error::NPM_TOKEN is invalid or cannot authenticate with npm."
+            cat /tmp/npm-whoami.log
+            exit 1
+          fi
+
+          echo "NPM_TOKEN authenticates as npm user: $NPM_USER"
+
+          # If the package already exists, npm returns E404 for publish attempts
+          # from tokens that cannot see/write the package. Fail early with the
+          # actual owner mismatch instead of the opaque publish-time E404.
+          if npm view "$PACKAGE_NAME" name >/dev/null 2>&1; then
+            OWNERS=$(npm owner ls "$PACKAGE_NAME")
+            echo "Current npm package owners:"
+            echo "$OWNERS"
+            if ! printf '%s\n' "$OWNERS" | awk '{print $1}' | grep -Fx "$NPM_USER" >/dev/null; then
+              echo "::error::NPM_TOKEN authenticates as '$NPM_USER', but '$PACKAGE_NAME' is not owned by that npm user. Create NPM_TOKEN from an npm owner/collaborator for this package."
+              exit 1
+            fi
           fi
 
       - name: Install root dependencies

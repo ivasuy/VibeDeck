@@ -22,12 +22,20 @@ function normalizeUpdates(updates) {
         'input_tokens',
         'cached_input_tokens',
         'cache_creation_input_tokens',
+        'cache_creation_5m_input_tokens',
+        'cache_creation_1h_input_tokens',
         'output_tokens',
         'reasoning_output_tokens',
+        'web_search_requests',
+        'tool_call_count',
         'conversation_count',
       ]) {
         if (u[key] == null) continue;
         if (!Number.isInteger(u[key]) || u[key] < 0) return null;
+        out[key] = u[key];
+      }
+      for (const key of ['tools_json', 'activity_json']) {
+        if (u[key] == null) continue;
         out[key] = u[key];
       }
       return out;
@@ -79,8 +87,14 @@ function extractSessionEvents({
         input_tokens: u.input_tokens ?? null,
         cached_input_tokens: u.cached_input_tokens ?? null,
         cache_creation_input_tokens: u.cache_creation_input_tokens ?? null,
+        cache_creation_5m_input_tokens: u.cache_creation_5m_input_tokens ?? null,
+        cache_creation_1h_input_tokens: u.cache_creation_1h_input_tokens ?? null,
         output_tokens: u.output_tokens ?? null,
         reasoning_output_tokens: u.reasoning_output_tokens ?? null,
+        web_search_requests: u.web_search_requests ?? null,
+        tool_call_count: u.tool_call_count ?? null,
+        tools_json: u.tools_json ?? null,
+        activity_json: u.activity_json ?? null,
         conversation_count: u.conversation_count ?? null,
         branch: branch ?? null,
       }),

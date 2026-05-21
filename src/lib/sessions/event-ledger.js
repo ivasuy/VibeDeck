@@ -23,7 +23,9 @@ function insertSessionEvent(db, event, attribution = {}) {
         cwd, repo_root, repo_common_dir, parent_repo,
         branch, branch_resolution_tier, confidence,
         model, delta_tokens, input_tokens, cached_input_tokens,
-        cache_creation_input_tokens, output_tokens, reasoning_output_tokens,
+        cache_creation_input_tokens, cache_creation_5m_input_tokens,
+        cache_creation_1h_input_tokens, output_tokens, reasoning_output_tokens,
+        web_search_requests, tool_call_count, tools_json, activity_json,
         conversation_count, total_tokens, created_at
       ) VALUES (
         @provider, @session_id, @event_key, @kind, @observed_at,
@@ -31,7 +33,9 @@ function insertSessionEvent(db, event, attribution = {}) {
         @cwd, @repo_root, @repo_common_dir, @parent_repo,
         @branch, @branch_resolution_tier, @confidence,
         @model, @delta_tokens, @input_tokens, @cached_input_tokens,
-        @cache_creation_input_tokens, @output_tokens, @reasoning_output_tokens,
+        @cache_creation_input_tokens, @cache_creation_5m_input_tokens,
+        @cache_creation_1h_input_tokens, @output_tokens, @reasoning_output_tokens,
+        @web_search_requests, @tool_call_count, @tools_json, @activity_json,
         @conversation_count, @total_tokens, @created_at
       )
       ON CONFLICT(provider, session_id, event_key) DO NOTHING
@@ -58,8 +62,14 @@ function insertSessionEvent(db, event, attribution = {}) {
       input_tokens: event.input_tokens ?? null,
       cached_input_tokens: event.cached_input_tokens ?? null,
       cache_creation_input_tokens: event.cache_creation_input_tokens ?? null,
+      cache_creation_5m_input_tokens: event.cache_creation_5m_input_tokens ?? null,
+      cache_creation_1h_input_tokens: event.cache_creation_1h_input_tokens ?? null,
       output_tokens: event.output_tokens ?? null,
       reasoning_output_tokens: event.reasoning_output_tokens ?? null,
+      web_search_requests: event.web_search_requests ?? null,
+      tool_call_count: event.tool_call_count ?? null,
+      tools_json: event.tools_json ?? null,
+      activity_json: event.activity_json ?? null,
       conversation_count: event.conversation_count ?? null,
       total_tokens: event.total_tokens ?? null,
       created_at: now,

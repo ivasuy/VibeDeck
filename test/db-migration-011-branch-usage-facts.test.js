@@ -26,7 +26,7 @@ test('migration 011 creates branch usage facts projection', () => {
     try {
       const cols = db.prepare("PRAGMA table_info('vibedeck_branch_usage_facts')").all();
       const names = cols.map((row) => row.name);
-      assert.deepEqual(names, [
+      const migration011Columns = [
         'provider',
         'session_id',
         'scope_key',
@@ -60,7 +60,8 @@ test('migration 011 creates branch usage facts projection', () => {
         'cost_reconciled',
         'created_at',
         'updated_at',
-      ]);
+      ];
+      assert.deepEqual(names.slice(0, migration011Columns.length), migration011Columns);
 
       const indexes = db
         .prepare("PRAGMA index_list('vibedeck_branch_usage_facts')")

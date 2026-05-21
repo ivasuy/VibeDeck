@@ -66,6 +66,35 @@ function stableStringify(obj) {
   return JSON.stringify(out);
 }
 
+function parseCounterJson(str) {
+  const parsed = safeJsonParse(str);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const out = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(value) || value < 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  if (!counter || Object.keys(counter).length === 0) return null;
+  return stableStringify(counter);
+}
+
+function sumCounterJson(base, values) {
+  const sums = parseCounterJson(base);
+  for (const value of values) {
+    const parsed = parseCounterJson(value);
+    for (const [key, count] of Object.entries(parsed)) {
+      sums[key] = (sums[key] || 0) + count;
+    }
+  }
+  return stableCounterJson(sums);
+}
+
 function normalizeCwd(v) {
   if (v == null) return null;
   if (typeof v !== 'string') return null;
@@ -193,11 +222,31 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       newUpdates,
       'cache_creation_input_tokens',
     );
+    const cache_creation_5m_input_tokens = sumEventField(
+      existing ? existing.cache_creation_5m_input_tokens : null,
+      newUpdates,
+      'cache_creation_5m_input_tokens',
+    );
+    const cache_creation_1h_input_tokens = sumEventField(
+      existing ? existing.cache_creation_1h_input_tokens : null,
+      newUpdates,
+      'cache_creation_1h_input_tokens',
+    );
     const output_tokens = sumEventField(existing ? existing.output_tokens : null, newUpdates, 'output_tokens');
     const reasoning_output_tokens = sumEventField(
       existing ? existing.reasoning_output_tokens : null,
       newUpdates,
       'reasoning_output_tokens',
+    );
+    const web_search_requests = sumEventField(existing ? existing.web_search_requests : null, newUpdates, 'web_search_requests');
+    const tool_call_count = sumEventField(existing ? existing.tool_call_count : null, newUpdates, 'tool_call_count');
+    const tools_json = sumCounterJson(
+      existing ? existing.tools_json : null,
+      newUpdates.map((e) => e.tools_json),
+    );
+    const activity_json = sumCounterJson(
+      existing ? existing.activity_json : null,
+      newUpdates.map((e) => e.activity_json),
     );
 
     const mergedEventKeys = existingSources && Array.isArray(existingSources.events) ? [...existingSources.events] : [];
@@ -224,8 +273,14 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       input_tokens,
       cached_input_tokens,
       cache_creation_input_tokens,
+      cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens,
       output_tokens,
       reasoning_output_tokens,
+      web_search_requests,
+      tool_call_count,
+      tools_json,
+      activity_json,
       cost_estimated: existing ? existing.cost_estimated : 1,
       cost_quality: existing ? existing.cost_quality : null,
       branch_resolution_tier: existing ? existing.branch_resolution_tier : 'D',
@@ -250,7 +305,10 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         branch, branch_resolution_tier, confidence, override_user,
         model, total_tokens, total_cost_usd, last_observed_at,
         input_tokens, cached_input_tokens, cache_creation_input_tokens,
-        output_tokens, reasoning_output_tokens, cost_estimated, cost_quality,
+        cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
+        output_tokens, reasoning_output_tokens,
+        web_search_requests, tool_call_count, tools_json, activity_json,
+        cost_estimated, cost_quality,
         created_at, updated_at
       ) VALUES (
         @provider, @session_id,
@@ -259,7 +317,10 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         @branch, @branch_resolution_tier, @confidence, @override_user,
         @model, @total_tokens, @total_cost_usd, @last_observed_at,
         @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
-        @output_tokens, @reasoning_output_tokens, @cost_estimated, @cost_quality,
+        @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
+        @output_tokens, @reasoning_output_tokens,
+        @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+        @cost_estimated, @cost_quality,
         @created_at, @updated_at
       )
       ON CONFLICT(provider, session_id) DO UPDATE SET
@@ -273,12 +334,19 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         input_tokens = excluded.input_tokens,
         cached_input_tokens = excluded.cached_input_tokens,
         cache_creation_input_tokens = excluded.cache_creation_input_tokens,
+        cache_creation_5m_input_tokens = excluded.cache_creation_5m_input_tokens,
+        cache_creation_1h_input_tokens = excluded.cache_creation_1h_input_tokens,
         output_tokens = excluded.output_tokens,
         reasoning_output_tokens = excluded.reasoning_output_tokens,
+        web_search_requests = excluded.web_search_requests,
+        tool_call_count = excluded.tool_call_count,
+        tools_json = excluded.tools_json,
+        activity_json = excluded.activity_json,
         cost_estimated = excluded.cost_estimated,
         cost_quality = excluded.cost_quality,
         branch_resolution_tier = excluded.branch_resolution_tier,
         confidence = excluded.confidence,
+        override_user = excluded.override_user,
         updated_at = excluded.updated_at
       `,
     ).run({
@@ -300,8 +368,14 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       input_tokens,
       cached_input_tokens,
       cache_creation_input_tokens,
+      cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens,
       output_tokens,
       reasoning_output_tokens,
+      web_search_requests,
+      tool_call_count,
+      tools_json,
+      activity_json,
       total_cost_usd: existing ? existing.total_cost_usd : null,
       last_observed_at: desired.last_observed_at,
       cost_estimated: desired.cost_estimated,

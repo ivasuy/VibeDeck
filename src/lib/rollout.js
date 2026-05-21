@@ -1141,6 +1141,7 @@ async function parseClaudeFile({
     const delta = normalizeClaudeUsage(usage);
     if (!delta || isAllZeroUsage(delta)) continue;
     delta.conversation_count = 0;
+    const claudeTools = extractClaudeTools(obj?.message?.content);
 
     sessionModel = model;
     if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
@@ -1152,8 +1153,14 @@ async function parseClaudeFile({
       input_tokens: delta.input_tokens,
       cached_input_tokens: delta.cached_input_tokens,
       cache_creation_input_tokens: delta.cache_creation_input_tokens,
+      cache_creation_5m_input_tokens: delta.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: delta.cache_creation_1h_input_tokens,
       output_tokens: delta.output_tokens,
       reasoning_output_tokens: delta.reasoning_output_tokens,
+      web_search_requests: delta.web_search_requests,
+      tool_call_count: claudeTools.length,
+      tools_json: stableCounterJson(countNames(claudeTools)),
+      activity_json: stableCounterJson(activityCounterFromTools(claudeTools)),
       conversation_count: delta.conversation_count,
     });
 
@@ -2569,15 +2576,77 @@ function normalizeClaudeUsage(u) {
   const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
   const cacheCreation = toNonNegativeInt(u?.cache_creation_input_tokens);
+  const cacheSplit = extractClaudeCacheSplit(u);
   const cacheRead = toNonNegativeInt(u?.cache_read_input_tokens);
+  const webSearchRequests = toNonNegativeInt(u?.server_tool_use?.web_search_requests);
   const totalTokens = inputTokens + outputTokens + cacheCreation + cacheRead;
   return {
     input_tokens: inputTokens,
     cached_input_tokens: cacheRead,
     cache_creation_input_tokens: cacheCreation,
+    cache_creation_5m_input_tokens: cacheSplit.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: cacheSplit.cache_creation_1h_input_tokens,
     output_tokens: outputTokens,
     reasoning_output_tokens: 0,
+    web_search_requests: webSearchRequests,
     total_tokens: totalTokens,
+  };
+}
+
+function stableCounterJson(counter) {
+  const entries = Object.entries(counter || {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(Object.fromEntries(entries));
+}
+
+function countNames(names) {
+  const counts = {};
+  for (const name of Array.isArray(names) ? names : []) {
+    if (typeof name !== "string" || !name.trim()) continue;
+    const key = name.trim();
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function activityForTool(name) {
+  if (typeof name !== "string") return "tooling";
+  const normalized = name.trim().toLowerCase();
+  if (["websearch", "web_search", "search"].includes(normalized)) return "research";
+  if (["bash", "exec", "shell", "terminal"].includes(normalized)) return "shell";
+  if (["edit", "write", "patch", "apply"].includes(normalized)) return "editing";
+  if (["read", "grep", "glob", "ls"].includes(normalized)) return "reading";
+  if (["task", "agent"].includes(normalized)) return "orchestration";
+  return "tooling";
+}
+
+function activityCounterFromTools(tools) {
+  const counts = {};
+  for (const tool of Array.isArray(tools) ? tools : []) {
+    const activity = activityForTool(tool);
+    counts[activity] = (counts[activity] || 0) + 1;
+  }
+  return counts;
+}
+
+function extractClaudeTools(content) {
+  if (!Array.isArray(content)) return [];
+  const tools = [];
+  for (const item of content) {
+    if (item?.type !== "tool_use") continue;
+    if (typeof item.name !== "string" || !item.name.trim()) continue;
+    tools.push(item.name.trim());
+  }
+  return tools;
+}
+
+function extractClaudeCacheSplit(usage) {
+  return {
+    cache_creation_5m_input_tokens: toNonNegativeInt(
+      usage?.cache_creation?.ephemeral_5m_input_tokens,
+    ),
+    cache_creation_1h_input_tokens: toNonNegativeInt(
+      usage?.cache_creation?.ephemeral_1h_input_tokens,
+    ),
   };
 }
 

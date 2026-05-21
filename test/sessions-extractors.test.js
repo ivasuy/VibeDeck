@@ -258,6 +258,71 @@ test('SessionEvent extraction: Claude Code', async () => {
   }
 });
 
+test('SessionEvent extraction: Claude Code captures cache split, web search count, tools, and activity labels', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-claude-enriched-'));
+  try {
+    const projectRoot = path.join(tmp, 'repo');
+    const encodedProjectRoot = `-${projectRoot.split(path.sep).filter(Boolean).join('-')}`;
+    const claudePath = path.join(tmp, '.claude', 'projects', encodedProjectRoot, 'agent-claude.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    await fs.mkdir(projectRoot, { recursive: true });
+    await fs.mkdir(path.dirname(claudePath), { recursive: true });
+    await fs.writeFile(
+      claudePath,
+      [
+        JSON.stringify({
+          timestamp: '2026-05-09T00:00:00.000Z',
+          type: 'assistant',
+          message: {
+            id: 'msg_1',
+            model: 'claude-sonnet-4-6',
+            usage: {
+              input_tokens: 10,
+              output_tokens: 2,
+              cache_read_input_tokens: 7,
+              cache_creation_input_tokens: 30,
+              cache_creation: {
+                ephemeral_5m_input_tokens: 11,
+                ephemeral_1h_input_tokens: 19,
+              },
+              server_tool_use: {
+                web_search_requests: 2,
+              },
+            },
+            content: [
+              { type: 'tool_use', name: 'Bash' },
+              { type: 'tool_use', name: 'Edit' },
+              { type: 'tool_use', name: 'WebSearch' },
+            ],
+          },
+          requestId: 'req_1',
+        }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+    await parseClaudeIncremental({
+      projectFiles: [{ path: claudePath, source: 'claude' }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const update = events.find((event) => event.kind === 'update');
+    assert.equal(update.cache_creation_input_tokens, 30);
+    assert.equal(update.cache_creation_5m_input_tokens, 11);
+    assert.equal(update.cache_creation_1h_input_tokens, 19);
+    assert.equal(update.web_search_requests, 2);
+    assert.equal(update.tool_call_count, 3);
+    assert.deepEqual(JSON.parse(update.tools_json), { Bash: 1, Edit: 1, WebSearch: 1 });
+    assert.deepEqual(JSON.parse(update.activity_json), { editing: 1, research: 1, shell: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('SessionEvent extraction: Codex rollout JSONL', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-codex-'));
   try {

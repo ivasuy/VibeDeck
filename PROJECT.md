@@ -606,3 +606,50 @@ H.7 confirmed the right area to study, but the implementation made the app slowe
 - Do not reject the idea that the flush path needs work; reject only the current H.7 implementation as a merge candidate.
 - Before retrying, add inner-stage profiling inside `recent_lane_session_event_flush` so we know whether the actual cost is SQLite writes, bucket-cost calculation, transaction boundaries, indexes, or object allocation.
 - Continue to preserve `/usage`, `/dashboard`, `/branches`, Unknown branch, Historical unknown, and branch/date richness as acceptance gates for any future flush-path rewrite.
+
+### 0.1.3 PR - Phase H.7 Revised: Flush Profile Targeted Fix (Cleanup Still Not Accepted)
+
+**Status:** investigated in a separate worktree, cleanup applied, latest benchmark still failed full acceptance, not part of the H.6 release candidate.
+
+**External worktree:** `.worktrees/phase-h7-flush-profile-targeted-fix`
+**Plan:** `.worktrees/phase-h7-flush-profile-targeted-fix/docs/superpowers/plans/2026-05-21-phase-h7-flush-profile-targeted-fix.md`
+**Evidence:** `.worktrees/phase-h7-flush-profile-targeted-fix/docs/superpowers/plans/2026-05-21-phase-h7-revised-smoke-evidence.md`
+**Artifacts:** `.worktrees/phase-h7-flush-profile-targeted-fix/docs/superpowers/plans/phase-h7-revised-smoke-artifacts/`
+
+#### What was attempted
+
+Revised H.7 returned to the H.6 code path, added rebuild-only substage counters inside `recent_lane_session_event_flush`, and kept only the low-risk bucket fact SQL reduction: bucket upsert returns the final bucket row with `RETURNING *`, while immediate cost materialization and session ledger recompute remain in place.
+
+The final cleanup kept the useful parts and removed avoidable risk:
+
+- Profiling timers are bypassed when batch profiling is disabled, so normal rebuilds do not pay `hrtime` instrumentation overhead.
+- The H.7 repair-pass smoke gate allows only a bounded `500ms` timing-noise window, so small repair wobble does not create a false failure while real repair regressions still fail.
+
+#### Measured outcome on local corpus
+
+| Metric | H.6 pre-merge audit baseline | H.7 revised cleanup result | Gate |
+|---|---:|---:|---|
+| Wall clock | `249,396ms` | `271,228ms` | Fail |
+| `recent_lane_session_event_flush` | `215,845ms` | `219,330.317ms` | Fail |
+| `repair_pass` | `1,015.193ms` | `996.967ms` | Pass |
+| `branch_fact_rebuild_pass` | `26,290.685ms` | `32,300.508ms` | Fail |
+
+The cleanup removed the earlier repair-pass false failure, but the latest full local smoke still failed on the real speed gates. The branch is useful as profiling evidence, but not as a release speed improvement.
+
+Top flush substage counter: `batch_transaction_ms=179,118.717ms`. The next largest measured flush substage was `batch_branch_resolution_ms=174,030.637ms`; bucket upsert work measured only `2,819.294ms`.
+
+#### Integrity checks
+
+| Surface | Result |
+|---|---|
+| Focused tests before cleanup | Passed (`41` tests, `0` failed) |
+| Cleanup-focused tests | Passed (`43` tests, `0` failed) |
+| Dashboard production build | Passed; existing large Vite chunk warning remains |
+| H.7 revised rebuild smoke | Failed full acceptance (`wall`, `flush`, and `branch_fact` gates failed) |
+| `/usage` | Earlier API/UI smoke passed on this branch; final post-cleanup probe skipped because rebuild benchmark failed |
+| `/dashboard` | Earlier API/UI smoke passed on this branch; final post-cleanup probe skipped because rebuild benchmark failed |
+| `/branches` | Earlier API/UI smoke passed on this branch; final post-cleanup probe skipped because rebuild benchmark failed |
+| Unknown branch | Earlier API/UI smoke confirmed visibility; final post-cleanup probe skipped because rebuild benchmark failed |
+| Historical unknown | Earlier API/UI smoke confirmed visibility; final post-cleanup probe skipped because rebuild benchmark failed |
+
+Final decision: use H.6; do not merge H.7 revised as a speed phase. If we salvage anything later, salvage only the bucket upsert SQL reduction, the disabled-profile overhead guard, and the profiler evidence showing branch/repo resolution is the next real target.

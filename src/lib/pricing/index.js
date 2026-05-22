@@ -133,7 +133,10 @@ function nonNegativeNumericField(value) {
 }
 
 function hasExplicitCacheSplit(row) {
-  return row.cache_creation_5m_input_tokens != null || row.cache_creation_1h_input_tokens != null;
+  return (
+    nonNegativeNumber(row.cache_creation_5m_input_tokens) > 0 ||
+    nonNegativeNumber(row.cache_creation_1h_input_tokens) > 0
+  );
 }
 
 function computeEnhancedRowCost(row) {

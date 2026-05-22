@@ -69,6 +69,23 @@ test("computeEnhancedRowCost falls back to legacy cache write when split is abse
   assert.equal(pricing.computeEnhancedRowCost(row), pricing.computeRowCost(row));
 });
 
+test("computeEnhancedRowCost falls back to legacy cache write when split fields are zero", async () => {
+  await loadFixturePricing();
+  const row = {
+    source: "claude",
+    model: "claude-opus-4-7",
+    input_tokens: 0,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 3_000,
+    cache_creation_5m_input_tokens: 0,
+    cache_creation_1h_input_tokens: 0,
+    output_tokens: 0,
+    reasoning_output_tokens: 0,
+    web_search_requests: 0,
+  };
+  assert.equal(pricing.computeEnhancedRowCost(row), pricing.computeRowCost(row));
+});
+
 test("computeEnhancedRowCost bills web search only from numeric request count", async () => {
   await loadFixturePricing();
   const withCount = pricing.computeEnhancedRowCost({

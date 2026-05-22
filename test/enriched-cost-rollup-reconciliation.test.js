@@ -317,7 +317,9 @@ function insertFact(db, row) {
 
 test('enriched costs reconcile across usage, dashboard live snapshot, and branch rollups without hiding unknown buckets', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-enriched-reconcile-'));
+  const previousIdleTimeoutMin = process.env.VIBEDECK_IDLE_TIMEOUT_MIN;
   try {
+    process.env.VIBEDECK_IDLE_TIMEOUT_MIN = '1000000';
     const trackerDir = path.join(root, 'tracker');
     const repoRoot = path.join(root, 'repo');
     const missingRoot = path.join(root, '.worktrees', 'missing');
@@ -327,7 +329,7 @@ test('enriched costs reconcile across usage, dashboard live snapshot, and branch
     await fs.writeFile(queuePath, '', 'utf8');
     const dbPath = path.join(trackerDir, 'vibedeck.sqlite3');
     ensureSchema(dbPath);
-    const baseMs = Date.now() - (4 * 60 * 1000);
+    const baseMs = Date.UTC(2026, 4, 22, 12, 0, 0);
     const isoAt = (minutes) => new Date(baseMs + (minutes * 60 * 1000)).toISOString();
     const summaryDay = isoAt(0).slice(0, 10);
 
@@ -591,6 +593,8 @@ test('enriched costs reconcile across usage, dashboard live snapshot, and branch
     assert.equal(unknownBranch.tools_json, '{"WebSearch":9}');
     assert.equal(unknownBranch.activity_json, '{"unattributed":1}');
   } finally {
+    if (previousIdleTimeoutMin === undefined) delete process.env.VIBEDECK_IDLE_TIMEOUT_MIN;
+    else process.env.VIBEDECK_IDLE_TIMEOUT_MIN = previousIdleTimeoutMin;
     await fs.rm(root, { recursive: true, force: true });
   }
 });

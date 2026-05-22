@@ -180,6 +180,10 @@ async function parseRolloutIncremental({
     const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
     const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
     const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    const pendingCodexTools =
+      fileSource === "codex" && prev && prev.inode === inode
+        ? normalizePendingCodexTools(prev.pendingCodexTools)
+        : [];
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -199,6 +203,7 @@ async function parseRolloutIncremental({
       startOffset,
       lastTotal,
       lastModel,
+      pendingCodexTools,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -239,6 +244,7 @@ async function parseRolloutIncremental({
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      ...(fileSource === "codex" ? { pendingCodexTools: result.pendingCodexTools } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -875,6 +881,7 @@ async function parseRolloutFile({
   startOffset,
   lastTotal,
   lastModel,
+  pendingCodexTools: initialPendingCodexTools,
   hourlyState,
   touchedBuckets,
   source,
@@ -889,8 +896,9 @@ async function parseRolloutFile({
 }) {
   const st = await fs.stat(filePath);
   const endOffset = st.size;
+  const pendingCodexTools = source === "codex" ? normalizePendingCodexTools(initialPendingCodexTools) : [];
   if (startOffset >= endOffset) {
-    return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
+    return { endOffset, lastTotal, lastModel, pendingCodexTools, eventsAggregated: 0 };
   }
 
   const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
@@ -909,7 +917,6 @@ async function parseRolloutFile({
   let sessionModel = null;
   let sessionCwd = null;
   const providerBranchState = createProviderBranchState();
-  const pendingCodexTools = [];
 
   for await (const line of rl) {
     if (!line) continue;
@@ -1054,7 +1061,7 @@ async function parseRolloutFile({
     );
   }
 
-  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
+  return { endOffset, lastTotal: totals, lastModel: model, pendingCodexTools, eventsAggregated };
 }
 
 async function parseClaudeFile({
@@ -2535,6 +2542,11 @@ function extractCodexPendingToolName(obj) {
     return "Edit";
   }
   return null;
+}
+
+function normalizePendingCodexTools(tools) {
+  if (!Array.isArray(tools)) return [];
+  return tools.filter((tool) => typeof tool === "string" && tool.trim()).map((tool) => tool.trim());
 }
 
 function pickDelta(lastUsage, totalUsage, prevTotals) {

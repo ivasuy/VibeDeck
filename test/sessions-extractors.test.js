@@ -384,6 +384,63 @@ test('SessionEvent extraction: Codex captures tools and keeps cached input separ
   }
 });
 
+test('SessionEvent extraction: Codex captures tools across incremental parses', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-codex-pending-tool-'));
+  try {
+    const rolloutPath = path.join(tmp, 'rollout.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const usage = {
+      input_tokens: 100,
+      cached_input_tokens: 80,
+      output_tokens: 10,
+      reasoning_output_tokens: 5,
+      total_tokens: 115,
+    };
+
+    await fs.writeFile(
+      rolloutPath,
+      [
+        JSON.stringify({ timestamp: '2026-05-09T00:00:00.000Z', type: 'session_meta', payload: { cwd: tmp, model: 'gpt-5.4', git: { branch: 'main' } } }),
+        JSON.stringify({ timestamp: '2026-05-09T00:00:01.000Z', type: 'response_item', payload: { type: 'function_call', name: 'exec_command' } }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const firstEvents = [];
+    await parseRolloutIncremental({
+      rolloutFiles: [{ path: rolloutPath, source: 'codex' }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => firstEvents.push(event),
+    });
+    assert.deepEqual(firstEvents, []);
+
+    await fs.appendFile(
+      rolloutPath,
+      buildTokenCountLine({ ts: '2026-05-09T00:00:02.000Z', last: usage, total: usage }) + '\n',
+      'utf8',
+    );
+
+    const secondEvents = [];
+    await parseRolloutIncremental({
+      rolloutFiles: [{ path: rolloutPath, source: 'codex' }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => secondEvents.push(event),
+    });
+
+    const update = secondEvents.find((event) => event.kind === 'update');
+    assert.equal(update.session_id, rolloutPath);
+    assert.equal(update.input_tokens, 20);
+    assert.equal(update.cached_input_tokens, 80);
+    assert.equal(update.tool_call_count, 1);
+    assert.deepEqual(JSON.parse(update.tools_json), { exec_command: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('SessionEvent extraction: Codex rollout JSONL', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-codex-'));
   try {

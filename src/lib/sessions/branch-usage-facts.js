@@ -130,6 +130,15 @@ function roundCost(value) {
   return Math.round(Number(value || 0) * 10000) / 10000;
 }
 
+function costTotalTokens(row) {
+  const totalTokens = toInteger(row?.total_tokens);
+  if (totalTokens !== 0) return totalTokens;
+  const webSearchRequests = typeof row?.web_search_requests === 'number' && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return webSearchRequests > 0 ? webSearchRequests : totalTokens;
+}
+
 function branchUsageDisplayBranch({ branch, project }) {
   if (branch && typeof branch === 'object') {
     if (branch.branch_kind === 'historical_unknown') {
@@ -621,7 +630,7 @@ function estimateGroupCosts(groups, session) {
     const resolved = resolveUsageCost({
       source: session.provider,
       model: group.model,
-      total_tokens: group.total_tokens,
+      total_tokens: costTotalTokens(group),
       input_tokens: group.input_tokens,
       cached_input_tokens: group.cached_input_tokens,
       cache_creation_input_tokens: group.cache_creation_input_tokens,

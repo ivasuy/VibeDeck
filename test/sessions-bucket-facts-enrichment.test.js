@@ -97,3 +97,68 @@ test('session bucket facts accumulate enrichment fields and price split cache pl
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('web-search-only bucket facts bill numeric requests into bucket and session costs', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-bucket-facts-web-only-'));
+  const dbPath = path.join(dir, 'test.db');
+  try {
+    ensureSchema(dbPath);
+
+    await processSessionEvent(dbPath, {
+      kind: 'start',
+      provider: 'claude',
+      session_id: 'web-only',
+      started_at: '2026-05-18T09:00:00.000Z',
+      cwd: dir,
+      model: 'claude-opus-4-7',
+    }, { deferBranchFactRebuild: true });
+
+    await processSessionEvent(dbPath, {
+      kind: 'update',
+      provider: 'claude',
+      session_id: 'web-only',
+      observed_at: '2026-05-18T09:01:00.000Z',
+      delta_tokens: 0,
+      web_search_requests: 2,
+      tool_call_count: 4,
+      tools_json: JSON.stringify({ WebSearch: 99 }),
+      activity_json: JSON.stringify({ research: 99 }),
+      cwd: dir,
+      model: 'claude-opus-4-7',
+    }, { deferBranchFactRebuild: true });
+
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    const bucket = db
+      .prepare(`
+        SELECT *
+        FROM vibedeck_session_buckets
+        WHERE provider = 'claude' AND session_id = 'web-only'
+      `)
+      .get();
+    const session = db
+      .prepare(`
+        SELECT total_tokens, total_cost_usd, cost_estimated, cost_quality
+        FROM vibedeck_sessions
+        WHERE provider = 'claude' AND session_id = 'web-only'
+      `)
+      .get();
+    db.close();
+
+    assert.equal(bucket.total_tokens, 0);
+    assert.equal(bucket.web_search_requests, 2);
+    assert.deepEqual(JSON.parse(bucket.tools_json), { WebSearch: 99 });
+    assert.equal(bucket.cost_quality, 'token_buckets');
+    assert.equal(bucket.cost_estimated, 0);
+    assert.equal(bucket.total_cost_usd, pricing.computeEnhancedRowCost({
+      source: 'claude',
+      model: 'claude-opus-4-7',
+      web_search_requests: 2,
+    }));
+    assert.equal(session.total_tokens, 0);
+    assert.equal(session.cost_quality, 'token_buckets');
+    assert.equal(session.cost_estimated, 0);
+    assert.equal(session.total_cost_usd, bucket.total_cost_usd);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

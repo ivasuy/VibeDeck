@@ -87,11 +87,20 @@ function cacheCreationTotal(row) {
   return split5m > 0 || split1h > 0 ? split5m + split1h : legacy;
 }
 
+function costTotalTokens(row) {
+  const totalTokens = Number(row?.total_tokens || 0) || 0;
+  if (totalTokens !== 0) return totalTokens;
+  const webSearchRequests = typeof row?.web_search_requests === 'number' && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return webSearchRequests > 0 ? webSearchRequests : totalTokens;
+}
+
 function bucketCostPayload(row) {
   return resolveUsageCost({
     source: row.bucket_provider,
     model: row.bucket_model,
-    total_tokens: row.total_tokens,
+    total_tokens: costTotalTokens(row),
     input_tokens: row.input_tokens,
     cached_input_tokens: row.cached_input_tokens,
     cache_creation_input_tokens: row.cache_creation_input_tokens,
@@ -287,7 +296,7 @@ function recomputeSessionLedger(db, sessionRow) {
     });
   }
   const cost = finalizeCostAccumulator(costAcc);
-  const fallbackCost = totalTokens === 0
+  const fallbackCost = totalTokens === 0 && !(cost.total_cost_usd > 0)
     ? { total_cost_usd: 0, cost_estimated: false, cost_quality: 'zero_tokens' }
     : cost;
 

@@ -231,6 +231,70 @@ test('branch usage event groups preserve known branches while carrying enrichmen
   }
 });
 
+test('branch usage event groups bill web-search-only numeric requests without tools_json inference', async () => {
+  const tmp = makeDb();
+  try {
+    const repoRoot = path.join(tmp.dir, 'repo');
+    initGitRepo(repoRoot);
+
+    const db = new DatabaseSync(tmp.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 'web-only-event',
+        started_at: '2026-05-18T10:00:00.000Z',
+        ended_at: '2026-05-18T10:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'claude-opus-4-7',
+        total_tokens: 0,
+        last_observed_at: '2026-05-18T10:05:00.000Z',
+      });
+      insertEvent(db, {
+        provider: 'claude',
+        session_id: 'web-only-event',
+        event_key: 'e1',
+        observed_at: '2026-05-18T10:01:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'feature/enriched',
+        model: 'claude-opus-4-7',
+        delta_tokens: 0,
+        web_search_requests: 2,
+        tool_call_count: 5,
+        tools_json: JSON.stringify({ WebSearch: 99 }),
+        activity_json: JSON.stringify({ research: 99 }),
+      });
+
+      await rebuildBranchUsageFactsForSession(db, {
+        dbPath: tmp.dbPath,
+        provider: 'claude',
+        session_id: 'web-only-event',
+      });
+    } finally {
+      db.close();
+    }
+
+    const rows = readBranchUsageFactRows(tmp.dbPath, { includeArchived: true });
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].branch, 'feature/enriched');
+    assert.equal(rows[0].branch_kind, 'known');
+    assert.equal(rows[0].total_tokens, 0);
+    assert.equal(rows[0].web_search_requests, 2);
+    assert.equal(rows[0].tool_call_count, 5);
+    assert.deepEqual(JSON.parse(rows[0].tools_json), { WebSearch: 99 });
+    assert.equal(rows[0].cost_quality, 'token_buckets');
+    assert.equal(rows[0].cost_estimated, 0);
+    assert.equal(rows[0].total_cost_usd, pricing.computeEnhancedRowCost({
+      source: 'claude',
+      model: 'claude-opus-4-7',
+      web_search_requests: 2,
+    }));
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('synthetic branch usage facts preserve Historical unknown while carrying session enrichment', async () => {
   const tmp = makeDb();
   try {

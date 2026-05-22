@@ -207,9 +207,26 @@ function liveBucketTotal(row) {
     "input_tokens",
     "cached_input_tokens",
     "cache_creation_input_tokens",
+    "cache_creation_5m_input_tokens",
+    "cache_creation_1h_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
   ].reduce((sum, key) => sum + (Number(row?.[key] || 0) || 0), 0);
+}
+
+function hasLiveBillableEnrichment(row) {
+  const split5m = Number(row?.cache_creation_5m_input_tokens || 0) || 0;
+  const split1h = Number(row?.cache_creation_1h_input_tokens || 0) || 0;
+  const webSearch = typeof row?.web_search_requests === "number" && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return split5m > 0 || split1h > 0 || webSearch > 0;
+}
+
+function liveCostTotalTokens(row) {
+  const total = Number(row?.total_tokens);
+  if (Number.isFinite(total) && total === 0 && hasLiveBillableEnrichment(row)) return null;
+  return row?.total_tokens;
 }
 
 function normalizeCodexUsage(u) {
@@ -324,12 +341,15 @@ function enrichLiveSessionCost(row) {
     stored_cost_usd: active ? null : row?.total_cost_usd,
     source: row?.provider,
     model: row?.model,
-    total_tokens: row?.total_tokens,
+    total_tokens: liveCostTotalTokens(row),
     input_tokens: row?.input_tokens,
     cached_input_tokens: row?.cached_input_tokens,
     cache_creation_input_tokens: row?.cache_creation_input_tokens,
+    cache_creation_5m_input_tokens: row?.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: row?.cache_creation_1h_input_tokens,
     output_tokens: row?.output_tokens,
     reasoning_output_tokens: row?.reasoning_output_tokens,
+    web_search_requests: row?.web_search_requests,
   });
 
   return {

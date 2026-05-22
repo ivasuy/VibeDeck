@@ -323,6 +323,67 @@ test('SessionEvent extraction: Claude Code captures cache split, web search coun
   }
 });
 
+test('SessionEvent extraction: Codex captures tools and keeps cached input separate', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-codex-enriched-'));
+  try {
+    const rolloutPath = path.join(tmp, 'rollout.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    await fs.writeFile(
+      rolloutPath,
+      [
+        JSON.stringify({ timestamp: '2026-05-09T00:00:00.000Z', type: 'session_meta', payload: { cwd: tmp, model: 'gpt-5.4', git: { branch: 'main' } } }),
+        JSON.stringify({ timestamp: '2026-05-09T00:00:01.000Z', type: 'response_item', payload: { type: 'function_call', name: 'exec_command' } }),
+        JSON.stringify({ timestamp: '2026-05-09T00:00:02.000Z', type: 'event_msg', payload: { type: 'patch_apply_end' } }),
+        JSON.stringify({
+          timestamp: '2026-05-09T00:00:03.000Z',
+          type: 'event_msg',
+          payload: {
+            type: 'token_count',
+            info: {
+              last_token_usage: {
+                input_tokens: 100,
+                cached_input_tokens: 80,
+                output_tokens: 10,
+                reasoning_output_tokens: 5,
+                total_tokens: 115,
+              },
+              total_token_usage: {
+                input_tokens: 100,
+                cached_input_tokens: 80,
+                output_tokens: 10,
+                reasoning_output_tokens: 5,
+                total_tokens: 115,
+              },
+            },
+          },
+        }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const events = [];
+    await parseRolloutIncremental({
+      rolloutFiles: [{ path: rolloutPath, source: 'codex' }],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    const update = events.find((event) => event.kind === 'update');
+    assert.equal(update.input_tokens, 20);
+    assert.equal(update.cached_input_tokens, 80);
+    assert.equal(update.output_tokens, 10);
+    assert.equal(update.reasoning_output_tokens, 5);
+    assert.equal(update.web_search_requests, 0);
+    assert.equal(update.tool_call_count, 2);
+    assert.deepEqual(JSON.parse(update.tools_json), { Edit: 1, exec_command: 1 });
+    assert.deepEqual(JSON.parse(update.activity_json), { editing: 1, shell: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('SessionEvent extraction: Codex rollout JSONL', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-codex-'));
   try {

@@ -909,6 +909,7 @@ async function parseRolloutFile({
   let sessionModel = null;
   let sessionCwd = null;
   const providerBranchState = createProviderBranchState();
+  const pendingCodexTools = [];
 
   for await (const line of rl) {
     if (!line) continue;
@@ -919,7 +920,12 @@ async function parseRolloutFile({
       (line.includes('"model"') || line.includes('"cwd"'));
     const maybeProviderBranch =
       !maybeTokenCount && !maybeTurnContext && line.includes('"git"') && line.includes('"branch"');
-    if (!maybeTokenCount && !maybeTurnContext && !maybeProviderBranch) continue;
+    const maybeCodexTool =
+      source === "codex" &&
+      !maybeTokenCount &&
+      ((line.includes('"response_item"') && line.includes('"function_call"')) ||
+        line.includes('"patch_apply_end"'));
+    if (!maybeTokenCount && !maybeTurnContext && !maybeProviderBranch && !maybeCodexTool) continue;
 
     let obj;
     try {
@@ -928,6 +934,11 @@ async function parseRolloutFile({
       continue;
     }
     collectProviderBranchFromObject(source, obj, providerBranchState);
+
+    if (source === "codex") {
+      const toolName = extractCodexPendingToolName(obj);
+      if (toolName) pendingCodexTools.push(toolName);
+    }
 
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
@@ -983,7 +994,8 @@ async function parseRolloutFile({
     sessionEndedAt = tokenTimestamp;
     sessionCwd = currentCwd || sessionCwd;
     sessionTotalTokens += Number(delta.total_tokens || 0);
-    sessionUpdates.push({
+    const codexTools = source === "codex" ? pendingCodexTools.splice(0) : [];
+    const sessionUpdate = {
       observed_at: tokenTimestamp,
       delta_tokens: Number(delta.total_tokens || 0),
       input_tokens: delta.input_tokens,
@@ -991,7 +1003,14 @@ async function parseRolloutFile({
       cache_creation_input_tokens: delta.cache_creation_input_tokens,
       output_tokens: delta.output_tokens,
       reasoning_output_tokens: delta.reasoning_output_tokens,
-    });
+    };
+    if (source === "codex") {
+      sessionUpdate.web_search_requests = 0;
+      sessionUpdate.tool_call_count = codexTools.length;
+      sessionUpdate.tools_json = stableCounterJson(countNames(codexTools));
+      sessionUpdate.activity_json = stableCounterJson(activityCounterFromTools(codexTools));
+    }
+    sessionUpdates.push(sessionUpdate);
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
@@ -2501,6 +2520,23 @@ function extractTokenCount(obj) {
   return null;
 }
 
+function extractCodexPendingToolName(obj) {
+  const payload = obj?.payload;
+  if (!payload || typeof payload !== "object") return null;
+  if (
+    obj?.type === "response_item" &&
+    payload.type === "function_call" &&
+    typeof payload.name === "string" &&
+    payload.name.trim()
+  ) {
+    return payload.name.trim();
+  }
+  if (obj?.type === "event_msg" && payload.type === "patch_apply_end") {
+    return "Edit";
+  }
+  return null;
+}
+
 function pickDelta(lastUsage, totalUsage, prevTotals) {
   const hasLast = isNonEmptyObject(lastUsage);
   const hasTotal = isNonEmptyObject(totalUsage);
@@ -2612,7 +2648,7 @@ function activityForTool(name) {
   if (typeof name !== "string") return "tooling";
   const normalized = name.trim().toLowerCase();
   if (["websearch", "web_search", "search"].includes(normalized)) return "research";
-  if (["bash", "exec", "shell", "terminal"].includes(normalized)) return "shell";
+  if (["bash", "exec", "exec_command", "shell", "terminal"].includes(normalized)) return "shell";
   if (["edit", "write", "patch", "apply"].includes(normalized)) return "editing";
   if (["read", "grep", "glob", "ls"].includes(normalized)) return "reading";
   if (["task", "agent"].includes(normalized)) return "orchestration";

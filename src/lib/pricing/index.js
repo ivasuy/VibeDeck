@@ -142,9 +142,6 @@ function hasExplicitCacheSplit(row) {
 function computeEnhancedRowCost(row) {
   const pricing = getModelPricing(row.model);
   const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
-  const outputTokens =
-    nonNegativeNumber(row.output_tokens) +
-    (reasoningIncludedInOutput ? nonNegativeNumber(row.reasoning_output_tokens) : 0);
   const reasoningCost = reasoningIncludedInOutput
     ? 0
     : nonNegativeNumber(row.reasoning_output_tokens) * (pricing.output || 0);
@@ -157,7 +154,7 @@ function computeEnhancedRowCost(row) {
 
   return (
     (nonNegativeNumber(row.input_tokens) * (pricing.input || 0) +
-      outputTokens * (pricing.output || 0) +
+      nonNegativeNumber(row.output_tokens) * (pricing.output || 0) +
       nonNegativeNumber(row.cached_input_tokens) * (pricing.cache_read || 0) +
       cacheWriteCost +
       reasoningCost) /

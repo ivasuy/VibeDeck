@@ -127,7 +127,7 @@ test("computeEnhancedRowCost ignores non-numeric web search request counts", asy
   assert.equal(cost, 0);
 });
 
-test("computeEnhancedRowCost keeps Codex cached tokens separate", async () => {
+test("computeEnhancedRowCost keeps Codex cached tokens separate without double-counting reasoning", async () => {
   await loadFixturePricing();
   const row = {
     source: "codex",
@@ -140,6 +140,6 @@ test("computeEnhancedRowCost keeps Codex cached tokens separate", async () => {
     web_search_requests: 0,
   };
   const cost = pricing.computeEnhancedRowCost(row);
-  const expected = (20_000 * 2.5 + 80_000 * 0.25 + 15_000 * 15) / 1_000_000;
+  const expected = (20_000 * 2.5 + 80_000 * 0.25 + 10_000 * 15) / 1_000_000;
   assert.ok(Math.abs(cost - expected) < 1e-9, `expected ${expected}, got ${cost}`);
 });

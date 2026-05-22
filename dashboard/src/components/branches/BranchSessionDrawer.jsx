@@ -71,6 +71,75 @@ function modelProvidersFromSessions(model, sessions) {
   return out;
 }
 
+function positiveNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function parseCounterJson(value) {
+  if (!value) return [];
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (_e) {
+      return [];
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+  return Object.entries(parsed)
+    .map(([label, count]) => ({
+      label: String(label || "").trim(),
+      count: positiveNumber(count),
+    }))
+    .filter((entry) => entry.label && entry.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 3);
+}
+
+function formatCounterList(value) {
+  const counters = parseCounterJson(value);
+  if (counters.length === 0) return "";
+  return counters.map((entry) => `${entry.label} ${toDisplayNumber(entry.count)}`).join(" · ");
+}
+
+function enrichmentItems(row) {
+  const items = [
+    ["5m cache", positiveNumber(row?.cache_creation_5m_input_tokens)],
+    ["1h cache", positiveNumber(row?.cache_creation_1h_input_tokens)],
+    ["Web searches", positiveNumber(row?.web_search_requests)],
+    ["Tool calls", positiveNumber(row?.tool_call_count)],
+  ]
+    .filter(([, value]) => value > 0)
+    .map(([label, value]) => ({ label, value: toDisplayNumber(value) }));
+
+  const topTools = formatCounterList(row?.tools_json);
+  if (topTools) items.push({ label: "Top tools", value: topTools });
+
+  const activity = formatCounterList(row?.activity_json);
+  if (activity) items.push({ label: "Activity", value: activity });
+
+  return items;
+}
+
+function EnrichmentSummary({ row, className = "" }) {
+  const items = enrichmentItems(row);
+  if (items.length === 0) return null;
+  return (
+    <div className={`mt-3 flex flex-wrap gap-1.5 ${className}`}>
+      {items.map((item) => (
+        <span
+          key={`${item.label}:${item.value}`}
+          className="inline-flex max-w-full items-center gap-1 rounded-md bg-oai-black/[0.035] px-2 py-1 text-[11px] text-oai-gray-600 dark:bg-white/[0.06] dark:text-oai-gray-300"
+        >
+          <span className="shrink-0 font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
+          <span className="min-w-0 truncate font-semibold tabular-nums text-oai-black dark:text-white">{item.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function SessionMetric({ icon: Icon, label, value }) {
   return (
     <div className="vd-subcard min-w-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-3 py-2 dark:border-oai-gray-800 dark:bg-white/[0.035]">
@@ -171,6 +240,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                   </option>
                 ))}
               </select>
+              <EnrichmentSummary row={selectedBucket} />
             </div>
           ) : null}
 
@@ -214,6 +284,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                         {formatEstimatedCostLabel(modelEntry)}
                       </span>
                     </div>
+                    <EnrichmentSummary row={modelEntry} />
                   </div>
                 ))}
               </div>
@@ -278,6 +349,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                       value={formatEstimatedCostLabel(session)}
                     />
                   </div>
+                  <EnrichmentSummary row={session} />
                 </article>
               ))}
               {visibleSessions.length < filteredSessions.length ? (

@@ -119,6 +119,75 @@ function breakdownCost(row, prefix) {
   return row?.[`${prefix}_total_cost_usd`] ?? row?.total_cost_usd;
 }
 
+function positiveNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function parseCounterJson(value) {
+  if (!value) return [];
+  let parsed = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch (_e) {
+      return [];
+    }
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+  return Object.entries(parsed)
+    .map(([label, count]) => ({
+      label: String(label || "").trim(),
+      count: positiveNumber(count),
+    }))
+    .filter((entry) => entry.label && entry.count > 0)
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 3);
+}
+
+function formatCounterList(value) {
+  const counters = parseCounterJson(value);
+  if (counters.length === 0) return "";
+  return counters.map((entry) => `${entry.label} ${toDisplayNumber(entry.count)}`).join(" · ");
+}
+
+function enrichmentItems(row) {
+  const items = [
+    ["5m cache", positiveNumber(row?.cache_creation_5m_input_tokens)],
+    ["1h cache", positiveNumber(row?.cache_creation_1h_input_tokens)],
+    ["Web searches", positiveNumber(row?.web_search_requests)],
+    ["Tool calls", positiveNumber(row?.tool_call_count)],
+  ]
+    .filter(([, value]) => value > 0)
+    .map(([label, value]) => ({ label, value: toDisplayNumber(value) }));
+
+  const topTools = formatCounterList(row?.tools_json);
+  if (topTools) items.push({ label: "Top tools", value: topTools });
+
+  const activity = formatCounterList(row?.activity_json);
+  if (activity) items.push({ label: "Activity", value: activity });
+
+  return items;
+}
+
+function EnrichmentSummary({ row, className = "" }) {
+  const items = enrichmentItems(row);
+  if (items.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1.5 ${className}`}>
+      {items.map((item) => (
+        <span
+          key={`${item.label}:${item.value}`}
+          className="inline-flex max-w-full items-center gap-1 rounded-md bg-oai-black/[0.035] px-2 py-1 text-[11px] text-oai-gray-600 dark:bg-white/[0.06] dark:text-oai-gray-300"
+        >
+          <span className="shrink-0 font-medium text-oai-gray-500 dark:text-oai-gray-400">{item.label}</span>
+          <span className="min-w-0 truncate font-semibold tabular-nums text-oai-black dark:text-white">{item.value}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function BreakdownCard({ title, rows, labelKey, iconForRow }) {
   const [expanded, setExpanded] = React.useState(false);
   const list = Array.isArray(rows) ? rows : [];
@@ -160,6 +229,7 @@ function BreakdownCard({ title, rows, labelKey, iconForRow }) {
               <BreakdownMetric label="Audit cost" value={formatCost(auditCost)} />
               <BreakdownMetric label="Live cost" value={formatCost(activeCost)} />
               <BreakdownMetric label="Sessions" value={formatSessionCount(row?.session_count)} />
+              <EnrichmentSummary row={row} className="lg:col-span-6" />
             </div>
           );
         })}
@@ -264,6 +334,7 @@ function SessionRow({ session, workstream, primary = false, selected = false, on
           Ended {formatTimestamp(session?.ended_at)}
         </span>
       </div>
+      <EnrichmentSummary row={session} className="sm:col-span-4" />
     </button>
   );
 }
@@ -385,6 +456,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                     <span>{formatCost(group.audit_total_cost_usd ?? group.total_cost_usd)}</span>
                   </div>
                 </div>
+                <EnrichmentSummary row={group} className="mb-3" />
 
                 <div className="grid gap-2">
                   {group.sessions.map((session) => (

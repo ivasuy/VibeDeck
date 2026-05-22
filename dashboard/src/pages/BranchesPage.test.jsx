@@ -860,6 +860,212 @@ describe("BranchesPage", () => {
     });
   });
 
+  it("shows enriched usage in branch drawer model date buckets and session rows", async () => {
+    const summary = makePayload([
+      {
+        repo_root: "/repo-enriched",
+        git_branches: ["main"],
+        git_branch_count: 1,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 1,
+            last_seen_at: "2026-05-11T01:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]);
+    const detail = makePayload([
+      {
+        repo_root: "/repo-enriched",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-11",
+            date_buckets: [
+              {
+                date: "2026-05-11",
+                total_tokens: 300,
+                total_cost_usd: 3,
+                session_count: 1,
+                cache_creation_5m_input_tokens: 10,
+                cache_creation_1h_input_tokens: 20,
+                web_search_requests: 3,
+                tool_call_count: 5,
+                tools_json: '{"Read":1,"WebSearch":3,"Write":1}',
+                activity_json: '{"review":1,"edit":2}',
+                models: [
+                  {
+                    model: "gpt-5.5",
+                    provider: "codex",
+                    total_tokens: 300,
+                    total_cost_usd: 3,
+                    session_count: 1,
+                    cache_creation_5m_input_tokens: 10,
+                    cache_creation_1h_input_tokens: 20,
+                    web_search_requests: 3,
+                    tool_call_count: 5,
+                    tools_json: '{"Read":1,"WebSearch":3,"Write":1}',
+                    activity_json: '{"review":1,"edit":2}',
+                  },
+                ],
+              },
+            ],
+            total_tokens: 300,
+            total_cost_usd: 3,
+            session_count: 1,
+            models: [],
+            sessions: [
+              {
+                provider: "codex",
+                session_id: "enriched-session",
+                started_at: "2026-05-11T01:00:00.000Z",
+                ended_at: "2026-05-11T01:10:00.000Z",
+                model: "gpt-5.5",
+                total_tokens: 300,
+                total_cost_usd: 3,
+                confidence: "high",
+                branch_resolution_tier: "A",
+                cache_creation_5m_input_tokens: 10,
+                cache_creation_1h_input_tokens: 20,
+                web_search_requests: 2,
+                tool_call_count: 3,
+                tools_json: '{"Read":1,"WebSearch":2}',
+                activity_json: '{"edit":1,"review":1}',
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    getBranchUsage
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(detail);
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /view sessions/i }));
+
+    expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    expect(screen.getAllByText("5m cache").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1h cache").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Web searches").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Tool calls").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Top tools").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Activity").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("WebSearch 3 · Read 1 · Write 1").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("edit 2 · review 1").length).toBeGreaterThan(0);
+    expect(screen.getByText("WebSearch 2 · Read 1")).toBeTruthy();
+  });
+
+  it("does not show empty enrichment sections for zero-only values or bad counter JSON", async () => {
+    const summary = makePayload([
+      {
+        repo_root: "/repo-zero-enriched",
+        git_branches: ["main"],
+        git_branch_count: 1,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 100,
+            total_cost_usd: 1,
+            session_count: 1,
+            last_seen_at: "2026-05-11T01:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]);
+    const detail = makePayload([
+      {
+        repo_root: "/repo-zero-enriched",
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            selected_date: "2026-05-11",
+            date_buckets: [
+              {
+                date: "2026-05-11",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                session_count: 1,
+                models: [
+                  {
+                    model: "gpt-5.5",
+                    provider: "codex",
+                    total_tokens: 100,
+                    total_cost_usd: 1,
+                    session_count: 1,
+                    cache_creation_5m_input_tokens: 0,
+                    cache_creation_1h_input_tokens: 0,
+                    web_search_requests: 0,
+                    tool_call_count: 0,
+                    tools_json: "{bad",
+                    activity_json: '{"edit":0}',
+                  },
+                ],
+              },
+            ],
+            total_tokens: 100,
+            total_cost_usd: 1,
+            session_count: 1,
+            sessions: [
+              {
+                provider: "codex",
+                session_id: "zero-only",
+                started_at: "2026-05-11T01:00:00.000Z",
+                ended_at: "2026-05-11T01:10:00.000Z",
+                model: "gpt-5.5",
+                total_tokens: 100,
+                total_cost_usd: 1,
+                confidence: "high",
+                branch_resolution_tier: "A",
+                cache_creation_5m_input_tokens: 0,
+                cache_creation_1h_input_tokens: 0,
+                web_search_requests: 0,
+                tool_call_count: 0,
+                tools_json: "{bad",
+                activity_json: null,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    getBranchUsage
+      .mockResolvedValueOnce(summary)
+      .mockResolvedValueOnce(detail);
+
+    render(<BranchesPage />);
+
+    await screen.findByRole("combobox", {
+      name: copy("branches.project.select_label"),
+    });
+    fireEvent.click(screen.getByRole("button", { name: /view sessions/i }));
+
+    expect(await screen.findByRole("dialog", { name: "Session details" })).toBeTruthy();
+    expect(screen.queryByText("5m cache")).toBeNull();
+    expect(screen.queryByText("1h cache")).toBeNull();
+    expect(screen.queryByText("Web searches")).toBeNull();
+    expect(screen.queryByText("Tool calls")).toBeNull();
+    expect(screen.queryByText("Top tools")).toBeNull();
+    expect(screen.queryByText("Activity")).toBeNull();
+  });
+
   it("defaults to the latest repo even when payload repos arrive out of order", async () => {
     getBranchUsage.mockResolvedValueOnce(makePayload([
       {

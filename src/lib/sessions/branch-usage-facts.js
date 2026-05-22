@@ -80,6 +80,52 @@ function toInteger(value) {
   return n == null ? 0 : Math.trunc(n);
 }
 
+function safeJsonParse(str) {
+  if (typeof str !== 'string' || str.trim() === '') return null;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
+function stableStringify(obj) {
+  if (obj == null) return null;
+  const keys = Object.keys(obj).sort();
+  const out = {};
+  for (const k of keys) out[k] = obj[k];
+  return JSON.stringify(out);
+}
+
+function parseCounterJson(str) {
+  const parsed = safeJsonParse(str);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const out = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(value) || value < 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  if (!counter || Object.keys(counter).length === 0) return null;
+  return stableStringify(counter);
+}
+
+function sumCounterJson(base, values) {
+  const sums = parseCounterJson(base);
+  for (const value of values) {
+    const parsed = parseCounterJson(value);
+    for (const [key, count] of Object.entries(parsed)) {
+      sums[key] = (sums[key] || 0) + count;
+    }
+  }
+  return stableCounterJson(sums);
+}
+
 function roundCost(value) {
   return Math.round(Number(value || 0) * 10000) / 10000;
 }
@@ -292,10 +338,15 @@ async function factBranch({
 function eventTokenTotal(event) {
   const explicit = toFiniteNumber(event?.delta_tokens);
   if (explicit != null) return Math.trunc(explicit);
+  const cacheCreation5m = toInteger(event?.cache_creation_5m_input_tokens);
+  const cacheCreation1h = toInteger(event?.cache_creation_1h_input_tokens);
+  const cacheCreationTotal = cacheCreation5m > 0 || cacheCreation1h > 0
+    ? cacheCreation5m + cacheCreation1h
+    : toInteger(event?.cache_creation_input_tokens);
   return (
     toInteger(event?.input_tokens) +
     toInteger(event?.cached_input_tokens) +
-    toInteger(event?.cache_creation_input_tokens) +
+    cacheCreationTotal +
     toInteger(event?.output_tokens) +
     toInteger(event?.reasoning_output_tokens)
   );
@@ -368,8 +419,14 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, db =
     input_tokens: toInteger(session.input_tokens),
     cached_input_tokens: toInteger(session.cached_input_tokens),
     cache_creation_input_tokens: toInteger(session.cache_creation_input_tokens),
+    cache_creation_5m_input_tokens: toInteger(session.cache_creation_5m_input_tokens),
+    cache_creation_1h_input_tokens: toInteger(session.cache_creation_1h_input_tokens),
     output_tokens: toInteger(session.output_tokens),
     reasoning_output_tokens: toInteger(session.reasoning_output_tokens),
+    web_search_requests: toInteger(session.web_search_requests),
+    tool_call_count: toInteger(session.tool_call_count),
+    tools_json: stableCounterJson(parseCounterJson(session.tools_json)),
+    activity_json: stableCounterJson(parseCounterJson(session.activity_json)),
     conversation_count: 0,
     total_cost_usd: null,
     cost_estimated: 1,
@@ -440,8 +497,14 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
         input_tokens: 0,
         cached_input_tokens: 0,
         cache_creation_input_tokens: 0,
+        cache_creation_5m_input_tokens: 0,
+        cache_creation_1h_input_tokens: 0,
         output_tokens: 0,
         reasoning_output_tokens: 0,
+        web_search_requests: 0,
+        tool_call_count: 0,
+        tools_json: null,
+        activity_json: null,
         conversation_count: 0,
         total_cost_usd: null,
         cost_estimated: 1,
@@ -459,8 +522,14 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
     group.input_tokens += toInteger(event.input_tokens);
     group.cached_input_tokens += toInteger(event.cached_input_tokens);
     group.cache_creation_input_tokens += toInteger(event.cache_creation_input_tokens);
+    group.cache_creation_5m_input_tokens += toInteger(event.cache_creation_5m_input_tokens);
+    group.cache_creation_1h_input_tokens += toInteger(event.cache_creation_1h_input_tokens);
     group.output_tokens += toInteger(event.output_tokens);
     group.reasoning_output_tokens += toInteger(event.reasoning_output_tokens);
+    group.web_search_requests += toInteger(event.web_search_requests);
+    group.tool_call_count += toInteger(event.tool_call_count);
+    group.tools_json = sumCounterJson(group.tools_json, [event.tools_json]);
+    group.activity_json = sumCounterJson(group.activity_json, [event.activity_json]);
     group.conversation_count += toInteger(event.conversation_count);
   }
 
@@ -556,8 +625,11 @@ function estimateGroupCosts(groups, session) {
       input_tokens: group.input_tokens,
       cached_input_tokens: group.cached_input_tokens,
       cache_creation_input_tokens: group.cache_creation_input_tokens,
+      cache_creation_5m_input_tokens: group.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: group.cache_creation_1h_input_tokens,
       output_tokens: group.output_tokens,
       reasoning_output_tokens: group.reasoning_output_tokens,
+      web_search_requests: group.web_search_requests,
       stored_cost_usd: null,
       stored_cost_is_authoritative: false,
     });
@@ -632,7 +704,10 @@ function insertFacts(db, session, groups) {
       first_observed_at, last_observed_at,
       event_count, total_tokens,
       input_tokens, cached_input_tokens, cache_creation_input_tokens,
-      output_tokens, reasoning_output_tokens, conversation_count,
+      cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
+      output_tokens, reasoning_output_tokens,
+      web_search_requests, tool_call_count, tools_json, activity_json,
+      conversation_count,
       total_cost_usd, cost_estimated, cost_quality,
       token_reconciled, cost_reconciled,
       created_at, updated_at
@@ -645,7 +720,10 @@ function insertFacts(db, session, groups) {
       @first_observed_at, @last_observed_at,
       @event_count, @total_tokens,
       @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
-      @output_tokens, @reasoning_output_tokens, @conversation_count,
+      @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
+      @output_tokens, @reasoning_output_tokens,
+      @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+      @conversation_count,
       @total_cost_usd, @cost_estimated, @cost_quality,
       @token_reconciled, @cost_reconciled,
       @created_at, @updated_at

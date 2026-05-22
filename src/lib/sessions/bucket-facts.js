@@ -21,13 +21,70 @@ function maxIso(a, b) {
 }
 
 function sumTokenFields(row) {
-  return [
+  const nonCacheTokens = [
     'input_tokens',
     'cached_input_tokens',
-    'cache_creation_input_tokens',
     'output_tokens',
     'reasoning_output_tokens',
   ].reduce((sum, key) => sum + (Number(row?.[key] || 0) || 0), 0);
+  return nonCacheTokens + cacheCreationTotal(row);
+}
+
+function safeJsonParse(str) {
+  if (typeof str !== 'string' || str.trim() === '') return null;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
+function stableStringify(obj) {
+  if (obj == null) return null;
+  const keys = Object.keys(obj).sort();
+  const out = {};
+  for (const k of keys) out[k] = obj[k];
+  return JSON.stringify(out);
+}
+
+function parseCounterJson(str) {
+  const parsed = safeJsonParse(str);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const out = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(value) || value < 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  if (!counter || Object.keys(counter).length === 0) return null;
+  return stableStringify(counter);
+}
+
+function sumCounterJson(base, values) {
+  const sums = parseCounterJson(base);
+  for (const value of values) {
+    const parsed = parseCounterJson(value);
+    for (const [key, count] of Object.entries(parsed)) {
+      sums[key] = (sums[key] || 0) + count;
+    }
+  }
+  return stableCounterJson(sums);
+}
+
+function hasCounterJson(str) {
+  return Object.keys(parseCounterJson(str)).length > 0;
+}
+
+function cacheCreationTotal(row) {
+  const legacy = Number(row?.cache_creation_input_tokens || 0) || 0;
+  const split5m = Number(row?.cache_creation_5m_input_tokens || 0) || 0;
+  const split1h = Number(row?.cache_creation_1h_input_tokens || 0) || 0;
+  return split5m > 0 || split1h > 0 ? split5m + split1h : legacy;
 }
 
 function bucketCostPayload(row) {
@@ -38,8 +95,11 @@ function bucketCostPayload(row) {
     input_tokens: row.input_tokens,
     cached_input_tokens: row.cached_input_tokens,
     cache_creation_input_tokens: row.cache_creation_input_tokens,
+    cache_creation_5m_input_tokens: row.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: row.cache_creation_1h_input_tokens,
     output_tokens: row.output_tokens,
     reasoning_output_tokens: row.reasoning_output_tokens,
+    web_search_requests: row.web_search_requests,
     stored_cost_usd: null,
   });
 }
@@ -52,12 +112,21 @@ function upsertBucketFact(db, sessionRow, event) {
   const inputTokens = Number(event.input_tokens || 0) || 0;
   const cachedInputTokens = Number(event.cached_input_tokens || 0) || 0;
   const cacheCreationInputTokens = Number(event.cache_creation_input_tokens || 0) || 0;
+  const cacheCreation5mInputTokens = Number(event.cache_creation_5m_input_tokens || 0) || 0;
+  const cacheCreation1hInputTokens = Number(event.cache_creation_1h_input_tokens || 0) || 0;
   const outputTokens = Number(event.output_tokens || 0) || 0;
   const reasoningOutputTokens = Number(event.reasoning_output_tokens || 0) || 0;
   const conversationCount = Number(event.conversation_count || 0) || 0;
+  const webSearchRequests = Number(event.web_search_requests || 0) || 0;
+  const toolCallCount = Number(event.tool_call_count || 0) || 0;
+  const toolsJson = stableCounterJson(parseCounterJson(event.tools_json));
+  const activityJson = stableCounterJson(parseCounterJson(event.activity_json));
+  const eventCacheCreationTotal = cacheCreation5mInputTokens > 0 || cacheCreation1hInputTokens > 0
+    ? cacheCreation5mInputTokens + cacheCreation1hInputTokens
+    : cacheCreationInputTokens;
   const bucketTotalTokens =
     event.delta_tokens == null
-      ? inputTokens + cachedInputTokens + cacheCreationInputTokens + outputTokens + reasoningOutputTokens
+      ? inputTokens + cachedInputTokens + eventCacheCreationTotal + outputTokens + reasoningOutputTokens
       : Number(event.delta_tokens || 0) || 0;
 
   if (
@@ -65,25 +134,49 @@ function upsertBucketFact(db, sessionRow, event) {
     inputTokens === 0 &&
     cachedInputTokens === 0 &&
     cacheCreationInputTokens === 0 &&
+    cacheCreation5mInputTokens === 0 &&
+    cacheCreation1hInputTokens === 0 &&
     outputTokens === 0 &&
     reasoningOutputTokens === 0 &&
-    conversationCount === 0
+    conversationCount === 0 &&
+    webSearchRequests === 0 &&
+    toolCallCount === 0 &&
+    !hasCounterJson(toolsJson) &&
+    !hasCounterJson(activityJson)
   ) {
     return false;
   }
 
   const bucketModel = event.model || sessionRow.model || 'unknown';
+  const existingBucket = db
+    .prepare(
+      `
+      SELECT tools_json, activity_json
+      FROM vibedeck_session_buckets
+      WHERE provider = ? AND session_id = ? AND bucket_provider = ? AND bucket_model = ? AND bucket_hour_start = ?
+      `,
+    )
+    .get(sessionRow.provider, sessionRow.session_id, sessionRow.provider, bucketModel, hourStart);
+  const mergedToolsJson = sumCounterJson(existingBucket?.tools_json, [toolsJson]);
+  const mergedActivityJson = sumCounterJson(existingBucket?.activity_json, [activityJson]);
+
   db.prepare(
     `
     INSERT INTO vibedeck_session_buckets (
       provider, session_id, bucket_provider, bucket_model, bucket_hour_start,
       proportion, input_tokens, cached_input_tokens, cache_creation_input_tokens,
-      output_tokens, reasoning_output_tokens, conversation_count, total_tokens,
+      cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
+      output_tokens, reasoning_output_tokens,
+      web_search_requests, tool_call_count, tools_json, activity_json,
+      conversation_count, total_tokens,
       last_observed_at
     ) VALUES (
       @provider, @session_id, @bucket_provider, @bucket_model, @bucket_hour_start,
       1.0, @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
-      @output_tokens, @reasoning_output_tokens, @conversation_count, @total_tokens,
+      @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
+      @output_tokens, @reasoning_output_tokens,
+      @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+      @conversation_count, @total_tokens,
       @last_observed_at
     )
     ON CONFLICT(provider, session_id, bucket_provider, bucket_model, bucket_hour_start) DO UPDATE SET
@@ -91,8 +184,16 @@ function upsertBucketFact(db, sessionRow, event) {
       cached_input_tokens = vibedeck_session_buckets.cached_input_tokens + excluded.cached_input_tokens,
       cache_creation_input_tokens =
         vibedeck_session_buckets.cache_creation_input_tokens + excluded.cache_creation_input_tokens,
+      cache_creation_5m_input_tokens =
+        vibedeck_session_buckets.cache_creation_5m_input_tokens + excluded.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens =
+        vibedeck_session_buckets.cache_creation_1h_input_tokens + excluded.cache_creation_1h_input_tokens,
       output_tokens = vibedeck_session_buckets.output_tokens + excluded.output_tokens,
       reasoning_output_tokens = vibedeck_session_buckets.reasoning_output_tokens + excluded.reasoning_output_tokens,
+      web_search_requests = vibedeck_session_buckets.web_search_requests + excluded.web_search_requests,
+      tool_call_count = vibedeck_session_buckets.tool_call_count + excluded.tool_call_count,
+      tools_json = @merged_tools_json,
+      activity_json = @merged_activity_json,
       conversation_count = vibedeck_session_buckets.conversation_count + excluded.conversation_count,
       total_tokens = vibedeck_session_buckets.total_tokens + excluded.total_tokens,
       last_observed_at = CASE
@@ -110,8 +211,16 @@ function upsertBucketFact(db, sessionRow, event) {
     input_tokens: inputTokens,
     cached_input_tokens: cachedInputTokens,
     cache_creation_input_tokens: cacheCreationInputTokens,
+    cache_creation_5m_input_tokens: cacheCreation5mInputTokens,
+    cache_creation_1h_input_tokens: cacheCreation1hInputTokens,
     output_tokens: outputTokens,
     reasoning_output_tokens: reasoningOutputTokens,
+    web_search_requests: webSearchRequests,
+    tool_call_count: toolCallCount,
+    tools_json: mergedToolsJson,
+    activity_json: mergedActivityJson,
+    merged_tools_json: mergedToolsJson,
+    merged_activity_json: mergedActivityJson,
     conversation_count: conversationCount,
     total_tokens: bucketTotalTokens,
     last_observed_at: event.observed_at,

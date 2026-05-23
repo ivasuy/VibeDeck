@@ -199,6 +199,46 @@ Caveats:
 - Cursor IDE local composer workspace mapping remains a future adapter, not part of account CSV.
 - Goose/Crush grouping support is explicitly `none` until those providers expose parent-child proof.
 
+#### Phase 3 - Tier 3+4 Provider Breadth
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-3-tier-3-4-provider-breadth`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-3-tier-3-4-provider-breadth.md`
+
+What changed:
+
+- Added missing Tier 3+4 session-safe providers through canonical `SessionEvent` ingestion.
+- Hardened Gemini, Kiro IDE, and OpenClaw so cwd is used only when local proof exists.
+- Added Droid, Qwen, Cursor Agent, Antigravity, and Cline-family adapters with provider-only/cwd-optional honesty rules.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and session grouping totals through smoke checks.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Backend provider/session/branch smoke suite | `192/192` passed |
+| Dashboard page tests | `21/21` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Copied-live DB sessions/events/branch facts | `1,214` / `53,517` / `1,152` |
+| Copied-live DB Unknown/Historical | `1` / `58` |
+| Copied-live DB provider rows | Claude `94`, Codex `876`, Cursor `242`, Gemini `2` |
+| Isolated rebuild wall clock | `339s` |
+| Isolated rebuild sessions/events/branch facts | `972` / `51,040` / `973` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild providers | Claude `94`, Codex `876`, Gemini `2` |
+| Isolated rebuild doctor | `ok: 14`, `warn: 5`, `fail: 1`, `critical: 0`; expected missing `base_url` fail and local config warnings |
+| Direct branch-fact write boundary scan | Passed: provider adapters do not write `vibedeck_branch_usage_facts` directly |
+
+Caveats:
+
+- Antigravity `.pb` files remain provider-only and unparsed unless a JSON usage cache exists.
+- Cursor Agent transcript rows are estimated when numeric token fields are absent.
+- Cline-family rows are branch/project eligible only when `Current Workspace Directory (...)` contains an absolute path.
+- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install.
+- The legacy copied-live path `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder on this machine; copied-live DB smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3`.
+- The isolated rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
+- The isolated rebuild's doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
 #### What Remains For 0.1.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.

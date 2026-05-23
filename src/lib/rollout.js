@@ -177,6 +177,21 @@ async function listGeminiSessionFiles(tmpDir) {
   return out;
 }
 
+function resolveGeminiProjectRootForSessionFile(filePath) {
+  if (typeof filePath !== "string" || !filePath) return null;
+  const chatsDir = path.basename(path.dirname(filePath)) === "chats" ? path.dirname(filePath) : null;
+  if (!chatsDir) return null;
+  const projectDir = path.dirname(chatsDir);
+  const proofPath = path.join(projectDir, ".project_root");
+  let raw;
+  try {
+    raw = fssync.readFileSync(proofPath, "utf8");
+  } catch (_e) {
+    return null;
+  }
+  return cleanAbsoluteCwd(String(raw || "").trim());
+}
+
 async function listOpencodeMessageFiles(storageDir) {
   const out = [];
   const messageDir = path.join(storageDir, "message");
@@ -495,6 +510,13 @@ async function parseGeminiIncremental({
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || "gemini";
+  const geminiState = cursors.gemini && typeof cursors.gemini === "object" ? cursors.gemini : {};
+  let projectRootProofs = Number.isFinite(geminiState.projectRootProofs)
+    ? geminiState.projectRootProofs
+    : 0;
+  let providerOnlyFiles = Number.isFinite(geminiState.providerOnlyFiles)
+    ? geminiState.providerOnlyFiles
+    : 0;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -517,6 +539,7 @@ async function parseGeminiIncremental({
     let startIndex = prev && prev.inode === inode ? Number(prev.lastIndex || -1) : -1;
     let lastTotals = prev && prev.inode === inode ? prev.lastTotals || null : null;
     let lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    const sessionCwd = resolveGeminiProjectRootForSessionFile(filePath);
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -542,6 +565,7 @@ async function parseGeminiIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      sessionCwd,
       onSessionEvent,
     });
 
@@ -550,6 +574,14 @@ async function parseGeminiIncremental({
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
       lastModel: result.lastModel,
+      updatedAt: new Date().toISOString(),
+    };
+    projectRootProofs += sessionCwd ? 1 : 0;
+    providerOnlyFiles += sessionCwd ? 0 : 1;
+    cursors.gemini = {
+      ...geminiState,
+      projectRootProofs,
+      providerOnlyFiles,
       updatedAt: new Date().toISOString(),
     };
 
@@ -1298,6 +1330,7 @@ async function parseGeminiFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  sessionCwd,
   onSessionEvent,
 }) {
   const raw = await fs.readFile(filePath, "utf8").catch(() => "");
@@ -1388,7 +1421,7 @@ async function parseGeminiFile({
         started_at: sessionStart || sessionStartedAt,
         ended_at: sessionUpdated || sessionEndedAt,
         end_reason: "log_complete",
-        cwd: null,
+        cwd: sessionCwd,
         model,
         updates: sessionUpdates,
         total_tokens: sessionTotalTokens,

@@ -11,6 +11,7 @@ const {
   parseGeminiIncremental,
   parseOpencodeIncremental,
   parseOpencodeDbIncremental,
+  parseOpenclawIncremental,
   parseKiroIncremental,
   parseHermesIncremental,
   parseCopilotIncremental,
@@ -999,6 +1000,118 @@ test("parseGeminiIncremental defaults missing model to unknown", async () => {
     const queued = await readJsonLines(queuePath);
     assert.equal(queued.length, 1);
     assert.equal(queued[0].model, "unknown");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGeminiIncremental preserves cwd only from adjacent .project_root proof", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-root-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const chatsDir = path.join(tmp, "gemini", "tmp", "hash-a", "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    await fs.writeFile(path.join(tmp, "gemini", "tmp", "hash-a", ".project_root"), repo, "utf8");
+    const sessionPath = path.join(chatsDir, "session-root.json");
+    const session = {
+      sessionId: "gemini-root",
+      messages: [
+        {
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "gemini-2.5-pro",
+          tokens: { input: 10, output: 5 },
+        },
+      ],
+    };
+    await fs.writeFile(sessionPath, JSON.stringify(session), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, gemini: { existing: "keep" } };
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "update")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "end")?.cwd, repo);
+    assert.equal(cursors.gemini.existing, "keep");
+    assert.equal(cursors.gemini.projectRootProofs, 1);
+    assert.equal(cursors.gemini.providerOnlyFiles, 0);
+    assert.ok(cursors.files[sessionPath]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGeminiIncremental keeps temp hash sessions provider-only when .project_root is absent", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-provider-only-"));
+  try {
+    const chatsDir = path.join(tmp, "gemini", "tmp", "hash-b", "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    const sessionPath = path.join(chatsDir, "session-provider.json");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        sessionId: "gemini-provider-only",
+        messages: [
+          {
+            timestamp: "2026-05-22T10:00:00.000Z",
+            model: "gemini-2.5-pro",
+            tokens: { input: 8, output: 3 },
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const cursors = { version: 1 };
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    assert.equal(cursors.gemini.projectRootProofs, 0);
+    assert.equal(cursors.gemini.providerOnlyFiles, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGeminiIncremental ignores non-absolute .project_root proof", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-relative-root-"));
+  try {
+    const projectDir = path.join(tmp, "gemini", "tmp", "hash-relative");
+    const chatsDir = path.join(projectDir, "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    await fs.writeFile(path.join(projectDir, ".project_root"), "relative/repo", "utf8");
+    const sessionPath = path.join(chatsDir, "session-relative.json");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        sessionId: "gemini-relative",
+        messages: [
+          {
+            timestamp: "2026-05-22T10:00:00.000Z",
+            model: "gemini-2.5-pro",
+            tokens: { input: 8, output: 3 },
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -2720,6 +2833,65 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
     const afterResume = await readJsonLines(queuePath);
     assert.equal(afterResume.length, 2);
     assert.equal(afterResume[1].total_tokens, 22);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroIncremental does not invent cwd from Kiro IDE paths", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kiro-no-cwd-"));
+  try {
+    const jsonlPath = path.join(tmp, "tokens_generated.jsonl");
+    await fs.writeFile(
+      jsonlPath,
+      JSON.stringify({
+        model: "agent",
+        provider: "kiro",
+        promptTokens: 10,
+        generatedTokens: 5,
+        timestamp: "2026-05-22T10:00:00.000Z",
+      }) + "\n",
+      "utf8",
+    );
+    const events = [];
+    await parseKiroIncremental({
+      jsonlPath,
+      dbPath: path.join(tmp, "missing.db"),
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseOpenclawIncremental remains provider-only when no cwd proof exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-openclaw-no-cwd-"));
+  try {
+    const sessionPath = path.join(tmp, "session.jsonl");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        type: "message",
+        timestamp: "2026-05-22T10:00:00.000Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+        },
+      }) + "\n",
+      "utf8",
+    );
+    const events = [];
+    await parseOpenclawIncremental({
+      sessionFiles: [sessionPath],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

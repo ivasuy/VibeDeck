@@ -536,6 +536,64 @@ test('SessionEvent extraction: Gemini session JSON', async () => {
   }
 });
 
+test('SessionEvent extraction: Gemini cwd uses only adjacent project root proof', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-gemini-cwd-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const proofDir = path.join(tmp, 'gemini', 'tmp', 'hash-proof');
+    const proofChatsDir = path.join(proofDir, 'chats');
+    const providerOnlyChatsDir = path.join(tmp, 'gemini', 'tmp', 'hash-provider', 'chats');
+    await fs.mkdir(repo, { recursive: true });
+    await fs.mkdir(proofChatsDir, { recursive: true });
+    await fs.mkdir(providerOnlyChatsDir, { recursive: true });
+    await fs.writeFile(path.join(proofDir, '.project_root'), repo, 'utf8');
+
+    const proofSessionPath = path.join(proofChatsDir, 'session-proof.json');
+    const providerOnlySessionPath = path.join(providerOnlyChatsDir, 'session-provider.json');
+    await fs.writeFile(
+      proofSessionPath,
+      JSON.stringify(buildGeminiSession({
+        sessionId: 'gemini-proof',
+        startTime: '2026-05-09T00:00:00.000Z',
+        lastUpdated: '2026-05-09T00:01:00.000Z',
+        messages: [
+          { timestamp: '2026-05-09T00:00:10.000Z', model: 'gemini-2.5', tokens: { input: 10, output: 2, total: 12 } },
+        ],
+      })),
+      'utf8',
+    );
+    await fs.writeFile(
+      providerOnlySessionPath,
+      JSON.stringify(buildGeminiSession({
+        sessionId: 'gemini-provider',
+        startTime: '2026-05-09T00:02:00.000Z',
+        lastUpdated: '2026-05-09T00:03:00.000Z',
+        messages: [
+          { timestamp: '2026-05-09T00:02:10.000Z', model: 'gemini-2.5', tokens: { input: 3, output: 4, total: 7 } },
+        ],
+      })),
+      'utf8',
+    );
+
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [proofSessionPath, providerOnlySessionPath],
+      cursors: { version: 1, files: {}, updatedAt: null },
+      queuePath: path.join(tmp, 'queue.jsonl'),
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    const proofEvents = events.filter((event) => event.session_id === 'gemini-proof');
+    const providerOnlyEvents = events.filter((event) => event.session_id === 'gemini-provider');
+    assertStartUpdateEnd(proofEvents, 'gemini');
+    assertStartUpdateEnd(providerOnlyEvents, 'gemini');
+    assert.ok(proofEvents.every((event) => event.cwd === repo));
+    assert.ok(providerOnlyEvents.every((event) => event.cwd === null));
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('SessionEvent extraction: Cursor records', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-cursor-'));
   try {

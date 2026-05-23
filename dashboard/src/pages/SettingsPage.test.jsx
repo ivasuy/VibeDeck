@@ -66,4 +66,22 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Claude")).toBeTruthy();
     expect(screen.getByText("found")).toBeTruthy();
   });
+
+  it("adds a model alias row and persists it to localStorage", () => {
+    render(<SettingsPage />);
+
+    fireEvent.change(screen.getByLabelText("Alias"), {
+      target: { value: "sonnet-latest" },
+    });
+    fireEvent.change(screen.getByLabelText("Canonical model"), {
+      target: { value: "claude-sonnet-4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add alias" }));
+
+    expect(screen.getByText("sonnet-latest")).toBeTruthy();
+    expect(screen.getByText("claude-sonnet-4")).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem("vibedeck.modelAliases.v1"))).toEqual([
+      { alias: "sonnet-latest", canonical: "claude-sonnet-4" },
+    ]);
+  });
 });

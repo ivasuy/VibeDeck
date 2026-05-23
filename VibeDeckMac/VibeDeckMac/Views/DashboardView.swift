@@ -34,6 +34,7 @@ struct DashboardView: View {
                                 totalCost: viewModel.totalCost
                             )
                             UsageLimitsView(limits: viewModel.usageLimits)
+                            CodeburnParityTabsView(viewModel: viewModel)
                             ActivityHeatmapView(heatmap: viewModel.heatmap)
                             UsageTrendChartWrapper(
                                 daily: viewModel.daily,

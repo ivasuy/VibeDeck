@@ -46,6 +46,10 @@ class DashboardViewModel: ObservableObject {
     @Published var modelBreakdown: ModelBreakdownResponse?
     @Published var projectUsage: ProjectUsageResponse?
     @Published var usageLimits: UsageLimitsResponse?
+    @Published var compareMetrics: CompareMetricsResponse?
+    @Published var parityModels: ModelsParityResponse?
+    @Published var yieldSummary: YieldResponse?
+    @Published var parityError: String?
 
     @Published var isLoading = false
     @Published var isSyncing = false
@@ -216,6 +220,7 @@ class DashboardViewModel: ObservableObject {
             self.lastRefreshed = Date()
         }
 
+        await refreshParityTabs()
         updateDerivedData()
         isLoading = false
 
@@ -236,6 +241,31 @@ class DashboardViewModel: ObservableObject {
         }
         isSyncing = false
         await loadAll()
+    }
+
+    func refreshParityTabs() async {
+        parityError = nil
+        var failures: [String] = []
+
+        do {
+            compareMetrics = try await APIClient.shared.fetchCompareMetrics()
+        } catch {
+            failures.append("Compare: \(error.localizedDescription)")
+        }
+
+        do {
+            parityModels = try await APIClient.shared.fetchModelsParity()
+        } catch {
+            failures.append("Models: \(error.localizedDescription)")
+        }
+
+        do {
+            yieldSummary = try await APIClient.shared.fetchYield()
+        } catch {
+            failures.append("Yield: \(error.localizedDescription)")
+        }
+
+        parityError = failures.isEmpty ? nil : failures.joined(separator: "\n")
     }
 
     func triggerSync() async {

@@ -99,6 +99,17 @@ function formatSessionCount(value) {
   return `${toDisplayNumber(safe)} session${safe === 1 ? "" : "s"}`;
 }
 
+function groupMemberLabel(member) {
+  if (member?.group_role === "root") return "Main session";
+  return String(member?.agent_label || member?.agent_role || member?.session_id || "Subagent");
+}
+
+function formatMemberCount(value) {
+  const count = Number(value || 0);
+  const safe = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
+  return `${toDisplayNumber(safe)} member${safe === 1 ? "" : "s"}`;
+}
+
 function inferProviderFromModel(row) {
   const explicit = String(row?.provider || "").trim().toLowerCase();
   if (explicit) return explicit;
@@ -258,6 +269,95 @@ function BreakdownMetric({ label, value }) {
   );
 }
 
+function AgentGroupCard({ group }) {
+  const models = Array.isArray(group?.models) ? group.models.slice(0, 3) : [];
+  const members = Array.isArray(group?.members) ? group.members.slice(0, 4) : [];
+  const activeCount = Number(group?.active_member_count || 0);
+  const safeActiveCount = Number.isFinite(activeCount) ? Math.max(0, Math.round(activeCount)) : 0;
+
+  return (
+    <article className="rounded-md border border-oai-gray-200 bg-oai-black/[0.015] p-3 dark:border-oai-gray-800 dark:bg-white/[0.025]">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="inline-flex shrink-0 items-center justify-center"
+            aria-label={`Provider ${String(group?.provider || "unknown")}`}
+          >
+            <ProviderIcon provider={group?.provider} size={16} className="shrink-0" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-oai-black dark:text-white">Agent group</h3>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+              <span>{formatMemberCount(group?.member_count ?? members.length)}</span>
+              {safeActiveCount > 0 ? (
+                <span className="inline-flex items-center gap-1">
+                  <CirclePlay className="h-3.5 w-3.5 text-indigo-500" aria-hidden />
+                  {toDisplayNumber(safeActiveCount)} active
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <Radio className="h-3.5 w-3.5" aria-hidden />
+            {toDisplayNumber(group?.total_tokens ?? 0)}
+          </span>
+          <span className="inline-flex items-center gap-1 tabular-nums">
+            <CircleDollarSign className="h-3.5 w-3.5" aria-hidden />
+            {formatCost(group?.total_cost_usd)}
+          </span>
+        </div>
+      </div>
+
+      {models.length > 0 ? (
+        <div className="grid gap-2">
+          {models.map((modelEntry, index) => (
+            <div
+              key={`${String(modelEntry?.provider || group?.provider || "unknown")}:${String(modelEntry?.model || index)}`}
+              className="rounded-md border border-oai-gray-200 bg-white px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProviderIcon provider={modelEntry?.provider || group?.provider} size={14} className="shrink-0" />
+                  <span className="truncate font-medium text-oai-black dark:text-white">{String(modelEntry?.model || "—")}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                  <span>{toDisplayNumber(modelEntry?.total_tokens ?? 0)}</span>
+                  <span>{formatCost(modelEntry?.total_cost_usd)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {members.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {members.map((member, index) => (
+            <div
+              key={`${String(member?.provider || group?.provider || "unknown")}:${String(member?.session_id || index)}`}
+              className="grid gap-2 rounded-md border border-oai-gray-200 bg-white px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <ProviderIcon provider={member?.provider || group?.provider} size={14} className="shrink-0" />
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-oai-black dark:text-white">{groupMemberLabel(member)}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                    {String(member?.agent_role || member?.group_role || "member")}
+                  </div>
+                </div>
+              </div>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">{toDisplayNumber(member?.total_tokens ?? 0)}</span>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">{formatCost(member?.total_cost_usd)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function SessionRow({ session, workstream, primary = false, selected = false, onSelectSession }) {
   const key = liveSessionKey(session);
   const active = isActiveLiveSession(session);
@@ -351,6 +451,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
     : workstream?.active_total_cost_usd;
   const providerRows = Array.isArray(workstream?.providers) ? workstream.providers : [];
   const modelRows = Array.isArray(workstream?.models) ? workstream.models : [];
+  const sessionGroups = Array.isArray(workstream?.session_groups) ? workstream.session_groups : [];
   const branchGroups = sortDrawerBranchGroups(workstream?.branch_groups).map((group) => ({
     ...group,
     sessions: sortDrawerSessions(group?.sessions),
@@ -431,6 +532,17 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
           </div>
 
           <div className="grid gap-4">
+            {sessionGroups.length > 0 ? (
+              <section className="mb-0">
+                <div className="mb-2 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                  Agent groups
+                </div>
+                <div className="grid gap-2">
+                  {sessionGroups.map((group) => <AgentGroupCard key={String(group.session_group_id)} group={group} />)}
+                </div>
+              </section>
+            ) : null}
+
             {branchGroups.map((group) => (
               <section
                 key={group.branch}
@@ -458,18 +570,25 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
                 </div>
                 <EnrichmentSummary row={group} className="mb-3" />
 
-                <div className="grid gap-2">
-                  {group.sessions.map((session) => (
-                    <SessionRow
-                      key={liveSessionKey(session)}
-                      session={session}
-                      workstream={workstream}
-                      primary={liveSessionKey(session) === primaryKey}
-                      selected={liveSessionKey(session) === selectedKey}
-                      onSelectSession={onSelectSession}
-                    />
-                  ))}
-                </div>
+                {group.sessions.length > 0 ? (
+                  <>
+                    <div className="mb-2 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                      Raw sessions
+                    </div>
+                    <div className="grid gap-2">
+                      {group.sessions.map((session) => (
+                        <SessionRow
+                          key={liveSessionKey(session)}
+                          session={session}
+                          workstream={workstream}
+                          primary={liveSessionKey(session) === primaryKey}
+                          selected={liveSessionKey(session) === selectedKey}
+                          onSelectSession={onSelectSession}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : null}
               </section>
             ))}
           </div>

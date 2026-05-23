@@ -201,6 +201,65 @@ describe("BranchesPage", () => {
     expect(screen.getAllByText("Unknown").length).toBeGreaterThan(0);
   });
 
+  it("shows branch session groups while keeping raw sessions visible", async () => {
+    getBranchUsage
+      .mockResolvedValueOnce({
+        totals: { total_tokens: 150, total_cost_usd: 0.15, session_count: 2 },
+        repos: [{
+          repo_root: "/repo",
+          project_state: "git_existing",
+          branches: [{
+            branch: "release/0.1.3",
+            total_tokens: 150,
+            total_cost_usd: 0.15,
+            session_count: 2,
+            models: [],
+            sessions: [],
+          }],
+        }],
+      })
+      .mockResolvedValueOnce({
+        totals: { total_tokens: 150, total_cost_usd: 0.15, session_count: 2 },
+        repos: [{
+          repo_root: "/repo",
+          project_state: "git_existing",
+          branches: [{
+            branch: "release/0.1.3",
+            total_tokens: 150,
+            total_cost_usd: 0.15,
+            session_count: 2,
+            models: [],
+            session_groups: [{
+              session_group_id: "codex:root",
+              provider: "codex",
+              member_count: 2,
+              active_member_count: 0,
+              total_tokens: 150,
+              total_cost_usd: 0.15,
+              models: [{ provider: "codex", model: "gpt-5.5", total_tokens: 150, total_cost_usd: 0.15 }],
+              members: [
+                { provider: "codex", session_id: "root", group_role: "root", total_tokens: 100, total_cost_usd: 0.10, agent_label: "Main session" },
+                { provider: "codex", session_id: "child", group_role: "child", total_tokens: 50, total_cost_usd: 0.05, agent_label: "Curie", agent_role: "reviewer" },
+              ],
+            }],
+            sessions: [
+              { provider: "codex", session_id: "root", group_role: "root", total_tokens: 100, total_cost_usd: 0.10, model: "gpt-5.5" },
+              { provider: "codex", session_id: "child", group_role: "child", total_tokens: 50, total_cost_usd: 0.05, model: "gpt-5.5", agent_label: "Curie", agent_role: "reviewer" },
+            ],
+          }],
+        }],
+      });
+
+    render(<BranchesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /view sessions/i }));
+
+    expect(await screen.findByText("Agent group")).toBeTruthy();
+    expect(screen.getByText("2 members")).toBeTruthy();
+    expect(screen.getByText("Curie")).toBeTruthy();
+    expect(screen.getByText("Raw sessions")).toBeTruthy();
+    expect(screen.getByText("child")).toBeTruthy();
+  });
+
   it("shows branch and session costs without estimated suffixes while keeping unknown costs as Unknown", async () => {
     render(<BranchesPage />);
 

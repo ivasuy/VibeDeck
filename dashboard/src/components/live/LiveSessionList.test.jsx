@@ -187,6 +187,69 @@ describe("LiveSessionList", () => {
     expect(screen.getAllByText("2 sessions").length).toBeGreaterThan(0);
   });
 
+  it("shows workstream session groups while keeping raw sessions visible", () => {
+    render(
+      <LiveSessionList
+        streamStatus="connected"
+        selectedKey="codex:root"
+        onSelectSession={() => {}}
+        sessions={[]}
+        workstreams={[
+          {
+            id: "project:vibedeck",
+            repo_root: "/repo/VibeDeck",
+            branches: ["main"],
+            primary_session: { provider: "codex", session_id: "root", model: "gpt-5.5" },
+            sessions: [
+              { provider: "codex", session_id: "root", model: "gpt-5.5" },
+              { provider: "codex", session_id: "child", model: "gpt-5.5", state: "live" },
+            ],
+            active_session_count: 2,
+            recently_completed_count: 0,
+            active_total_tokens: 150,
+            active_total_cost_usd: 0.15,
+            audit_total_tokens: 150,
+            audit_total_cost_usd: 0.15,
+            audit_cost_unknown_count: 0,
+            session_groups: [{
+              session_group_id: "codex:root",
+              provider: "codex",
+              member_count: 2,
+              active_member_count: 1,
+              total_tokens: 150,
+              total_cost_usd: 0.15,
+              models: [{ provider: "codex", model: "gpt-5.5", total_tokens: 150, total_cost_usd: 0.15 }],
+              members: [
+                { provider: "codex", session_id: "root", group_role: "root", total_tokens: 100, total_cost_usd: 0.10, agent_label: "Main session" },
+                { provider: "codex", session_id: "child", group_role: "child", total_tokens: 50, total_cost_usd: 0.05, agent_label: "Curie", agent_role: "reviewer", state: "live" },
+              ],
+            }],
+            branch_groups: [
+              {
+                branch: "main",
+                active_session_count: 0,
+                recently_completed_count: 0,
+                audit_total_tokens: 150,
+                audit_total_cost_usd: 0.15,
+                sessions: [
+                  { provider: "codex", session_id: "root", branch: "main", model: "gpt-5.5", total_tokens: 100, total_cost_usd: 0.10 },
+                  { provider: "codex", session_id: "child", branch: "main", model: "gpt-5.5", total_tokens: 50, total_cost_usd: 0.05, agent_label: "Curie", agent_role: "reviewer", state: "live" },
+                ],
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /view breakdown for VibeDeck/i }));
+
+    expect(screen.getByText("Agent group")).toBeTruthy();
+    expect(screen.getByText("1 active")).toBeTruthy();
+    expect(screen.getByText("Curie")).toBeTruthy();
+    expect(screen.getByText("Raw sessions")).toBeTruthy();
+  });
+
   it("shows enriched usage in workstream breakdown rows, branch groups, and sessions", () => {
     render(
       <LiveSessionList

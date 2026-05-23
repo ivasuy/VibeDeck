@@ -103,6 +103,17 @@ function formatCounterList(value) {
   return counters.map((entry) => `${entry.label} ${toDisplayNumber(entry.count)}`).join(" · ");
 }
 
+function groupMemberLabel(member) {
+  if (member?.group_role === "root") return "Main session";
+  return String(member?.agent_label || member?.agent_role || member?.session_id || "Subagent");
+}
+
+function formatMemberCount(value) {
+  const count = Number(value || 0);
+  const safe = Number.isFinite(count) ? Math.max(0, Math.round(count)) : 0;
+  return `${toDisplayNumber(safe)} member${safe === 1 ? "" : "s"}`;
+}
+
 function enrichmentItems(row) {
   const items = [
     ["5m cache", positiveNumber(row?.cache_creation_5m_input_tokens)],
@@ -140,6 +151,83 @@ function EnrichmentSummary({ row, className = "" }) {
   );
 }
 
+function AgentGroupCard({ group }) {
+  const models = Array.isArray(group?.models) ? group.models.slice(0, 3) : [];
+  const members = Array.isArray(group?.members) ? group.members.slice(0, 4) : [];
+
+  return (
+    <article className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="vd-chip inline-flex items-center gap-1.5 rounded-md bg-oai-black/[0.035] px-2 py-1 text-xs font-medium text-oai-black dark:bg-white/[0.06] dark:text-white"
+              aria-label={`Provider ${normalizeProvider(group?.provider)}`}
+            >
+              <ProviderIcon provider={group?.provider} size={14} className="shrink-0" />
+              {String(group?.provider || "—")}
+            </span>
+            <h3 className="text-sm font-semibold text-oai-black dark:text-white">Agent group</h3>
+          </div>
+          <div className="mt-1 text-xs text-oai-gray-500 dark:text-oai-gray-400">
+            {formatMemberCount(group?.member_count ?? members.length)}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <SessionMetric icon={Cpu} label="Tokens" value={toDisplayNumber(group?.total_tokens ?? 0)} />
+        <SessionMetric icon={CircleDollarSign} label="Cost" value={formatCostLabel(group?.total_cost_usd)} />
+      </div>
+
+      {models.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {models.map((modelEntry, index) => (
+            <div
+              key={`${String(modelEntry?.provider || group?.provider || "unknown")}:${String(modelEntry?.model || index)}`}
+              className="rounded-md border border-oai-gray-200 bg-oai-black/[0.015] px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-white/[0.025]"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProviderIcon provider={modelEntry?.provider || group?.provider} size={14} className="shrink-0" />
+                  <span className="truncate font-medium text-oai-black dark:text-white">{String(modelEntry?.model || "—")}</span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2 tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                  <span>{toDisplayNumber(modelEntry?.total_tokens ?? 0)}</span>
+                  <span>{formatCostLabel(modelEntry?.total_cost_usd)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {members.length > 0 ? (
+        <div className="mt-4 grid gap-2">
+          {members.map((member, index) => (
+            <div
+              key={`${String(member?.provider || group?.provider || "unknown")}:${String(member?.session_id || index)}`}
+              className="grid gap-2 rounded-md border border-oai-gray-200 bg-oai-black/[0.015] px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-white/[0.025] sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <ProviderIcon provider={member?.provider || group?.provider} size={14} className="shrink-0" />
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-oai-black dark:text-white">{groupMemberLabel(member)}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-oai-gray-500 dark:text-oai-gray-400">
+                    {String(member?.agent_role || member?.group_role || "member")}
+                  </div>
+                </div>
+              </div>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">{toDisplayNumber(member?.total_tokens ?? 0)}</span>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">{formatCostLabel(member?.total_cost_usd)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 function SessionMetric({ icon: Icon, label, value }) {
   return (
     <div className="vd-subcard min-w-0 rounded-md border border-oai-gray-200 bg-oai-black/[0.02] px-3 py-2 dark:border-oai-gray-800 dark:bg-white/[0.035]">
@@ -154,6 +242,7 @@ function SessionMetric({ icon: Icon, label, value }) {
 
 export function BranchSessionDrawer({ row = null, loading = false, error = "", onClose, onSelectDate }) {
   const sessions = Array.isArray(row?.sessions) ? row.sessions : [];
+  const sessionGroups = Array.isArray(row?.session_groups) ? row.session_groups : [];
   const dateBuckets = Array.isArray(row?.date_buckets) ? row.date_buckets : [];
   const selectedDate = String(row?.selected_date || dateBuckets[0]?.date || "");
   const selectedBucket = dateBuckets.find((bucket) => String(bucket?.date || "") === selectedDate) || dateBuckets[0] || null;
@@ -291,6 +380,17 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
             </div>
           ) : null}
 
+          {!loading && !error && sessionGroups.length > 0 ? (
+            <section className="mb-4">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                Agent groups
+              </div>
+              <div className="grid gap-2">
+                {sessionGroups.map((group) => <AgentGroupCard key={String(group.session_group_id)} group={group} />)}
+              </div>
+            </section>
+          ) : null}
+
           {loading ? (
             <SessionDrawerSkeleton />
           ) : error ? (
@@ -298,72 +398,82 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
           ) : filteredSessions.length === 0 ? (
             <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{copy("branches.drawer.empty")}</p>
           ) : (
-            <div className="grid gap-3">
-              {visibleSessions.map((session, index) => (
-                <article
-                  key={`${String(session?.provider || "unknown")}:${String(session?.session_id || index)}`}
-                  className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
+            <>
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
+                Raw sessions
+              </div>
+              <div className="grid gap-3">
+                {visibleSessions.map((session, index) => (
+                  <article
+                    key={`${String(session?.provider || "unknown")}:${String(session?.session_id || index)}`}
+                    className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="vd-chip inline-flex items-center gap-1.5 rounded-md bg-oai-black/[0.035] px-2 py-1 text-xs font-medium text-oai-black dark:bg-white/[0.06] dark:text-white"
+                            aria-label={`Provider ${normalizeProvider(session?.provider)}`}
+                          >
+                            <ProviderIcon provider={session?.provider} size={14} className="shrink-0" />
+                            {String(session?.provider || "—")}
+                          </span>
+                          <span className="truncate text-sm font-medium text-oai-black dark:text-white">
+                            {String(session?.model || "—")}
+                          </span>
+                        </div>
+                        {session?.group_role ? (
+                          <div className="mt-1 truncate text-xs text-oai-gray-500 dark:text-oai-gray-400">
+                            {String(session?.session_id || "")}
+                          </div>
+                        ) : null}
+                      </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="vd-chip inline-flex items-center gap-1.5 rounded-md bg-oai-black/[0.035] px-2 py-1 text-xs font-medium text-oai-black dark:bg-white/[0.06] dark:text-white"
-                          aria-label={`Provider ${normalizeProvider(session?.provider)}`}
-                        >
-                          <ProviderIcon provider={session?.provider} size={14} className="shrink-0" />
-                          {String(session?.provider || "—")}
-                        </span>
-                        <span className="truncate text-sm font-medium text-oai-black dark:text-white">
-                          {String(session?.model || "—")}
+                        <ConfidenceBadge confidence={session?.confidence} className="h-6 px-2 text-[11px]" />
+                        <span className="vd-chip inline-flex h-6 items-center rounded-md border border-oai-gray-200 px-2 text-[11px] font-medium text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
+                          {copy("branches.drawer.tier")} {String(session?.branch_resolution_tier || "—")}
                         </span>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ConfidenceBadge confidence={session?.confidence} className="h-6 px-2 text-[11px]" />
-                      <span className="vd-chip inline-flex h-6 items-center rounded-md border border-oai-gray-200 px-2 text-[11px] font-medium text-oai-gray-600 dark:border-oai-gray-800 dark:text-oai-gray-300">
-                        {copy("branches.drawer.tier")} {String(session?.branch_resolution_tier || "—")}
-                      </span>
-                    </div>
-                  </div>
 
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                    <SessionMetric
-                      icon={CalendarClock}
-                      label={copy("branches.drawer.start")}
-                      value={formatTimestamp(session?.started_at)}
-                    />
-                    <SessionMetric
-                      icon={CalendarClock}
-                      label={copy("branches.drawer.end")}
-                      value={formatTimestamp(session?.ended_at)}
-                    />
-                    <SessionMetric
-                      icon={Cpu}
-                      label={copy("branches.drawer.tokens")}
-                      value={toDisplayNumber(session?.total_tokens ?? 0)}
-                    />
-                    <SessionMetric
-                      icon={CircleDollarSign}
-                      label={copy("branches.drawer.cost")}
-                      value={formatEstimatedCostLabel(session)}
-                    />
-                  </div>
-                  <EnrichmentSummary row={session} />
-                </article>
-              ))}
-              {visibleSessions.length < filteredSessions.length ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="justify-self-center"
-                  onClick={() => setVisibleLimit((current) => current + INITIAL_SESSION_RENDER_LIMIT)}
-                >
-                  Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, filteredSessions.length - visibleSessions.length)} more sessions
-                </Button>
-              ) : null}
-            </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <SessionMetric
+                        icon={CalendarClock}
+                        label={copy("branches.drawer.start")}
+                        value={formatTimestamp(session?.started_at)}
+                      />
+                      <SessionMetric
+                        icon={CalendarClock}
+                        label={copy("branches.drawer.end")}
+                        value={formatTimestamp(session?.ended_at)}
+                      />
+                      <SessionMetric
+                        icon={Cpu}
+                        label={copy("branches.drawer.tokens")}
+                        value={toDisplayNumber(session?.total_tokens ?? 0)}
+                      />
+                      <SessionMetric
+                        icon={CircleDollarSign}
+                        label={copy("branches.drawer.cost")}
+                        value={formatEstimatedCostLabel(session)}
+                      />
+                    </div>
+                    <EnrichmentSummary row={session} />
+                  </article>
+                ))}
+                {visibleSessions.length < filteredSessions.length ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="justify-self-center"
+                    onClick={() => setVisibleLimit((current) => current + INITIAL_SESSION_RENDER_LIMIT)}
+                  >
+                    Show {Math.min(INITIAL_SESSION_RENDER_LIMIT, filteredSessions.length - visibleSessions.length)} more sessions
+                  </Button>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
       </div>

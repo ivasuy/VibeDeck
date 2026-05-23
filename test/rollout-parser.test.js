@@ -2966,10 +2966,16 @@ test("resolveQwenChatFiles walks only project chat jsonl files", async () => {
   try {
     const chatFile = path.join(tmp, ".qwen", "projects", "a", "chats", "chat.jsonl");
     const ignoredFile = path.join(tmp, ".qwen", "projects", "a", "notes", "ignored.jsonl");
+    const nestedProjectChatFile = path.join(tmp, ".qwen", "projects", "a", "nested", "chats", "invalid.jsonl");
+    const nestedChatFile = path.join(tmp, ".qwen", "projects", "a", "chats", "nested", "invalid.jsonl");
     await fs.mkdir(path.dirname(chatFile), { recursive: true });
     await fs.mkdir(path.dirname(ignoredFile), { recursive: true });
+    await fs.mkdir(path.dirname(nestedProjectChatFile), { recursive: true });
+    await fs.mkdir(path.dirname(nestedChatFile), { recursive: true });
     await fs.writeFile(chatFile, "{}\n", "utf8");
     await fs.writeFile(ignoredFile, "{}\n", "utf8");
+    await fs.writeFile(nestedProjectChatFile, "{}\n", "utf8");
+    await fs.writeFile(nestedChatFile, "{}\n", "utf8");
     assert.deepEqual(resolveQwenChatFiles({ HOME: tmp }), [chatFile]);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });

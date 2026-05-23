@@ -5215,7 +5215,10 @@ function resolveQwenChatFiles(env = process.env) {
   const qwenDir = env.QWEN_DATA_DIR || path.join(home, ".qwen");
   const projectsDir = path.join(qwenDir, "projects");
   return walkJsonlFilesSync(projectsDir, [])
-    .filter((file) => file.includes(`${path.sep}chats${path.sep}`))
+    .filter((file) => {
+      const segments = path.relative(projectsDir, file).split(path.sep);
+      return segments.length === 3 && segments[1] === "chats" && segments[2].endsWith(".jsonl");
+    })
     .sort((a, b) => a.localeCompare(b));
 }
 

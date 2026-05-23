@@ -11,6 +11,10 @@ import { LivePage } from "./pages/LivePage.jsx";
 import { BranchesPage } from "./pages/BranchesPage.jsx";
 import { SettingsPage } from "./pages/SettingsPage.jsx";
 import { SkillsPage } from "./pages/SkillsPage.jsx";
+import { ComparePage } from "./pages/ComparePage.jsx";
+import { ModelsPage } from "./pages/ModelsPage.jsx";
+import { YieldPage } from "./pages/YieldPage.jsx";
+import { ExportPage } from "./pages/ExportPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
 import { WidgetsPage } from "./pages/WidgetsPage.jsx";
 
@@ -43,6 +47,10 @@ export default function App() {
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
+  const isComparePath = normalizedPath === "/compare";
+  const isModelsPath = normalizedPath === "/models";
+  const isYieldPath = normalizedPath === "/yield";
+  const isExportPath = normalizedPath === "/export";
 
   let PageComponent = LivePage;
   if (isRemovedLimitsPath) {
@@ -59,6 +67,14 @@ export default function App() {
     PageComponent = SkillsPage;
   } else if (isWidgetsPath) {
     PageComponent = WidgetsPage;
+  } else if (isComparePath) {
+    PageComponent = ComparePage;
+  } else if (isModelsPath) {
+    PageComponent = ModelsPage;
+  } else if (isYieldPath) {
+    PageComponent = YieldPage;
+  } else if (isExportPath) {
+    PageComponent = ExportPage;
   }
 
   const showSidebar =
@@ -68,7 +84,11 @@ export default function App() {
       isBranchesPath ||
       isSettingsPath ||
       isSkillsPath ||
-      isWidgetsPath);
+      isWidgetsPath ||
+      isComparePath ||
+      isModelsPath ||
+      isYieldPath ||
+      isExportPath);
 
   const pageNode = (
     <PageComponent

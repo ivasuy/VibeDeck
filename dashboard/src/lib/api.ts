@@ -24,6 +24,12 @@ const PATHS = {
   userStatus: "vibedeck-user-status",
   localSync: "vibedeck-local-sync",
   usageLimits: "vibedeck-usage-limits",
+  compare: "vibedeck-compare",
+  models: "vibedeck-models",
+  status: "vibedeck-status",
+  export: "vibedeck-export",
+  yield: "vibedeck-yield",
+  autoDetect: "vibedeck-optimize/auto-detect",
 };
 
 function getLocalRouteCandidates(slug: string) {
@@ -285,4 +291,28 @@ export async function getUsageHeatmap({
     ...filterParams,
     ...tzParams,
   });
+}
+
+export function getCompareMetrics(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.compare, params);
+}
+
+export function getModelsView(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.models, params);
+}
+
+export function getYieldView(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.yield, params);
+}
+
+export function getCodeburnStatus(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.status, params);
+}
+
+export function getAutoDetectedProviders(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.autoDetect, params);
+}
+
+export async function downloadExport({ format = "json", ...params }: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.export, { ...params, format });
 }

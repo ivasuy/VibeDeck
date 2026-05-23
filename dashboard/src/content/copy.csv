@@ -606,3 +606,7 @@ vibedeck.api.error.missing_confirm_token,shared,*,VibeDeckAPI,error_missing_conf
 vibedeck.api.error.invalid_confirm_token,shared,*,VibeDeckAPI,error_invalid_confirm_token,Confirmation token is invalid or expired.,,active
 vibedeck.api.error.unknown_command,shared,*,VibeDeckAPI,error_unknown_command,Unknown Entire command.,,active
 vibedeck.api.error.session_not_found,shared,*,VibeDeckAPI,error_session_not_found,Session was not found. Refresh Live and retry.,,active
+nav.compare,shared,*,Sidebar,nav_compare,Compare,,active
+nav.models,shared,*,Sidebar,nav_models,Models,,active
+nav.yield,shared,*,Sidebar,nav_yield,Yield,,active
+nav.export,shared,*,Sidebar,nav_export,Export,,active

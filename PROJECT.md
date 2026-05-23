@@ -239,6 +239,49 @@ Caveats:
 - The isolated rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
 - The isolated rebuild's doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
 
+#### Phase 4 - Codeburn Parity Dashboards
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-4-codeburn-parity-dashboards`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-4-codeburn-parity-dashboards.md`
+
+What changed:
+
+- Added read-only Compare, Models, Yield, Export, Status, and Auto-detect endpoints over canonical VibeDeck facts.
+- Added dashboard pages for Compare, Models, Yield, and Export plus additive MCP/yield/settings panels.
+- Added additive Codeburn parity fields for task category, ordered tools, skills, and fast-mode tracking without changing cost facts.
+- Added Mac app Compare/Models/Yield decoding and tabs.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and grouped/raw session totals through copied-live and isolated rebuild smoke.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Backend parity suite | `38/38` passed |
+| Dashboard parity pages | `37/37` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Mac app build/typecheck | Passed via `xcodebuild`; existing embedded-server script warning only |
+| Copied-live endpoint smoke | 6/6 routes returned HTTP 200 |
+| Copied-live sessions/events/branch facts | `1,226` / `54,325` / `1,152` |
+| Copied-live Unknown/Historical | `1` / `58` |
+| Copied-live endpoint totals | `1,151` fact sessions, `5,635,098,413` tokens, `4` providers, `22` models, `23` branches |
+| Isolated rebuild wall clock | `334s`, sync exit `0` |
+| Isolated rebuild doctor | `ok 14`, `warn 5`, `fail 1`, `critical 0` |
+| Isolated rebuild sessions/events/branch facts | `984` / `51,564` / `985` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild provider rows | Claude `94`, Codex `888`, Gemini `2` |
+| Isolated rebuild branch-fact provider rows | Claude `94`, Codex `889`, Gemini `2` |
+| Direct branch-fact write scan | Passed: read models do not write `vibedeck_branch_usage_facts` directly |
+| Browser smoke | `/compare`, `/models`, `/yield`, and `/export` rendered headings with 0 console errors against the isolated temp DB |
+
+Caveats:
+
+- Compare/yield rates are read-side workflow metrics, not billing sources.
+- Cost per activity/tool is a share/read-side metric only; `vibedeck_branch_usage_facts.cost_usd` remains the single dollar source of truth.
+- Auto-detect is filesystem-only and may report installed providers with zero usage if the provider has no logs.
+- The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning during local debug builds.
+- The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
 #### What Remains For 0.1.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.

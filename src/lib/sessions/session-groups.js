@@ -137,6 +137,7 @@ function deriveCodexGroupEvidence(dbPath, session) {
   if (provider !== 'codex' && provider !== 'every-code') return null;
   if (!childSessionId.endsWith('.jsonl')) return null;
   const first = readFirstJsonLine(childSessionId);
+  if (first?.type !== 'session_meta') return null;
   const payload = first?.payload && typeof first.payload === 'object' ? first.payload : {};
   const spawn = payload?.source?.subagent?.thread_spawn || {};
   const isSubagent = payload.thread_source === 'subagent' || !!payload?.source?.subagent;

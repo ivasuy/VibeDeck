@@ -152,6 +152,39 @@ test('deriveCodexGroupEvidence resolves parent thread id to one canonical root s
   }
 });
 
+test('deriveCodexGroupEvidence ignores subagent payloads outside session_meta proof rows', () => {
+  const tmp = makeDb();
+  try {
+    const db = new DatabaseSync(tmp.dbPath);
+    const rootFile = path.join(tmp.dir, 'rollout-parent-thread.jsonl');
+    const childFile = path.join(tmp.dir, 'rollout-child-thread.jsonl');
+    writeJsonl(rootFile, [{ type: 'session_meta', payload: { id: 'parent-thread' } }]);
+    writeJsonl(childFile, [{
+      type: 'not_session_meta',
+      payload: {
+        id: 'child-thread',
+        thread_source: 'subagent',
+        source: { subagent: { thread_spawn: { parent_thread_id: 'parent-thread', depth: 1 } } },
+      },
+    }]);
+    insertSession(db, { provider: 'codex', session_id: rootFile });
+    insertSession(db, { provider: 'codex', session_id: childFile });
+    db.close();
+
+    assert.equal(deriveCodexGroupEvidence(tmp.dbPath, { provider: 'codex', session_id: childFile }), null);
+
+    const summary = rebuildSessionGroupProjection(tmp.dbPath, { mode: 'shadow' });
+    assert.equal(summary.edges_written, 0);
+    assert.equal(summary.skips_written, 0);
+
+    const diagnostics = readSessionGroupDiagnostics(tmp.dbPath);
+    assert.equal(diagnostics.grouped_child_sessions, 0);
+    assert.equal(diagnostics.skipped_edges, 0);
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('rebuildSessionGroupProjection writes edges and skipped orphan diagnostics', () => {
   const tmp = makeDb();
   try {

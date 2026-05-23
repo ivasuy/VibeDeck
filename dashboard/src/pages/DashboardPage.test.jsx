@@ -181,6 +181,20 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.")).toBeTruthy();
   });
 
+  it("computes reading-pattern cache hit against total input tokens", async () => {
+    hookData.dailyBreakdown = [
+      {
+        day: "2026-05-23",
+        input_tokens: 100,
+        cached_input_tokens: 300,
+      },
+    ];
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.")).toBeTruthy();
+  });
+
   it("does not show reading-pattern hint with missing counters", async () => {
     hookData.dailyBreakdown = [{ day: "2026-05-23" }];
 

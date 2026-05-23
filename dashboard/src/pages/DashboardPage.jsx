@@ -162,20 +162,45 @@ function readFiniteCounter(row, keys) {
   return null;
 }
 
+function sumPresentCounters(row, keys) {
+  let total = 0;
+  let found = false;
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value == null || value === "") continue;
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    found = true;
+    total += Math.max(0, n);
+  }
+  return found ? total : null;
+}
+
+function resolveTotalInputTokens(row) {
+  const totalInput = readFiniteCounter(row, ["total_input_tokens"]);
+  if (totalInput != null) return Math.max(0, totalInput);
+  return sumPresentCounters(row, [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_5m_input_tokens",
+    "cache_creation_1h_input_tokens",
+  ]);
+}
+
 function hasLowCacheHitHint(rows) {
   let inputTokens = 0;
   let cachedInputTokens = 0;
   let hasCounters = false;
   for (const row of Array.isArray(rows) ? rows : []) {
-    const input = readFiniteCounter(row, ["input_tokens", "total_input_tokens"]);
+    const totalInput = resolveTotalInputTokens(row);
     const cached = readFiniteCounter(row, ["cached_input_tokens", "cache_read_input_tokens"]);
-    if (input == null || cached == null) continue;
+    if (totalInput == null || cached == null) continue;
     hasCounters = true;
-    inputTokens += Math.max(0, input);
+    inputTokens += Math.max(0, totalInput);
     cachedInputTokens += Math.max(0, cached);
   }
   if (!hasCounters || inputTokens <= 0) return false;
-  return (cachedInputTokens / inputTokens) * 100 < 80;
+  return cachedInputTokens / inputTokens < 0.8;
 }
 
 function McpServersPanel({ rows }) {

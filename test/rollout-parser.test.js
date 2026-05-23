@@ -26,6 +26,8 @@ const {
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
   parseGooseIncremental,
+  parseCrushIncremental,
+  readCrushProjects,
   parseCraftIncremental,
   resolveCraftSessionFiles,
   resolveCraftWorkspaceRoots,
@@ -2864,6 +2866,142 @@ test("parseGooseIncremental nulls untrusted working_dir values", async () => {
     assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
     assert.equal(events.find((event) => event.kind === "update")?.cwd, null);
     assert.equal(events.find((event) => event.kind === "end")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── Crush registry + SQLite parser tests ──
+
+function createCrushDb(dbPath, sessions) {
+  cp.execFileSync("sqlite3", [
+    dbPath,
+    `
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      model TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      prompt_tokens INTEGER,
+      completion_tokens INTEGER,
+      total_tokens INTEGER,
+      cost_usd REAL
+    );
+    `,
+  ]);
+  for (const s of sessions) {
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO sessions (
+        id, title, model, created_at, updated_at, prompt_tokens, completion_tokens, total_tokens, cost_usd
+      ) VALUES (
+        ${sqliteString(s.id)}, ${sqliteString(s.title || "")}, ${sqliteString(s.model)},
+        ${sqliteString(s.created_at)}, ${sqliteString(s.updated_at)}, ${Number(s.input || 0)},
+        ${Number(s.output || 0)}, ${Number(s.total || 0)}, ${Number(s.cost || 0)}
+      );`,
+    ]);
+  }
+}
+
+test("readCrushProjects accepts registry arrays and object projects with clean absolute paths", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-projects-"));
+  try {
+    const repoA = path.join(tmp, "repo-a");
+    const repoB = path.join(tmp, "repo-b");
+    const repoC = path.join(tmp, "repo-c");
+    const objectPath = path.join(tmp, "projects-object.json");
+    const arrayPath = path.join(tmp, "projects-array.json");
+    await fs.writeFile(
+      objectPath,
+      JSON.stringify({
+        projects: [
+          { path: "relative/repo" },
+          { path: repoA },
+          { projectPath: repoB },
+          { root: repoC },
+        ],
+      }),
+      "utf8",
+    );
+    await fs.writeFile(arrayPath, JSON.stringify([{ cwd: repoB }, { cwd: "basename-only" }]), "utf8");
+
+    assert.deepEqual(readCrushProjects(objectPath), [repoA, repoB, repoC]);
+    assert.deepEqual(readCrushProjects(arrayPath), [repoB]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCrushIncremental reads projects registry paths and emits cwd-backed session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    const crushDir = path.join(repo, ".crush");
+    await fs.mkdir(crushDir, { recursive: true });
+    const dbPath = path.join(crushDir, "crush.db");
+    createCrushDb(dbPath, [{
+      id: "crush-001",
+      model: "gpt-5.5",
+      created_at: "2026-05-21T10:00:00.000Z",
+      updated_at: "2026-05-21T10:10:00.000Z",
+      input: 90,
+      output: 30,
+      total: 120,
+      cost: 999,
+    }]);
+    const projectsPath = path.join(tmp, "projects.json");
+    await fs.writeFile(projectsPath, JSON.stringify({ projects: [{ id: "repo", path: repo }] }), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    const result = await parseCrushIncremental({
+      projectsPath,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.provider, "crush");
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "start")?.branch, null);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].source, "crush");
+    assert.equal(queued[0].input_tokens, 90);
+    assert.equal(queued[0].output_tokens, 30);
+    assert.equal(queued[0].total_tokens, 120);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCrushIncremental snapshots include project root to avoid session id collisions", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-collide-"));
+  try {
+    const repos = [path.join(tmp, "repo-a"), path.join(tmp, "repo-b")];
+    for (const repo of repos) {
+      const crushDir = path.join(repo, ".crush");
+      await fs.mkdir(crushDir, { recursive: true });
+      createCrushDb(path.join(crushDir, "crush.db"), [{
+        id: "same-session",
+        model: "gpt-5.5",
+        created_at: "2026-05-21T10:00:00.000Z",
+        updated_at: "2026-05-21T10:10:00.000Z",
+        input: 10,
+        output: 5,
+        total: 15,
+      }]);
+    }
+    const projectsPath = path.join(tmp, "projects.json");
+    await fs.writeFile(projectsPath, JSON.stringify(repos.map((repo) => ({ path: repo }))), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+
+    assert.equal((await parseCrushIncremental({ projectsPath, cursors, queuePath })).eventsAggregated, 2);
+    assert.equal((await parseCrushIncremental({ projectsPath, cursors, queuePath })).eventsAggregated, 0);
+    assert.equal(Object.keys(cursors.crush.snapshots).length, 2);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

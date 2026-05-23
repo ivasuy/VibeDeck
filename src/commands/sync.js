@@ -36,6 +36,8 @@ const {
   piAgentDirCollidesWithOmp,
   resolveGooseDbPath,
   parseGooseIncremental,
+  resolveCrushProjectsPath,
+  parseCrushIncremental,
   resolveCraftSessionFiles,
   parseCraftIncremental,
   resolveCodebuddyProjectFiles,
@@ -680,6 +682,29 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
 
+    // ── Crush (projects registry + per-project SQLite DBs) ──
+    let crushResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const crushProjectsPath = resolveCrushProjectsPath(process.env);
+    if (fssync.existsSync(crushProjectsPath)) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Crush ${renderBar(0)} | buckets 0`);
+      }
+      crushResult = await parseCrushIncremental({
+        projectsPath: crushProjectsPath,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Crush ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} sessions | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── Cursor (API-based) ──
     // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
     // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
@@ -1203,6 +1228,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         geminiResult.filesProcessed +
         opencodeResult.filesProcessed +
         gooseResult.recordsProcessed +
+        crushResult.recordsProcessed +
         cursorResult.recordsProcessed +
         kiroResult.recordsProcessed +
         kiroCliResult.recordsProcessed +
@@ -1220,6 +1246,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         geminiResult.bucketsQueued +
         opencodeResult.bucketsQueued +
         gooseResult.bucketsQueued +
+        crushResult.bucketsQueued +
         cursorResult.bucketsQueued +
         kiroResult.bucketsQueued +
         kiroCliResult.bucketsQueued +

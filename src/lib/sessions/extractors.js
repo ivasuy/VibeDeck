@@ -329,6 +329,21 @@ function extractGooseSessionEvents(batch) {
   });
 }
 
+function extractCrushSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'crush',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
 function extractCodebuddySessionEvents(batch) {
   return extractSessionEvents({
     provider: 'codebuddy',
@@ -359,5 +374,6 @@ module.exports = {
   extractOmpSessionEvents,
   extractPiSessionEvents,
   extractGooseSessionEvents,
+  extractCrushSessionEvents,
   extractCodebuddySessionEvents,
 };

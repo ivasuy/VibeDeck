@@ -40,7 +40,13 @@ function stubModule(modulePath, exports) {
   return { path: modulePath, original };
 }
 
-function buildSyncModuleStubs({ trackerDir, gooseDbPath = "", onGooseParse = async () => {} }) {
+function buildSyncModuleStubs({
+  trackerDir,
+  gooseDbPath = "",
+  crushProjectsPath = "",
+  onGooseParse = async () => {},
+  onCrushParse = async () => {},
+}) {
   const zeroResult = {
     filesProcessed: 0,
     eventsAggregated: 0,
@@ -75,6 +81,10 @@ function buildSyncModuleStubs({ trackerDir, gooseDbPath = "", onGooseParse = asy
       await onGooseParse(args);
       return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
     },
+    parseCrushIncremental: async (args) => {
+      await onCrushParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCraftIncremental: async () => ({ ...zeroResult }),
     parseCodebuddyIncremental: async () => ({ ...zeroResult }),
     parseKiroCliIncremental: async () => ({ ...zeroResult }),
@@ -92,6 +102,7 @@ function buildSyncModuleStubs({ trackerDir, gooseDbPath = "", onGooseParse = asy
     piAgentDirCollidesWithOmp: () => false,
     resolvePiSessionFiles: () => [],
     resolveGooseDbPath: () => gooseDbPath,
+    resolveCrushProjectsPath: () => crushProjectsPath,
     resolveCraftSessionFiles: () => [],
     resolveCodebuddyProjectFiles: () => [],
     resolveKiroCliSessionFiles: () => [],
@@ -280,6 +291,58 @@ test("cmdSync runs Goose parser when resolved DB exists", async () => {
   assert.equal(gooseArgs?.dbPath, gooseDbPath);
   assert.equal(typeof gooseArgs?.onSessionEvent, "function");
   assert.equal(typeof gooseArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Crush parser when projects registry exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-crush-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const crushProjectsPath = path.join(tmp, "projects.json");
+  await fs.writeFile(crushProjectsPath, "[]", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let crushArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    crushProjectsPath,
+    onCrushParse: async (args) => {
+      crushArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.equal(crushArgs?.projectsPath, crushProjectsPath);
+  assert.equal(typeof crushArgs?.onSessionEvent, "function");
+  assert.equal(typeof crushArgs?.onProgress, "function");
   assert.doesNotMatch(out, /README banner updated on GitHub/);
   assert.doesNotMatch(err, /README sync warning/);
 });

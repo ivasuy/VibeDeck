@@ -20,6 +20,7 @@ const {
   parseOmpIncremental,
   parsePiIncremental,
   parseGooseIncremental,
+  parseCrushIncremental,
   parseCodebuddyIncremental,
 } = require('../src/lib/rollout');
 
@@ -890,6 +891,50 @@ test('SessionEvent extraction: Goose sessions SQLite preserves clean working_dir
 
     assertStartUpdateEnd(events, 'goose');
     assert.equal(events[0].session_id, 'goose-session');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[2].cwd, repo);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].output_tokens, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Crush registry sessions preserve project root cwd', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-crush-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const crushDir = path.join(repo, '.crush');
+    await fs.mkdir(crushDir, { recursive: true });
+    const dbPath = path.join(crushDir, 'crush.db');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const projectsPath = path.join(tmp, 'projects.json');
+    const cursors = { version: 1 };
+    cp.execFileSync('sqlite3', [
+      dbPath,
+      `
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        model_id TEXT,
+        created_at TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER
+      );
+      INSERT INTO sessions (
+        session_id, model_id, created_at, input_tokens, output_tokens
+      ) VALUES (
+        'crush-session', 'gpt-5.5', '2026-05-09T00:00:00.000Z', 10, 2
+      );
+      `,
+    ]);
+    await fs.writeFile(projectsPath, JSON.stringify([{ cwd: repo }]), 'utf8');
+
+    const events = [];
+    await parseCrushIncremental({ projectsPath, cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'crush');
+    assert.equal(events[0].session_id, 'crush-session');
     assert.equal(events[0].cwd, repo);
     assert.equal(events[1].cwd, repo);
     assert.equal(events[2].cwd, repo);

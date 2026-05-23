@@ -27,6 +27,7 @@ const {
   extractOmpSessionEvents,
   extractPiSessionEvents,
   extractGooseSessionEvents,
+  extractCrushSessionEvents,
   extractCodebuddySessionEvents,
 } = require("./sessions/extractors");
 
@@ -5749,6 +5750,195 @@ async function parseGooseIncremental({ dbPath, cursors, queuePath, onProgress, o
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Crush — projects registry + per-project SQLite sessions reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveCrushProjectsPath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  if (env.CRUSH_GLOBAL_DATA) return path.join(expandHomePath(env.CRUSH_GLOBAL_DATA, env), "projects.json");
+  return path.join(home, ".local", "share", "crush", "projects.json");
+}
+
+function readCrushProjects(projectsPath) {
+  if (!projectsPath || !fssync.existsSync(projectsPath)) return [];
+  try {
+    const parsed = JSON.parse(fssync.readFileSync(projectsPath, "utf8"));
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.projects) ? parsed.projects : [];
+    return list
+      .map((entry) => cleanAbsoluteCwd(entry?.path || entry?.projectPath || entry?.root || entry?.cwd))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  } catch (_e) {
+    return [];
+  }
+}
+
+function quoteSqliteIdentifier(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+function readSqliteTableColumns(dbPath, tableName) {
+  try {
+    const raw = cp.execFileSync("sqlite3", ["-json", dbPath, `PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+    });
+    if (!raw.trim()) return [];
+    const rows = JSON.parse(raw);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => row.name).filter((name) => typeof name === "string" && name.trim());
+  } catch (_e) {
+    return [];
+  }
+}
+
+function readCrushSessions(dbPath) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const columns = readSqliteTableColumns(dbPath, "sessions");
+  if (columns.length === 0) return [];
+  const columnSet = new Set(columns);
+  const selectList = columns.map(quoteSqliteIdentifier).join(", ");
+  const orderColumns = ["updated_at", "ended_at", "created_at", "started_at"].filter((name) => columnSet.has(name));
+  let orderSql = "";
+  if (orderColumns.length === 1) {
+    orderSql = ` ORDER BY ${quoteSqliteIdentifier(orderColumns[0])} ASC`;
+  } else if (orderColumns.length > 1) {
+    orderSql = ` ORDER BY COALESCE(${orderColumns.map(quoteSqliteIdentifier).join(", ")}) ASC`;
+  }
+  const sql = `SELECT ${selectList} FROM sessions${orderSql}`;
+  try {
+    const raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 30_000,
+    });
+    if (!raw.trim()) return [];
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+function parseCrushObservedIso(row) {
+  const observed = row.updated_at || row.ended_at || row.created_at || row.started_at || new Date().toISOString();
+  const ms = Date.parse(observed);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+async function parseCrushIncremental({ projectsPath, cursors, queuePath, onProgress, onSessionEvent, env } = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const resolvedProjectsPath = projectsPath || resolveCrushProjectsPath(env || process.env);
+  const projects = readCrushProjects(resolvedProjectsPath);
+  const crushState = cursors.crush && typeof cursors.crush === "object" ? cursors.crush : {};
+  const snapshots =
+    crushState.snapshots && typeof crushState.snapshots === "object"
+      ? { ...crushState.snapshots }
+      : {};
+  const sessionRows = [];
+  for (const projectRoot of projects) {
+    const dbPath = path.join(projectRoot, ".crush", "crush.db");
+    for (const row of readCrushSessions(dbPath)) {
+      sessionRows.push({ projectRoot, row });
+    }
+  }
+  if (sessionRows.length === 0) {
+    cursors.crush = { ...crushState, snapshots, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let i = 0; i < sessionRows.length; i++) {
+    const { projectRoot, row } = sessionRows[i];
+    recordsProcessed++;
+    const sessionId = String(row.id || row.session_id || "").trim();
+    if (!sessionId) continue;
+
+    const totalInput = toNonNegativeInt(row.prompt_tokens ?? row.input_tokens);
+    const totalOutput = toNonNegativeInt(row.completion_tokens ?? row.output_tokens);
+    const totalReported = toNonNegativeInt(row.total_tokens ?? (totalInput + totalOutput));
+    const sessionKey = `${projectRoot}:${sessionId}`;
+    const prev = snapshots[sessionKey] || { input: 0, output: 0, total: 0 };
+    const dInput = Math.max(0, totalInput - toNonNegativeInt(prev.input));
+    const dOutput = Math.max(0, totalOutput - toNonNegativeInt(prev.output));
+    const dTotal = Math.max(0, totalReported - toNonNegativeInt(prev.total));
+    snapshots[sessionKey] = { input: totalInput, output: totalOutput, total: totalReported };
+    if (dInput === 0 && dOutput === 0 && dTotal === 0) continue;
+
+    const observedIso = parseCrushObservedIso(row);
+    if (!observedIso) continue;
+    const bucketStart = toUtcHalfHourStart(observedIso);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(row.model || row.model_id || row.model_name) || "crush-unknown";
+    const totalTokens = dTotal > 0 ? dTotal : dInput + dOutput;
+    const reasoning = Math.max(0, totalTokens - dInput - dOutput);
+    const delta = {
+      input_tokens: dInput,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: dOutput,
+      reasoning_output_tokens: reasoning,
+      total_tokens: totalTokens,
+      conversation_count: 1,
+    };
+
+    const bucket = getHourlyBucket(hourlyState, "crush", model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey("crush", model, bucketStart));
+    emitSessionEvents(
+      extractCrushSessionEvents,
+      {
+        session_id: sessionId,
+        started_at: row.created_at || row.started_at || observedIso,
+        ended_at: observedIso,
+        end_reason: "log_complete",
+        cwd: projectRoot,
+        model,
+        updates: [
+          {
+            observed_at: observedIso,
+            delta_tokens: totalTokens,
+            input_tokens: dInput,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            output_tokens: dOutput,
+            reasoning_output_tokens: reasoning,
+            conversation_count: 1,
+          },
+        ],
+        total_tokens: totalTokens,
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: i + 1,
+        total: sessionRows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.crush = { ...crushState, snapshots, updatedAt };
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Craft Agents (lukilabs/craft-agents-oss) — passive JSONL reader
 //
 // Craft is a desktop Electron agent that wraps the Claude Agent SDK plus
@@ -6328,6 +6518,10 @@ module.exports = {
   resolveGooseDbPath,
   readGooseSessions,
   parseGooseIncremental,
+  resolveCrushProjectsPath,
+  readCrushProjects,
+  readCrushSessions,
+  parseCrushIncremental,
   resolveCraftConfigDir,
   resolveCraftWorkspaceRoots,
   resolveCraftSessionFiles,

@@ -174,3 +174,28 @@ test('branch usage can read grouping mode from context env', () => {
     tmp.cleanup();
   }
 });
+
+test('branch usage group marks cost unknown when any member cost is null', () => {
+  const tmp = makeDb();
+  try {
+    const db = new DatabaseSync(tmp.dbPath);
+    insertFact(db, { provider: 'codex', session_id: 'root', total_tokens: 100, total_cost_usd: 0.10 });
+    insertFact(db, { provider: 'codex', session_id: 'child', total_tokens: 50, total_cost_usd: null });
+    insertEdge(db, {
+      provider: 'codex',
+      session_group_id: 'codex:root',
+      root_session_id: 'root',
+      child_session_id: 'child',
+    });
+    db.close();
+
+    const grouped = queryBranchUsage(tmp.dbPath, { includeSessions: true, includeUnattributed: true }, { groupingMode: 'preview' });
+    const group = grouped.repos[0].branches[0].session_groups[0];
+    assert.equal(group.total_cost_usd, null);
+    assert.equal(group.known_cost_usd, 0.10);
+    assert.equal(group.cost_unknown_count, 1);
+    assert.equal(group.models[0].total_cost_usd, null);
+  } finally {
+    tmp.cleanup();
+  }
+});

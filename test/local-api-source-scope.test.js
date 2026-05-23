@@ -174,3 +174,25 @@ test("provider registry exposes honest Phase 2 attribution labels", () => {
   assert.equal(attributionQualityForCwd(null), "provider_only");
   assert.equal(attributionQualityForCwd("repo-basename-only"), "provider_only");
 });
+
+test("provider registry exposes Phase 3 provider attribution honestly", () => {
+  const { getProviderMetadata } = require("../src/lib/provider-registry");
+  const expected = {
+    gemini: "provider_only",
+    openclaw: "provider_only",
+    droid: "cwd_proven",
+    qwen: "cwd_optional",
+    "cursor-agent": "provider_only",
+    antigravity: "provider_only",
+    "ibm-bob": "cwd_optional",
+    roo: "cwd_optional",
+    kilocode: "cwd_optional",
+  };
+  for (const [id, attribution] of Object.entries(expected)) {
+    const meta = getProviderMetadata(id);
+    assert.equal(meta.id, id);
+    assert.equal(meta.phase, 3);
+    assert.equal(meta.sourceScope, "local");
+    assert.equal(meta.attribution, attribution);
+  }
+});

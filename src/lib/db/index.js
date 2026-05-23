@@ -19,6 +19,7 @@ const m011 = require('./migrations/011-branch-usage-facts');
 const m012 = require('./migrations/012-session-enrichment');
 const m013 = require('./migrations/013-session-groups');
 const m014 = require('./migrations/014-codeburn-parity-fields');
+const m015 = require('./migrations/015-optimize-findings');
 
 let registered = false;
 function registerAll() {
@@ -37,6 +38,7 @@ function registerAll() {
   registerMigration(m012);
   registerMigration(m013);
   registerMigration(m014);
+  registerMigration(m015);
   registered = true;
 }
 

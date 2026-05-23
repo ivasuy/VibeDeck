@@ -6,6 +6,7 @@ const { cmdDoctor } = require("./commands/doctor");
 const { cmdUninstall } = require("./commands/uninstall");
 const { cmdServe } = require("./commands/serve");
 const { cmdAttribute } = require("./commands/attribute");
+const { cmdOptimize } = require("./commands/optimize");
 const { runFirstRunBootstrapIfNeeded } = require("./lib/bootstrap/orchestrator");
 
 async function run(argv) {
@@ -48,6 +49,9 @@ async function run(argv) {
     case "attribute":
       await cmdAttribute(rest);
       return;
+    case "optimize":
+      process.exitCode = await cmdOptimize(rest);
+      return;
     case "auth":
       process.exitCode = await require("./commands/auth").run(rest);
       return;
@@ -84,6 +88,7 @@ function printHelp() {
       "  npx vibedeck-cli [--debug] doctor [--json] [--out doctor.json] [--base-url <url>]",
       "  npx vibedeck-cli [--debug] readme-sync <set|update|status|unset>",
       "  npx vibedeck-cli [--debug] project-readme-sync",
+      "  npx vibedeck-cli [--debug] optimize [--scan] [--json]",
       "  npx vibedeck-cli [--debug] entire login",
       "  npx vibedeck-cli [--debug] uninstall [--purge]",
       "",

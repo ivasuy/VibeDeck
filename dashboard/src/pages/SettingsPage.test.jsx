@@ -7,10 +7,12 @@ import { SettingsPage } from "./SettingsPage.jsx";
 
 const api = vi.hoisted(() => ({
   getAutoDetectedProviders: vi.fn(),
+  getCurrencyRates: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({
   getAutoDetectedProviders: api.getAutoDetectedProviders,
+  getCurrencyRates: api.getCurrencyRates,
 }));
 
 vi.mock("../components/settings/AppearanceSection.jsx", () => ({
@@ -51,6 +53,8 @@ beforeEach(() => {
     ok: true,
     providers: [{ id: "claude", displayName: "Claude", found: true }],
   });
+  api.getCurrencyRates.mockReset();
+  api.getCurrencyRates.mockResolvedValue({ ok: true, rates: { EUR: 0.92 } });
 });
 
 describe("SettingsPage", () => {
@@ -83,5 +87,17 @@ describe("SettingsPage", () => {
     expect(JSON.parse(window.localStorage.getItem("vibedeck.modelAliases.v1"))).toEqual([
       { alias: "sonnet-latest", canonical: "claude-sonnet-4" },
     ]);
+  });
+
+  it("persists display currency and states exports keep USD cost columns", () => {
+    render(<SettingsPage />);
+
+    expect(screen.getByText("Display currency only. Exports keep USD cost columns.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Display currency"), {
+      target: { value: "EUR" },
+    });
+
+    expect(window.localStorage.getItem("vibedeck.displayCurrency")).toBe("EUR");
+    expect(api.getCurrencyRates).toHaveBeenCalledWith({ currency: "EUR" });
   });
 });

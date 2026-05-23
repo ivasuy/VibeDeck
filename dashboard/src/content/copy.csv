@@ -620,4 +620,6 @@ vibedeck.api.error.session_not_found,shared,*,VibeDeckAPI,error_session_not_foun
 nav.compare,shared,*,Sidebar,nav_compare,Compare,,active
 nav.models,shared,*,Sidebar,nav_models,Models,,active
 nav.yield,shared,*,Sidebar,nav_yield,Yield,,active
+nav.optimize,shared,*,Sidebar,nav_optimize,Optimize,,active
+nav.plan,shared,*,Sidebar,nav_plan,Plan,,active
 nav.export,shared,*,Sidebar,nav_export,Export,,active

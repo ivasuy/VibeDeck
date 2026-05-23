@@ -15,6 +15,8 @@ import { ComparePage } from "./pages/ComparePage.jsx";
 import { ModelsPage } from "./pages/ModelsPage.jsx";
 import { YieldPage } from "./pages/YieldPage.jsx";
 import { ExportPage } from "./pages/ExportPage.jsx";
+import { OptimizePage } from "./pages/OptimizePage.jsx";
+import { PlanPage } from "./pages/PlanPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
 import { WidgetsPage } from "./pages/WidgetsPage.jsx";
 
@@ -51,6 +53,8 @@ export default function App() {
   const isModelsPath = normalizedPath === "/models";
   const isYieldPath = normalizedPath === "/yield";
   const isExportPath = normalizedPath === "/export";
+  const isOptimizePath = normalizedPath === "/optimize";
+  const isPlanPath = normalizedPath === "/plan";
 
   let PageComponent = LivePage;
   if (isRemovedLimitsPath) {
@@ -75,6 +79,10 @@ export default function App() {
     PageComponent = YieldPage;
   } else if (isExportPath) {
     PageComponent = ExportPage;
+  } else if (isOptimizePath) {
+    PageComponent = OptimizePage;
+  } else if (isPlanPath) {
+    PageComponent = PlanPage;
   }
 
   const showSidebar =
@@ -88,7 +96,9 @@ export default function App() {
       isComparePath ||
       isModelsPath ||
       isYieldPath ||
-      isExportPath);
+      isExportPath ||
+      isOptimizePath ||
+      isPlanPath);
 
   const pageNode = (
     <PageComponent

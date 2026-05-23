@@ -5,10 +5,27 @@ import { AppearanceSection } from "../components/settings/AppearanceSection.jsx"
 import { SectionCard } from "../components/settings/Controls.jsx";
 import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarSection.jsx";
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
-import { getAutoDetectedProviders } from "../lib/api";
+import { getAutoDetectedProviders, getCurrencyRates } from "../lib/api";
 import { copy } from "../lib/copy";
 
 const MODEL_ALIASES_STORAGE_KEY = "vibedeck.modelAliases.v1";
+const DISPLAY_CURRENCY_STORAGE_KEY = "vibedeck.displayCurrency";
+const DISPLAY_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "INR"];
+
+function readStoredCurrency() {
+  if (typeof window === "undefined" || !window.localStorage) return "USD";
+  const value = String(window.localStorage.getItem(DISPLAY_CURRENCY_STORAGE_KEY) || "USD").toUpperCase();
+  return DISPLAY_CURRENCIES.includes(value) ? value : "USD";
+}
+
+function writeStoredCurrency(currency) {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(DISPLAY_CURRENCY_STORAGE_KEY, currency);
+  } catch (_err) {
+    // Local-only display preference is best effort.
+  }
+}
 
 function readStoredAliases() {
   if (typeof window === "undefined" || !window.localStorage) return [];
@@ -155,6 +172,39 @@ function ProviderAutoDetectSection() {
   );
 }
 
+function DisplayCurrencySection() {
+  const [currency, setCurrency] = useState(() => readStoredCurrency());
+
+  function onCurrencyChange(event) {
+    const nextCurrency = event.target.value;
+    setCurrency(nextCurrency);
+    writeStoredCurrency(nextCurrency);
+    getCurrencyRates({ currency: nextCurrency }).catch(() => {});
+  }
+
+  return (
+    <SectionCard title="Display currency">
+      <div className="grid gap-3 py-3">
+        <label className="grid gap-1 text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
+          <span>Display currency</span>
+          <select
+            value={currency}
+            onChange={onCurrencyChange}
+            className="vd-control h-10 rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white"
+          >
+            {DISPLAY_CURRENCIES.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+        <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          Display currency only. Exports keep USD cost columns.
+        </p>
+      </div>
+    </SectionCard>
+  );
+}
+
 export function SettingsPage() {
   const limitsPrefs = useLimitsDisplayPrefs();
 
@@ -178,6 +228,7 @@ export function SettingsPage() {
             <SectionCard title={copy("settings.section.limits")}>
               <LimitsSettingsPanel prefs={limitsPrefs} />
             </SectionCard>
+            <DisplayCurrencySection />
             <ModelAliasesSection />
             <ProviderAutoDetectSection />
           </div>

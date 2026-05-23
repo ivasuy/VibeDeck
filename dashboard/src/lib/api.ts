@@ -30,6 +30,10 @@ const PATHS = {
   export: "vibedeck-export",
   yield: "vibedeck-yield",
   autoDetect: "vibedeck-optimize/auto-detect",
+  optimizeFindings: "vibedeck-optimize/findings",
+  plan: "vibedeck-plan",
+  currencyRates: "vibedeck-currency-rates",
+  forecast: "vibedeck-forecast",
 };
 
 function getLocalRouteCandidates(slug: string) {
@@ -311,6 +315,22 @@ export function getCodeburnStatus(params: AnyRecord = {}) {
 
 export function getAutoDetectedProviders(params: AnyRecord = {}) {
   return fetchLocalJson(PATHS.autoDetect, params);
+}
+
+export function getOptimizeFindings(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.optimizeFindings, params);
+}
+
+export function getPlanView(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.plan, params);
+}
+
+export function getCurrencyRates(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.currencyRates, params);
+}
+
+export function getForecastView(params: AnyRecord = {}) {
+  return fetchLocalJson(PATHS.forecast, params);
 }
 
 export async function downloadExport({ format = "json", ...params }: AnyRecord = {}) {

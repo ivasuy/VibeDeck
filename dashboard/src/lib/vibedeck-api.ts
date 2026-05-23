@@ -137,6 +137,23 @@ export function getAutoDetectedProviders(params: AnyRecord = {}, fetchImpl: Fetc
   return fetchImpl(query("vibedeck-optimize/auto-detect", params), readOptions).then(jsonOrThrow);
 }
 
+export function getOptimizeFindings(params: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
+  return fetchImpl(query("vibedeck-optimize/findings", params), readOptions).then(jsonOrThrow);
+}
+
+export function getPlanView(params: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
+  return fetchImpl(query("vibedeck-plan", params), readOptions).then(jsonOrThrow);
+}
+
+export function getCurrencyRates(params: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
+  const { currency, ...rest } = params || {};
+  return fetchImpl(query("vibedeck-currency-rates", { ...rest, currency }), readOptions).then(jsonOrThrow);
+}
+
+export function getForecastView(params: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
+  return fetchImpl(query("vibedeck-forecast", params), readOptions).then(jsonOrThrow);
+}
+
 export function downloadExport({ format = "json", ...params }: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
   return fetchImpl(query("vibedeck-export", { ...params, format }), readOptions).then(jsonOrThrow);
 }

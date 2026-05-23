@@ -10,6 +10,12 @@ const hookData = vi.hoisted(() => ({
   refresh: vi.fn(),
 }));
 
+const api = vi.hoisted(() => ({
+  getForecastView: vi.fn(),
+  getPlanView: vi.fn(),
+  getSyncStatus: vi.fn(),
+}));
+
 vi.mock("../hooks/useLocale.js", () => ({
   useLocale: () => ({ resolvedLocale: "en" }),
 }));
@@ -103,7 +109,9 @@ vi.mock("../lib/api", () => ({
 }));
 
 vi.mock("../lib/vibedeck-api", () => ({
-  getSyncStatus: vi.fn(async () => ({ ok: true })),
+  getForecastView: api.getForecastView,
+  getPlanView: api.getPlanView,
+  getSyncStatus: api.getSyncStatus,
 }));
 
 vi.mock("../lib/sync-freshness", () => ({
@@ -126,6 +134,12 @@ vi.mock("../ui/matrix-a/views/DashboardView.jsx", () => ({
 beforeEach(() => {
   hookData.dailyBreakdown = [];
   hookData.refresh.mockClear();
+  api.getForecastView.mockReset();
+  api.getForecastView.mockResolvedValue({ ok: true, forecast_30d_usd: "0.0000" });
+  api.getPlanView.mockReset();
+  api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 0 });
+  api.getSyncStatus.mockReset();
+  api.getSyncStatus.mockResolvedValue({ ok: true });
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: vi.fn(),
@@ -134,6 +148,48 @@ beforeEach(() => {
 });
 
 describe("DashboardPage", () => {
+  it("shows forecast banner only when projected spend exceeds configured plan", async () => {
+    api.getForecastView.mockResolvedValue({ ok: true, forecast_30d_usd: "42.00" });
+    api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 20 });
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeTruthy();
+  });
+
+  it("hides forecast banner when forecast data is missing", async () => {
+    api.getForecastView.mockResolvedValue({ ok: true });
+    api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 20 });
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Dashboard shell")).toBeTruthy();
+    expect(screen.queryByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeNull();
+  });
+
+  it("shows reading-pattern hint only when cache counters are present and below 80 percent", async () => {
+    hookData.dailyBreakdown = [
+      {
+        day: "2026-05-23",
+        input_tokens: 1000,
+        cached_input_tokens: 100,
+      },
+    ];
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.")).toBeTruthy();
+  });
+
+  it("does not show reading-pattern hint with missing counters", async () => {
+    hookData.dailyBreakdown = [{ day: "2026-05-23" }];
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Dashboard shell")).toBeTruthy();
+    expect(screen.queryByText("Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.")).toBeNull();
+  });
+
   it("renders MCP servers derived from tools_json counters", async () => {
     hookData.dailyBreakdown = [
       {

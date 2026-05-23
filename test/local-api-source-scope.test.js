@@ -156,3 +156,21 @@ test("usage-model-breakdown defaults to all scope and can explicitly exclude acc
     await fs.promises.rm(tmp, { recursive: true, force: true });
   }
 });
+
+test("provider registry keeps Cursor account CSV account-level and Phase 2 locals local", () => {
+  const { getSourceScope } = require("../src/lib/source-metadata");
+  assert.equal(getSourceScope("cursor"), "account");
+  for (const source of ["opencode", "omp", "pi", "copilot", "kiro", "goose", "crush"]) {
+    assert.equal(getSourceScope(source), "local", `${source} must remain local-scoped`);
+  }
+});
+
+test("provider registry exposes honest Phase 2 attribution labels", () => {
+  const { getProviderMetadata, attributionQualityForCwd } = require("../src/lib/provider-registry");
+  assert.equal(getProviderMetadata("goose").displayName, "Goose");
+  assert.equal(getProviderMetadata("crush").displayName, "Crush");
+  assert.equal(getProviderMetadata("cursor").sourceScope, "account");
+  assert.equal(attributionQualityForCwd("/Users/example/repo"), "cwd_proven");
+  assert.equal(attributionQualityForCwd(null), "provider_only");
+  assert.equal(attributionQualityForCwd("repo-basename-only"), "provider_only");
+});

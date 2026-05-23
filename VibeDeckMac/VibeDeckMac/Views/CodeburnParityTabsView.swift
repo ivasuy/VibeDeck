@@ -20,6 +20,10 @@ struct CodeburnParityTabsView: View {
                     .tabItem { Text("Models") }
                 yieldTab
                     .tabItem { Text("Yield") }
+                OptimizeTab(response: viewModel.optimizeFindings)
+                    .tabItem { Text("Optimize") }
+                PlanTab(response: viewModel.planView)
+                    .tabItem { Text("Plan") }
             }
             .frame(minHeight: 220)
             .padding(10)

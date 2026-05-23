@@ -49,6 +49,10 @@ class DashboardViewModel: ObservableObject {
     @Published var compareMetrics: CompareMetricsResponse?
     @Published var parityModels: ModelsParityResponse?
     @Published var yieldSummary: YieldResponse?
+    @Published var optimizeFindings: OptimizeFindingsResponse?
+    @Published var planView: PlanViewResponse?
+    @Published var forecastView: ForecastResponse?
+    @Published var displayCurrency: String = UserDefaults.standard.string(forKey: "vibedeck.displayCurrency") ?? "USD"
     @Published var parityError: String?
 
     @Published var isLoading = false
@@ -263,6 +267,24 @@ class DashboardViewModel: ObservableObject {
             yieldSummary = try await APIClient.shared.fetchYield()
         } catch {
             failures.append("Yield: \(error.localizedDescription)")
+        }
+
+        do {
+            optimizeFindings = try await APIClient.shared.fetchOptimizeFindings()
+        } catch {
+            failures.append("Optimize: \(error.localizedDescription)")
+        }
+
+        do {
+            planView = try await APIClient.shared.fetchPlanView()
+        } catch {
+            failures.append("Plan: \(error.localizedDescription)")
+        }
+
+        do {
+            forecastView = try await APIClient.shared.fetchForecast()
+        } catch {
+            failures.append("Forecast: \(error.localizedDescription)")
         }
 
         parityError = failures.isEmpty ? nil : failures.joined(separator: "\n")

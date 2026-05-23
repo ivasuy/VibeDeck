@@ -5,6 +5,9 @@ struct LimitsSettingsView: View {
     @ObservedObject var store: LimitsSettingsStore
     @Environment(\.colorScheme) private var colorScheme
     @State private var draggingId: String?
+    @AppStorage("vibedeck.displayCurrency") private var displayCurrency: String = "USD"
+
+    private let displayCurrencies = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "INR"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,6 +33,35 @@ struct LimitsSettingsView: View {
                 }
             }
             .padding(.bottom, 6)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Display currency")
+                    .font(.caption)
+                    .modifier(FontWeightModifier(weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Display currency", selection: $displayCurrency) {
+                    ForEach(displayCurrencies, id: \.self) { currency in
+                        Text(currency).tag(currency)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .onChange(of: displayCurrency) { currency in
+                    Task {
+                        _ = try? await APIClient.shared.fetchCurrencyRates(currency: currency)
+                    }
+                }
+
+                Text("Display currency only. Exports keep USD cost columns.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
         .frame(width: 240)
     }

@@ -90,6 +90,24 @@ actor APIClient {
         try await fetch("/functions/vibedeck-yield")
     }
 
+    func fetchOptimizeFindings() async throws -> OptimizeFindingsResponse {
+        try await fetch("/functions/vibedeck-optimize/findings")
+    }
+
+    func fetchPlanView() async throws -> PlanViewResponse {
+        try await fetch("/functions/vibedeck-plan")
+    }
+
+    func fetchForecast() async throws -> ForecastResponse {
+        try await fetch("/functions/vibedeck-forecast")
+    }
+
+    func fetchCurrencyRates(currency: String) async throws -> CurrencyRatesResponse {
+        try await fetch("/functions/vibedeck-currency-rates", queryItems: [
+            URLQueryItem(name: "currency", value: currency)
+        ])
+    }
+
     func triggerSync() async throws -> SyncResponse {
         try await post("/functions/vibedeck-local-sync")
     }

@@ -30,6 +30,16 @@ const {
   normalizeCheckpointPath,
   isValidCheckpointPath,
 } = require("./entire-checkpoint-paths");
+const {
+  readCodeburnFactRows,
+  buildComparePayload,
+  buildModelsPayload,
+  buildStatusPayload,
+  buildExportPayload,
+  buildYieldPayload,
+  detectInstalledProviders,
+  toCsv,
+} = require("./codeburn-parity");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -106,6 +116,30 @@ const ROUTES = {
   skills: {
     primary: "/functions/vibedeck-skills",
     legacy: withLegacyRoute("/functions/vibedeck-skills"),
+  },
+  compare: {
+    primary: "/functions/vibedeck-compare",
+    legacy: withLegacyRoute("/functions/vibedeck-compare"),
+  },
+  models: {
+    primary: "/functions/vibedeck-models",
+    legacy: withLegacyRoute("/functions/vibedeck-models"),
+  },
+  status: {
+    primary: "/functions/vibedeck-status",
+    legacy: withLegacyRoute("/functions/vibedeck-status"),
+  },
+  codeburnExport: {
+    primary: "/functions/vibedeck-export",
+    legacy: withLegacyRoute("/functions/vibedeck-export"),
+  },
+  yield: {
+    primary: "/functions/vibedeck-yield",
+    legacy: withLegacyRoute("/functions/vibedeck-yield"),
+  },
+  autoDetect: {
+    primary: "/functions/vibedeck-optimize/auto-detect",
+    legacy: "",
   },
 };
 
@@ -1796,6 +1830,28 @@ function json(res, data, status) {
   res.end(JSON.stringify(data));
 }
 
+function codeburnDbPath(queuePath) {
+  return path.join(path.dirname(queuePath), "vibedeck.sqlite3");
+}
+
+function codeburnFiltersFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    source: url.searchParams.get("source") || url.searchParams.get("provider"),
+    model: url.searchParams.get("model"),
+    branch: url.searchParams.get("branch"),
+  };
+}
+
+function codeburnRangeFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    tz: url.searchParams.get("tz") || "UTC",
+  };
+}
+
 function resolveRepoFromQuery(url) {
   const raw = String(url.searchParams.get("repo") || "").trim();
   if (!raw) return null;
@@ -2110,6 +2166,77 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       json(res, readSyncStatus({ queuePath: qp, syncEnabled }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.compare)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildComparePayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.models)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildModelsPayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.status)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildStatusPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.codeburnExport)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      const payload = buildExportPayload(rows, codeburnRangeFromUrl(url));
+      if (String(url.searchParams.get("format") || "json").toLowerCase() === "csv") {
+        res.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="vibedeck-export.csv"',
+        });
+        res.end(toCsv(payload.rows));
+        return true;
+      }
+      json(res, payload);
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.yield)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildYieldPayload(rows, { ...codeburnRangeFromUrl(url), execFileSync }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.autoDetect)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, { ok: true, providers: detectInstalledProviders({ env: process.env }) });
       return true;
     }
 

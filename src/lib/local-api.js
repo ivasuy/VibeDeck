@@ -6,6 +6,13 @@ const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
 const { readLiveAuditRollups } = require("./sessions/live-rollups");
+const {
+  groupingVisible,
+  readSessionGroupingMode,
+  readGroupEdges,
+  buildSessionGroupsForRows,
+  readSessionGroupDiagnostics,
+} = require("./sessions/session-groups");
 const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
 const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
 const {
@@ -376,8 +383,21 @@ function readLiveSessionsSnapshot(queuePath) {
     idleTimeoutMin: getIdleTimeoutMin(),
     recentEndedMs: LIVE_RECENT_ENDED_MS,
   });
+  const groupingMode = readSessionGroupingMode(process.env);
+  const groupEdges = groupingVisible(groupingMode) ? readGroupEdges(dbPath) : [];
+  const rawSessions = Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [];
+  const groupPayload = groupingVisible(groupingMode)
+    ? buildSessionGroupsForRows(rawSessions, groupEdges)
+    : { sessions: rawSessions, session_groups: undefined };
+  const groupedWorkstreams = Array.isArray(rollups.workstreams)
+    ? rollups.workstreams.map((workstream) => {
+      if (!groupingVisible(groupingMode)) return workstream;
+      const grouped = buildSessionGroupsForRows(workstream.sessions || [], groupEdges);
+      return { ...workstream, sessions: grouped.sessions, session_groups: grouped.session_groups };
+    })
+    : [];
   const liveIdentities = Array.from(new Map(
-    (Array.isArray(rollups?.workstreams) ? rollups.workstreams : [])
+    groupedWorkstreams
       .flatMap((workstream) => Array.isArray(workstream?.sessions) ? workstream.sessions : [])
       .map((row) => {
         const provider = typeof row?.provider === "string" ? row.provider.trim() : "";
@@ -391,7 +411,10 @@ function readLiveSessionsSnapshot(queuePath) {
   const liveCanonical = summarizeCanonicalCompletenessForSessions(dbPath, liveIdentities);
   return {
     ...rollups,
-    sessions: Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [],
+    sessions: groupPayload.sessions,
+    session_groups: groupPayload.session_groups,
+    session_group_diagnostics: groupingMode === "off" ? undefined : readSessionGroupDiagnostics(dbPath),
+    workstreams: groupedWorkstreams,
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,

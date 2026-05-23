@@ -234,7 +234,7 @@ Caveats:
 - Antigravity `.pb` files remain provider-only and unparsed unless a JSON usage cache exists.
 - Cursor Agent transcript rows are estimated when numeric token fields are absent.
 - Cline-family rows are branch/project eligible only when `Current Workspace Directory (...)` contains an absolute path.
-- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install.
+- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install. The install/audit output reported `9` dependency audit warnings (`7` moderate, `2` high, `0` critical); this is an existing packaging/frontend follow-up, not a Phase 3 smoke failure.
 - The legacy copied-live path `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder on this machine; copied-live DB smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3`.
 - The isolated rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
 - The isolated rebuild's doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.

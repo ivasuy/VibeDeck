@@ -8,6 +8,12 @@ const { test } = require('node:test');
 const { ensureSchema } = require('../src/lib/db');
 const { createLocalApiHandler } = require('../src/lib/local-api');
 
+const MINUTE_MS = 60 * 1000;
+
+function isoFromNow(offsetMs = 0) {
+  return new Date(Date.now() + offsetMs).toISOString();
+}
+
 function makeTracker() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-live-groups-'));
   const trackerDir = path.join(dir, '.vibedeck', 'tracker');
@@ -37,11 +43,11 @@ function insertSession(db, row) {
   `).run({
     branch: 'release/0.1.3',
     model: 'gpt-5.5',
-    started_at: '2026-05-23T10:00:00.000Z',
+    started_at: isoFromNow(-20 * MINUTE_MS),
     ended_at: null,
     total_tokens: 100,
     total_cost_usd: 0.01,
-    updated_at: '2026-05-23T10:10:00.000Z',
+    updated_at: isoFromNow(),
     ...row,
   });
 }
@@ -75,13 +81,14 @@ async function callSnapshot(queuePath) {
   return JSON.parse(chunks.join(''));
 }
 
-test('live snapshot exposes additive session groups in preview mode', async () => {
+test('live snapshot exposes additive session groups in preview mode', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-05-23T12:00:00.000Z') });
   const tmp = makeTracker();
   const previous = process.env.VIBEDECK_SESSION_GROUPING_V1;
   try {
     process.env.VIBEDECK_SESSION_GROUPING_V1 = 'preview';
     const db = new DatabaseSync(tmp.dbPath);
-    insertSession(db, { provider: 'codex', session_id: 'root', total_tokens: 100, total_cost_usd: 0.10, ended_at: '2026-05-23T10:05:00.000Z' });
+    insertSession(db, { provider: 'codex', session_id: 'root', total_tokens: 100, total_cost_usd: 0.10, ended_at: isoFromNow(-5 * MINUTE_MS) });
     insertSession(db, { provider: 'codex', session_id: 'child', total_tokens: 50, total_cost_usd: 0.05, ended_at: null });
     insertEdge(db);
     db.close();

@@ -90,6 +90,13 @@ function cleanAbsoluteCwd(value) {
   return null;
 }
 
+function cleanIsoTimestamp(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const ms = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return new Date(ms).toISOString();
+}
+
 function readPiOmpHeaderCwd(entry) {
   if (!entry || typeof entry !== "object") return null;
   if (entry.type !== "session") return null;
@@ -3716,6 +3723,73 @@ function resolveKimiDefaultModel(env = process.env) {
 
 const KIRO_CLI_CHARS_PER_TOKEN = 4;
 
+function addKiroCliSessionEventBatch(
+  batches,
+  {
+    sessionId,
+    cwd,
+    model,
+    observedAt,
+    startedAt,
+    endedAt,
+    inputTokens,
+    cachedInputTokens = 0,
+    cacheCreationInputTokens = 0,
+    outputTokens,
+    reasoningOutputTokens = 0,
+  },
+) {
+  if (!(batches instanceof Map)) return;
+  if (typeof sessionId !== "string" || !sessionId) return;
+  if (typeof observedAt !== "string" || !observedAt) return;
+  const safeCwd = cwd || null;
+  const key = `${sessionId}\n${safeCwd || ""}\n${model || ""}`;
+  let batch = batches.get(key);
+  if (!batch) {
+    batch = {
+      session_id: sessionId,
+      started_at: startedAt || observedAt,
+      ended_at: endedAt || observedAt,
+      end_reason: "log_complete",
+      cwd: safeCwd,
+      model: model || null,
+      updates: [],
+      total_tokens: 0,
+    };
+    batches.set(key, batch);
+  }
+  if (startedAt && Date.parse(startedAt) < Date.parse(batch.started_at)) {
+    batch.started_at = startedAt;
+  }
+  if (endedAt && Date.parse(endedAt) > Date.parse(batch.ended_at)) {
+    batch.ended_at = endedAt;
+  }
+  const deltaTokens =
+    inputTokens +
+    cachedInputTokens +
+    cacheCreationInputTokens +
+    outputTokens +
+    reasoningOutputTokens;
+  batch.updates.push({
+    observed_at: observedAt,
+    delta_tokens: deltaTokens,
+    input_tokens: inputTokens,
+    cached_input_tokens: cachedInputTokens,
+    cache_creation_input_tokens: cacheCreationInputTokens,
+    output_tokens: outputTokens,
+    reasoning_output_tokens: reasoningOutputTokens,
+    conversation_count: 1,
+  });
+  batch.total_tokens += deltaTokens;
+}
+
+function emitKiroCliSessionEventBatches(batches, onSessionEvent) {
+  if (!(batches instanceof Map)) return;
+  for (const batch of batches.values()) {
+    emitSessionEvents(extractKiroSessionEvents, batch, onSessionEvent);
+  }
+}
+
 function resolveKiroCliDbPath(env = process.env) {
   if (env.KIRO_CLI_DB_PATH) return env.KIRO_CLI_DB_PATH;
   const home = env.HOME || require("node:os").homedir();
@@ -3871,6 +3945,9 @@ async function readKiroCliSessionTurns(jsonPath) {
     (modelInfo && (modelInfo.model_id || modelInfo.model_name)) || null;
   const sessionId =
     typeof parsed.session_id === "string" ? parsed.session_id : path.basename(jsonPath, ".json");
+  const sessionCwd = cleanAbsoluteCwd(parsed.cwd);
+  const sessionStartedAt = cleanIsoTimestamp(parsed.created_at);
+  const sessionUpdatedAt = cleanIsoTimestamp(parsed.updated_at);
 
   // Build turn_index -> Set(message_id) so the jsonl walker can attribute
   // orphaned Prompt events (not referenced by turn.message_ids) to the
@@ -3955,6 +4032,9 @@ async function readKiroCliSessionTurns(jsonPath) {
       all_message_ids: messageIds.slice(),
       model_id: turn.model_id || sessionModelId,
       request_start_timestamp_ms: tsMs,
+      cwd: sessionCwd,
+      session_started_at: sessionStartedAt,
+      session_updated_at: sessionUpdatedAt,
       // D-1 / Bug-2: tag with session_id so the retraction pass can match
       // session-origin entries even when the requestId format has no
       // colon (no-loop_id fallback uses a bare message_id UUID that would
@@ -4079,7 +4159,14 @@ function readKiroCliRequests(dbPath, env = process.env) {
   return flat;
 }
 
-async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onProgress, env } = {}) {
+async function parseKiroCliIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
   await ensureDir(path.dirname(queuePath));
   const kiroCliState =
     cursors.kiroCli && typeof cursors.kiroCli === "object" ? cursors.kiroCli : {};
@@ -4094,6 +4181,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       cursors,
       queuePath,
       onProgress,
+      onSessionEvent,
       env,
       kiroCliState,
       seenIds,
@@ -4274,6 +4362,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   const cb = typeof onProgress === "function" ? onProgress : null;
   let recordsProcessed = 0;
   let eventsAggregated = 0;
+  const sessionEventBatches = new Map();
 
   for (let i = 0; i < flat.length; i++) {
     const r = flat[i];
@@ -4332,6 +4421,16 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       });
       touchedBuckets.add(bucketKey("kiro", model, bucketStart));
       eventsAggregated++;
+      addKiroCliSessionEventBatch(sessionEventBatches, {
+        sessionId: r.session_id || r.conversation_id || r.continuation_id || requestId,
+        cwd: cleanAbsoluteCwd(r.cwd),
+        model,
+        observedAt: new Date(tsMs).toISOString(),
+        startedAt: r.session_started_at || null,
+        endedAt: r.session_updated_at || null,
+        inputTokens: approxInput,
+        outputTokens: approxOutput,
+      });
     }
 
     // Always record the cursor entry (even for zero-token requests) so we
@@ -4371,6 +4470,8 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
   cursors.kiroCli = { ...kiroCliState, requests: cappedState, updatedAt };
+
+  emitKiroCliSessionEventBatches(sessionEventBatches, onSessionEvent);
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
@@ -4421,6 +4522,7 @@ async function parseKiroCliFromSessionFiles({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   kiroCliState,
   seenIds,
@@ -4475,12 +4577,16 @@ async function parseKiroCliFromSessionFiles({
       ? parsed.session_state.conversation_metadata.user_turn_metadatas
       : [];
     const sessionId = typeof parsed.session_id === "string" ? parsed.session_id : filePath;
+    const sessionCwd = cleanAbsoluteCwd(parsed.cwd);
+    const sessionStartedAt = cleanIsoTimestamp(parsed.created_at);
+    const sessionUpdatedAt = cleanIsoTimestamp(parsed.updated_at);
     const sessionModelId =
       (parsed?.session_state?.rts_model_state?.model_info &&
         (parsed.session_state.rts_model_state.model_info.model_id ||
           parsed.session_state.rts_model_state.model_info.modelId)) ||
       null;
 
+    const sessionEventBatches = new Map();
     let maxIndex = prevLastIndex;
     for (let i = 0; i < turns.length; i++) {
       if (i <= prevLastIndex) continue;
@@ -4506,6 +4612,8 @@ async function parseKiroCliFromSessionFiles({
       if (!ts) continue;
       const bucketStart = toUtcHalfHourStart(ts);
       if (!bucketStart) continue;
+      const observedAt = cleanIsoTimestamp(ts);
+      if (!observedAt) continue;
 
       const turnMessageId =
         typeof turn.message_id === "string" && turn.message_id ? turn.message_id : null;
@@ -4536,6 +4644,19 @@ async function parseKiroCliFromSessionFiles({
       const bucket = getHourlyBucket(hourlyState, "kiro", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("kiro", model, bucketStart));
+      addKiroCliSessionEventBatch(sessionEventBatches, {
+        sessionId,
+        cwd: sessionCwd,
+        model,
+        observedAt,
+        startedAt: sessionStartedAt,
+        endedAt: sessionUpdatedAt,
+        inputTokens: input,
+        cachedInputTokens: cacheRead,
+        cacheCreationInputTokens: cacheCreation,
+        outputTokens: output,
+        reasoningOutputTokens: reasoning,
+      });
       if (dedupKey) seenIds.add(dedupKey);
       maxIndex = i;
       eventsAggregated++;
@@ -4556,6 +4677,7 @@ async function parseKiroCliFromSessionFiles({
       size: stat.size,
       lastIndex: maxIndex,
     };
+    emitKiroCliSessionEventBatches(sessionEventBatches, onSessionEvent);
   }
 
   const seenArr = Array.from(seenIds);

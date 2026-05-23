@@ -3930,6 +3930,165 @@ test("parseKiroCliIncremental aggregates user_turn_metadatas into half-hour kiro
   }
 });
 
+test("parseKiroCliIncremental sessionFiles parser emits cwd-backed SessionEvents", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-events-"));
+  try {
+    const sessionsDir = path.join(tmp, "sessions", "cli");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1";
+    const activeFixture = await fs.readFile(
+      path.join(__dirname, "fixtures", "kiro-cli", "active-source.json"),
+      "utf8",
+    );
+    const sessionPath = path.join(sessionsDir, `${sessionId}.json`);
+    await fs.writeFile(sessionPath, activeFixture);
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.jsonl`), "");
+
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath,
+      env: { KIRO_HOME: tmp },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(
+      events.every(
+        (event) => event.session_id === "fixture-active-0000-0000-0000-000000000001",
+      ),
+    );
+    assert.ok(events.every((event) => event.cwd === "/tmp/fake-cwd"));
+    assert.equal(events[0].started_at, "2026-04-20T10:00:00.000Z");
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
+    assert.equal(events[2].observed_at, "2026-04-20T10:40:00.000Z");
+    assert.equal(events[3].ended_at, "2026-04-20T10:45:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroCliIncremental live session path emits cwd-backed SessionEvents from KIRO_HOME", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-live-events-"));
+  try {
+    const sessionsDir = path.join(tmp, "sessions", "cli");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    await fs.writeFile(
+      path.join(sessionsDir, `${sessionId}.json`),
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: repo,
+        created_at: "2026-04-20T10:00:00.000Z",
+        updated_at: "2026-04-20T10:45:00.000Z",
+        session_state: {
+          rts_model_state: { model_info: { model_id: "claude-sonnet-4.5" } },
+          conversation_metadata: {
+            user_turn_metadatas: [
+              {
+                loop_id: { rand: 1 },
+                message_ids: ["live-msg-1"],
+                request_start_timestamp_ms: Date.parse("2026-04-20T10:05:00.000Z"),
+                input_token_count: 100,
+                output_token_count: 50,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.jsonl`), "");
+
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env: { KIRO_HOME: tmp, KIRO_CLI_DB_PATH: path.join(tmp, "missing.sqlite3") },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(events.every((event) => event.session_id === sessionId));
+    assert.ok(events.every((event) => event.cwd === repo));
+    assert.equal(events[0].started_at, "2026-04-20T10:00:00.000Z");
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
+    assert.equal(events[2].ended_at, "2026-04-20T10:45:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroCliIncremental SQLite-only SessionEvents do not invent cwd", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-sqlite-events-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      "CREATE TABLE conversations_v2 (key TEXT, conversation_id TEXT, value TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (key, conversation_id));",
+    ]);
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO conversations_v2 VALUES ('proj', 'conv-sqlite-only', '${JSON.stringify(
+        {
+          model_info: { model_id: "claude-sonnet-4.5" },
+          user_turn_metadata: {
+            continuation_id: "conv-sqlite-only",
+            requests: [
+              {
+                request_id: "sqlite-only-req",
+                message_id: "sqlite-only-msg",
+                request_start_timestamp_ms: Date.parse("2026-04-20T10:05:00.000Z"),
+                user_prompt_length: 400,
+                response_size: 200,
+                model_id: "claude-sonnet-4.5",
+              },
+            ],
+          },
+        },
+      ).replace(/'/g, "''")}', 1, 2);`,
+    ]);
+
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env: { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(events.every((event) => event.session_id === "conv-sqlite-only"));
+    assert.ok(events.every((event) => event.cwd === null));
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseKiroCliIncremental produces zero buckets for empty user_turn_metadatas", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-"));
   try {

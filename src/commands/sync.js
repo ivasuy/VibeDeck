@@ -56,6 +56,11 @@ const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
+const {
+  readSessionGroupingMode,
+  rebuildSessionGroupProjection,
+  readSessionGroupDiagnostics,
+} = require("../lib/sessions/session-groups");
 const { createProviderBranchCache } = require("../lib/sessions/provider-branch");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
@@ -1020,6 +1025,23 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         `rebuild completed with ${sessionEventDrain.errors.length} failed session event(s); diagnostics: ${
           failureDiagnosticsPath || "not written"
         }`,
+      );
+    }
+    const sessionGroupingMode = readSessionGroupingMode(process.env);
+    let sessionGroupSummary = null;
+    if (sessionGroupingMode !== "off") {
+      lifecycle?.provider?.("Session groups", "building Claude/Codex group projection");
+      sessionGroupSummary = rebuildSessionGroupProjection(dbPath, { mode: sessionGroupingMode });
+      const diagnostics = readSessionGroupDiagnostics(dbPath);
+      await fs.mkdir(path.join(trackerDir, "diagnostics"), { recursive: true });
+      await fs.writeFile(
+        path.join(trackerDir, "diagnostics", "session-groups.json"),
+        JSON.stringify({ ...sessionGroupSummary, diagnostics }, null, 2),
+        "utf8",
+      );
+      lifecycle?.providerDone?.(
+        "Session groups",
+        `${sessionGroupSummary.edges_written} grouped, ${sessionGroupSummary.skips_written} skipped`,
       );
     }
     lifecycle?.phase?.("Rebuilding branch/project indexes...");

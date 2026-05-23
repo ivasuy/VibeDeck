@@ -282,6 +282,60 @@ Caveats:
 - The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning during local debug builds.
 - The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
 
+#### Phase 5 - Optimize Subscription Polish
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-5-optimize-subscription-polish`
+**Spec:** `docs/superpowers/specs/2026-05-19-provider-umbrella-expansion-phases.md`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-5-optimize-subscription-polish.md`
+
+What changed:
+
+- Added isolated optimizer findings and health scoring for repeated reads, low read/edit ratio, and large CLAUDE.md context risk.
+- Added plan/subscription display labels so Cursor-style flat-rate plans show `API-equivalent cost` and Claude plans show `Plan usage`.
+- Added display-only currency conversion and forecast/trend/pulse read models.
+- Added dashboard Optimize and Plan pages, settings currency picker, dashboard forecast hints, and matching Mac app surfaces.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and canonical branch fact totals through copied-live and isolated rebuild smoke.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Targeted Phase 5 backend suite | `187/187` passed |
+| Direct optimizer branch-fact write scan | Passed: no `UPDATE`, `INSERT`, or `DELETE` against `vibedeck_branch_usage_facts` in optimizer/plan/currency/forecast code paths |
+| Dashboard exact command from plan | Failed before running tests: `npm --prefix dashboard` makes `dashboard/` the package root, so `dashboard/src/...` filters matched no files |
+| Dashboard Phase 5/parity pages with package-root-relative paths | `36/36` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Mac app build/typecheck | Passed via `xcodebuild`; existing embedded-server script warnings only |
+| Copied-live optimizer smoke duration | `159.9ms` against a temp copy of `~/.vibedeck/tracker/vibedeck.sqlite3` |
+| Copied-live optimizer findings / health | `0` inserted, `0` returned, health grade `A`, score `100` |
+| Copied-live branch facts before/after | `1,152` / `1,152` |
+| Copied-live Unknown/Historical before/after | `1` / `58` before; `1` / `58` after |
+| Copied-live cost totals before/after | `cost_usd` sum `0` / `0`; `total_cost_usd` sum `3,765.7689` / `3,765.7689` |
+| Copied-live plan label | `API-equivalent cost` for `cursor-pro` at `$20` monthly |
+| Copied-live forecast fields | `37` daily points, `10` anomalies, 7-day average `$253.5495`, 30-day forecast `$10,809.9371` |
+| Isolated rebuild wall clock | `332s`, sync exit `0` |
+| Isolated rebuild doctor | `ok 14`, `warn 5`, `fail 1`, `critical 0` |
+| Isolated rebuild sessions/events/branch facts | `994` / `51,933` / `995` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild provider rows | Claude `94`, Codex `898`, Gemini `2` |
+| Isolated local route/API smoke | `/dashboard`, `/usage`, and `/branches` returned HTTP `200`; usage summary and branch usage APIs returned HTTP `200` |
+| Browser smoke | `/optimize`, `/plan`, `/settings`, and `/dashboard` rendered headings with 0 console errors against the isolated temp DB |
+
+Safety statement:
+
+- Optimizer estimates are isolated in `vibedeck_optimize_*`; smoke preserved `cost_usd`, `total_cost_usd`, `/dashboard`, `/usage`, `/branches`, `Unknown branch`, and `Historical unknown`.
+- Currency conversion remains display-only; exports keep USD cost columns.
+- Forecast, plan, pulse, and optimizer dashboard surfaces are additive read/display surfaces and do not become billing sources.
+
+Caveats:
+
+- `~/.vibedeck/usage.db` is absent on this machine and `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder, so copied-live smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3` after copying it to a temp path.
+- The dashboard test command in the plan still has the known package-root path mismatch; the same intended test files passed when run relative to `dashboard/`.
+- Dashboard tests print Node's experimental localStorage warning, and the production build still emits the existing large chunk warning.
+- The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning and a script-output warning during local debug builds.
+- The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
 #### What Remains For 0.1.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.

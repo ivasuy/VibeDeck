@@ -1,7 +1,7 @@
 # VibeDeck
 
-**Version:** 0.1.3 (PR, unreleased)
-**Last updated:** 2026-05-20
+**Version:** 0.1.4 (PR, unreleased)
+**Last updated:** 2026-05-23
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -31,6 +31,135 @@ VibeDeck should stay true to five promises:
 ## Release Audit History
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
+
+### 0.1.4 PR - Provider Enrichment And Subagent Grouping
+
+**Status:** in progress on stacked agent branches, unreleased.
+
+**Branches:**
+
+| Branch | Purpose |
+|---|---|
+| `agent/phase-1-claude-codex-enrichment` | Phase 1: Claude/Codex cost, token-bucket, tool, and session enrichment. |
+| `agent/phase-1-5-subagent-grouping` | Phase 1.5: Claude/Codex subagent grouping as an additive read-model layer. |
+
+#### Problem
+
+The 0.1.3 work made attribution safer, but the product still lacked enough session-level richness for heavy Claude Code and Codex users:
+
+- `/usage`, `/dashboard`, and `/branches` could show totals without enough detail about why a session cost what it cost.
+- Claude cache/token-bucket behavior and Codex reasoning/tool activity were not carried consistently through live, branch, and drawer payloads.
+- Main sessions and spawned subagents appeared as separate raw sessions, which made agentic runs hard to understand even when provider logs had proof of parent/child relationships.
+- Any grouping work had to preserve the honesty rules from 0.1.3: no fake branch inheritance, no token/cost movement, and no loss of `Unknown` or `Historical unknown` buckets.
+
+#### Phase 1 - Claude/Codex Cost And Session Enrichment
+
+**Plan direction:** provider expansion, richer Claude/Codex session facts, and deeper usage drilldown without changing the canonical totals contract.
+
+What changed:
+
+- Added session enrichment schema and carried enrichment data through session events, session rows, branch facts, bucket facts, live rollups, and drawer APIs.
+- Extracted Claude cache and tool enrichment from local Claude Code records.
+- Extracted Codex tool enrichment and persisted pending Codex tool calls across parse boundaries.
+- Added shadow enhanced cost calculation, then used enhanced token buckets for Claude/Codex cost estimates where provider data supports it.
+- Exposed enrichment in live and branch rollups so `/dashboard`, `/branches`, and side drawers can show richer model/tool/cost quality context.
+- Added reconciliation guardrails so enriched cost views do not silently break canonical usage totals.
+
+Evidence from local machine:
+
+| Check | Result |
+|---|---:|
+| Targeted Phase 1 test suite | `166/166` passed |
+| Copied-live DB `/usage` smoke | `131ms` |
+| Copied-live DB `/branches` smoke | `36ms` |
+| Copied-live DB live snapshot smoke | `132ms` |
+| Copied-live DB branch drawer smoke | `43ms` |
+| Isolated real-log rebuild wall clock | `368.6s` |
+| Rebuilt files | `998` |
+| Rebuilt sessions | `934` |
+| Rebuilt session events | `49,369` |
+| Rebuilt branch facts | `935` |
+| Enriched sessions | `878` |
+| `Unknown` facts | `1` |
+| `Historical unknown` facts | `58` |
+
+Full-suite status after Phase 1: `1,131` passed, `12` failed, `1` cancelled. The failing group was the known baseline outside the new enrichment path: init/uninstall, serve session pipeline, sync entire checkpoint backfill, OpenClaw trigger, and rebuild DB tests.
+
+Important commits:
+
+| Area | Commits |
+|---|---|
+| Enrichment schema and carry-through | `9214517`, `142ed3c`, `65edd77` |
+| Claude/Codex extraction | `10b2252`, `3fb2e77`, `abe0fdb` |
+| Enhanced cost and token buckets | `a85f2df`, `be6f00a`, `e8dadea` |
+| Facts and APIs | `77a2147`, `03e1045`, `8504764` |
+| UI and reconciliation | `9d60b41`, `5011948`, `ba10d38`, `0da6c6f` |
+
+#### Phase 1.5 - Claude/Codex Subagent Session Grouping
+
+**Plan:** `docs/superpowers/plans/2026-05-23-claude-codex-subagent-session-grouping.md`
+
+What changed:
+
+- Added additive grouping tables: `vibedeck_session_group_edges` and `vibedeck_session_group_skips`.
+- Added Claude subagent grouping from local transcript path proof: root transcript plus sibling `subagents/*.jsonl`.
+- Added Codex subagent grouping from `session_meta` thread-spawn proof only.
+- Added sync-time projection rebuild and diagnostics at `diagnostics/session-groups.json`.
+- Added branch read-model grouping that annotates raw sessions and returns `session_groups` only in `preview`/`on`.
+- Added live snapshot grouping without changing SSE raw-session routing.
+- Added group cards in `/branches` drawer and live/dashboard workstream drawer.
+- Kept raw sessions visible under `Raw sessions`; group cards are additive, not replacements.
+
+Safety rules preserved:
+
+- No token or cost movement between sessions, branches, projects, or providers.
+- No branch inheritance from parent to child sessions.
+- `Unknown` and `Historical unknown` remain honest buckets.
+- Group cost is `null` if any member cost is unknown, while `known_cost_usd` still reports finite known cost.
+- Default mode is `VIBEDECK_SESSION_GROUPING_V1=shadow`; UI/API group cards require `preview` or `on`.
+
+Evidence from local machine:
+
+| Check | Result |
+|---|---:|
+| Targeted backend reconciliation | `54/54` passed |
+| Dashboard group-card tests | `28/28` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Copied-live DB SQLite `quick_check` | `ok` |
+| Copied-live DB `/usage` preview vs shadow | Totals unchanged |
+| Copied-live DB `/branches` preview vs shadow | Totals unchanged |
+| Copied-live DB raw branch sessions | `1,152` |
+| Copied-live DB `Historical unknown` facts | `58` |
+| Copied-live DB API `Historical unknown` rows | `2` |
+| Copied-live DB API timings | `/usage` `10.9-20.1ms`, `/branches` `18.4-30ms`, live `123.6ms` |
+| Isolated real-log rebuild wall clock | `370.846s` |
+| Rebuilt files | `1,013` |
+| Rebuilt sessions | `949` |
+| Rebuilt branch facts | `950` |
+| Rebuilt session group edges | `594` |
+| Rebuilt session group skips | `2` |
+| Rebuilt `Unknown` facts | `0` |
+| Rebuilt `Historical unknown` facts | `58` |
+| Rebuilt DB API timings | `/usage` `23.7ms`, `/branches` `65.9ms`, live `144.1ms` |
+
+Full-suite status after Phase 1.5: `1,146` passed, `14` failed. The failures remained outside the session-grouping, branch grouping, live snapshot grouping, pricing, and dashboard group-card paths: init local runtime, init uninstall, serve session pipeline, entire checkpoint backfill, OpenClaw trigger, and rebuild DB tests.
+
+Important commits:
+
+| Area | Commits |
+|---|---|
+| Implementation plan | `406e9a9` |
+| Group schema and projection | `5870684`, `5a81944`, `dcf2989`, `1e9ba53` |
+| Branch read model | `4f87dbf`, `7b3ce75` |
+| Live read model | `4c10e9c`, `fb9f887` |
+| Dashboard group cards | `27162ff` |
+
+#### What Remains For 0.1.4
+
+- Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.
+- Add grouping support for other providers only where provider logs expose proof, not heuristics.
+- Continue provider expansion and tool/activity drilldowns beyond Claude/Codex.
+- Keep fixing the unrelated full-suite baseline failures before treating the whole repository as release-clean.
 
 ### 0.1.3 PR - Trust Foundation And Rebuild Speed
 

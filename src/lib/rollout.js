@@ -31,11 +31,17 @@ const {
   extractCodebuddySessionEvents,
   extractDroidSessionEvents,
   extractQwenSessionEvents,
+  extractClineFamilySessionEvents,
 } = require("./sessions/extractors");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
 const BUCKET_SEPARATOR = "|";
+const CLINE_FAMILY_EXTENSIONS = Object.freeze([
+  { provider: "ibm-bob", extensionIds: ["ibm.bob-code", "ibm.bob-ide"] },
+  { provider: "roo", extensionIds: ["rooveterinaryinc.roo-cline"] },
+  { provider: "kilocode", extensionIds: ["kilocode.kilo-code", "kilo-code.kilo-code"] },
+]);
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.vibedeck/claude-mem/observer-sessions";
@@ -5618,6 +5624,269 @@ async function parseQwenIncremental({
   return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
 }
 
+function resolveClineFamilyTaskDirs(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const storageRoots = [
+    path.join(home, "Library", "Application Support", "Code", "User", "globalStorage"),
+    path.join(home, ".config", "Code", "User", "globalStorage"),
+    path.join(home, "globalStorage"),
+  ];
+  const out = [];
+  for (const { provider, extensionIds } of CLINE_FAMILY_EXTENSIONS) {
+    for (const extensionId of extensionIds) {
+      for (const storageRoot of storageRoots) {
+        const tasksRoot = path.join(storageRoot, extensionId, "tasks");
+        if (!fssync.existsSync(tasksRoot)) continue;
+        let entries;
+        try {
+          entries = fssync.readdirSync(tasksRoot, { withFileTypes: true });
+        } catch (_e) {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          out.push({ provider, taskDir: path.join(tasksRoot, entry.name) });
+        }
+      }
+    }
+  }
+  out.sort((a, b) => `${a.provider}:${a.taskDir}`.localeCompare(`${b.provider}:${b.taskDir}`));
+  return out;
+}
+
+function readClineWorkspaceProof(taskDir) {
+  if (typeof taskDir !== "string" || !taskDir) return null;
+  let raw;
+  try {
+    raw = fssync.readFileSync(path.join(taskDir, "api_conversation_history.json"), "utf8");
+  } catch (_e) {
+    return null;
+  }
+  const match = String(raw).match(/Current Workspace Directory\s*\(([^)]+)\)/i);
+  return match ? cleanAbsoluteCwd(match[1]) : null;
+}
+
+function normalizeClineFamilyUsage(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const input = toNonNegativeInt(
+    entry.tokensIn ?? entry.input_tokens ?? entry.inputTokens ?? entry.prompt_tokens,
+  );
+  const output = toNonNegativeInt(
+    entry.tokensOut ?? entry.output_tokens ?? entry.outputTokens ?? entry.completion_tokens,
+  );
+  const cacheRead = toNonNegativeInt(entry.cached_tokens ?? entry.cache_read_input_tokens);
+  const cacheWrite = toNonNegativeInt(
+    entry.cache_write_input_tokens ?? entry.cache_creation_input_tokens,
+  );
+  const total = input + output + cacheRead + cacheWrite;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: 0,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function clineFamilyToolNames(entry) {
+  const out = [];
+  for (const key of ["tool", "toolName", "name", "type"]) {
+    if (typeof entry?.[key] === "string" && entry[key].trim()) out.push(entry[key].trim());
+  }
+  return out;
+}
+
+function addUsageTotals(target, usage) {
+  target.input_tokens += Number(usage.input_tokens || 0);
+  target.cached_input_tokens += Number(usage.cached_input_tokens || 0);
+  target.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
+  target.output_tokens += Number(usage.output_tokens || 0);
+  target.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
+  target.total_tokens += Number(usage.total_tokens || 0);
+  target.conversation_count += Number(usage.conversation_count || 0);
+}
+
+function subtractUsageTotals(current, previous) {
+  return {
+    input_tokens: Math.max(0, Number(current.input_tokens || 0) - Number(previous?.input_tokens || 0)),
+    cached_input_tokens: Math.max(
+      0,
+      Number(current.cached_input_tokens || 0) - Number(previous?.cached_input_tokens || 0),
+    ),
+    cache_creation_input_tokens: Math.max(
+      0,
+      Number(current.cache_creation_input_tokens || 0) -
+        Number(previous?.cache_creation_input_tokens || 0),
+    ),
+    output_tokens: Math.max(0, Number(current.output_tokens || 0) - Number(previous?.output_tokens || 0)),
+    reasoning_output_tokens: Math.max(
+      0,
+      Number(current.reasoning_output_tokens || 0) - Number(previous?.reasoning_output_tokens || 0),
+    ),
+    total_tokens: Math.max(0, Number(current.total_tokens || 0) - Number(previous?.total_tokens || 0)),
+    conversation_count: Math.max(
+      0,
+      Number(current.conversation_count || 0) - Number(previous?.conversation_count || 0),
+    ),
+  };
+}
+
+async function parseClineFamilyIncremental({
+  taskDirs,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const clineState = cursors.clineFamily && typeof cursors.clineFamily === "object"
+    ? cursors.clineFamily
+    : {};
+  const snapshots = clineState.snapshots && typeof clineState.snapshots === "object"
+    ? { ...clineState.snapshots }
+    : {};
+  const dirs = Array.isArray(taskDirs) ? taskDirs : resolveClineFamilyTaskDirs(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let taskDirsProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let idx = 0; idx < dirs.length; idx++) {
+    const item = dirs[idx];
+    const provider = normalizeSourceInput(item?.provider);
+    const taskDir = typeof item?.taskDir === "string" ? item.taskDir : null;
+    if (!provider || !taskDir) continue;
+    const uiPath = path.join(taskDir, "ui_messages.json");
+    let stat;
+    try {
+      stat = fssync.statSync(uiPath);
+    } catch (_e) {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    let rows;
+    try {
+      rows = JSON.parse(await fs.readFile(uiPath, "utf8"));
+    } catch (_e) {
+      continue;
+    }
+    if (!Array.isArray(rows)) continue;
+
+    const totals = initTotals();
+    const tools = [];
+    let startedAt = null;
+    let endedAt = null;
+    let model = null;
+    for (const row of rows) {
+      const usage = normalizeClineFamilyUsage(row);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(
+        row.ts || row.timestamp || row.created_at || row.createdAt || row.time,
+      );
+      if (!observedAt) continue;
+      addUsageTotals(totals, usage);
+      recordsProcessed++;
+      if (!startedAt || observedAt < startedAt) startedAt = observedAt;
+      if (!endedAt || observedAt > endedAt) endedAt = observedAt;
+      if (!model) model = normalizeModelInput(row.model);
+      tools.push(...clineFamilyToolNames(row));
+    }
+    if (totals.total_tokens === 0 || !endedAt) continue;
+
+    const sessionKey = `${provider}:${taskDir}`;
+    const fingerprint = [
+      stat.size,
+      Math.round(Number(stat.mtimeMs) || 0),
+      totals.input_tokens,
+      totals.cached_input_tokens,
+      totals.cache_creation_input_tokens,
+      totals.output_tokens,
+      totals.total_tokens,
+    ].join(":");
+    const previous = snapshots[sessionKey] && typeof snapshots[sessionKey] === "object"
+      ? snapshots[sessionKey]
+      : null;
+    if (previous?.fingerprint === fingerprint) {
+      taskDirsProcessed++;
+      continue;
+    }
+
+    const delta = subtractUsageTotals(totals, previous?.totals);
+    snapshots[sessionKey] = {
+      fingerprint,
+      totals,
+      updatedAt: new Date().toISOString(),
+    };
+    if (delta.total_tokens === 0) {
+      taskDirsProcessed++;
+      continue;
+    }
+
+    const bucketStart = toUtcHalfHourStart(endedAt);
+    if (!bucketStart) continue;
+    const resolvedModel = model || "cline-family-unknown";
+    const bucket = getHourlyBucket(hourlyState, provider, resolvedModel, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey(provider, resolvedModel, bucketStart));
+
+    const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+    emitSessionEvents(
+      extractClineFamilySessionEvents,
+      {
+        provider,
+        session_id: sessionKey,
+        started_at: startedAt,
+        ended_at: endedAt,
+        end_reason: "log_complete",
+        cwd: readClineWorkspaceProof(taskDir),
+        model: resolvedModel,
+        updates: [
+          {
+            observed_at: endedAt,
+            delta_tokens: Number(delta.total_tokens || 0),
+            input_tokens: delta.input_tokens,
+            cached_input_tokens: delta.cached_input_tokens,
+            cache_creation_input_tokens: delta.cache_creation_input_tokens,
+            output_tokens: delta.output_tokens,
+            reasoning_output_tokens: delta.reasoning_output_tokens,
+            conversation_count: delta.conversation_count,
+            tool_call_count: tools.length,
+            tools_json,
+          },
+        ],
+        total_tokens: Number(delta.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+    taskDirsProcessed++;
+
+    if (cb) {
+      cb({
+        index: idx + 1,
+        total: dirs.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.clineFamily = { ...clineState, snapshots, updatedAt };
+  return { taskDirsProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // oh-my-pi (omp) — passive JSONL reader (~/.omp/agent/sessions/**/*.jsonl)
 //
@@ -7129,6 +7398,8 @@ module.exports = {
   parseDroidIncremental,
   resolveQwenChatFiles,
   parseQwenIncremental,
+  resolveClineFamilyTaskDirs,
+  parseClineFamilyIncremental,
   // Exposed for regression tests covering cache-token accounting.
   normalizeGeminiTokens,
   normalizeOpencodeTokens,

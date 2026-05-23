@@ -36,6 +36,8 @@ const {
   resolveDroidSessionFiles,
   parseQwenIncremental,
   resolveQwenChatFiles,
+  parseClineFamilyIncremental,
+  resolveClineFamilyTaskDirs,
 } = require("../src/lib/rollout");
 
 test("parseRolloutIncremental ignores repeated token_count records with unchanged totals", async () => {
@@ -2977,6 +2979,105 @@ test("resolveQwenChatFiles walks only project chat jsonl files", async () => {
     await fs.writeFile(nestedProjectChatFile, "{}\n", "utf8");
     await fs.writeFile(nestedChatFile, "{}\n", "utf8");
     assert.deepEqual(resolveQwenChatFiles({ HOME: tmp }), [chatFile]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClineFamilyIncremental uses Current Workspace Directory proof and keeps missing proof provider-only", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cline-family-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const taskWithProof = path.join(tmp, "globalStorage", "rooveterinaryinc.roo-cline", "tasks", "task-a");
+    const taskWithoutProof = path.join(tmp, "globalStorage", "kilocode.kilo-code", "tasks", "task-b");
+    await fs.mkdir(taskWithProof, { recursive: true });
+    await fs.mkdir(taskWithoutProof, { recursive: true });
+    await fs.writeFile(
+      path.join(taskWithProof, "api_conversation_history.json"),
+      JSON.stringify([{ content: `Current Workspace Directory (${repo})` }]),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(taskWithoutProof, "api_conversation_history.json"),
+      JSON.stringify([{ content: "No workspace proof here" }]),
+      "utf8",
+    );
+    const ui = [
+      {
+        ts: "2026-05-22T10:00:00.000Z",
+        model: "claude-sonnet-4",
+        tokensIn: 100,
+        tokensOut: 20,
+        tool: "read_file",
+      },
+    ];
+    await fs.writeFile(path.join(taskWithProof, "ui_messages.json"), JSON.stringify(ui), "utf8");
+    await fs.writeFile(path.join(taskWithoutProof, "ui_messages.json"), JSON.stringify(ui), "utf8");
+    const files = resolveClineFamilyTaskDirs({ HOME: tmp });
+    const events = [];
+    const result = await parseClineFamilyIncremental({
+      taskDirs: files,
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.provider === "roo" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.provider === "kilocode" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClineFamilyIncremental snapshots task dirs idempotently and records tools", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cline-family-snapshot-"));
+  try {
+    const taskDir = path.join(tmp, "globalStorage", "ibm.bob-code", "tasks", "task-c");
+    await fs.mkdir(taskDir, { recursive: true });
+    await fs.writeFile(
+      path.join(taskDir, "ui_messages.json"),
+      JSON.stringify([
+        {
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "claude-sonnet-4",
+          input_tokens: 12,
+          outputTokens: 3,
+          cached_tokens: 4,
+          cache_creation_input_tokens: 5,
+          toolName: "write_file",
+        },
+      ]),
+      "utf8",
+    );
+    const cursors = { version: 1 };
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const taskDirs = resolveClineFamilyTaskDirs({ HOME: tmp });
+    const firstEvents = [];
+    const first = await parseClineFamilyIncremental({
+      taskDirs,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => firstEvents.push(event),
+    });
+    const secondEvents = [];
+    const second = await parseClineFamilyIncremental({
+      taskDirs,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => secondEvents.push(event),
+    });
+
+    assert.equal(first.eventsAggregated, 1);
+    assert.equal(second.eventsAggregated, 0);
+    assert.deepEqual(secondEvents, []);
+    const update = firstEvents.find((event) => event.kind === "update");
+    assert.equal(update.provider, "ibm-bob");
+    assert.equal(update.input_tokens, 12);
+    assert.equal(update.cached_input_tokens, 4);
+    assert.equal(update.cache_creation_input_tokens, 5);
+    assert.equal(update.output_tokens, 3);
+    assert.match(update.tools_json, /write_file/);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

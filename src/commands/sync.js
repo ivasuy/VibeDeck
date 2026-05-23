@@ -44,6 +44,8 @@ const {
   parseDroidIncremental,
   resolveQwenChatFiles,
   parseQwenIncremental,
+  resolveClineFamilyTaskDirs,
+  parseClineFamilyIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
   resolveKiroCliSessionFiles,
@@ -1029,6 +1031,29 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
 
+    // ── Cline-family VS Code extensions (IBM Bob, Roo Code, KiloCode) ──
+    let clineFamilyResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const clineFamilyTaskDirs = resolveClineFamilyTaskDirs(process.env);
+    if (clineFamilyTaskDirs.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Cline-family ${renderBar(0)} | buckets 0`);
+      }
+      clineFamilyResult = await parseClineFamilyIncremental({
+        taskDirs: clineFamilyTaskDirs,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Cline-family ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} tasks | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── GitHub Copilot CLI (OTEL JSONL files) ──
     let copilotResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const copilotPaths = resolveCopilotOtelPaths(process.env);
@@ -1290,6 +1315,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         ompResult.recordsProcessed +
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
+        clineFamilyResult.recordsProcessed +
         copilotResult.recordsProcessed;
       const totalBuckets =
         parseResult.bucketsQueued +
@@ -1310,6 +1336,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         ompResult.bucketsQueued +
         piResult.bucketsQueued +
         craftResult.bucketsQueued +
+        clineFamilyResult.bucketsQueued +
         copilotResult.bucketsQueued;
       process.stdout.write(
         [

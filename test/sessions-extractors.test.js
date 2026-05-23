@@ -24,6 +24,7 @@ const {
   parseCodebuddyIncremental,
   parseDroidIncremental,
   parseQwenIncremental,
+  parseClineFamilyIncremental,
 } = require('../src/lib/rollout');
 
 function buildTokenCountLine({ ts, last, total }) {
@@ -1095,6 +1096,54 @@ test('SessionEvent extraction: Qwen chat JSONL', async () => {
     assert.equal(qwen1[1].cwd, repo);
     assert.equal(qwen2[0].cwd, null);
     assert.equal(qwen2[1].cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Cline-family task directory', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-cline-family-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const taskDir = path.join(tmp, 'globalStorage', 'rooveterinaryinc.roo-cline', 'tasks', 'task-a');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    await fs.mkdir(repo, { recursive: true });
+    await fs.mkdir(taskDir, { recursive: true });
+    await fs.writeFile(
+      path.join(taskDir, 'api_conversation_history.json'),
+      JSON.stringify([{ content: `Current Workspace Directory (${repo})` }]),
+      'utf8',
+    );
+    await fs.writeFile(
+      path.join(taskDir, 'ui_messages.json'),
+      JSON.stringify([
+        {
+          ts: '2026-05-09T00:00:00.000Z',
+          model: 'claude-sonnet-4',
+          tokensIn: 10,
+          tokensOut: 2,
+          tool: 'read_file',
+        },
+      ]),
+      'utf8',
+    );
+
+    const events = [];
+    await parseClineFamilyIncremental({
+      taskDirs: [{ provider: 'roo', taskDir }],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assertStartUpdateEnd(events, 'roo');
+    assert.equal(events[0].session_id, `roo:${taskDir}`);
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].output_tokens, 2);
+    assert.match(events[1].tools_json, /read_file/);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

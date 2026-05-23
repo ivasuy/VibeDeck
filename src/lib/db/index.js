@@ -17,6 +17,7 @@ const m009 = require('./migrations/009-session-bucket-facts');
 const m010 = require('./migrations/010-entire-checkpoint-matches');
 const m011 = require('./migrations/011-branch-usage-facts');
 const m012 = require('./migrations/012-session-enrichment');
+const m013 = require('./migrations/013-session-groups');
 
 let registered = false;
 function registerAll() {
@@ -33,6 +34,7 @@ function registerAll() {
   registerMigration(m010);
   registerMigration(m011);
   registerMigration(m012);
+  registerMigration(m013);
   registered = true;
 }
 

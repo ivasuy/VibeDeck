@@ -19,6 +19,7 @@ const {
   parseKimiIncremental,
   parseOmpIncremental,
   parsePiIncremental,
+  parseGooseIncremental,
   parseCodebuddyIncremental,
 } = require('../src/lib/rollout');
 
@@ -848,6 +849,52 @@ test('SessionEvent extraction: Pi emits session events and preserves header cwd'
     assert.equal(events[0].cwd, repo);
     assert.equal(events[1].cwd, repo);
     assert.equal(events[2].cwd, repo);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Goose sessions SQLite preserves clean working_dir cwd', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-goose-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const dbPath = path.join(tmp, 'sessions.db');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    cp.execFileSync('sqlite3', [
+      dbPath,
+      `
+      CREATE TABLE sessions (
+        id TEXT PRIMARY KEY,
+        working_dir TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        model_config_json TEXT,
+        accumulated_input_tokens INTEGER,
+        accumulated_output_tokens INTEGER,
+        accumulated_total_tokens INTEGER
+      );
+      INSERT INTO sessions (
+        id, working_dir, created_at, updated_at, model_config_json,
+        accumulated_input_tokens, accumulated_output_tokens, accumulated_total_tokens
+      ) VALUES (
+        'goose-session', '${repo.replace(/'/g, "''")}', '2026-05-09T00:00:00.000Z',
+        '2026-05-09T00:05:00.000Z', '{"model_name":"claude-sonnet"}', 10, 2, 12
+      );
+      `,
+    ]);
+
+    const events = [];
+    await parseGooseIncremental({ dbPath, cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'goose');
+    assert.equal(events[0].session_id, 'goose-session');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[2].cwd, repo);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].output_tokens, 2);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

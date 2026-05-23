@@ -26,6 +26,7 @@ const {
   extractKimiSessionEvents,
   extractOmpSessionEvents,
   extractPiSessionEvents,
+  extractGooseSessionEvents,
   extractCodebuddySessionEvents,
 } = require("./sessions/extractors");
 
@@ -5586,6 +5587,168 @@ async function parsePiIncremental({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Goose — SQLite sessions reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveGooseDbPath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  if (env.GOOSE_PATH_ROOT) {
+    return path.join(expandHomePath(env.GOOSE_PATH_ROOT, env), "data", "sessions", "sessions.db");
+  }
+  const candidates = [
+    path.join(home, ".local", "share", "goose", "sessions", "sessions.db"),
+    path.join(home, "Library", "Application Support", "goose", "sessions", "sessions.db"),
+    path.join(home, ".local", "share", "Block", "goose", "sessions", "sessions.db"),
+  ];
+  return candidates.find((candidate) => fssync.existsSync(candidate)) || candidates[0];
+}
+
+function pickGooseModel(row) {
+  if (typeof row?.model === "string" && row.model.trim()) return row.model.trim();
+  if (typeof row?.model_name === "string" && row.model_name.trim()) return row.model_name.trim();
+  if (typeof row?.model_config_json === "string" && row.model_config_json.trim()) {
+    try {
+      const parsed = JSON.parse(row.model_config_json);
+      return parsed.model_name || parsed.model || parsed.id || null;
+    } catch (_e) {}
+  }
+  return "goose-unknown";
+}
+
+function readGooseSessions(dbPath) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const sql = "SELECT * FROM sessions ORDER BY COALESCE(updated_at, created_at) ASC";
+  let raw;
+  try {
+    raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 30_000,
+    });
+  } catch (_e) {
+    return [];
+  }
+  if (!raw || !raw.trim()) return [];
+  try {
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+function parseGooseObservedIso(row) {
+  const observed = row.updated_at || row.last_updated_at || row.created_at || new Date().toISOString();
+  const ms = Date.parse(observed);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+async function parseGooseIncremental({ dbPath, cursors, queuePath, onProgress, onSessionEvent, env } = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const resolvedDbPath = dbPath || resolveGooseDbPath(env || process.env);
+  const rows = readGooseSessions(resolvedDbPath);
+  const gooseState = cursors.goose && typeof cursors.goose === "object" ? cursors.goose : {};
+  const snapshots =
+    gooseState.snapshots && typeof gooseState.snapshots === "object"
+      ? { ...gooseState.snapshots }
+      : {};
+  if (rows.length === 0) {
+    cursors.goose = { ...gooseState, snapshots, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    recordsProcessed++;
+    const sessionId = String(row.id || row.session_id || "").trim();
+    if (!sessionId) continue;
+
+    const totalInput = toNonNegativeInt(row.accumulated_input_tokens ?? row.input_tokens);
+    const totalOutput = toNonNegativeInt(row.accumulated_output_tokens ?? row.output_tokens);
+    const totalReported = toNonNegativeInt(
+      row.accumulated_total_tokens ?? row.total_tokens ?? totalInput + totalOutput,
+    );
+    const prev = snapshots[sessionId] || { input: 0, output: 0, total: 0 };
+    const dInput = Math.max(0, totalInput - toNonNegativeInt(prev.input));
+    const dOutput = Math.max(0, totalOutput - toNonNegativeInt(prev.output));
+    const dTotal = Math.max(0, totalReported - toNonNegativeInt(prev.total));
+    snapshots[sessionId] = { input: totalInput, output: totalOutput, total: totalReported };
+    if (dInput === 0 && dOutput === 0 && dTotal === 0) continue;
+
+    const observedIso = parseGooseObservedIso(row);
+    if (!observedIso) continue;
+    const bucketStart = toUtcHalfHourStart(observedIso);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(pickGooseModel(row)) || "goose-unknown";
+    const totalTokens = dTotal > 0 ? dTotal : dInput + dOutput;
+    const reasoning = Math.max(0, totalTokens - dInput - dOutput);
+    const delta = {
+      input_tokens: dInput,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: dOutput,
+      reasoning_output_tokens: reasoning,
+      total_tokens: totalTokens,
+      conversation_count: 1,
+    };
+
+    const bucket = getHourlyBucket(hourlyState, "goose", model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey("goose", model, bucketStart));
+    emitSessionEvents(
+      extractGooseSessionEvents,
+      {
+        session_id: sessionId,
+        started_at: row.created_at || observedIso,
+        ended_at: observedIso,
+        end_reason: "log_complete",
+        cwd: cleanAbsoluteCwd(row.working_dir),
+        model,
+        updates: [
+          {
+            observed_at: observedIso,
+            delta_tokens: totalTokens,
+            input_tokens: dInput,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            output_tokens: dOutput,
+            reasoning_output_tokens: reasoning,
+            conversation_count: 1,
+          },
+        ],
+        total_tokens: totalTokens,
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: i + 1,
+        total: rows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.goose = { ...gooseState, snapshots, updatedAt };
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Craft Agents (lukilabs/craft-agents-oss) — passive JSONL reader
 //
 // Craft is a desktop Electron agent that wraps the Claude Agent SDK plus
@@ -6162,6 +6325,9 @@ module.exports = {
   resolvePiDefaultModel,
   parsePiIncremental,
   piAgentDirCollidesWithOmp,
+  resolveGooseDbPath,
+  readGooseSessions,
+  parseGooseIncremental,
   resolveCraftConfigDir,
   resolveCraftWorkspaceRoots,
   resolveCraftSessionFiles,

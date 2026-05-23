@@ -25,6 +25,7 @@ const {
   resolvePiSessionFiles,
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
+  parseGooseIncremental,
   parseCraftIncremental,
   resolveCraftSessionFiles,
   resolveCraftWorkspaceRoots,
@@ -2728,6 +2729,145 @@ async function readJsonLines(filePath) {
   const lines = text.split("\n").filter(Boolean);
   return lines.map((l) => JSON.parse(l));
 }
+
+// ── Goose SQLite parser tests ──
+
+function sqliteString(value) {
+  if (value == null) return "NULL";
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function createGooseDb(dbPath, sessions) {
+  cp.execFileSync("sqlite3", [
+    dbPath,
+    `
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      description TEXT,
+      working_dir TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      provider_name TEXT,
+      model_config_json TEXT,
+      model TEXT,
+      accumulated_input_tokens INTEGER,
+      accumulated_output_tokens INTEGER,
+      accumulated_total_tokens INTEGER,
+      cost_usd REAL,
+      total_cost REAL
+    );
+    `,
+  ]);
+  for (const s of sessions) {
+    const modelConfig = s.model_config_json ?? JSON.stringify({ model_name: s.model });
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO sessions (
+        id, description, working_dir, created_at, updated_at, provider_name,
+        model_config_json, model, accumulated_input_tokens, accumulated_output_tokens,
+        accumulated_total_tokens, cost_usd, total_cost
+      ) VALUES (
+        ${sqliteString(s.id)}, ${sqliteString(s.description || "")}, ${sqliteString(s.working_dir)},
+        ${sqliteString(s.created_at)}, ${sqliteString(s.updated_at)}, ${sqliteString(s.provider_name || "anthropic")},
+        ${sqliteString(modelConfig)}, ${sqliteString(s.model_column || null)}, ${Number(s.input || 0)},
+        ${Number(s.output || 0)}, ${Number(s.total || 0)}, ${Number(s.cost_usd || 0)}, ${Number(s.total_cost || 0)}
+      );`,
+    ]);
+  }
+}
+
+test("parseGooseIncremental reads sessions.db with working_dir cwd and emits session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-001",
+      working_dir: repo,
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "claude-sonnet-4-5",
+      input: 100,
+      output: 25,
+      total: 125,
+      cost_usd: 999,
+    }]);
+
+    const events = [];
+    const result = await parseGooseIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.provider, "goose");
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].source, "goose");
+    assert.equal(queued[0].input_tokens, 100);
+    assert.equal(queued[0].output_tokens, 25);
+    assert.equal(queued[0].total_tokens, 125);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGooseIncremental is idempotent and emits only growth deltas", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-001",
+      working_dir: tmp,
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "gpt-5.5",
+      input: 100,
+      output: 25,
+      total: 125,
+    }]);
+
+    assert.equal((await parseGooseIncremental({ dbPath, cursors, queuePath })).eventsAggregated, 1);
+    assert.equal((await parseGooseIncremental({ dbPath, cursors, queuePath })).eventsAggregated, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGooseIncremental nulls untrusted working_dir values", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-relative-cwd",
+      working_dir: "repo-name-only",
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "gpt-5.5",
+      input: 10,
+      output: 5,
+      total: 15,
+    }]);
+
+    const events = [];
+    await parseGooseIncremental({ dbPath, cursors, queuePath, onSessionEvent: (event) => events.push(event) });
+
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    assert.equal(events.find((event) => event.kind === "update")?.cwd, null);
+    assert.equal(events.find((event) => event.kind === "end")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 // ── Hermes Agent integration tests ──
 

@@ -314,6 +314,21 @@ function extractPiSessionEvents(batch) {
   });
 }
 
+function extractGooseSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'goose',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
 function extractCodebuddySessionEvents(batch) {
   return extractSessionEvents({
     provider: 'codebuddy',
@@ -343,5 +358,6 @@ module.exports = {
   extractKimiSessionEvents,
   extractOmpSessionEvents,
   extractPiSessionEvents,
+  extractGooseSessionEvents,
   extractCodebuddySessionEvents,
 };

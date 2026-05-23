@@ -40,7 +40,7 @@ function stubModule(modulePath, exports) {
   return { path: modulePath, original };
 }
 
-function buildSyncModuleStubs({ trackerDir }) {
+function buildSyncModuleStubs({ trackerDir, gooseDbPath = "", onGooseParse = async () => {} }) {
   const zeroResult = {
     filesProcessed: 0,
     eventsAggregated: 0,
@@ -71,6 +71,10 @@ function buildSyncModuleStubs({ trackerDir }) {
     parseKimiIncremental: async () => ({ ...zeroResult }),
     parseOmpIncremental: async () => ({ ...zeroResult }),
     parsePiIncremental: async () => ({ ...zeroResult }),
+    parseGooseIncremental: async (args) => {
+      await onGooseParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCraftIncremental: async () => ({ ...zeroResult }),
     parseCodebuddyIncremental: async () => ({ ...zeroResult }),
     parseKiroCliIncremental: async () => ({ ...zeroResult }),
@@ -87,6 +91,7 @@ function buildSyncModuleStubs({ trackerDir }) {
     resolveOmpSessionFiles: () => [],
     piAgentDirCollidesWithOmp: () => false,
     resolvePiSessionFiles: () => [],
+    resolveGooseDbPath: () => gooseDbPath,
     resolveCraftSessionFiles: () => [],
     resolveCodebuddyProjectFiles: () => [],
     resolveKiroCliSessionFiles: () => [],
@@ -223,6 +228,58 @@ test("cmdSync does not import or invoke the readme-sync service", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Goose parser when resolved DB exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-goose-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const gooseDbPath = path.join(tmp, "sessions.db");
+  await fs.writeFile(gooseDbPath, "", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let gooseArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    gooseDbPath,
+    onGooseParse: async (args) => {
+      gooseArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.equal(gooseArgs?.dbPath, gooseDbPath);
+  assert.equal(typeof gooseArgs?.onSessionEvent, "function");
+  assert.equal(typeof gooseArgs?.onProgress, "function");
   assert.doesNotMatch(out, /README banner updated on GitHub/);
   assert.doesNotMatch(err, /README sync warning/);
 });

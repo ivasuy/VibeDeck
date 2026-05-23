@@ -165,11 +165,7 @@ function safeRate(numerator, denominator) {
 
 function buildComparePayload(rows, options = {}) {
   const sourceRows = Array.isArray(rows) ? rows : [];
-  const totals = buildTotals(sourceRows);
-  const sessions = totals.session_count;
-  let oneShot = 0;
-  let retry = 0;
-  let selfCorrection = 0;
+  const sessionsByIdentity = new Map();
   let totalCost = 0;
   let toolCalls = 0;
   let editCount = 0;
@@ -179,24 +175,39 @@ function buildComparePayload(rows, options = {}) {
   for (const row of sourceRows) {
     const activity = parseCounterJson(row.activity_json);
     const tools = parseCounterJson(row.tools_json);
-    if (numericField(row, 'event_count') <= 1 || numericField(row, 'conversation_count') <= 1) oneShot += 1;
-    if (numericField(activity, 'editing') > 1) retry += 1;
-    if (numericField(tools, 'Bash') > 0 && numericField(tools, 'Edit') > 0) selfCorrection += 1;
+    const identity = `${row.provider || ''}\u0000${row.session_id || ''}`;
+    if (!sessionsByIdentity.has(identity)) {
+      sessionsByIdentity.set(identity, {
+        oneShot: false,
+        retry: false,
+        selfCorrection: false,
+      });
+    }
+    const session = sessionsByIdentity.get(identity);
+    session.oneShot = session.oneShot
+      || numericField(row, 'event_count') <= 1
+      || numericField(row, 'conversation_count') <= 1;
+    session.retry = session.retry || numericField(activity, 'editing') > 1;
+    session.selfCorrection = session.selfCorrection
+      || (numericField(tools, 'Bash') > 0 && numericField(tools, 'Edit') > 0);
     totalCost += numericField(row, 'total_cost_usd');
     toolCalls += numericField(row, 'tool_call_count');
     editCount += numericField(activity, 'editing');
     cachedTokens += numericField(row, 'cached_input_tokens');
     cacheDenominator += numericField(row, 'input_tokens')
+      + numericField(row, 'cached_input_tokens')
       + numericField(row, 'cache_creation_5m_input_tokens')
       + numericField(row, 'cache_creation_1h_input_tokens');
   }
+  const sessions = sessionsByIdentity.size;
+  const sessionPredicates = Array.from(sessionsByIdentity.values());
 
   return {
     ...envelope(sourceRows, options),
     metrics: {
-      one_shot_rate: safeRate(oneShot, sessions),
-      retry_rate: safeRate(retry, sessions),
-      self_correction_rate: safeRate(selfCorrection, sessions),
+      one_shot_rate: safeRate(sessionPredicates.filter((session) => session.oneShot).length, sessions),
+      retry_rate: safeRate(sessionPredicates.filter((session) => session.retry).length, sessions),
+      self_correction_rate: safeRate(sessionPredicates.filter((session) => session.selfCorrection).length, sessions),
       cost_per_call_usd: formatFixed(toolCalls > 0 ? totalCost / toolCalls : 0, 4),
       cost_per_edit_usd: formatFixed(editCount > 0 ? totalCost / editCount : 0, 4),
       cache_hit_percent: safeRate(cachedTokens, cacheDenominator),

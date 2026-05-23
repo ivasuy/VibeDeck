@@ -139,7 +139,7 @@ test('Codeburn parity endpoints expose read-side metrics without changing totals
     assert.equal(compare.totals.total_tokens, 1000);
     assert.equal(compare.metrics.cost_per_call_usd, '0.0833');
     assert.equal(compare.metrics.cost_per_edit_usd, '0.2500');
-    assert.equal(compare.metrics.cache_hit_percent, '13.33');
+    assert.equal(compare.metrics.cache_hit_percent, '11.76');
 
     const models = JSON.parse((await call(handler, '/functions/vibedeck-models?from=2026-05-23&to=2026-05-23')).body);
     assert.equal(models.models[0].model, 'claude-sonnet-4');
@@ -169,6 +169,85 @@ test('Codeburn parity endpoints expose read-side metrics without changing totals
     assert.ok(Array.isArray(detect.providers));
   } finally {
     f.cleanup();
+  }
+});
+
+test('compare rates are calculated at session grain across multiple branch fact rows', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-codeburn-api-session-grain-'));
+  try {
+    const queuePath = path.join(dir, 'queue.jsonl');
+    fs.writeFileSync(queuePath, '', 'utf8');
+    const dbPath = path.join(dir, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+    const db = new DatabaseSync(dbPath);
+    const now = '2026-05-23T10:00:00.000Z';
+    const insert = db.prepare(`INSERT INTO vibedeck_branch_usage_facts (
+      provider, session_id, scope_key, project_state, project_key, project_ref, cwd, repo_root,
+      branch, branch_kind, confidence, model, first_observed_at, last_observed_at,
+      event_count, total_tokens, input_tokens, cached_input_tokens, cache_creation_input_tokens,
+      cache_creation_5m_input_tokens, cache_creation_1h_input_tokens, output_tokens,
+      reasoning_output_tokens, conversation_count, total_cost_usd, cost_estimated, cost_quality,
+      token_reconciled, cost_reconciled, created_at, updated_at, web_search_requests,
+      tool_call_count, tools_json, activity_json, task_category, skills_json, fast_mode
+    ) VALUES (
+      @provider, @session_id, @scope_key, @project_state, @project_key, @project_ref, @cwd, @repo_root,
+      @branch, @branch_kind, @confidence, @model, @first_observed_at, @last_observed_at,
+      @event_count, @total_tokens, @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
+      @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens, @output_tokens,
+      @reasoning_output_tokens, @conversation_count, @total_cost_usd, @cost_estimated, @cost_quality,
+      @token_reconciled, @cost_reconciled, @created_at, @updated_at, @web_search_requests,
+      @tool_call_count, @tools_json, @activity_json, @task_category, @skills_json, @fast_mode
+    )`);
+    const base = {
+      provider: 'claude',
+      session_id: 's-rate',
+      project_state: 'git_existing',
+      project_key: '/tmp/repo',
+      project_ref: '/tmp/repo',
+      cwd: '/tmp/repo',
+      repo_root: '/tmp/repo',
+      branch_kind: 'known',
+      confidence: 'high',
+      model: 'claude-sonnet-4',
+      first_observed_at: now,
+      last_observed_at: now,
+      event_count: 1,
+      total_tokens: 100,
+      input_tokens: 50,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_creation_5m_input_tokens: 0,
+      cache_creation_1h_input_tokens: 0,
+      output_tokens: 50,
+      reasoning_output_tokens: 0,
+      conversation_count: 1,
+      total_cost_usd: 0.01,
+      cost_estimated: 0,
+      cost_quality: 'stored',
+      token_reconciled: 0,
+      cost_reconciled: 0,
+      created_at: now,
+      updated_at: now,
+      web_search_requests: 0,
+      tool_call_count: 2,
+      tools_json: JSON.stringify({ Bash: 1, Edit: 1 }),
+      activity_json: JSON.stringify({ editing: 2 }),
+      task_category: JSON.stringify({ Coding: 1 }),
+      skills_json: JSON.stringify({ planner: 1 }),
+      fast_mode: 0,
+    };
+    insert.run({ ...base, scope_key: 'repo:/tmp/repo#a', branch: 'main' });
+    insert.run({ ...base, scope_key: 'repo:/tmp/repo#b', branch: 'feature/session-split' });
+    db.close();
+
+    const handler = createLocalApiHandler({ queuePath });
+    const compare = JSON.parse((await call(handler, '/functions/vibedeck-compare?from=2026-05-23&to=2026-05-23')).body);
+    assert.equal(compare.totals.session_count, 1);
+    assert.equal(compare.metrics.one_shot_rate, '100.00');
+    assert.equal(compare.metrics.retry_rate, '100.00');
+    assert.equal(compare.metrics.self_correction_rate, '100.00');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

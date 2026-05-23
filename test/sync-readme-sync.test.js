@@ -47,11 +47,16 @@ function buildSyncModuleStubs({
   droidFiles = [],
   qwenFiles = [],
   clineFamilyTaskDirs = [],
+  cursorAgentFiles = [],
+  antigravityCachePath = "",
+  antigravityPbFiles = [],
   onGooseParse = async () => {},
   onCrushParse = async () => {},
   onDroidParse = async () => {},
   onQwenParse = async () => {},
   onClineFamilyParse = async () => {},
+  onCursorAgentParse = async () => {},
+  onAntigravityParse = async () => {},
 }) {
   const zeroResult = {
     filesProcessed: 0,
@@ -104,6 +109,14 @@ function buildSyncModuleStubs({
       await onClineFamilyParse(args);
       return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
     },
+    parseCursorAgentIncremental: async (args) => {
+      await onCursorAgentParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseAntigravityIncremental: async (args) => {
+      await onAntigravityParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCodebuddyIncremental: async () => ({ ...zeroResult }),
     parseKiroCliIncremental: async () => ({ ...zeroResult }),
     listRolloutFiles: async () => [],
@@ -125,6 +138,9 @@ function buildSyncModuleStubs({
     resolveDroidSessionFiles: () => droidFiles,
     resolveQwenChatFiles: () => qwenFiles,
     resolveClineFamilyTaskDirs: () => clineFamilyTaskDirs,
+    resolveCursorAgentTranscriptFiles: () => cursorAgentFiles,
+    resolveAntigravityCachePath: () => antigravityCachePath,
+    resolveAntigravityPbFiles: () => antigravityPbFiles,
     resolveCodebuddyProjectFiles: () => [],
     resolveKiroCliSessionFiles: () => [],
     resolveKiroCliDbPath: () => "",
@@ -476,6 +492,71 @@ test("cmdSync runs Cline-family parser when passive task dirs resolve", async ()
   assert.deepEqual(clineArgs?.taskDirs, clineFamilyTaskDirs);
   assert.equal(typeof clineArgs?.onSessionEvent, "function");
   assert.equal(typeof clineArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Cursor Agent and Antigravity parsers when passive sources resolve", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-cursor-agent-antigravity-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const cursorAgentFile = path.join(tmp, ".cursor", "projects", "a", "agent-transcripts", "agent.jsonl");
+  const antigravityCachePath = path.join(tmp, ".cache", "codeburn", "antigravity-results.json");
+  const antigravityPbFile = path.join(tmp, ".gemini", "antigravity", "conversations", "raw.pb");
+  await fs.mkdir(path.dirname(antigravityCachePath), { recursive: true });
+  await fs.writeFile(antigravityCachePath, "[]", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let cursorAgentArgs = null;
+  let antigravityArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    cursorAgentFiles: [cursorAgentFile],
+    antigravityCachePath,
+    antigravityPbFiles: [antigravityPbFile],
+    onCursorAgentParse: async (args) => {
+      cursorAgentArgs = args;
+    },
+    onAntigravityParse: async (args) => {
+      antigravityArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(cursorAgentArgs?.transcriptFiles, [cursorAgentFile]);
+  assert.equal(antigravityArgs?.cachePath, antigravityCachePath);
+  assert.deepEqual(antigravityArgs?.pbFiles, [antigravityPbFile]);
+  assert.equal(typeof cursorAgentArgs?.onSessionEvent, "function");
+  assert.equal(typeof antigravityArgs?.onSessionEvent, "function");
+  assert.equal(typeof cursorAgentArgs?.onProgress, "function");
+  assert.equal(typeof antigravityArgs?.onProgress, "function");
   assert.doesNotMatch(out, /README banner updated on GitHub/);
   assert.doesNotMatch(err, /README sync warning/);
 });

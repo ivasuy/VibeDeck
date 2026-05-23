@@ -46,6 +46,11 @@ const {
   parseQwenIncremental,
   resolveClineFamilyTaskDirs,
   parseClineFamilyIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseCursorAgentIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
+  parseAntigravityIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
   resolveKiroCliSessionFiles,
@@ -1054,6 +1059,54 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
 
+    // ── Cursor Agent (passive ~/.cursor/projects/**/agent-transcripts/*.jsonl reader) ──
+    let cursorAgentResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const cursorAgentFiles = resolveCursorAgentTranscriptFiles(process.env);
+    if (cursorAgentFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Cursor Agent ${renderBar(0)} | buckets 0`);
+      }
+      cursorAgentResult = await parseCursorAgentIncremental({
+        transcriptFiles: cursorAgentFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Cursor Agent ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Antigravity (JSON usage cache only; .pb files are status/debug only) ──
+    let antigravityResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const antigravityCachePath = resolveAntigravityCachePath(process.env);
+    const antigravityPbFiles = resolveAntigravityPbFiles(process.env);
+    if (fssync.existsSync(antigravityCachePath) || antigravityPbFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Antigravity ${renderBar(0)} | buckets 0`);
+      }
+      antigravityResult = await parseAntigravityIncremental({
+        cachePath: antigravityCachePath,
+        pbFiles: antigravityPbFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Antigravity ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} rows | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── GitHub Copilot CLI (OTEL JSONL files) ──
     let copilotResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const copilotPaths = resolveCopilotOtelPaths(process.env);
@@ -1316,6 +1369,8 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
         clineFamilyResult.recordsProcessed +
+        cursorAgentResult.recordsProcessed +
+        antigravityResult.recordsProcessed +
         copilotResult.recordsProcessed;
       const totalBuckets =
         parseResult.bucketsQueued +
@@ -1337,6 +1392,8 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         piResult.bucketsQueued +
         craftResult.bucketsQueued +
         clineFamilyResult.bucketsQueued +
+        cursorAgentResult.bucketsQueued +
+        antigravityResult.bucketsQueued +
         copilotResult.bucketsQueued;
       process.stdout.write(
         [

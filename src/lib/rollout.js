@@ -32,6 +32,8 @@ const {
   extractDroidSessionEvents,
   extractQwenSessionEvents,
   extractClineFamilySessionEvents,
+  extractCursorAgentSessionEvents,
+  extractAntigravitySessionEvents,
 } = require("./sessions/extractors");
 
 const DEFAULT_SOURCE = "codex";
@@ -5887,6 +5889,397 @@ async function parseClineFamilyIncremental({
   return { taskDirsProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
 }
 
+function resolveCursorAgentTranscriptFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const cursorHome = env.CURSOR_HOME || path.join(home, ".cursor");
+  const projectsDir = path.join(cursorHome, "projects");
+  return walkJsonlFilesSync(projectsDir, [])
+    .filter((file) => file.includes(`${path.sep}agent-transcripts${path.sep}`))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function resolveCursorAgentSidecarCwd(filePath) {
+  if (typeof filePath !== "string" || !filePath.endsWith(".jsonl")) return null;
+  const sidecarPath = filePath.slice(0, -".jsonl".length) + ".json";
+  let raw;
+  try {
+    raw = fssync.readFileSync(sidecarPath, "utf8");
+  } catch (_e) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    return null;
+  }
+  return cleanAbsoluteCwd(
+    parsed?.cwd || parsed?.workspaceFolder || parsed?.workspace_folder || parsed?.workspace?.folder,
+  );
+}
+
+function cursorAgentTextLength(entry) {
+  const fields = [
+    entry?.text,
+    entry?.content,
+    entry?.message,
+    entry?.response,
+    entry?.prompt,
+    entry?.completion,
+  ];
+  let chars = 0;
+  for (const field of fields) {
+    if (typeof field === "string") chars += field.length;
+    else if (Array.isArray(field)) chars += JSON.stringify(field).length;
+    else if (field && typeof field === "object") chars += JSON.stringify(field).length;
+  }
+  return chars;
+}
+
+function normalizeCursorAgentUsage(entry) {
+  const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage || entry);
+  if (usage) return { usage, estimated: false };
+  const estimatedTokens = Math.floor(cursorAgentTextLength(entry) / 4);
+  if (estimatedTokens <= 0) return null;
+  return {
+    usage: {
+      input_tokens: estimatedTokens,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: estimatedTokens,
+      conversation_count: 1,
+    },
+    estimated: true,
+  };
+}
+
+function cursorAgentActivityJson(tools, estimated) {
+  const counts = tools.length > 0 ? activityCounterFromTools(tools) : {};
+  if (estimated) counts.estimated_tokens = 1;
+  return Object.keys(counts).length > 0 ? stableCounterJson(counts) : null;
+}
+
+async function parseCursorAgentIncremental({
+  transcriptFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const cursorAgentState = cursors.cursorAgent && typeof cursors.cursorAgent === "object"
+    ? cursors.cursorAgent
+    : {};
+  const fileOffsets = cursorAgentState.fileOffsets && typeof cursorAgentState.fileOffsets === "object"
+    ? { ...cursorAgentState.fileOffsets }
+    : {};
+  const files = Array.isArray(transcriptFiles)
+    ? transcriptFiles
+    : resolveCursorAgentTranscriptFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const sidecarCwd = resolveCursorAgentSidecarCwd(filePath);
+    const batches = new Map();
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+      const normalized = normalizeCursorAgentUsage(entry);
+      if (!normalized) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt || entry.time);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const usage = normalized.usage;
+      const model = normalizeModelInput(entry.model) || "cursor-agent-unknown";
+      const sessionId =
+        typeof entry.sessionId === "string" && entry.sessionId.trim()
+          ? entry.sessionId.trim()
+          : typeof entry.session_id === "string" && entry.session_id.trim()
+            ? entry.session_id.trim()
+            : filePath;
+      const cwd =
+        cleanAbsoluteCwd(
+          entry.cwd || entry.workspaceFolder || entry.workspace_folder || entry.workspace?.folder,
+        ) || sidecarCwd;
+      const tools = providerToolNames(entry);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+      const activity_json = cursorAgentActivityJson(tools, normalized.estimated);
+
+      const bucket = getHourlyBucket(hourlyState, "cursor-agent", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      if (activity_json) bucket.activity_json = activity_json;
+      touchedBuckets.add(bucketKey("cursor-agent", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(extractCursorAgentSessionEvents, batch, onSessionEvent);
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.cursorAgent = { ...cursorAgentState, fileOffsets, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+function resolveAntigravityCachePath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  return env.ANTIGRAVITY_CACHE_PATH || path.join(home, ".cache", "codeburn", "antigravity-results.json");
+}
+
+function resolveAntigravityPbFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const dir = env.ANTIGRAVITY_HOME || path.join(home, ".gemini", "antigravity", "conversations");
+  if (!fssync.existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = fssync.readdirSync(dir, { withFileTypes: true });
+  } catch (_e) {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".pb"))
+    .map((entry) => path.join(dir, entry.name))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeAntigravityUsage(row) {
+  if (!row || typeof row !== "object") return null;
+  const input = toNonNegativeInt(row.input_tokens ?? row.inputTokens ?? row.prompt_tokens);
+  const output = toNonNegativeInt(row.output_tokens ?? row.outputTokens ?? row.completion_tokens);
+  const reasoning = toNonNegativeInt(row.thinking_tokens ?? row.reasoning_output_tokens);
+  const total = input + output + reasoning;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function antigravityRowsFromJson(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.rows)) return value.rows;
+  if (Array.isArray(value?.results)) return value.results;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+}
+
+function antigravityRowKey(row, index) {
+  const id =
+    typeof row?.id === "string" && row.id.trim()
+      ? row.id.trim()
+      : typeof row?.sessionId === "string" && row.sessionId.trim()
+        ? row.sessionId.trim()
+        : typeof row?.session_id === "string" && row.session_id.trim()
+          ? row.session_id.trim()
+          : null;
+  const timestamp = cleanIsoTimestamp(row?.timestamp || row?.created_at || row?.createdAt || row?.time) || "";
+  if (id) return `${id}|${timestamp}`;
+  return `${index}|${timestamp}|${JSON.stringify(row)}`;
+}
+
+async function parseAntigravityIncremental({
+  cachePath,
+  pbFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const antigravityState = cursors.antigravity && typeof cursors.antigravity === "object"
+    ? cursors.antigravity
+    : {};
+  const seenRows = new Set(Array.isArray(antigravityState.seenRows) ? antigravityState.seenRows : []);
+  const resolvedCachePath = typeof cachePath === "string" ? cachePath : resolveAntigravityCachePath(env || process.env);
+  const resolvedPbFiles = Array.isArray(pbFiles) ? pbFiles : resolveAntigravityPbFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  let rows = [];
+  let cacheExists = false;
+  try {
+    const raw = await fs.readFile(resolvedCachePath, "utf8");
+    cacheExists = true;
+    rows = antigravityRowsFromJson(JSON.parse(raw));
+  } catch (_e) {
+    rows = [];
+  }
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    if (!row || typeof row !== "object") continue;
+    const usage = normalizeAntigravityUsage(row);
+    if (!usage) continue;
+    const observedAt = cleanIsoTimestamp(row.timestamp || row.created_at || row.createdAt || row.time);
+    if (!observedAt) continue;
+    const rowKey = antigravityRowKey(row, idx);
+    if (seenRows.has(rowKey)) continue;
+    const bucketStart = toUtcHalfHourStart(observedAt);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(row.model) || "antigravity-unknown";
+    const sessionId =
+      typeof row.id === "string" && row.id.trim()
+        ? row.id.trim()
+        : typeof row.sessionId === "string" && row.sessionId.trim()
+          ? row.sessionId.trim()
+          : typeof row.session_id === "string" && row.session_id.trim()
+            ? row.session_id.trim()
+            : `${resolvedCachePath}:${idx}`;
+
+    const bucket = getHourlyBucket(hourlyState, "antigravity", model, bucketStart);
+    addTotals(bucket.totals, usage);
+    touchedBuckets.add(bucketKey("antigravity", model, bucketStart));
+    emitSessionEvents(
+      extractAntigravitySessionEvents,
+      {
+        session_id: sessionId,
+        started_at: observedAt,
+        ended_at: observedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model,
+        updates: [
+          {
+            observed_at: observedAt,
+            delta_tokens: Number(usage.total_tokens || 0),
+            input_tokens: usage.input_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
+            output_tokens: usage.output_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
+            conversation_count: usage.conversation_count,
+          },
+        ],
+        total_tokens: Number(usage.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
+    seenRows.add(rowKey);
+    recordsProcessed++;
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: idx + 1,
+        total: rows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  const seenRowsArr = Array.from(seenRows);
+  const cappedSeenRows =
+    seenRowsArr.length > 10_000 ? seenRowsArr.slice(seenRowsArr.length - 10_000) : seenRowsArr;
+  cursors.antigravity = {
+    ...antigravityState,
+    seenRows: cappedSeenRows,
+    lastPbSeen: resolvedPbFiles.length > 0 ? resolvedPbFiles[resolvedPbFiles.length - 1] : antigravityState.lastPbSeen,
+    cachePath: cacheExists ? resolvedCachePath : antigravityState.cachePath,
+    updatedAt,
+  };
+  return {
+    recordsProcessed,
+    eventsAggregated,
+    bucketsQueued,
+    pbFilesSeen: resolvedPbFiles.length,
+  };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // oh-my-pi (omp) — passive JSONL reader (~/.omp/agent/sessions/**/*.jsonl)
 //
@@ -7400,6 +7793,11 @@ module.exports = {
   parseQwenIncremental,
   resolveClineFamilyTaskDirs,
   parseClineFamilyIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseCursorAgentIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
+  parseAntigravityIncremental,
   // Exposed for regression tests covering cache-token accounting.
   normalizeGeminiTokens,
   normalizeOpencodeTokens,

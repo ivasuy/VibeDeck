@@ -38,6 +38,11 @@ const {
   resolveQwenChatFiles,
   parseClineFamilyIncremental,
   resolveClineFamilyTaskDirs,
+  parseCursorAgentIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseAntigravityIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
 } = require("../src/lib/rollout");
 
 test("parseRolloutIncremental ignores repeated token_count records with unchanged totals", async () => {
@@ -3078,6 +3083,188 @@ test("parseClineFamilyIncremental snapshots task dirs idempotently and records t
     assert.equal(update.cache_creation_input_tokens, 5);
     assert.equal(update.output_tokens, 3);
     assert.match(update.tools_json, /write_file/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCursorAgentIncremental keeps transcripts provider-only unless absolute cwd is present", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const transcriptsDir = path.join(tmp, ".cursor", "projects", "project-hash", "agent-transcripts");
+    await fs.mkdir(transcriptsDir, { recursive: true });
+    const jsonl = path.join(transcriptsDir, "agent.jsonl");
+    await fs.writeFile(
+      jsonl,
+      [
+        JSON.stringify({
+          sessionId: "cursor-agent-a",
+          cwd: repo,
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "cursor-agent",
+          usage: { input_tokens: 40, output_tokens: 10 },
+          tool: "edit",
+        }),
+        JSON.stringify({
+          sessionId: "cursor-agent-b",
+          project: "project-hash",
+          timestamp: "2026-05-22T10:30:00.000Z",
+          model: "cursor-agent",
+          usage: { input_tokens: 20, output_tokens: 5 },
+        }),
+      ].join("\n") + "\n",
+    );
+    const events = [];
+    const result = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.session_id === "cursor-agent-a" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.session_id === "cursor-agent-b" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCursorAgentIncremental estimates missing token fields and advances file offsets idempotently", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-estimate-"));
+  try {
+    const jsonl = path.join(tmp, ".cursor", "projects", "project-hash", "agent-transcripts", "agent.jsonl");
+    await fs.mkdir(path.dirname(jsonl), { recursive: true });
+    await fs.writeFile(
+      jsonl,
+      JSON.stringify({
+        sessionId: "cursor-agent-estimated",
+        timestamp: "2026-05-22T10:00:00.000Z",
+        model: "cursor-agent",
+        text: "A".repeat(44),
+      }) + "\n",
+    );
+    const cursors = { version: 1 };
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const firstEvents = [];
+    const first = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => firstEvents.push(event),
+    });
+    const secondEvents = [];
+    const second = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => secondEvents.push(event),
+    });
+
+    assert.equal(first.eventsAggregated, 1);
+    assert.equal(second.eventsAggregated, 0);
+    assert.deepEqual(secondEvents, []);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "cursor-agent");
+    assert.equal(queued[0].input_tokens, 11);
+    assert.equal(queued[0].total_tokens, 11);
+    assert.deepEqual(JSON.parse(queued[0].activity_json), { estimated_tokens: 1 });
+    assert.equal(Object.hasOwn(queued[0], "estimated_cost_usd"), false);
+    const update = firstEvents.find((event) => event.kind === "update");
+    assert.equal(update.input_tokens, 11);
+    assert.deepEqual(JSON.parse(update.activity_json), { estimated_tokens: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveCursorAgentTranscriptFiles walks only Cursor Agent transcript jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-resolve-"));
+  try {
+    const transcript = path.join(tmp, ".cursor", "projects", "a", "agent-transcripts", "agent.jsonl");
+    const ignored = path.join(tmp, ".cursor", "projects", "a", "chat.jsonl");
+    await fs.mkdir(path.dirname(transcript), { recursive: true });
+    await fs.writeFile(transcript, "{}\n", "utf8");
+    await fs.writeFile(ignored, "{}\n", "utf8");
+    assert.deepEqual(resolveCursorAgentTranscriptFiles({ HOME: tmp }), [transcript]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental reads JSON cache usage and ignores pb-only files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-"));
+  try {
+    const cachePath = path.join(tmp, ".cache", "codeburn", "antigravity-results.json");
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(
+      cachePath,
+      JSON.stringify([
+        {
+          id: "ag-1",
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "gemini-2.5-pro",
+          input_tokens: 12,
+          output_tokens: 4,
+        },
+      ]),
+      "utf8",
+    );
+    const events = [];
+    const result = await parseAntigravityIncremental({
+      cachePath,
+      pbFiles: [path.join(tmp, "raw.pb")],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    const queued = await readJsonLines(path.join(tmp, "queue.jsonl"));
+    assert.equal(queued[0].source, "antigravity");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental records pb-only status without decoding usage", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-pb-only-"));
+  try {
+    const pb = path.join(tmp, ".gemini", "antigravity", "conversations", "raw.pb");
+    await fs.mkdir(path.dirname(pb), { recursive: true });
+    await fs.writeFile(pb, "protobuf bytes", "utf8");
+    const cursors = { version: 1 };
+    const result = await parseAntigravityIncremental({
+      cachePath: path.join(tmp, "missing.json"),
+      pbFiles: [pb],
+      cursors,
+      queuePath: path.join(tmp, "queue.jsonl"),
+    });
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal(result.recordsProcessed, 0);
+    assert.equal(cursors.antigravity.lastPbSeen, pb);
+    assert.deepEqual(await readJsonLines(path.join(tmp, "queue.jsonl")), []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveAntigravity paths honor env overrides and default locations", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-resolve-"));
+  try {
+    const pb = path.join(tmp, "ag", "raw.pb");
+    const ignored = path.join(tmp, "ag", "raw.txt");
+    await fs.mkdir(path.dirname(pb), { recursive: true });
+    await fs.writeFile(pb, "pb", "utf8");
+    await fs.writeFile(ignored, "txt", "utf8");
+    assert.equal(
+      resolveAntigravityCachePath({ HOME: tmp }),
+      path.join(tmp, ".cache", "codeburn", "antigravity-results.json"),
+    );
+    assert.equal(resolveAntigravityCachePath({ HOME: tmp, ANTIGRAVITY_CACHE_PATH: "/tmp/ag.json" }), "/tmp/ag.json");
+    assert.deepEqual(resolveAntigravityPbFiles({ HOME: tmp, ANTIGRAVITY_HOME: path.join(tmp, "ag") }), [pb]);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

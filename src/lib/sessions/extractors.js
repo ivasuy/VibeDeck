@@ -404,6 +404,36 @@ function extractClineFamilySessionEvents(batch) {
   });
 }
 
+function extractCursorAgentSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'cursor-agent',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractAntigravitySessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'antigravity',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
 module.exports = {
   extractClaudeCodeSessionEvents,
   extractCodexSessionEvents,
@@ -424,4 +454,6 @@ module.exports = {
   extractDroidSessionEvents,
   extractQwenSessionEvents,
   extractClineFamilySessionEvents,
+  extractCursorAgentSessionEvents,
+  extractAntigravitySessionEvents,
 };

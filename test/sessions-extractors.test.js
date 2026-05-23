@@ -25,6 +25,8 @@ const {
   parseDroidIncremental,
   parseQwenIncremental,
   parseClineFamilyIncremental,
+  parseCursorAgentIncremental,
+  parseAntigravityIncremental,
 } = require('../src/lib/rollout');
 
 function buildTokenCountLine({ ts, last, total }) {
@@ -1144,6 +1146,71 @@ test('SessionEvent extraction: Cline-family task directory', async () => {
     assert.equal(events[1].input_tokens, 10);
     assert.equal(events[1].output_tokens, 2);
     assert.match(events[1].tools_json, /read_file/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Cursor Agent transcript JSONL', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-cursor-agent-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const transcript = path.join(tmp, '.cursor', 'projects', 'hash', 'agent-transcripts', 'agent.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    await fs.mkdir(repo, { recursive: true });
+    await fs.mkdir(path.dirname(transcript), { recursive: true });
+    await fs.writeFile(
+      transcript,
+      [
+        JSON.stringify({ sessionId: 'cursor-agent-1', cwd: repo, timestamp: '2026-05-09T00:00:00.000Z', model: 'cursor-agent', usage: { input_tokens: 10, output_tokens: 2 }, tool: 'edit' }),
+        JSON.stringify({ sessionId: 'cursor-agent-2', cwd: 'project-hash', timestamp: '2026-05-09T00:30:00.000Z', model: 'cursor-agent', text: 'hello from transcript text' }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const events = [];
+    await parseCursorAgentIncremental({ transcriptFiles: [transcript], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    const proven = events.filter((event) => event.session_id === 'cursor-agent-1');
+    const providerOnly = events.filter((event) => event.session_id === 'cursor-agent-2');
+    assertStartUpdateEnd(proven, 'cursor-agent');
+    assertStartUpdateEnd(providerOnly, 'cursor-agent');
+    assert.equal(proven[0].cwd, repo);
+    assert.equal(proven[1].cwd, repo);
+    assert.equal(providerOnly[0].cwd, null);
+    assert.equal(providerOnly[1].cwd, null);
+    assert.equal(proven[1].input_tokens, 10);
+    assert.equal(proven[1].output_tokens, 2);
+    assert.deepEqual(JSON.parse(providerOnly[1].activity_json), { estimated_tokens: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Antigravity JSON cache', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-antigravity-'));
+  try {
+    const cachePath = path.join(tmp, '.cache', 'codeburn', 'antigravity-results.json');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(
+      cachePath,
+      JSON.stringify([{ id: 'ag-1', timestamp: '2026-05-09T00:00:00.000Z', model: 'gemini-2.5-pro', inputTokens: 10, outputTokens: 2, reasoning_output_tokens: 3 }]),
+      'utf8',
+    );
+
+    const events = [];
+    await parseAntigravityIncremental({ cachePath, pbFiles: [], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'antigravity');
+    assert.equal(events[0].session_id, 'ag-1');
+    assert.equal(events[0].cwd, null);
+    assert.equal(events[1].cwd, null);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].output_tokens, 2);
+    assert.equal(events[1].reasoning_output_tokens, 3);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -245,6 +245,9 @@ function runOptimizeScan({ dbPath, now = new Date(), cwd = process.cwd() } = {})
     for (const row of previousOpen) {
       if (!previousByFingerprint.has(row.fingerprint)) previousByFingerprint.set(row.fingerprint, row);
     }
+    const resolvedPrevious = [...previousByFingerprint.values()].filter(
+      (row) => !currentFingerprints.has(row.fingerprint),
+    );
 
     db.exec('BEGIN');
     try {
@@ -298,13 +301,15 @@ function runOptimizeScan({ dbPath, now = new Date(), cwd = process.cwd() } = {})
         });
       }
 
-      for (const previous of previousOpen) {
-        if (currentFingerprints.has(previous.fingerprint)) continue;
-        db.prepare('UPDATE vibedeck_optimize_findings SET status = ?, resolved_at = ?, updated_at = ? WHERE id = ?').run(
+      for (const previous of resolvedPrevious) {
+        db.prepare(
+          'UPDATE vibedeck_optimize_findings SET status = ?, resolved_at = ?, updated_at = ? WHERE status = ? AND fingerprint = ?',
+        ).run(
           'resolved',
           observed_at,
           observed_at,
-          previous.id,
+          'open',
+          previous.fingerprint,
         );
         insertFinding.run({
           run_id,
@@ -343,7 +348,7 @@ function runOptimizeScan({ dbPath, now = new Date(), cwd = process.cwd() } = {})
       run_id,
       observed_at,
       inserted: findings.length,
-      resolved: previousOpen.filter((row) => !currentFingerprints.has(row.fingerprint)).length,
+      resolved: resolvedPrevious.length,
       health_grade,
       score,
       counts_by_severity: severityCounts,

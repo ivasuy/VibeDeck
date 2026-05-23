@@ -139,3 +139,70 @@ test('scanner records three optimize finding kinds and keeps repeated health sta
     f.cleanup();
   }
 });
+
+test('scanner resolves one latest open finding when a repeated fingerprint disappears', () => {
+  const f = makeDb();
+  try {
+    const db = new DatabaseSync(f.dbPath);
+    try {
+      const now = '2026-05-23T00:00:00.000Z';
+      insertSession(db, {
+        provider: 'claude',
+        session_id: 's1',
+        started_at: now,
+        ended_at: null,
+        end_reason: null,
+        cwd: f.dir,
+        repo_root: f.dir,
+        branch: 'main',
+        branch_resolution_tier: 'A',
+        confidence: 'high',
+        model: 'claude-sonnet-4',
+        total_tokens: 5000,
+        input_tokens: 4000,
+        cached_input_tokens: 0,
+        output_tokens: 1000,
+        tools_json: JSON.stringify({ Read: 5 }),
+        activity_json: JSON.stringify({ reading: 5 }),
+        last_observed_at: now,
+        created_at: now,
+        updated_at: now,
+      });
+    } finally {
+      db.close();
+    }
+
+    const first = runOptimizeScan({ dbPath: f.dbPath, now: new Date('2026-05-23T00:00:00.000Z'), cwd: f.dir });
+    const second = runOptimizeScan({ dbPath: f.dbPath, now: new Date('2026-05-23T01:00:00.000Z'), cwd: f.dir });
+
+    const cleanupDb = new DatabaseSync(f.dbPath);
+    let latestOpenId = null;
+    try {
+      latestOpenId = cleanupDb
+        .prepare("SELECT id FROM vibedeck_optimize_findings WHERE status = 'open' ORDER BY observed_at DESC, id DESC LIMIT 1")
+        .get().id;
+      cleanupDb.exec('DELETE FROM vibedeck_session_events; DELETE FROM vibedeck_sessions;');
+    } finally {
+      cleanupDb.close();
+    }
+
+    const third = runOptimizeScan({ dbPath: f.dbPath, now: new Date('2026-05-23T02:00:00.000Z'), cwd: f.dir });
+    const verifyDb = new DatabaseSync(f.dbPath, { readOnly: true });
+    try {
+      const resolvedRows = verifyDb
+        .prepare("SELECT * FROM vibedeck_optimize_findings WHERE trend = 'resolved' ORDER BY id")
+        .all();
+
+      assert.equal(first.inserted, 1);
+      assert.equal(second.inserted, 1);
+      assert.equal(third.inserted, 0);
+      assert.equal(third.resolved, 1);
+      assert.equal(resolvedRows.length, 1);
+      assert.equal(resolvedRows[0].previous_finding_id, latestOpenId);
+    } finally {
+      verifyDb.close();
+    }
+  } finally {
+    f.cleanup();
+  }
+});

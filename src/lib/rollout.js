@@ -29,6 +29,8 @@ const {
   extractGooseSessionEvents,
   extractCrushSessionEvents,
   extractCodebuddySessionEvents,
+  extractDroidSessionEvents,
+  extractQwenSessionEvents,
 } = require("./sessions/extractors");
 
 const DEFAULT_SOURCE = "codex";
@@ -1723,6 +1725,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             total_tokens: totals.total_tokens,
             billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
             conversation_count: totals.conversation_count,
+            ...(bucket.activity_json ? { activity_json: bucket.activity_json } : {}),
           }),
         );
         bucket.queuedKey = key;
@@ -1795,6 +1798,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         total_tokens: unknownBucket.totals.total_tokens,
         billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
         conversation_count: unknownBucket.totals.conversation_count,
+        ...(unknownBucket.activity_json ? { activity_json: unknownBucket.activity_json } : {}),
       }),
     );
     unknownBucket.queuedKey = outputKey;
@@ -5176,6 +5180,442 @@ async function parseCodebuddyIncremental({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Droid / Factory — passive ~/.factory/sessions/**/*.jsonl reader
+// Qwen — passive ~/.qwen/projects/*/chats/*.jsonl reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function walkJsonlFilesSync(rootDir, out = []) {
+  if (!rootDir || !fssync.existsSync(rootDir)) return out;
+  let entries;
+  try {
+    entries = fssync.readdirSync(rootDir, { withFileTypes: true });
+  } catch (_e) {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      walkJsonlFilesSync(full, out);
+    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function resolveDroidSessionFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const factoryDir = env.FACTORY_DIR || path.join(home, ".factory");
+  const sessionsDir = path.join(factoryDir, "sessions");
+  return walkJsonlFilesSync(sessionsDir, []).sort((a, b) => a.localeCompare(b));
+}
+
+function resolveQwenChatFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const qwenDir = env.QWEN_DATA_DIR || path.join(home, ".qwen");
+  const projectsDir = path.join(qwenDir, "projects");
+  return walkJsonlFilesSync(projectsDir, [])
+    .filter((file) => file.includes(`${path.sep}chats${path.sep}`))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function providerFileOffsetStart(fileOffsets, filePath, stat) {
+  const prev = fileOffsets[filePath] || {};
+  const prevOffset = Number(prev.offset ?? prev.size) || 0;
+  const prevInode = prev.ino ?? prev.inode;
+  const inodeChanged = typeof prevInode === "number" && prevInode !== stat.ino;
+  if (inodeChanged || stat.size < prevOffset) return 0;
+  return prevOffset;
+}
+
+function normalizeProviderUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const input = toNonNegativeInt(
+    usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens ?? usage.promptTokens,
+  );
+  const output = toNonNegativeInt(
+    usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens ?? usage.completionTokens,
+  );
+  const cacheRead = toNonNegativeInt(
+    usage.cached_tokens ?? usage.cache_read_input_tokens ?? usage.cacheReadTokens,
+  );
+  const cacheWrite = toNonNegativeInt(
+    usage.cache_write_input_tokens ?? usage.cache_creation_input_tokens ?? usage.cacheCreationTokens,
+  );
+  const reasoning = toNonNegativeInt(
+    usage.reasoning_output_tokens ?? usage.reasoning_tokens ?? usage.reasoningTokens,
+  );
+  const total = input + output + cacheRead + cacheWrite + reasoning;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function providerToolNames(entry) {
+  const out = [];
+  if (typeof entry?.tool === "string" && entry.tool.trim()) out.push(entry.tool.trim());
+  if (typeof entry?.toolName === "string" && entry.toolName.trim()) out.push(entry.toolName.trim());
+  if (Array.isArray(entry?.tools)) {
+    for (const tool of entry.tools) {
+      const name =
+        typeof tool === "string"
+          ? tool
+          : typeof tool?.name === "string"
+            ? tool.name
+            : typeof tool?.tool === "string"
+              ? tool.tool
+              : null;
+      if (name && name.trim()) out.push(name.trim());
+    }
+  }
+  return out;
+}
+
+function droidActivityJson(tools) {
+  return stableCounterJson({
+    ...activityCounterFromTools(tools),
+    estimated_split: 1,
+  });
+}
+
+function qwenActivityJson(tools) {
+  return tools.length > 0 ? stableCounterJson(activityCounterFromTools(tools)) : null;
+}
+
+function appendProviderSessionUpdate(batches, sessionId, update) {
+  let batch = batches.get(sessionId);
+  if (!batch) {
+    batch = {
+      session_id: sessionId,
+      started_at: update.observed_at,
+      ended_at: update.observed_at,
+      end_reason: "log_complete",
+      cwd: update.cwd ?? null,
+      model: update.model ?? null,
+      updates: [],
+      total_tokens: 0,
+    };
+    batches.set(sessionId, batch);
+  }
+  if (!batch.started_at || update.observed_at < batch.started_at) batch.started_at = update.observed_at;
+  if (!batch.ended_at || update.observed_at > batch.ended_at) batch.ended_at = update.observed_at;
+  if (!batch.cwd && update.cwd) batch.cwd = update.cwd;
+  if (!batch.model && update.model) batch.model = update.model;
+  batch.total_tokens += Number(update.delta_tokens || 0);
+  batch.updates.push(update);
+  return batch;
+}
+
+async function parseDroidIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const droidState = cursors.droid && typeof cursors.droid === "object" ? cursors.droid : {};
+  const fileOffsets =
+    droidState.fileOffsets && typeof droidState.fileOffsets === "object"
+      ? { ...droidState.fileOffsets }
+      : {};
+  const sessionMeta =
+    droidState.sessionMeta && typeof droidState.sessionMeta === "object"
+      ? { ...droidState.sessionMeta }
+      : {};
+  const files = Array.isArray(sessionFiles)
+    ? sessionFiles
+    : resolveDroidSessionFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const batches = new Map();
+    const priorMeta = sessionMeta[filePath] && typeof sessionMeta[filePath] === "object"
+      ? sessionMeta[filePath]
+      : {};
+    let currentSession = {
+      session_id: typeof priorMeta.session_id === "string" ? priorMeta.session_id : filePath,
+      cwd: cleanAbsoluteCwd(priorMeta.cwd),
+      model: normalizeModelInput(priorMeta.model) || null,
+      started_at: typeof priorMeta.started_at === "string" ? priorMeta.started_at : null,
+    };
+
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+
+      if (entry?.type === "session_start") {
+        const startedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+        currentSession = {
+          session_id:
+            typeof entry.session_id === "string" && entry.session_id.trim()
+              ? entry.session_id.trim()
+              : currentSession.session_id,
+          cwd: cleanAbsoluteCwd(entry.cwd || entry.working_dir || entry.workingDir),
+          model: normalizeModelInput(entry.model) || currentSession.model,
+          started_at: startedAt || currentSession.started_at,
+        };
+        continue;
+      }
+
+      const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const model = normalizeModelInput(entry.model) || currentSession.model || "droid-unknown";
+      const sessionId =
+        typeof entry.session_id === "string" && entry.session_id.trim()
+          ? entry.session_id.trim()
+          : currentSession.session_id || filePath;
+      const tools = providerToolNames(entry);
+      const activity_json = droidActivityJson(tools);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+
+      const bucket = getHourlyBucket(hourlyState, "droid", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      bucket.activity_json = activity_json;
+      touchedBuckets.add(bucketKey("droid", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd: currentSession.cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(
+        extractDroidSessionEvents,
+        {
+          ...batch,
+          started_at: currentSession.started_at || batch.started_at,
+        },
+        onSessionEvent,
+      );
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    sessionMeta[filePath] = {
+      session_id: currentSession.session_id,
+      cwd: currentSession.cwd,
+      model: currentSession.model,
+      started_at: currentSession.started_at,
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.droid = { ...droidState, fileOffsets, sessionMeta, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+async function parseQwenIncremental({
+  chatFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const qwenState = cursors.qwen && typeof cursors.qwen === "object" ? cursors.qwen : {};
+  const fileOffsets =
+    qwenState.fileOffsets && typeof qwenState.fileOffsets === "object"
+      ? { ...qwenState.fileOffsets }
+      : {};
+  const files = Array.isArray(chatFiles) ? chatFiles : resolveQwenChatFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const batches = new Map();
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+      const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const model = normalizeModelInput(entry.model) || "qwen-unknown";
+      const sessionId =
+        typeof entry.sessionId === "string" && entry.sessionId.trim()
+          ? entry.sessionId.trim()
+          : typeof entry.session_id === "string" && entry.session_id.trim()
+            ? entry.session_id.trim()
+            : filePath;
+      const cwd = cleanAbsoluteCwd(entry.cwd);
+      const tools = providerToolNames(entry);
+      const activity_json = qwenActivityJson(tools);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+
+      const bucket = getHourlyBucket(hourlyState, "qwen", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      touchedBuckets.add(bucketKey("qwen", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(extractQwenSessionEvents, batch, onSessionEvent);
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.qwen = { ...qwenState, fileOffsets, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // oh-my-pi (omp) — passive JSONL reader (~/.omp/agent/sessions/**/*.jsonl)
 //
 // oh-my-pi writes one append-only JSONL per session:
@@ -6682,6 +7122,10 @@ module.exports = {
   resolveCraftSessionFiles,
   resolveCraftDefaultModel,
   parseCraftIncremental,
+  resolveDroidSessionFiles,
+  parseDroidIncremental,
+  resolveQwenChatFiles,
+  parseQwenIncremental,
   // Exposed for regression tests covering cache-token accounting.
   normalizeGeminiTokens,
   normalizeOpencodeTokens,

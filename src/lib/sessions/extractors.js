@@ -359,6 +359,36 @@ function extractCodebuddySessionEvents(batch) {
   });
 }
 
+function extractDroidSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'droid',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractQwenSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'qwen',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
 module.exports = {
   extractClaudeCodeSessionEvents,
   extractCodexSessionEvents,
@@ -376,4 +406,6 @@ module.exports = {
   extractGooseSessionEvents,
   extractCrushSessionEvents,
   extractCodebuddySessionEvents,
+  extractDroidSessionEvents,
+  extractQwenSessionEvents,
 };

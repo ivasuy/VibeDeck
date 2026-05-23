@@ -32,6 +32,10 @@ const {
   parseCraftIncremental,
   resolveCraftSessionFiles,
   resolveCraftWorkspaceRoots,
+  parseDroidIncremental,
+  resolveDroidSessionFiles,
+  parseQwenIncremental,
+  resolveQwenChatFiles,
 } = require("../src/lib/rollout");
 
 test("parseRolloutIncremental ignores repeated token_count records with unchanged totals", async () => {
@@ -2892,6 +2896,81 @@ test("parseOpenclawIncremental remains provider-only when no cwd proof exists", 
       onSessionEvent: (event) => events.push(event),
     });
     assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseDroidIncremental uses session_start.cwd proof and marks split usage estimated in activity", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-droid-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const sessionFile = path.join(tmp, ".factory", "sessions", "project-a", "session.jsonl");
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+    await fs.writeFile(sessionFile, [
+      JSON.stringify({ type: "session_start", session_id: "droid-1", cwd: repo, model: "factory-model", timestamp: "2026-05-22T10:00:00.000Z" }),
+      JSON.stringify({ type: "assistant", id: "a1", timestamp: "2026-05-22T10:01:00.000Z", usage: { input_tokens: 100, output_tokens: 25 }, tool: "Edit" }),
+    ].join("\n") + "\n");
+    const events = [];
+    const cursors = { version: 1 };
+    const result = await parseDroidIncremental({ sessionFiles: [sessionFile], cursors, queuePath: path.join(tmp, "queue.jsonl"), onSessionEvent: (event) => events.push(event) });
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    const queued = await readJsonLines(path.join(tmp, "queue.jsonl"));
+    assert.equal(queued[0].source, "droid");
+    assert.match(String(queued[0].activity_json || ""), /estimated/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseQwenIncremental preserves cwd only when entry cwd is absolute", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-qwen-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const chatFile = path.join(tmp, ".qwen", "projects", "hash", "chats", "chat.jsonl");
+    await fs.mkdir(path.dirname(chatFile), { recursive: true });
+    await fs.writeFile(chatFile, [
+      JSON.stringify({ sessionId: "qwen-1", cwd: repo, timestamp: "2026-05-22T10:00:00.000Z", model: "qwen-coder", usage: { input_tokens: 50, output_tokens: 20, cached_tokens: 5 }, tools: [{ name: "Read" }] }),
+      JSON.stringify({ sessionId: "qwen-2", cwd: "hash-only", timestamp: "2026-05-22T10:30:00.000Z", model: "qwen-coder", usage: { input_tokens: 10, output_tokens: 4 } }),
+    ].join("\n") + "\n");
+    const events = [];
+    const result = await parseQwenIncremental({ chatFiles: [chatFile], cursors: { version: 1 }, queuePath: path.join(tmp, "queue.jsonl"), onSessionEvent: (event) => events.push(event) });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.session_id === "qwen-1" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.session_id === "qwen-2" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveDroidSessionFiles walks .factory sessions jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-droid-resolve-"));
+  try {
+    const sessionFile = path.join(tmp, ".factory", "sessions", "a", "session.jsonl");
+    const ignoredFile = path.join(tmp, ".factory", "other", "ignored.jsonl");
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+    await fs.mkdir(path.dirname(ignoredFile), { recursive: true });
+    await fs.writeFile(sessionFile, "{}\n", "utf8");
+    await fs.writeFile(ignoredFile, "{}\n", "utf8");
+    assert.deepEqual(resolveDroidSessionFiles({ HOME: tmp }), [sessionFile]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveQwenChatFiles walks only project chat jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-qwen-resolve-"));
+  try {
+    const chatFile = path.join(tmp, ".qwen", "projects", "a", "chats", "chat.jsonl");
+    const ignoredFile = path.join(tmp, ".qwen", "projects", "a", "notes", "ignored.jsonl");
+    await fs.mkdir(path.dirname(chatFile), { recursive: true });
+    await fs.mkdir(path.dirname(ignoredFile), { recursive: true });
+    await fs.writeFile(chatFile, "{}\n", "utf8");
+    await fs.writeFile(ignoredFile, "{}\n", "utf8");
+    assert.deepEqual(resolveQwenChatFiles({ HOME: tmp }), [chatFile]);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -22,6 +22,8 @@ const {
   parseGooseIncremental,
   parseCrushIncremental,
   parseCodebuddyIncremental,
+  parseDroidIncremental,
+  parseQwenIncremental,
 } = require('../src/lib/rollout');
 
 function buildTokenCountLine({ ts, last, total }) {
@@ -1026,6 +1028,73 @@ test('SessionEvent extraction: Codebuddy session JSONL', async () => {
 
     assertStartUpdateEnd(events, 'codebuddy');
     assert.equal(events[0].session_id, 'sess-test');
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Droid session JSONL', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-droid-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const sessionFile = path.join(tmp, '.factory', 'sessions', 'project-a', 'session.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    await fs.mkdir(repo, { recursive: true });
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+    await fs.writeFile(
+      sessionFile,
+      [
+        JSON.stringify({ type: 'session_start', session_id: 'droid-1', cwd: repo, model: 'factory-model', timestamp: '2026-05-09T00:00:00.000Z' }),
+        JSON.stringify({ type: 'assistant', id: 'a1', timestamp: '2026-05-09T00:01:00.000Z', usage: { input_tokens: 10, output_tokens: 2 }, tool: 'Edit' }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const events = [];
+    await parseDroidIncremental({ sessionFiles: [sessionFile], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'droid');
+    assert.equal(events[0].session_id, 'droid-1');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[1].input_tokens, 10);
+    assert.equal(events[1].output_tokens, 2);
+    assert.match(events[1].activity_json, /estimated/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Qwen chat JSONL', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-qwen-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    const chatFile = path.join(tmp, '.qwen', 'projects', 'hash', 'chats', 'chat.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    await fs.mkdir(repo, { recursive: true });
+    await fs.mkdir(path.dirname(chatFile), { recursive: true });
+    await fs.writeFile(
+      chatFile,
+      [
+        JSON.stringify({ sessionId: 'qwen-1', cwd: repo, timestamp: '2026-05-09T00:00:00.000Z', model: 'qwen-coder', usage: { input_tokens: 10, output_tokens: 2 }, tools: [{ name: 'Read' }] }),
+        JSON.stringify({ sessionId: 'qwen-2', cwd: 'relative-only', timestamp: '2026-05-09T00:30:00.000Z', model: 'qwen-coder', usage: { input_tokens: 3, output_tokens: 1 } }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const events = [];
+    await parseQwenIncremental({ chatFiles: [chatFile], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    const qwen1 = events.filter((event) => event.session_id === 'qwen-1');
+    const qwen2 = events.filter((event) => event.session_id === 'qwen-2');
+    assertStartUpdateEnd(qwen1, 'qwen');
+    assertStartUpdateEnd(qwen2, 'qwen');
+    assert.equal(qwen1[0].cwd, repo);
+    assert.equal(qwen1[1].cwd, repo);
+    assert.equal(qwen2[0].cwd, null);
+    assert.equal(qwen2[1].cwd, null);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

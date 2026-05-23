@@ -40,6 +40,10 @@ const {
   parseCrushIncremental,
   resolveCraftSessionFiles,
   parseCraftIncremental,
+  resolveDroidSessionFiles,
+  parseDroidIncremental,
+  resolveQwenChatFiles,
+  parseQwenIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
   resolveKiroCliSessionFiles,
@@ -905,6 +909,52 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
 
+    // ── Droid / Factory (passive ~/.factory/sessions/**/*.jsonl reader) ──
+    let droidResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const droidFiles = resolveDroidSessionFiles(process.env);
+    if (droidFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Droid ${renderBar(0)} | buckets 0`);
+      }
+      droidResult = await parseDroidIncremental({
+        sessionFiles: droidFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Droid ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Qwen (passive ~/.qwen/projects/*/chats/*.jsonl reader) ──
+    let qwenResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const qwenFiles = resolveQwenChatFiles(process.env);
+    if (qwenFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Qwen ${renderBar(0)} | buckets 0`);
+      }
+      qwenResult = await parseQwenIncremental({
+        chatFiles: qwenFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Qwen ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── oh-my-pi (passive ~/.omp/agent/sessions/**/*.jsonl reader) ──
     let ompResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const ompFiles = resolveOmpSessionFiles(process.env);
@@ -1235,6 +1285,8 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         hermesResult.recordsProcessed +
         kimiResult.recordsProcessed +
         codebuddyResult.recordsProcessed +
+        droidResult.recordsProcessed +
+        qwenResult.recordsProcessed +
         ompResult.recordsProcessed +
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
@@ -1253,6 +1305,8 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         hermesResult.bucketsQueued +
         kimiResult.bucketsQueued +
         codebuddyResult.bucketsQueued +
+        droidResult.bucketsQueued +
+        qwenResult.bucketsQueued +
         ompResult.bucketsQueued +
         piResult.bucketsQueued +
         craftResult.bucketsQueued +

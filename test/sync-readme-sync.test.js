@@ -44,8 +44,12 @@ function buildSyncModuleStubs({
   trackerDir,
   gooseDbPath = "",
   crushProjectsPath = "",
+  droidFiles = [],
+  qwenFiles = [],
   onGooseParse = async () => {},
   onCrushParse = async () => {},
+  onDroidParse = async () => {},
+  onQwenParse = async () => {},
 }) {
   const zeroResult = {
     filesProcessed: 0,
@@ -86,6 +90,14 @@ function buildSyncModuleStubs({
       return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
     },
     parseCraftIncremental: async () => ({ ...zeroResult }),
+    parseDroidIncremental: async (args) => {
+      await onDroidParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseQwenIncremental: async (args) => {
+      await onQwenParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCodebuddyIncremental: async () => ({ ...zeroResult }),
     parseKiroCliIncremental: async () => ({ ...zeroResult }),
     listRolloutFiles: async () => [],
@@ -104,6 +116,8 @@ function buildSyncModuleStubs({
     resolveGooseDbPath: () => gooseDbPath,
     resolveCrushProjectsPath: () => crushProjectsPath,
     resolveCraftSessionFiles: () => [],
+    resolveDroidSessionFiles: () => droidFiles,
+    resolveQwenChatFiles: () => qwenFiles,
     resolveCodebuddyProjectFiles: () => [],
     resolveKiroCliSessionFiles: () => [],
     resolveKiroCliDbPath: () => "",
@@ -343,6 +357,66 @@ test("cmdSync runs Crush parser when projects registry exists", async () => {
   assert.equal(crushArgs?.projectsPath, crushProjectsPath);
   assert.equal(typeof crushArgs?.onSessionEvent, "function");
   assert.equal(typeof crushArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Droid and Qwen parsers when passive files resolve", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-droid-qwen-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const droidFile = path.join(tmp, ".factory", "sessions", "a", "session.jsonl");
+  const qwenFile = path.join(tmp, ".qwen", "projects", "a", "chats", "chat.jsonl");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let droidArgs = null;
+  let qwenArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    droidFiles: [droidFile],
+    qwenFiles: [qwenFile],
+    onDroidParse: async (args) => {
+      droidArgs = args;
+    },
+    onQwenParse: async (args) => {
+      qwenArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(droidArgs?.sessionFiles, [droidFile]);
+  assert.deepEqual(qwenArgs?.chatFiles, [qwenFile]);
+  assert.equal(typeof droidArgs?.onSessionEvent, "function");
+  assert.equal(typeof qwenArgs?.onSessionEvent, "function");
+  assert.equal(typeof droidArgs?.onProgress, "function");
+  assert.equal(typeof qwenArgs?.onProgress, "function");
   assert.doesNotMatch(out, /README banner updated on GitHub/);
   assert.doesNotMatch(err, /README sync warning/);
 });

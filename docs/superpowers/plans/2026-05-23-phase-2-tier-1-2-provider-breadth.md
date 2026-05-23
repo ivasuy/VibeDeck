@@ -1124,6 +1124,44 @@ Then verify:
 - No new provider writes directly to `vibedeck_branch_usage_facts`.
 - `row.cost_usd` from Crush is not used as canonical visible cost.
 
+## Gap Fix Task 2b: Kiro CLI SessionEvent and cwd Pass-Through
+
+Audit finding before Phase 2 close: `src/commands/sync.js` passes `onSessionEvent` into `parseKiroCliIncremental`, and Kiro CLI fixture files contain `cwd`, but `src/lib/rollout.js` currently ignores `onSessionEvent` in the Kiro CLI parser signature and never carries cwd into canonical `SessionEvent`s. This violates the Phase 2 repair pass-through goal for providers with proof-backed local cwd.
+
+### Files
+
+- `src/lib/rollout.js`
+- `test/rollout-parser.test.js`
+
+### Implementation Steps
+
+- [ ] Extend `readKiroCliSessionTurns(jsonPath)` so each flattened turn includes:
+  - `cwd` from top-level `parsed.cwd`, sanitized with existing `cleanAbsoluteCwd`.
+  - `session_started_at` from `parsed.created_at` when parseable.
+  - `session_updated_at` from `parsed.updated_at` when parseable.
+- [ ] Extend `parseKiroCliFromSessionFiles(...)` to accept `onSessionEvent` and emit canonical Kiro `SessionEvent`s through `extractKiroSessionEvents` for newly processed turns.
+- [ ] Extend `parseKiroCliIncremental(...)` to accept `onSessionEvent` and emit canonical Kiro `SessionEvent`s for DB/live-session merged turns in the main path. Use per-turn `cwd` when available; SQLite rows may remain `cwd: null` because the DB source does not provide workspace proof.
+- [ ] Preserve existing Kiro CLI bucket math, retraction behavior, mutation fingerprinting, and cursor isolation under `cursors.kiroCli`.
+- [ ] Add tests proving:
+  - Back-compat `sessionFiles` parser emits start/update/end events with cwd from fixture.
+  - Default live-session path emits session events with cwd when `KIRO_HOME` points at a session file.
+  - SQLite-only rows still do not invent cwd.
+
+### Required Checks
+
+```bash
+node --test test/rollout-parser.test.js
+node --test test/rollout-parser.test.js test/sessions-extractors.test.js test/local-api-source-scope.test.js
+git diff --check
+```
+
+### Acceptance
+
+- Kiro CLI repair can see proof-backed `cwd` through canonical `SessionEvent`s.
+- `/usage` totals and Kiro CLI hourly buckets remain unchanged except for legitimate SessionEvent-derived repair attribution.
+- Unknown branch and Historical unknown are preserved; no guessed project/branch is introduced when cwd is absent.
+- Existing Kiro CLI migration/retraction tests still pass.
+
 ## Self-Review Checklist
 
 - Spec coverage: Phase 2 providers are covered as follows: OpenCode, Pi, OMP, Copilot, Kiro CLI repaired; Goose and Crush added; Cursor account remains honest account-level; Kiro IDE remains provider-only until full folder proof exists.

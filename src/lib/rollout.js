@@ -25,6 +25,7 @@ const {
   extractCopilotSessionEvents,
   extractKimiSessionEvents,
   extractOmpSessionEvents,
+  extractPiSessionEvents,
   extractCodebuddySessionEvents,
 } = require("./sessions/extractors");
 
@@ -69,6 +70,49 @@ function extractClaudeCwdFromLine(line) {
     const parsed = JSON.parse(line);
     if (typeof parsed?.cwd === "string" && parsed.cwd.trim()) return parsed.cwd.trim();
   } catch {}
+  return null;
+}
+
+function cleanAbsoluteCwd(value) {
+  if (typeof value !== "string") return null;
+  let text = value.trim();
+  if (!text) return null;
+  if (text.startsWith("file://")) {
+    try {
+      text = decodeURIComponent(new URL(text).pathname);
+    } catch (_e) {
+      return null;
+    }
+  }
+  if (text.startsWith("/") || /^[A-Za-z]:[\\/]/.test(text)) return text;
+  return null;
+}
+
+function readPiOmpHeaderCwd(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.type !== "session") return null;
+  return cleanAbsoluteCwd(entry.cwd || entry.working_dir || entry.workingDir || entry.path);
+}
+
+function pickCopilotWorkspaceCwd(record) {
+  const attrs = record?.attributes && typeof record.attributes === "object" ? record.attributes : {};
+  const resourceAttrs =
+    record?.resource?.attributes && typeof record.resource.attributes === "object"
+      ? record.resource.attributes
+      : {};
+  for (const key of [
+    "process.cwd",
+    "cwd",
+    "workspace.folder",
+    "workspace.path",
+    "vscode.workspace.folder",
+    "vscode.workspace.path",
+    "github.copilot.workspace.folder",
+    "github.copilot.workspace.path",
+  ]) {
+    const value = cleanAbsoluteCwd(attrs[key]) || cleanAbsoluteCwd(resourceAttrs[key]);
+    if (value) return value;
+  }
   return null;
 }
 
@@ -1459,7 +1503,7 @@ async function parseOpencodeMessageFile({
       started_at: tsIso,
       ended_at: tsIso,
       end_reason: "log_complete",
-      cwd: null,
+      cwd: cleanAbsoluteCwd(msg?.path?.cwd),
       model,
       updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
       total_tokens: Number(delta.total_tokens || 0),
@@ -2832,6 +2876,7 @@ async function parseOpencodeDbIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -2946,6 +2991,21 @@ async function parseOpencodeDbIncremental({
       lastTotals: currentTotals,
       updatedAt: new Date().toISOString(),
     };
+    emitSessionEvents(
+      extractOpenCodeSessionEvents,
+      {
+        session_id:
+          typeof msg?.sessionID === "string" ? msg.sessionID : (entry.sessionID || entry.id),
+        started_at: tsIso,
+        ended_at: tsIso,
+        end_reason: "log_complete",
+        cwd: cleanAbsoluteCwd(msg?.path?.cwd),
+        model,
+        updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+        total_tokens: Number(delta.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
     messagesProcessed += 1;
     eventsAggregated += 1;
 
@@ -5114,6 +5174,7 @@ async function parseOmpIncremental({
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
     const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
+    let sessionCwd = cleanAbsoluteCwd(prevEntry.cwd);
 
     let stream;
     try {
@@ -5128,6 +5189,11 @@ async function parseOmpIncremental({
       if (!line || !line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
+
+      if (entry?.type === "session") {
+        sessionCwd = readPiOmpHeaderCwd(entry) || sessionCwd;
+        continue;
+      }
 
       // First line of each file is type:"session" (header) — skip all
       // non-message records.
@@ -5205,7 +5271,7 @@ async function parseOmpIncremental({
           started_at: tsIso,
           ended_at: tsIso,
           end_reason: "log_complete",
-          cwd: null,
+          cwd: sessionCwd,
           model,
           updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
           total_tokens: Number(delta.total_tokens || 0),
@@ -5232,6 +5298,7 @@ async function parseOmpIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      cwd: sessionCwd,
     };
   }
 
@@ -5332,6 +5399,7 @@ async function parsePiIncremental({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   defaultModel,
 } = {}) {
@@ -5375,6 +5443,7 @@ async function parsePiIncremental({
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
     const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
+    let sessionCwd = cleanAbsoluteCwd(prevEntry.cwd);
 
     let stream;
     try {
@@ -5389,6 +5458,11 @@ async function parsePiIncremental({
       if (!line || !line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
+
+      if (entry?.type === "session") {
+        sessionCwd = readPiOmpHeaderCwd(entry) || sessionCwd;
+        continue;
+      }
 
       if (!entry || entry.type !== "message") continue;
 
@@ -5451,6 +5525,20 @@ async function parsePiIncremental({
       const bucket = getHourlyBucket(hourlyState, "pi", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("pi", model, bucketStart));
+      emitSessionEvents(
+        extractPiSessionEvents,
+        {
+          session_id: filePath,
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: sessionCwd,
+          model,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       seenIds.add(entryId);
       eventsAggregated++;
 
@@ -5471,6 +5559,7 @@ async function parsePiIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      cwd: sessionCwd,
     };
   }
 
@@ -5946,6 +6035,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
       if (dedupKey && seenIds.has(dedupKey)) continue;
 
       const attrs = record.attributes || {};
+      const sessionCwd = pickCopilotWorkspaceCwd(record);
       const inputRaw = toNonNegativeInt(attrs["gen_ai.usage.input_tokens"]);
       const output = toNonNegativeInt(attrs["gen_ai.usage.output_tokens"]);
       const cacheRead = toNonNegativeInt(attrs["gen_ai.usage.cache_read.input_tokens"]);
@@ -5986,7 +6076,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
           started_at: tsIso,
           ended_at: tsIso,
           end_reason: "log_complete",
-          cwd: null,
+          cwd: sessionCwd,
           model,
           updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
           total_tokens: Number(delta.total_tokens || 0),

@@ -18,6 +18,7 @@ const {
   parseCopilotIncremental,
   parseKimiIncremental,
   parseOmpIncremental,
+  parsePiIncremental,
   parseCodebuddyIncremental,
 } = require('../src/lib/rollout');
 
@@ -599,6 +600,43 @@ test('SessionEvent extraction: OpenCode message JSON', async () => {
   }
 });
 
+test('SessionEvent extraction: OpenCode preserves cwd from message path', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-opencode-cwd-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const messageDir = path.join(tmp, 'message', 'ses_cwd');
+    await fs.mkdir(messageDir, { recursive: true });
+    const messagePath = path.join(messageDir, 'msg_cwd.json');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1, files: {}, updatedAt: null };
+
+    const message = buildOpencodeMessage({
+      modelID: 'gpt-4o',
+      created: '2026-05-09T00:00:00.000Z',
+      completed: '2026-05-09T00:00:10.000Z',
+      tokens: { input: 10, output: 2, reasoning: 0, cached: 0, cacheWrite: 0 },
+    });
+    message.path = { cwd: repo };
+    await fs.writeFile(messagePath, JSON.stringify(message), 'utf8');
+
+    const events = [];
+    await parseOpencodeIncremental({
+      messageFiles: [messagePath],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assertStartUpdateEnd(events, 'opencode');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[2].cwd, repo);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('SessionEvent extraction: OpenClaw session JSONL', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-openclaw-'));
   try {
@@ -750,6 +788,66 @@ test('SessionEvent extraction: omp session JSONL', async () => {
 
     assertStartUpdateEnd(events, 'omp');
     assert.equal(events[0].session_id, sessionPath);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: OMP preserves header cwd', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-omp-cwd-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const sessionPath = path.join(tmp, 'session.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    const ts = '2026-05-09T00:00:00.000Z';
+    await fs.writeFile(
+      sessionPath,
+      [
+        JSON.stringify({ type: 'session', id: 'omp-session', cwd: repo, timestamp: ts }),
+        buildOmpAssistantLine({ id: 'msg-1', model: 'claude-sonnet', input: 10, output: 2, timestamp: ts, totalTokens: 12 }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const events = [];
+    await parseOmpIncremental({ sessionFiles: [sessionPath], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'omp');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[2].cwd, repo);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('SessionEvent extraction: Pi emits session events and preserves header cwd', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sess-pi-cwd-'));
+  try {
+    const repo = path.join(tmp, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const sessionPath = path.join(tmp, 'session.jsonl');
+    const queuePath = path.join(tmp, 'queue.jsonl');
+    const cursors = { version: 1 };
+    const ts = '2026-05-09T00:00:00.000Z';
+    await fs.writeFile(
+      sessionPath,
+      [
+        JSON.stringify({ type: 'session', id: 'pi-session', cwd: repo, timestamp: ts }),
+        buildOmpAssistantLine({ id: 'msg-1', model: 'mimo-v2.5-pro', input: 10, output: 2, timestamp: ts, totalTokens: 12 }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+
+    const events = [];
+    await parsePiIncremental({ sessionFiles: [sessionPath], cursors, queuePath, onSessionEvent: (e) => events.push(e) });
+
+    assertStartUpdateEnd(events, 'pi');
+    assert.equal(events[0].cwd, repo);
+    assert.equal(events[1].cwd, repo);
+    assert.equal(events[2].cwd, repo);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

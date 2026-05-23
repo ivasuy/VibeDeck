@@ -261,7 +261,7 @@ function extractCopilotSessionEvents(batch) {
     started_at: batch.started_at,
     ended_at: batch.ended_at,
     end_reason: batch.end_reason,
-    cwd: null,
+    cwd: batch.cwd ?? null,
     model: batch.model ?? null,
     branch: batch.branch ?? null,
     updates: batch.updates,
@@ -291,7 +291,22 @@ function extractOmpSessionEvents(batch) {
     started_at: batch.started_at,
     ended_at: batch.ended_at,
     end_reason: batch.end_reason,
-    cwd: null,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractPiSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'pi',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
     model: batch.model ?? null,
     branch: batch.branch ?? null,
     updates: batch.updates,
@@ -327,5 +342,6 @@ module.exports = {
   extractCopilotSessionEvents,
   extractKimiSessionEvents,
   extractOmpSessionEvents,
+  extractPiSessionEvents,
   extractCodebuddySessionEvents,
 };

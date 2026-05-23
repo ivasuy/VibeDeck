@@ -10,6 +10,7 @@ const {
   parseClaudeIncremental,
   parseGeminiIncremental,
   parseOpencodeIncremental,
+  parseOpencodeDbIncremental,
   parseKiroIncremental,
   parseHermesIncremental,
   parseCopilotIncremental,
@@ -1098,6 +1099,38 @@ test("parseOpencodeIncremental aggregates message tokens and model", async () =>
       queuePath,
     });
     assert.equal(resAgain.bucketsQueued, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseOpencodeDbIncremental preserves message data path cwd in session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-opencode-db-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const message = buildOpencodeMessage({
+      modelID: "gpt-4o",
+      created: "2025-12-29T10:14:00.000Z",
+      completed: "2025-12-29T10:15:00.000Z",
+      tokens: { input: 10, output: 2, reasoning: 1, cached: 3, cacheWrite: 5 },
+    });
+    message.path = { cwd: repo };
+
+    const events = [];
+    const res = await parseOpencodeDbIncremental({
+      dbMessages: [{ id: "msg_db_cwd", sessionID: "ses_db_cwd", timeUpdated: 1, data: message }],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(res.eventsAggregated, 1);
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "update")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "end")?.cwd, repo);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -3022,6 +3055,60 @@ test("parseCopilotIncremental aggregates chat spans and subtracts cache from inp
     assert.equal(b.input_tokens, 900);
     assert.equal(b.output_tokens, 200);
     assert.equal(b.cached_input_tokens, 100);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental preserves absolute workspace cwd from OTEL attributes in session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const otelPath = path.join(tmp, "copilot-otel.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const span = makeCopilotChatSpan({ traceId: "cwd-t1", spanId: "cwd-s1" });
+    span.attributes["process.cwd"] = repo;
+    writeCopilotOtelFile(otelPath, [span]);
+
+    const events = [];
+    await parseCopilotIncremental({
+      otelPaths: [otelPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "update")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "end")?.cwd, repo);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental preserves file URL workspace cwd from OTEL resource attributes", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-resource-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo with space");
+    await fs.mkdir(repo, { recursive: true });
+    const otelPath = path.join(tmp, "copilot-otel.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const span = makeCopilotChatSpan({ traceId: "cwd-t2", spanId: "cwd-s2" });
+    span.resource = { attributes: { "github.copilot.workspace.path": `file://${repo}` } };
+    writeCopilotOtelFile(otelPath, [span]);
+
+    const events = [];
+    await parseCopilotIncremental({
+      otelPaths: [otelPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

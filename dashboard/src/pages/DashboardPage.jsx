@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useActivityHeatmap } from "../hooks/use-activity-heatmap.js";
+import { useActivityHeatmap } from "../hooks/use-activity-heatmap";
 import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
-import { useTrendData } from "../hooks/use-trend-data.js";
-import { useUsageData } from "../hooks/use-usage-data.js";
-import { useUsageLimits } from "../hooks/use-usage-limits.js";
-import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
+import { useTrendData } from "../hooks/use-trend-data";
+import { useUsageData } from "../hooks/use-usage-data";
+import { useUsageLimits } from "../hooks/use-usage-limits";
+import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -93,6 +93,94 @@ function parseUtcDateKey(yyyyMmDd) {
 
 function addUtcDays(date, days) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
+}
+
+function parseCounterPayload(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  return typeof value === "object" ? value : null;
+}
+
+function mcpServerName(toolKey) {
+  const parts = String(toolKey || "").split("__");
+  if (parts.length >= 3 && parts[0] === "mcp" && parts[1]) return parts[1];
+  return String(toolKey || "").replace(/^mcp__/, "") || "unknown";
+}
+
+function collectMcpCounters(value, counters, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Object.prototype.hasOwnProperty.call(value, "tools_json")) {
+    const tools = parseCounterPayload(value.tools_json);
+    if (tools) {
+      for (const [toolKey, rawCalls] of Object.entries(tools)) {
+        if (!String(toolKey).startsWith("mcp__")) continue;
+        const calls = Number(rawCalls);
+        if (!Number.isFinite(calls) || calls <= 0) continue;
+        const server = mcpServerName(toolKey);
+        counters.set(server, (counters.get(server) || 0) + calls);
+      }
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectMcpCounters(item, counters, seen);
+    return;
+  }
+
+  for (const child of Object.values(value)) {
+    if (child && typeof child === "object") collectMcpCounters(child, counters, seen);
+  }
+}
+
+function buildMcpServerRows(payloads) {
+  const counters = new Map();
+  for (const payload of payloads) {
+    collectMcpCounters(payload, counters);
+  }
+  return Array.from(counters.entries())
+    .map(([server, calls]) => ({ server, calls }))
+    .sort((left, right) => right.calls - left.calls || left.server.localeCompare(right.server));
+}
+
+function McpServersPanel({ rows }) {
+  return (
+    <div className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+      <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
+        {copy("dashboard.mcp.title")}
+      </div>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("dashboard.mcp.empty")}
+        </p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {rows.map((row) => (
+            <div
+              key={row.server}
+              className="flex items-center justify-between gap-3 rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 text-sm dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+            >
+              <span className="min-w-0 truncate font-medium text-oai-black dark:text-white">
+                {row.server}
+              </span>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
+                {toDisplayNumber(row.calls)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function isProductionHost(hostname) {
@@ -876,14 +964,30 @@ export function DashboardPage({
     return normalized.slice(0, 6);
   }, [publicMode, userStatus]);
 
+  const mcpServerRows = useMemo(
+    () => buildMcpServerRows([
+      summary,
+      daily,
+      dailyBreakdownDaily,
+      modelBreakdown,
+      projectUsageEntries,
+      heatmap,
+      heatmapDaily,
+    ]),
+    [daily, dailyBreakdownDaily, heatmap, heatmapDaily, modelBreakdown, projectUsageEntries, summary],
+  );
+
   const activityHeatmapBlock = (
-    <ActivityHeatmap
-      heatmap={heatmap}
-      timeZoneLabel={timeZoneLabel}
-      timeZoneShortLabel={timeZoneShortLabel}
-      hideLegend={screenshotMode}
-      defaultToLatestMonth={screenshotMode}
-    />
+    <div className="space-y-4">
+      <ActivityHeatmap
+        heatmap={heatmap}
+        timeZoneLabel={timeZoneLabel}
+        timeZoneShortLabel={timeZoneShortLabel}
+        hideLegend={screenshotMode}
+        defaultToLatestMonth={screenshotMode}
+      />
+      <McpServersPanel rows={mcpServerRows} />
+    </div>
   );
 
   const rangeLabel = useMemo(() => {

@@ -100,6 +100,8 @@ dashboard.model_breakdown.title,ui,NeuralDivergenceMap,NeuralDivergenceMap,title
 dashboard.model_breakdown.footer,ui,NeuralDivergenceMap,NeuralDivergenceMap,footer,Multi-Engine Load Balancing // Active Session,,active
 dashboard.model_breakdown.usage_label,ui,NeuralAdaptiveFleet,NeuralAdaptiveFleet,usage_label,USAGE: {{value}},,active
 dashboard.top_models.title,ui,TopModelsPanel,TopModelsPanel,title,"Top Models",,active
+dashboard.mcp.title,dashboard,DashboardPage,DashboardPage,mcp_title,MCP servers,,active
+dashboard.mcp.empty,dashboard,DashboardPage,DashboardPage,mcp_empty,No MCP activity in this window.,,active
 dashboard.projects.title,ui,ProjectUsagePanel,ProjectUsagePanel,title,Project Usage,,active
 dashboard.projects.tokens_label,ui,ProjectUsagePanel,ProjectUsagePanel,tokens_label,Tokens,,active
 dashboard.projects.stars_label,ui,ProjectUsagePanel,ProjectUsagePanel,stars_label,STAR,,active
@@ -385,6 +387,15 @@ settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your accoun
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,Appearance,,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,Account,,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,Limits Display,,active
+settings.model_aliases.title,ui,SettingsPage,SettingsPage,model_aliases_title,Model aliases,,active
+settings.model_aliases.alias_label,ui,SettingsPage,SettingsPage,model_aliases_alias,Alias,,active
+settings.model_aliases.canonical_label,ui,SettingsPage,SettingsPage,model_aliases_canonical,Canonical model,,active
+settings.model_aliases.add,ui,SettingsPage,SettingsPage,model_aliases_add,Add alias,,active
+settings.provider_detect.title,ui,SettingsPage,SettingsPage,provider_detect_title,Provider auto-detect,,active
+settings.provider_detect.scan,ui,SettingsPage,SettingsPage,provider_detect_scan,Scan providers,,active
+settings.provider_detect.scanning,ui,SettingsPage,SettingsPage,provider_detect_scanning,Scanning...,,active
+settings.provider_detect.found,ui,SettingsPage,SettingsPage,provider_detect_found,found,,active
+settings.provider_detect.missing,ui,SettingsPage,SettingsPage,provider_detect_missing,missing,,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,Theme,,active
 settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,Choose how VibeDeck looks across the dashboard.,,active
 settings.appearance.theme.light,ui,SettingsPage,SettingsPage,theme_light,Light,,active

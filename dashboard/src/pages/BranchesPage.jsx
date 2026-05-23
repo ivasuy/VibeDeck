@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, CircleDollarSign, Cpu, MessagesSquare } from "lucide-react";
 import { Card, Input } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
-import { getBranchUsage } from "../lib/vibedeck-api";
+import { getBranchUsage, getYieldView } from "../lib/vibedeck-api";
 import { readLastGood, writeLastGood } from "../lib/last-good-cache";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
@@ -11,6 +12,7 @@ import { PageFrame } from "../components/PageFrame.jsx";
 
 const BRANCHES_PAGE_SIZE = 10;
 const BRANCH_SUMMARY_CACHE_KEY = "branches.summary.default";
+const YIELD_STATES = new Set(["productive", "reverted", "abandoned", "unknown"]);
 
 function toCount(value) {
   const n = Number(value ?? 0);
@@ -187,6 +189,60 @@ function trackedBranchName(row) {
   return branchName || String(row?.branch || "").trim();
 }
 
+function buildYieldStateByBranch(payload) {
+  const rows = Array.isArray(payload?.branches) ? payload.branches : [];
+  const byBranch = new Map();
+  for (const row of rows) {
+    const branch = String(row?.branch || "").trim();
+    const state = String(row?.yield_state || "").trim().toLowerCase();
+    if (!branch || !YIELD_STATES.has(state)) continue;
+    byBranch.set(branch, state);
+  }
+  return byBranch;
+}
+
+function yieldStateForRow(row, byBranch) {
+  return byBranch.get(String(row?.branch || "").trim())
+    || byBranch.get(trackedBranchName(row))
+    || "";
+}
+
+function BranchYieldBadgePortals({ containerRef, rows, yieldStateByBranch }) {
+  const [targets, setTargets] = useState([]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || !rows.length || yieldStateByBranch.size === 0) {
+      setTargets([]);
+      return;
+    }
+    const tableRows = Array.from(root.querySelectorAll("tbody tr"));
+    const nextTargets = rows
+      .map((row, index) => {
+        const state = yieldStateForRow(row, yieldStateByBranch);
+        const target = tableRows[index]?.querySelector("td:first-child");
+        if (!state || !target) return null;
+        return {
+          key: `${String(row?.repo_root || "")}:${String(row?.branch || "")}:${state}`,
+          state,
+          target,
+        };
+      })
+      .filter(Boolean);
+    setTargets(nextTargets);
+  }, [containerRef, rows, yieldStateByBranch]);
+
+  return targets.map(({ key, state, target }) =>
+    createPortal(
+      <span className="vd-chip ml-2 inline-flex items-center rounded-md border border-[var(--glass-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:text-oai-gray-300">
+        {state}
+      </span>,
+      target,
+      key,
+    ),
+  );
+}
+
 function trackedBranchOptions(rows) {
   const options = [];
   const seen = new Set();
@@ -262,7 +318,9 @@ export function BranchesPage() {
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsError, setSessionDetailsError] = useState("");
   const [branchPage, setBranchPage] = useState(0);
+  const [yieldStateByBranch, setYieldStateByBranch] = useState(() => new Map());
   const sessionDetailsRequestRef = useRef(0);
+  const branchTableRef = useRef(null);
   const payloadRef = useRef(payload);
 
   useEffect(() => {
@@ -293,6 +351,20 @@ export function BranchesPage() {
           setLoading(false);
           setRefreshing(false);
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getYieldView({})
+      .then((result) => {
+        if (!cancelled) setYieldStateByBranch(buildYieldStateByBranch(result));
+      })
+      .catch(() => {
+        if (!cancelled) setYieldStateByBranch(new Map());
       });
     return () => {
       cancelled = true;
@@ -569,17 +641,24 @@ export function BranchesPage() {
         ) : loading && !payload ? (
           <BranchTableSkeleton />
         ) : (
-          <BranchUsageTable
-            className="max-h-[calc(100dvh-300px)]"
-            rows={pagedRows}
-            onOpenSessions={openSessionDrawer}
-            emptyMessage={emptyMessage}
-            page={boundedPage}
-            pageCount={pageCount}
-            pageSize={BRANCHES_PAGE_SIZE}
-            totalRows={appliedCount}
-            onPageChange={setBranchPage}
-          />
+          <div ref={branchTableRef}>
+            <BranchUsageTable
+              className="max-h-[calc(100dvh-300px)]"
+              rows={pagedRows}
+              onOpenSessions={openSessionDrawer}
+              emptyMessage={emptyMessage}
+              page={boundedPage}
+              pageCount={pageCount}
+              pageSize={BRANCHES_PAGE_SIZE}
+              totalRows={appliedCount}
+              onPageChange={setBranchPage}
+            />
+            <BranchYieldBadgePortals
+              containerRef={branchTableRef}
+              rows={pagedRows}
+              yieldStateByBranch={yieldStateByBranch}
+            />
+          </div>
         )}
       </div>
 

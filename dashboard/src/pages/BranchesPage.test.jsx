@@ -8,9 +8,11 @@ import { render } from "../test/test-utils";
 import { BranchesPage } from "./BranchesPage.jsx";
 
 const getBranchUsage = vi.fn();
+const getYieldView = vi.fn();
 
 vi.mock("../lib/vibedeck-api", () => ({
   getBranchUsage: (...args) => getBranchUsage(...args),
+  getYieldView: (...args) => getYieldView(...args),
 }));
 
 const SAMPLE_PAYLOAD = {
@@ -142,7 +144,9 @@ function makePayload(repos) {
 beforeEach(() => {
   window.sessionStorage.clear();
   getBranchUsage.mockReset();
+  getYieldView.mockReset();
   getBranchUsage.mockResolvedValue(SAMPLE_PAYLOAD);
+  getYieldView.mockResolvedValue({ ok: true, branches: [] });
 });
 
 afterEach(() => {
@@ -151,8 +155,43 @@ afterEach(() => {
 });
 
 describe("BranchesPage", () => {
+  it("shows available yield badges without changing branch token or cost text", async () => {
+    getBranchUsage.mockResolvedValueOnce(makePayload([
+      {
+        repo_root: "/repo-yield",
+        git_branches: ["main"],
+        git_branch_count: 1,
+        branches: [
+          {
+            branch: "main",
+            attribution_branch: "main",
+            total_tokens: 1234,
+            total_cost_usd: 1.5,
+            session_count: 1,
+            last_seen_at: "2026-05-10T11:10:00.000Z",
+            confidence: { high: 1, medium: 0, low: 0, unattributed: 0 },
+            models: [],
+            sessions: [],
+          },
+        ],
+      },
+    ]));
+    getYieldView.mockResolvedValueOnce({
+      ok: true,
+      branches: [{ branch: "main", yield_state: "productive" }],
+    });
+
+    render(<BranchesPage />);
+
+    expect(await screen.findByText("productive")).toBeTruthy();
+    expect(screen.getAllByText("1,234").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$1.50").length).toBeGreaterThan(0);
+    expect(getYieldView).toHaveBeenCalledWith({});
+  });
+
   it("shows full-page branch skeletons instead of zero totals while the first load is pending", () => {
     getBranchUsage.mockImplementationOnce(() => new Promise(() => {}));
+    getYieldView.mockImplementationOnce(() => new Promise(() => {}));
 
     render(<BranchesPage />);
 

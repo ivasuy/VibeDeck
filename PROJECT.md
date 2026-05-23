@@ -154,6 +154,51 @@ Important commits:
 | Live read model | `4c10e9c`, `fb9f887` |
 | Dashboard group cards | `27162ff` |
 
+#### Phase 2 - Tier 1+2 Provider Breadth
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-2-tier-1-2-provider-breadth`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-2-tier-1-2-provider-breadth.md`
+
+What changed:
+
+- Repaired proof-backed cwd pass-through for OpenCode, OMP, Pi, Copilot, and Kiro CLI where the local provider source exposes a real workspace path.
+- Added Goose and Crush provider ingestion through the canonical `SessionEvent` pipeline.
+- Kept Cursor account CSV as account-level/provider-only data; no fake branch/project attribution is inferred.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and session grouping totals through smoke checks.
+- Inspected dashboard and Mac provider display paths and left UI code unchanged: existing dashboard provider icons/text handle arbitrary provider ids honestly, and providers without committed assets continue to use generic fallback rendering.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Exact dashboard test command from plan | Failed before running tests: `npm --prefix dashboard` makes `dashboard/` the package root, so `dashboard/src/pages/...` filters matched no files |
+| Dashboard page tests with package-root-relative paths | `21/21` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Backend provider/session/branch smoke suite | `168/168` passed |
+| Copied-live DB sessions | `1,202` |
+| Copied-live DB `Unknown branch` facts | `1` |
+| Copied-live DB `Historical unknown` facts | `58` |
+| Copied-live DB provider rows | Claude `94`, Codex `864`, Cursor `242`, Gemini `2` |
+| Isolated rebuild wall clock | `365s` |
+| Isolated rebuild sessions | `1,202` |
+| Isolated rebuild session events | `51,407` |
+| Isolated rebuild branch facts | `1,203` |
+| Isolated rebuild `Unknown branch` facts | `1` |
+| Isolated rebuild `Historical unknown` facts | `58` |
+| Isolated rebuild session group edges/skips | `605` / `2` |
+| Isolated rebuild provider rows | Claude `94`, Codex `864`, Cursor `242`, Gemini `2` |
+| Isolated rebuild doctor | `ok: true`; non-critical `base_url` fail plus expected local config/device-token warnings |
+
+Caveats:
+
+- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install.
+- The CLI supports `sync --rebuild-vibedeck-db` but not the plan's `--no-progress`, so the isolated rebuild used `--auto`.
+- The plan's copied-live path `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder on this machine; copied-live DB smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3`.
+- `VIBEDECK_HOME=<tmp>` alone makes this CLI discover provider logs under the temp home too, producing an empty rebuild. The measured rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
+- Cursor IDE local composer workspace mapping remains a future adapter, not part of account CSV.
+- Goose/Crush grouping support is explicitly `none` until those providers expose parent-child proof.
+
 #### What Remains For 0.1.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.

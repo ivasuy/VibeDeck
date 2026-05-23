@@ -436,6 +436,9 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, db =
     tool_call_count: toInteger(session.tool_call_count),
     tools_json: stableCounterJson(parseCounterJson(session.tools_json)),
     activity_json: stableCounterJson(parseCounterJson(session.activity_json)),
+    task_category: stableCounterJson(parseCounterJson(session.task_category)),
+    skills_json: stableCounterJson(parseCounterJson(session.skills_json)),
+    fast_mode: toInteger(session.fast_mode),
     conversation_count: 0,
     total_cost_usd: null,
     cost_estimated: 1,
@@ -514,6 +517,9 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
         tool_call_count: 0,
         tools_json: null,
         activity_json: null,
+        task_category: null,
+        skills_json: null,
+        fast_mode: 0,
         conversation_count: 0,
         total_cost_usd: null,
         cost_estimated: 1,
@@ -539,6 +545,9 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
     group.tool_call_count += toInteger(event.tool_call_count);
     group.tools_json = sumCounterJson(group.tools_json, [event.tools_json]);
     group.activity_json = sumCounterJson(group.activity_json, [event.activity_json]);
+    group.task_category = sumCounterJson(group.task_category, [event.task_category]);
+    group.skills_json = sumCounterJson(group.skills_json, [event.skills_json]);
+    group.fast_mode += toInteger(event.fast_mode);
     group.conversation_count += toInteger(event.conversation_count);
   }
 
@@ -716,6 +725,7 @@ function insertFacts(db, session, groups) {
       cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
       output_tokens, reasoning_output_tokens,
       web_search_requests, tool_call_count, tools_json, activity_json,
+      task_category, skills_json, fast_mode,
       conversation_count,
       total_cost_usd, cost_estimated, cost_quality,
       token_reconciled, cost_reconciled,
@@ -732,6 +742,7 @@ function insertFacts(db, session, groups) {
       @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
       @output_tokens, @reasoning_output_tokens,
       @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+      @task_category, @skills_json, @fast_mode,
       @conversation_count,
       @total_cost_usd, @cost_estimated, @cost_quality,
       @token_reconciled, @cost_reconciled,

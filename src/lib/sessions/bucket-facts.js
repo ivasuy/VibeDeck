@@ -130,6 +130,9 @@ function upsertBucketFact(db, sessionRow, event) {
   const toolCallCount = Number(event.tool_call_count || 0) || 0;
   const toolsJson = stableCounterJson(parseCounterJson(event.tools_json));
   const activityJson = stableCounterJson(parseCounterJson(event.activity_json));
+  const taskCategory = stableCounterJson(parseCounterJson(event.task_category));
+  const skillsJson = stableCounterJson(parseCounterJson(event.skills_json));
+  const fastMode = Number(event.fast_mode || 0) || 0;
   const eventCacheCreationTotal = cacheCreation5mInputTokens > 0 || cacheCreation1hInputTokens > 0
     ? cacheCreation5mInputTokens + cacheCreation1hInputTokens
     : cacheCreationInputTokens;
@@ -150,8 +153,11 @@ function upsertBucketFact(db, sessionRow, event) {
     conversationCount === 0 &&
     webSearchRequests === 0 &&
     toolCallCount === 0 &&
+    fastMode === 0 &&
     !hasCounterJson(toolsJson) &&
-    !hasCounterJson(activityJson)
+    !hasCounterJson(activityJson) &&
+    !hasCounterJson(taskCategory) &&
+    !hasCounterJson(skillsJson)
   ) {
     return false;
   }
@@ -160,7 +166,7 @@ function upsertBucketFact(db, sessionRow, event) {
   const existingBucket = db
     .prepare(
       `
-      SELECT tools_json, activity_json
+      SELECT tools_json, activity_json, task_category, skills_json
       FROM vibedeck_session_buckets
       WHERE provider = ? AND session_id = ? AND bucket_provider = ? AND bucket_model = ? AND bucket_hour_start = ?
       `,
@@ -168,6 +174,8 @@ function upsertBucketFact(db, sessionRow, event) {
     .get(sessionRow.provider, sessionRow.session_id, sessionRow.provider, bucketModel, hourStart);
   const mergedToolsJson = sumCounterJson(existingBucket?.tools_json, [toolsJson]);
   const mergedActivityJson = sumCounterJson(existingBucket?.activity_json, [activityJson]);
+  const mergedTaskCategory = sumCounterJson(existingBucket?.task_category, [taskCategory]);
+  const mergedSkillsJson = sumCounterJson(existingBucket?.skills_json, [skillsJson]);
 
   db.prepare(
     `
@@ -177,6 +185,7 @@ function upsertBucketFact(db, sessionRow, event) {
       cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
       output_tokens, reasoning_output_tokens,
       web_search_requests, tool_call_count, tools_json, activity_json,
+      task_category, skills_json, fast_mode,
       conversation_count, total_tokens,
       last_observed_at
     ) VALUES (
@@ -185,6 +194,7 @@ function upsertBucketFact(db, sessionRow, event) {
       @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
       @output_tokens, @reasoning_output_tokens,
       @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+      @task_category, @skills_json, @fast_mode,
       @conversation_count, @total_tokens,
       @last_observed_at
     )
@@ -203,6 +213,9 @@ function upsertBucketFact(db, sessionRow, event) {
       tool_call_count = vibedeck_session_buckets.tool_call_count + excluded.tool_call_count,
       tools_json = @merged_tools_json,
       activity_json = @merged_activity_json,
+      task_category = @merged_task_category,
+      skills_json = @merged_skills_json,
+      fast_mode = vibedeck_session_buckets.fast_mode + excluded.fast_mode,
       conversation_count = vibedeck_session_buckets.conversation_count + excluded.conversation_count,
       total_tokens = vibedeck_session_buckets.total_tokens + excluded.total_tokens,
       last_observed_at = CASE
@@ -228,8 +241,13 @@ function upsertBucketFact(db, sessionRow, event) {
     tool_call_count: toolCallCount,
     tools_json: mergedToolsJson,
     activity_json: mergedActivityJson,
+    task_category: mergedTaskCategory,
+    skills_json: mergedSkillsJson,
+    fast_mode: fastMode,
     merged_tools_json: mergedToolsJson,
     merged_activity_json: mergedActivityJson,
+    merged_task_category: mergedTaskCategory,
+    merged_skills_json: mergedSkillsJson,
     conversation_count: conversationCount,
     total_tokens: bucketTotalTokens,
     last_observed_at: event.observed_at,

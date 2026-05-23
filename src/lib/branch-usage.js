@@ -102,6 +102,9 @@ function enrichmentShape() {
     tool_call_count: 0,
     tools_json: null,
     activity_json: null,
+    task_category: null,
+    skills_json: null,
+    fast_mode: 0,
   };
 }
 
@@ -112,6 +115,9 @@ function addEnrichment(target, row) {
   target.tool_call_count += numericField(row, 'tool_call_count');
   target.tools_json = mergeCounterJson(target.tools_json, row?.tools_json);
   target.activity_json = mergeCounterJson(target.activity_json, row?.activity_json);
+  target.task_category = mergeCounterJson(target.task_category, row?.task_category);
+  target.skills_json = mergeCounterJson(target.skills_json, row?.skills_json);
+  target.fast_mode += numericField(row, 'fast_mode');
 }
 
 function stripEmptyEnrichment(row) {
@@ -121,10 +127,11 @@ function stripEmptyEnrichment(row) {
     'cache_creation_1h_input_tokens',
     'web_search_requests',
     'tool_call_count',
+    'fast_mode',
   ]) {
     if ((Number(out[key]) || 0) === 0) delete out[key];
   }
-  for (const key of ['tools_json', 'activity_json']) {
+  for (const key of ['tools_json', 'activity_json', 'task_category', 'skills_json']) {
     if (out[key] == null) delete out[key];
   }
   return out;
@@ -533,6 +540,9 @@ function finalizeModelRollups(models, { includeProvider = false } = {}) {
         tool_call_count: modelEntry.tool_call_count,
         tools_json: modelEntry.tools_json,
         activity_json: modelEntry.activity_json,
+        task_category: modelEntry.task_category,
+        skills_json: modelEntry.skills_json,
+        fast_mode: modelEntry.fast_mode,
       });
       if (includeProvider) out.provider = modelEntry.provider;
       return out;
@@ -557,6 +567,9 @@ function finalizeDateBuckets(dateBuckets) {
         tool_call_count: bucket.tool_call_count,
         tools_json: bucket.tools_json,
         activity_json: bucket.activity_json,
+        task_category: bucket.task_category,
+        skills_json: bucket.skills_json,
+        fast_mode: bucket.fast_mode,
         models: finalizeModelRollups(bucket.models, { includeProvider: true }),
       });
     })
@@ -715,6 +728,9 @@ function queryBranchUsage(
         tool_call_count: numericField(row, 'tool_call_count'),
         tools_json: row.tools_json ?? null,
         activity_json: row.activity_json ?? null,
+        task_category: row.task_category ?? null,
+        skills_json: row.skills_json ?? null,
+        fast_mode: numericField(row, 'fast_mode'),
         _date: sessionDateKey,
       });
     }

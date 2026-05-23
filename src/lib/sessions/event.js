@@ -62,6 +62,16 @@ function validateEvent(e) {
     if (!isNullableJsonString(e.activity_json)) {
       throw new TypeError('SessionEvent.activity_json must be a valid JSON string or null');
     }
+    if (!isNullableJsonString(e.task_category)) {
+      throw new TypeError('SessionEvent.task_category must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.tools_sequence_json)) {
+      throw new TypeError('SessionEvent.tools_sequence_json must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.skills_json)) {
+      throw new TypeError('SessionEvent.skills_json must be a valid JSON string or null');
+    }
+    assertNullableNonNegativeInteger('fast_mode', e.fast_mode);
   }
   if (e.kind === 'end') {
     assertIsoString('SessionEvent.ended_at', e.ended_at);
@@ -103,6 +113,10 @@ function makeUpdate({
   tool_call_count = null,
   tools_json = null,
   activity_json = null,
+  task_category = null,
+  tools_sequence_json = null,
+  skills_json = null,
+  fast_mode = null,
   conversation_count = null,
   branch = null,
 }) {
@@ -125,6 +139,10 @@ function makeUpdate({
     tool_call_count,
     tools_json,
     activity_json,
+    task_category,
+    tools_sequence_json,
+    skills_json,
+    fast_mode,
     conversation_count,
     branch,
   };

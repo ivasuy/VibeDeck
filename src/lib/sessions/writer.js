@@ -248,6 +248,19 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       existing ? existing.activity_json : null,
       newUpdates.map((e) => e.activity_json),
     );
+    const task_category = sumCounterJson(
+      existing ? existing.task_category : null,
+      newUpdates.map((e) => e.task_category),
+    );
+    const skills_json = sumCounterJson(
+      existing ? existing.skills_json : null,
+      newUpdates.map((e) => e.skills_json),
+    );
+    const tools_sequence_json = lastNonNull(
+      existing ? existing.tools_sequence_json : null,
+      newUpdates.map((e) => e.tools_sequence_json),
+    );
+    const fast_mode = sumEventField(existing ? existing.fast_mode : null, newUpdates, 'fast_mode');
 
     const mergedEventKeys = existingSources && Array.isArray(existingSources.events) ? [...existingSources.events] : [];
     for (const e of validated) {
@@ -281,6 +294,10 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       tool_call_count,
       tools_json,
       activity_json,
+      task_category,
+      tools_sequence_json,
+      skills_json,
+      fast_mode,
       cost_estimated: existing ? existing.cost_estimated : 1,
       cost_quality: existing ? existing.cost_quality : null,
       branch_resolution_tier: existing ? existing.branch_resolution_tier : 'D',
@@ -308,6 +325,7 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
         output_tokens, reasoning_output_tokens,
         web_search_requests, tool_call_count, tools_json, activity_json,
+        task_category, tools_sequence_json, skills_json, fast_mode,
         cost_estimated, cost_quality,
         created_at, updated_at
       ) VALUES (
@@ -320,6 +338,7 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
         @output_tokens, @reasoning_output_tokens,
         @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+        @task_category, @tools_sequence_json, @skills_json, @fast_mode,
         @cost_estimated, @cost_quality,
         @created_at, @updated_at
       )
@@ -342,6 +361,10 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
         tool_call_count = excluded.tool_call_count,
         tools_json = excluded.tools_json,
         activity_json = excluded.activity_json,
+        task_category = excluded.task_category,
+        tools_sequence_json = excluded.tools_sequence_json,
+        skills_json = excluded.skills_json,
+        fast_mode = excluded.fast_mode,
         cost_estimated = excluded.cost_estimated,
         cost_quality = excluded.cost_quality,
         branch_resolution_tier = excluded.branch_resolution_tier,
@@ -376,6 +399,10 @@ function upsertSessionFromEvents(dbPath, events, options = {}) {
       tool_call_count,
       tools_json,
       activity_json,
+      task_category,
+      tools_sequence_json,
+      skills_json,
+      fast_mode,
       total_cost_usd: existing ? existing.total_cost_usd : null,
       last_observed_at: desired.last_observed_at,
       cost_estimated: desired.cost_estimated,

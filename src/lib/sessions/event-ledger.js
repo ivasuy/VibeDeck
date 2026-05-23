@@ -26,6 +26,7 @@ function insertSessionEvent(db, event, attribution = {}) {
         cache_creation_input_tokens, cache_creation_5m_input_tokens,
         cache_creation_1h_input_tokens, output_tokens, reasoning_output_tokens,
         web_search_requests, tool_call_count, tools_json, activity_json,
+        task_category, tools_sequence_json, skills_json, fast_mode,
         conversation_count, total_tokens, created_at
       ) VALUES (
         @provider, @session_id, @event_key, @kind, @observed_at,
@@ -36,6 +37,7 @@ function insertSessionEvent(db, event, attribution = {}) {
         @cache_creation_input_tokens, @cache_creation_5m_input_tokens,
         @cache_creation_1h_input_tokens, @output_tokens, @reasoning_output_tokens,
         @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+        @task_category, @tools_sequence_json, @skills_json, @fast_mode,
         @conversation_count, @total_tokens, @created_at
       )
       ON CONFLICT(provider, session_id, event_key) DO NOTHING
@@ -70,6 +72,10 @@ function insertSessionEvent(db, event, attribution = {}) {
       tool_call_count: event.tool_call_count ?? null,
       tools_json: event.tools_json ?? null,
       activity_json: event.activity_json ?? null,
+      task_category: event.task_category ?? null,
+      tools_sequence_json: event.tools_sequence_json ?? null,
+      skills_json: event.skills_json ?? null,
+      fast_mode: event.fast_mode ?? null,
       conversation_count: event.conversation_count ?? null,
       total_tokens: event.total_tokens ?? null,
       created_at: now,

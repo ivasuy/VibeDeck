@@ -10,6 +10,7 @@ const { makeStart, makeUpdate, makeEnd } = require('../src/lib/sessions/event');
 const { upsertSessionFromEvents } = require('../src/lib/sessions/writer');
 const { upsertBucketFact } = require('../src/lib/sessions/bucket-facts');
 const { rebuildBranchUsageFactsForSession } = require('../src/lib/sessions/branch-usage-facts');
+const { processSessionEvent } = require('../src/lib/sessions/pipeline');
 const { queryBranchUsage } = require('../src/lib/branch-usage');
 
 function tmpDb() {
@@ -125,6 +126,61 @@ test('writer and bucket/branch facts carry additive Codeburn fields without chan
       assert.equal(branch.sessions[0].task_category, JSON.stringify({ Coding: 1 }));
       assert.equal(branch.sessions[0].skills_json, JSON.stringify({ planner: 1 }));
       assert.equal(branch.sessions[0].fast_mode, 1);
+    } finally {
+      db.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('processSessionEvent persists Codeburn fields into ledger events and rebuilt branch facts', async () => {
+  const tmp = tmpDb();
+  try {
+    await processSessionEvent(tmp.dbPath, {
+      kind: 'start',
+      provider: 'claude',
+      session_id: 'pipeline-s1',
+      started_at: '2026-05-23T11:00:00.000Z',
+      cwd: tmp.dir,
+      model: 'claude-sonnet-4',
+    });
+    await processSessionEvent(tmp.dbPath, {
+      kind: 'update',
+      provider: 'claude',
+      session_id: 'pipeline-s1',
+      observed_at: '2026-05-23T11:05:00.000Z',
+      input_tokens: 80,
+      output_tokens: 20,
+      delta_tokens: 100,
+      model: 'claude-sonnet-4',
+      task_category: JSON.stringify({ Coding: 1 }),
+      tools_sequence_json: JSON.stringify(['Read', 'Edit']),
+      skills_json: JSON.stringify({ planner: 1 }),
+      fast_mode: 1,
+    });
+
+    const db = new DatabaseSync(tmp.dbPath, { readOnly: true });
+    try {
+      const event = db
+        .prepare(
+          "SELECT * FROM vibedeck_session_events WHERE provider = ? AND session_id = ? AND kind = 'update'",
+        )
+        .get('claude', 'pipeline-s1');
+      assert.ok(event);
+      assert.equal(event.task_category, JSON.stringify({ Coding: 1 }));
+      assert.equal(event.tools_sequence_json, JSON.stringify(['Read', 'Edit']));
+      assert.equal(event.skills_json, JSON.stringify({ planner: 1 }));
+      assert.equal(event.fast_mode, 1);
+
+      const fact = db
+        .prepare('SELECT * FROM vibedeck_branch_usage_facts WHERE provider = ? AND session_id = ?')
+        .get('claude', 'pipeline-s1');
+      assert.ok(fact);
+      assert.equal(fact.total_tokens, 100);
+      assert.equal(fact.task_category, JSON.stringify({ Coding: 1 }));
+      assert.equal(fact.skills_json, JSON.stringify({ planner: 1 }));
+      assert.equal(fact.fast_mode, 1);
     } finally {
       db.close();
     }

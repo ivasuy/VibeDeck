@@ -9,6 +9,12 @@ const {
   finalizeCostAccumulator,
 } = require('./cost-estimation');
 const { readBranchUsageFactRows } = require('./sessions/branch-usage-facts');
+const {
+  groupingVisible,
+  readSessionGroupingMode,
+  readGroupEdges,
+  buildSessionGroupsForRows,
+} = require('./sessions/session-groups');
 
 function emptyResult() {
   return {
@@ -573,10 +579,13 @@ function queryBranchUsage(
     includeDateBuckets = false,
     sessionDate = null,
   } = {},
+  context = {},
 ) {
   if (!fs.existsSync(dbPath)) return emptyResult();
 
   const requestedLimit = clampLimit(limit);
+  const groupingMode = context.groupingMode || readSessionGroupingMode(context.env || process.env);
+  const groupEdges = groupingVisible(groupingMode) && includeSessions ? readGroupEdges(dbPath) : [];
   const readOptions = {
     from,
     to,
@@ -745,6 +754,9 @@ function queryBranchUsage(
                   .filter((session) => !selectedDate || session._date === selectedDate)
                   .map(({ _date, ...session }) => session)
               : branchEntry.sessions;
+            const groupedSessions = groupingVisible(groupingMode) && Array.isArray(sessions)
+              ? buildSessionGroupsForRows(sessions, groupEdges)
+              : { sessions, session_groups: undefined };
             return stripEmptyEnrichment({
               ...branchEntry,
               total_cost_usd: branchCost.total_cost_usd,
@@ -754,7 +766,8 @@ function queryBranchUsage(
               selected_date: selectedDate || undefined,
               date_buckets: includeDateBuckets ? dateBuckets : undefined,
               models: finalizeModelRollups(branchEntry.models),
-              sessions,
+              sessions: groupedSessions.sessions,
+              session_groups: groupedSessions.session_groups,
             });
           })
           .map(({ _cost, ...branchEntry }) => branchEntry)

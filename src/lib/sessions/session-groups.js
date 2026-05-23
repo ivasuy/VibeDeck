@@ -270,6 +270,143 @@ function readSessionGroupDiagnostics(dbPath) {
   }
 }
 
+function readGroupEdges(dbPath) {
+  if (!fs.existsSync(dbPath)) return [];
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    return db.prepare('SELECT * FROM vibedeck_session_group_edges ORDER BY provider, session_group_id, child_session_id').all();
+  } finally {
+    db.close();
+  }
+}
+
+function sessionKey(row) {
+  return `${text(row?.provider).toLowerCase()}:${text(row?.session_id)}`;
+}
+
+function numberOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function minIso(values) {
+  const valid = values.map(text).filter(Boolean).sort();
+  return valid[0] || null;
+}
+
+function maxIso(values) {
+  const valid = values.map(text).filter(Boolean).sort();
+  return valid.length > 0 ? valid[valid.length - 1] : null;
+}
+
+function stableCost(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 1e12) / 1e12;
+}
+
+function summarizeGroup(sessionGroupId, root, members, { includeMembers = true } = {}) {
+  const tokenTotal = members.reduce((sum, row) => sum + (numberOrNull(row.total_tokens) || 0), 0);
+  let knownCostUsd = 0;
+  let costUnknownCount = 0;
+  const modelMap = new Map();
+
+  for (const row of members) {
+    const cost = numberOrNull(row.total_cost_usd);
+    if (cost == null) costUnknownCount += 1;
+    else knownCostUsd += cost;
+
+    const modelKey = `${text(row.provider).toLowerCase()}:${text(row.model) || 'unknown'}`;
+    const model = modelMap.get(modelKey) || {
+      provider: text(row.provider).toLowerCase(),
+      model: text(row.model) || 'unknown',
+      total_tokens: 0,
+      total_cost_usd: 0,
+      cost_unknown_count: 0,
+    };
+    model.total_tokens += numberOrNull(row.total_tokens) || 0;
+    if (cost == null) model.cost_unknown_count += 1;
+    else model.total_cost_usd += cost;
+    modelMap.set(modelKey, model);
+  }
+
+  const models = Array.from(modelMap.values()).map((model) => ({
+    ...model,
+    total_cost_usd: model.cost_unknown_count > 0 ? null : stableCost(model.total_cost_usd),
+  }));
+  const rootSessionId = text(root?.session_id) || text(members[0]?.session_id);
+
+  return {
+    session_group_id: sessionGroupId,
+    provider: text(root?.provider || members[0]?.provider).toLowerCase(),
+    root_session_id: rootSessionId,
+    member_count: members.length,
+    active_member_count: members.filter((row) => text(row.state).toLowerCase() === 'live' || !text(row.ended_at)).length,
+    total_tokens: tokenTotal,
+    total_cost_usd: costUnknownCount > 0 ? null : stableCost(knownCostUsd),
+    known_cost_usd: stableCost(knownCostUsd),
+    cost_unknown_count: costUnknownCount,
+    cost_estimated: members.some((row) => Boolean(row.cost_estimated)),
+    cost_quality: costUnknownCount > 0 ? 'unknown' : 'stored',
+    started_at: minIso(members.map((row) => row.started_at || row.first_observed_at)),
+    ended_at: maxIso(members.map((row) => row.ended_at || row.last_observed_at)),
+    models,
+    members: includeMembers ? members : undefined,
+  };
+}
+
+function buildSessionGroupsForRows(rows, edges, { includeMembers = true } = {}) {
+  const rowList = Array.isArray(rows) ? rows : [];
+  const childToEdge = new Map();
+  const rootToEdges = new Map();
+  for (const edge of Array.isArray(edges) ? edges : []) {
+    const childKey = `${text(edge.provider).toLowerCase()}:${text(edge.child_session_id)}`;
+    const rootKey = `${text(edge.provider).toLowerCase()}:${text(edge.root_session_id)}`;
+    childToEdge.set(childKey, edge);
+    if (!rootToEdges.has(rootKey)) rootToEdges.set(rootKey, []);
+    rootToEdges.get(rootKey).push(edge);
+  }
+
+  const annotated = rowList.map((row) => {
+    const key = sessionKey(row);
+    const childEdge = childToEdge.get(key);
+    if (childEdge) {
+      return {
+        ...row,
+        session_group_id: childEdge.session_group_id,
+        group_role: 'child',
+        group_depth: childEdge.depth,
+        agent_id: childEdge.agent_id,
+        agent_label: childEdge.agent_label,
+        agent_role: childEdge.agent_role,
+        relation_proof: childEdge.relation_proof,
+      };
+    }
+    const hasChildren = rootToEdges.has(key);
+    return {
+      ...row,
+      session_group_id: hasChildren ? rootToEdges.get(key)[0].session_group_id : null,
+      group_role: hasChildren ? 'root' : 'ungrouped',
+      group_depth: hasChildren ? 0 : null,
+      agent_label: hasChildren ? 'Main session' : null,
+    };
+  });
+
+  const byAnnotatedKey = new Map(annotated.map((row) => [sessionKey(row), row]));
+  const groups = [];
+  for (const [rootKey, groupEdges] of rootToEdges.entries()) {
+    const root = byAnnotatedKey.get(rootKey);
+    const members = [];
+    if (root) members.push(root);
+    for (const edge of groupEdges) {
+      const child = byAnnotatedKey.get(`${text(edge.provider).toLowerCase()}:${text(edge.child_session_id)}`);
+      if (child) members.push(child);
+    }
+    if (members.length < 2) continue;
+    groups.push(summarizeGroup(groupEdges[0].session_group_id, root || members[0], members, { includeMembers }));
+  }
+
+  return { sessions: annotated, session_groups: groups };
+}
+
 module.exports = {
   readSessionGroupingMode,
   groupingVisible,
@@ -277,6 +414,6 @@ module.exports = {
   deriveCodexGroupEvidence,
   rebuildSessionGroupProjection,
   readSessionGroupDiagnostics,
-  // Task 4 extends this module with read-model helpers and must add those
-  // exports in the same edit: readGroupEdges, buildSessionGroupsForRows.
+  readGroupEdges,
+  buildSessionGroupsForRows,
 };

@@ -40,6 +40,10 @@ const {
   detectInstalledProviders,
   toCsv,
 } = require("./codeburn-parity");
+const { readOptimizeFindings } = require("./optimize-scanner");
+const { readPlanConfig } = require("./plan-config");
+const { readCurrencyRates } = require("./currency-rates");
+const { buildForecastPayload } = require("./forecast-read-model");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -139,6 +143,22 @@ const ROUTES = {
   },
   autoDetect: {
     primary: "/functions/vibedeck-optimize/auto-detect",
+    legacy: "",
+  },
+  optimizeFindings: {
+    primary: "/functions/vibedeck-optimize/findings",
+    legacy: "",
+  },
+  plan: {
+    primary: "/functions/vibedeck-plan",
+    legacy: "",
+  },
+  currencyRates: {
+    primary: "/functions/vibedeck-currency-rates",
+    legacy: "",
+  },
+  forecast: {
+    primary: "/functions/vibedeck-forecast",
     legacy: "",
   },
 };
@@ -1852,6 +1872,45 @@ function codeburnRangeFromUrl(url) {
   };
 }
 
+function currentMonthRange() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return {
+    from: `${year}-${month}-01`,
+    to: `${year}-${month}-${day}`,
+  };
+}
+
+function sumFactCostUsd(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const n = Number(row?.total_cost_usd || 0);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+function buildPlanPayload(dbPath) {
+  const config = readPlanConfig();
+  const range = currentMonthRange();
+  const rows = readCodeburnFactRows(dbPath, range);
+  const spend = sumFactCostUsd(rows);
+  const monthly = Number(config.monthly_usd || 0);
+  return {
+    ok: true,
+    ...config,
+    month_to_date_api_equivalent_usd: spend.toFixed(4),
+    monthly_plan_usd: monthly.toFixed(2),
+    usage_percent: monthly > 0 ? ((spend / monthly) * 100).toFixed(2) : null,
+    range,
+  };
+}
+
+function currencySymbolsFromUrl(url) {
+  const raw = url.searchParams.get("symbols") || url.searchParams.get("to") || url.searchParams.get("currency") || "EUR";
+  return raw.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
 function resolveRepoFromQuery(url) {
   const raw = String(url.searchParams.get("repo") || "").trim();
   if (!raw) return null;
@@ -2237,6 +2296,47 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       json(res, { ok: true, providers: detectInstalledProviders({ env: process.env }) });
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeFindings)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const status = url.searchParams.get("status") || "open";
+      const limit = url.searchParams.get("limit") || 100;
+      json(res, readOptimizeFindings({ dbPath: codeburnDbPath(qp), status, limit }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.plan)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildPlanPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.currencyRates)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const base = url.searchParams.get("base") || "USD";
+      json(res, await readCurrencyRates({ base, symbols: currencySymbolsFromUrl(url) }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.forecast)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildForecastPayload(rows, codeburnRangeFromUrl(url)));
       return true;
     }
 

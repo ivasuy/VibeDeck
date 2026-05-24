@@ -1,7 +1,7 @@
 # VibeDeck
 
-**Version:** 0.1.4 (PR, unreleased)
-**Last updated:** 2026-05-23
+**Version:** 1.0.4 (release branch, unreleased)
+**Last updated:** 2026-05-24
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -32,16 +32,21 @@ VibeDeck should stay true to five promises:
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
 
-### 0.1.4 PR - Provider Enrichment And Subagent Grouping
+### 1.0.4 Release Candidate - Provider Enrichment, Session Grouping, And Codeburn Surfaces
 
-**Status:** in progress on stacked agent branches, unreleased.
+**Status:** merged on `release/1.0.4`, unreleased.
 
 **Branches:**
 
 | Branch | Purpose |
 |---|---|
+| `release/1.0.4` | Release branch containing Phases 1-5 plus the post-close live surface fix. |
 | `agent/phase-1-claude-codex-enrichment` | Phase 1: Claude/Codex cost, token-bucket, tool, and session enrichment. |
 | `agent/phase-1-5-subagent-grouping` | Phase 1.5: Claude/Codex subagent grouping as an additive read-model layer. |
+| `agent/phase-2-tier-1-2-provider-breadth` | Phase 2: Tier 1+2 provider breadth and cwd pass-through. |
+| `agent/phase-3-tier-3-4-provider-breadth` | Phase 3: Tier 3+4 provider breadth with honesty constraints. |
+| `agent/phase-4-codeburn-parity-dashboards` | Phase 4: Compare, Models, Yield, Export, Status, and parity fields. |
+| `agent/phase-5-optimize-subscription-polish` | Phase 5: Optimize, Plan, forecast/currency polish, and live surface actionability. |
 
 #### Problem
 
@@ -97,7 +102,7 @@ Important commits:
 
 #### Phase 1.5 - Claude/Codex Subagent Session Grouping
 
-**Plan:** `docs/superpowers/plans/2026-05-23-claude-codex-subagent-session-grouping.md`
+**Plan artifact:** local-only superpowers plan; not tracked in the release branch.
 
 What changed:
 
@@ -158,7 +163,7 @@ Important commits:
 
 **Date:** 2026-05-23
 **Branch:** `agent/phase-2-tier-1-2-provider-breadth`
-**Plan:** `docs/superpowers/plans/2026-05-23-phase-2-tier-1-2-provider-breadth.md`
+**Plan artifact:** local-only superpowers plan; not tracked in the release branch.
 
 What changed:
 
@@ -203,7 +208,7 @@ Caveats:
 
 **Date:** 2026-05-23
 **Branch:** `agent/phase-3-tier-3-4-provider-breadth`
-**Plan:** `docs/superpowers/plans/2026-05-23-phase-3-tier-3-4-provider-breadth.md`
+**Plan artifact:** local-only superpowers plan; not tracked in the release branch.
 
 What changed:
 
@@ -243,7 +248,7 @@ Caveats:
 
 **Date:** 2026-05-23
 **Branch:** `agent/phase-4-codeburn-parity-dashboards`
-**Plan:** `docs/superpowers/plans/2026-05-23-phase-4-codeburn-parity-dashboards.md`
+**Plan artifact:** local-only superpowers plan; not tracked in the release branch.
 
 What changed:
 
@@ -286,8 +291,7 @@ Caveats:
 
 **Date:** 2026-05-23
 **Branch:** `agent/phase-5-optimize-subscription-polish`
-**Spec:** `docs/superpowers/specs/2026-05-19-provider-umbrella-expansion-phases.md`
-**Plan:** `docs/superpowers/plans/2026-05-23-phase-5-optimize-subscription-polish.md`
+**Spec/plan artifacts:** local-only superpowers docs; not tracked in the release branch.
 
 What changed:
 
@@ -349,7 +353,7 @@ Caveats:
 - The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning and a script-output warning during local debug builds.
 - The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
 
-#### What Remains For 0.1.4
+#### What Remains After 1.0.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.
 - Add grouping support for other providers only where provider logs expose proof, not heuristics.

@@ -1,20 +1,23 @@
 /* @vitest-environment jsdom */
 
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OptimizePage } from "./OptimizePage.jsx";
 
 const api = vi.hoisted(() => ({
   getOptimizeFindings: vi.fn(),
+  triggerOptimizeScan: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({
   getOptimizeFindings: api.getOptimizeFindings,
+  triggerOptimizeScan: api.triggerOptimizeScan,
 }));
 
 beforeEach(() => {
   api.getOptimizeFindings.mockReset();
+  api.triggerOptimizeScan.mockReset();
 });
 
 describe("OptimizePage", () => {
@@ -60,7 +63,28 @@ describe("OptimizePage", () => {
     render(<OptimizePage />);
 
     await waitFor(() => {
-      expect(screen.getByText("No optimize findings yet. Run vibedeck optimize --scan to generate the first scan.")).toBeTruthy();
+      expect(screen.getByText("No optimize scan has run yet. Run a local scan to populate findings from this machine.")).toBeTruthy();
     });
+  });
+
+  it("runs a local scan and reloads findings from the page", async () => {
+    api.getOptimizeFindings
+      .mockResolvedValueOnce({ ok: true, findings: [], health: null, latest_run: null })
+      .mockResolvedValueOnce({
+        ok: true,
+        latest_run: { observed_at: "2026-05-23T12:00:00.000Z" },
+        health: { health_grade: "A", score: 100 },
+        findings: [],
+      });
+    api.triggerOptimizeScan.mockResolvedValue({ ok: true, inserted: 0, health_grade: "A" });
+
+    render(<OptimizePage />);
+
+    const button = await screen.findByText("Run local scan");
+    fireEvent.click(button);
+
+    await waitFor(() => expect(api.triggerOptimizeScan).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("No open optimize findings in the latest scan.")).toBeTruthy());
+    expect(screen.getByText("A")).toBeTruthy();
   });
 });

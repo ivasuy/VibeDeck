@@ -59,4 +59,13 @@ describe("ComparePage", () => {
     expect(screen.getByText("$0.0833")).toBeTruthy();
     expect(screen.getByText("1,000")).toBeTruthy();
   });
+
+  it("shows request errors instead of a false empty state", async () => {
+    api.getCompareMetrics.mockRejectedValue(new Error("compare endpoint failed"));
+
+    render(<ComparePage />);
+
+    expect(await screen.findByText("compare endpoint failed")).toBeTruthy();
+    expect(screen.queryByText("No data for this window yet.")).toBeNull();
+  });
 });

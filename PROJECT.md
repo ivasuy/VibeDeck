@@ -322,6 +322,19 @@ Smoke results:
 | Isolated local route/API smoke | `/dashboard`, `/usage`, and `/branches` returned HTTP `200`; usage summary and branch usage APIs returned HTTP `200` |
 | Browser smoke | `/optimize`, `/plan`, `/settings`, and `/dashboard` rendered headings with 0 console errors against the isolated temp DB |
 
+Post-close live surface audit on 2026-05-24:
+
+| Check | Result |
+|---|---:|
+| Live snapshot after bootstrap/payload fix | `3` sessions, `2` workstreams, no `override_user` or `tools_sequence_json` leaked |
+| Live snapshot payload size | `312,234` bytes before, `223,367` bytes after |
+| Real optimize scan from dashboard endpoint | `0.16s`, `0` findings, health grade `A`, score `100` |
+| `/compare` real local endpoint | `5,992,505,560` tokens, `$4,070.2718`, `1,237` sessions |
+| `/plan` real local endpoint | Shows `$3,632.0315` month-to-date API-equivalent spend and explains the missing monthly-plan config |
+| Branch facts after optimize scan | `1,239` rows, `$4,070.2718`; optimizer wrote only `vibedeck_optimize_*` |
+| Unknown/Historical after optimize scan | `Unknown branch` `2`, `Historical unknown` `58`; no unknown buckets collapsed or hidden |
+| Browser smoke after fix | `/dashboard`, `/compare`, `/optimize`, and `/plan` rendered with 0 console errors |
+
 Safety statement:
 
 - Optimizer estimates are isolated in `vibedeck_optimize_*`; smoke preserved `cost_usd`, `total_cost_usd`, `/dashboard`, `/usage`, `/branches`, `Unknown branch`, and `Historical unknown`.

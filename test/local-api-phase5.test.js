@@ -11,12 +11,16 @@ const test = require('node:test');
 const { ensureSchema } = require('../src/lib/db');
 const { createLocalApiHandler } = require('../src/lib/local-api');
 
-async function call(handler, route) {
+async function call(handler, route, options = {}) {
   const chunks = [];
   const headers = {};
   let statusCode = 200;
   const url = new URL(`http://127.0.0.1${route}`);
-  const req = { method: 'GET', url: url.pathname + url.search, headers: { host: '127.0.0.1' } };
+  const req = {
+    method: options.method || 'GET',
+    url: url.pathname + url.search,
+    headers: { host: '127.0.0.1', ...(options.headers || {}) },
+  };
   const res = {
     statusCode: 200,
     setHeader(name, value) {
@@ -173,6 +177,58 @@ test('GET /functions/vibedeck-optimize/findings returns latest optimizer health 
     assert.equal(payload.health.health_grade, 'B');
     assert.equal(payload.findings.length, 1);
     assert.equal(payload.findings[0].finding_kind, 'file_reread');
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('POST /functions/vibedeck-optimize/scan runs authenticated local optimizer scan', async () => {
+  const f = makeFixture();
+  try {
+    const now = '2026-05-23T00:00:00.000Z';
+    const db = new DatabaseSync(f.dbPath);
+    try {
+      db.prepare(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason, cwd, repo_root,
+          branch, branch_resolution_tier, confidence, model, total_tokens,
+          input_tokens, cached_input_tokens, output_tokens, tools_json, activity_json,
+          last_observed_at, created_at, updated_at
+        ) VALUES (
+          'claude', 'scan-target', @now, NULL, NULL, @cwd, @cwd,
+          'main', 'A', 'high', 'claude-sonnet-4', 12000,
+          10000, 0, 2000, @tools_json, @activity_json,
+          @now, @now, @now
+        )
+      `).run({
+        now,
+        cwd: f.dir,
+        tools_json: JSON.stringify({ Read: 10, Edit: 1 }),
+        activity_json: JSON.stringify({ reading: 10, editing: 1 }),
+      });
+    } finally {
+      db.close();
+    }
+
+    const handler = createLocalApiHandler({ queuePath: f.queuePath });
+    const auth = JSON.parse((await call(handler, '/api/local-auth', {
+      headers: { origin: 'http://127.0.0.1' },
+    })).body);
+    const scan = JSON.parse((await call(handler, '/functions/vibedeck-optimize/scan', {
+      method: 'POST',
+      headers: {
+        origin: 'http://127.0.0.1',
+        'x-vibedeck-local-auth': auth.token,
+      },
+    })).body);
+
+    assert.equal(scan.ok, true);
+    assert.equal(scan.inserted, 1);
+    assert.equal(scan.health_grade, 'A');
+
+    const findings = JSON.parse((await call(handler, '/functions/vibedeck-optimize/findings')).body);
+    assert.equal(findings.findings.length, 1);
+    assert.equal(findings.findings[0].session_id, 'scan-target');
   } finally {
     f.cleanup();
   }

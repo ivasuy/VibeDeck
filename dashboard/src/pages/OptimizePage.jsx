@@ -3,10 +3,11 @@ import { Card } from "../ui/openai/components";
 import { PageFrame } from "../components/PageFrame.jsx";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
 import { safeWriteClipboard } from "../lib/safe-browser";
-import { getOptimizeFindings } from "../lib/api";
+import { getOptimizeFindings, triggerOptimizeScan } from "../lib/api";
 
 const SEVERITIES = ["high", "medium", "low"];
-const EMPTY_TEXT = "No optimize findings yet. Run vibedeck optimize --scan to generate the first scan.";
+const FIRST_SCAN_TEXT = "No optimize scan has run yet. Run a local scan to populate findings from this machine.";
+const EMPTY_TEXT = "No open optimize findings in the latest scan.";
 
 function severityLabel(severity) {
   const value = String(severity || "");
@@ -21,6 +22,7 @@ function findingCost(value) {
 export function OptimizePage() {
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -42,7 +44,21 @@ export function OptimizePage() {
     };
   }, []);
 
+  async function runScan() {
+    setScanning(true);
+    setError("");
+    try {
+      await triggerOptimizeScan();
+      setPayload((await getOptimizeFindings()) || {});
+    } catch (err) {
+      setError(err?.message || "Failed to run optimize scan");
+    } finally {
+      setScanning(false);
+    }
+  }
+
   const findings = Array.isArray(payload?.findings) ? payload.findings : [];
+  const hasRun = Boolean(payload?.latest_run);
   const groups = useMemo(() => {
     const next = { high: [], medium: [], low: [] };
     for (const finding of findings) {
@@ -88,7 +104,19 @@ export function OptimizePage() {
 
       {!loading && !error && findings.length === 0 ? (
         <Card className="mt-5">
-          <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">{EMPTY_TEXT}</p>
+          <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">
+            {hasRun ? EMPTY_TEXT : FIRST_SCAN_TEXT}
+          </p>
+          {!hasRun ? (
+            <button
+              type="button"
+              onClick={runScan}
+              disabled={scanning}
+              className="mt-3 rounded-md border border-oai-gray-300 px-3 py-1.5 text-xs font-medium text-oai-gray-700 hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            >
+              {scanning ? "Running scan..." : "Run local scan"}
+            </button>
+          ) : null}
         </Card>
       ) : null}
 

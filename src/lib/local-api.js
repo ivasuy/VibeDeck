@@ -40,7 +40,7 @@ const {
   detectInstalledProviders,
   toCsv,
 } = require("./codeburn-parity");
-const { readOptimizeFindings } = require("./optimize-scanner");
+const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
 const { readPlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
@@ -147,6 +147,10 @@ const ROUTES = {
   },
   optimizeFindings: {
     primary: "/functions/vibedeck-optimize/findings",
+    legacy: "",
+  },
+  optimizeScan: {
+    primary: "/functions/vibedeck-optimize/scan",
     legacy: "",
   },
   plan: {
@@ -421,6 +425,37 @@ function enrichLiveSessionCost(row) {
   };
 }
 
+function sanitizeLiveSessionRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  const next = { ...row };
+  delete next.override_user;
+  delete next.tools_sequence_json;
+  return next;
+}
+
+function sanitizeLiveSessionGroup(group) {
+  if (!group || typeof group !== "object" || Array.isArray(group)) return group;
+  return {
+    ...group,
+    members: Array.isArray(group.members)
+      ? group.members.map(sanitizeLiveSessionRow)
+      : group.members,
+  };
+}
+
+function sanitizeLiveWorkstream(workstream) {
+  if (!workstream || typeof workstream !== "object" || Array.isArray(workstream)) return workstream;
+  return {
+    ...workstream,
+    sessions: Array.isArray(workstream.sessions)
+      ? workstream.sessions.map(sanitizeLiveSessionRow)
+      : workstream.sessions,
+    session_groups: Array.isArray(workstream.session_groups)
+      ? workstream.session_groups.map(sanitizeLiveSessionGroup)
+      : workstream.session_groups,
+  };
+}
+
 function readLiveSessionsSnapshot(queuePath) {
   const trackerDir = path.dirname(queuePath);
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
@@ -465,10 +500,14 @@ function readLiveSessionsSnapshot(queuePath) {
   const liveCanonical = summarizeCanonicalCompletenessForSessions(dbPath, liveIdentities);
   return {
     ...rollups,
-    sessions: groupPayload.sessions,
-    session_groups: groupPayload.session_groups,
+    sessions: Array.isArray(groupPayload.sessions)
+      ? groupPayload.sessions.map(sanitizeLiveSessionRow)
+      : groupPayload.sessions,
+    session_groups: Array.isArray(groupPayload.session_groups)
+      ? groupPayload.session_groups.map(sanitizeLiveSessionGroup)
+      : groupPayload.session_groups,
     session_group_diagnostics: groupingMode === "off" ? undefined : readSessionGroupDiagnostics(dbPath),
-    workstreams: groupedWorkstreams,
+    workstreams: groupedWorkstreams.map(sanitizeLiveWorkstream),
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
@@ -2112,7 +2151,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const bus = getLiveBus();
       client.onStart = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:start", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
       client.onUpdate = (event) => {
@@ -2124,14 +2163,14 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         enqueue({
           type: "session:update",
           dropped: client.dropped,
-          ...enrichLiveSessionCost(event),
+          ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)),
           ...extra,
         });
         enqueueRollupUpdate();
       };
       client.onEnd = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:end", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
 
@@ -2307,6 +2346,23 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const status = url.searchParams.get("status") || "open";
       const limit = url.searchParams.get("limit") || 100;
       json(res, readOptimizeFindings({ dbPath: codeburnDbPath(qp), status, limit }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeScan)) {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        json(res, { ok: true, ...runOptimizeScan({ dbPath: codeburnDbPath(qp) }) });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || String(e) }, 500);
+      }
       return true;
     }
 

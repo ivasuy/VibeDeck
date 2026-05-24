@@ -53,4 +53,24 @@ describe("PlanPage", () => {
     expect((await screen.findAllByText("Plan usage")).length).toBeGreaterThan(0);
     expect(screen.queryByText(/not what you owe Cursor/i)).toBeNull();
   });
+
+  it("explains unconfigured custom plan while keeping month-to-date spend visible", async () => {
+    api.getPlanView.mockResolvedValue({
+      ok: true,
+      plan: "custom",
+      monthly_usd: 0,
+      monthly_plan_usd: "0.00",
+      month_to_date_api_equivalent_usd: "3632.0315",
+      usage_percent: null,
+      label: "API-equivalent cost",
+      label_detail: "API-equivalent cost - this is direct API-equivalent display cost, not a subscription bill.",
+    });
+
+    render(<PlanPage />);
+
+    expect(await screen.findByText("Monthly plan not configured")).toBeTruthy();
+    expect(screen.getByText("$3,632.0315")).toBeTruthy();
+    expect(screen.getByText("Budget percentage unavailable until a monthly plan amount is configured.")).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
 });

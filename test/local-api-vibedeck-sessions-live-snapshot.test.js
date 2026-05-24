@@ -56,12 +56,14 @@ test("GET /functions/vibedeck-sessions-live-snapshot returns current live sessio
       provider, session_id, started_at, ended_at, end_reason,
       cwd, repo_root, repo_common_dir, parent_repo,
       branch, branch_resolution_tier, confidence, override_user,
+      tools_sequence_json,
       model, total_tokens, total_cost_usd,
       created_at, updated_at
     ) VALUES (
       'codex', 'snapshot-open', '${now}', NULL, NULL,
       '/tmp', NULL, NULL, NULL,
-      NULL, 'D', 'unattributed', NULL,
+      NULL, 'D', 'unattributed', '{"events":["huge-internal-ledger"]}',
+      '["Read","Edit"]',
       'gpt-5.5', 1000, NULL,
       '${now}', '${now}'
     );
@@ -89,6 +91,8 @@ test("GET /functions/vibedeck-sessions-live-snapshot returns current live sessio
   assert.equal(payload.sessions[0].provider, "codex");
   assert.equal(payload.sessions[0].estimated_total_cost_usd > 0, true);
   assert.equal(payload.sessions[0].cost_estimated, true);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.sessions[0], "override_user"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.sessions[0], "tools_sequence_json"), false);
 
   await fs.rm(root, { recursive: true, force: true });
 });

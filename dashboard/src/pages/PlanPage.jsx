@@ -54,6 +54,7 @@ export function PlanPage() {
   }, [monthToDateUsd, monthlyUsd, payload?.usage_percent]);
   const progressPercent = Math.min(100, usagePercent);
   const detail = normalizePlanDetail(payload);
+  const configuredPlan = monthlyUsd > 0;
 
   return (
     <PageFrame
@@ -63,6 +64,14 @@ export function PlanPage() {
     >
       {loading ? <p className="mb-4 text-sm text-oai-gray-500 dark:text-oai-gray-400">Loading plan usage...</p> : null}
       {error ? <p className="mb-4 text-sm text-red-700 dark:text-red-300">{error}</p> : null}
+      {!loading && !error && !configuredPlan ? (
+        <Card className="mb-4" title="Monthly plan not configured">
+          <p className="text-sm text-oai-gray-600 dark:text-oai-gray-300">
+            VibeDeck is showing live API-equivalent spend, but it cannot calculate budget percentage until
+            `VIBEDECK_PLAN`, `VIBEDECK_PLAN_MONTHLY_USD`, or `~/.vibedeck/plan-config.json` is configured.
+          </p>
+        </Card>
+      ) : null}
 
       <Card title={payload?.label || "Plan usage"}>
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -89,18 +98,26 @@ export function PlanPage() {
               {formatUsdCurrency(monthToDateUsd, { decimals: 4 })}
             </span>
           </div>
-          <div
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Number(progressPercent.toFixed(2))}
-            className="h-3 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800"
-          >
-            <div className="h-full rounded-full bg-oai-brand dark:bg-oai-brand-400" style={{ width: `${progressPercent}%` }} />
-          </div>
-          <div className="mt-2 text-xs tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
-            {usagePercent.toFixed(2)}%
-          </div>
+          {configuredPlan ? (
+            <>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Number(progressPercent.toFixed(2))}
+                className="h-3 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800"
+              >
+                <div className="h-full rounded-full bg-oai-brand dark:bg-oai-brand-400" style={{ width: `${progressPercent}%` }} />
+              </div>
+              <div className="mt-2 text-xs tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                {usagePercent.toFixed(2)}%
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-oai-gray-500 dark:text-oai-gray-400">
+              Budget percentage unavailable until a monthly plan amount is configured.
+            </p>
+          )}
         </div>
       </Card>
     </PageFrame>

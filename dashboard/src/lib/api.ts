@@ -31,6 +31,7 @@ const PATHS = {
   yield: "vibedeck-yield",
   autoDetect: "vibedeck-optimize/auto-detect",
   optimizeFindings: "vibedeck-optimize/findings",
+  optimizeScan: "vibedeck-optimize/scan",
   plan: "vibedeck-plan",
   currencyRates: "vibedeck-currency-rates",
   forecast: "vibedeck-forecast",
@@ -319,6 +320,27 @@ export function getAutoDetectedProviders(params: AnyRecord = {}) {
 
 export function getOptimizeFindings(params: AnyRecord = {}) {
   return fetchLocalJson(PATHS.optimizeFindings, params);
+}
+
+export async function triggerOptimizeScan({ signal }: AnyRecord = {}) {
+  const authHeaders = await getLocalApiAuthHeaders();
+  const response = await fetch(`/functions/${PATHS.optimizeScan}`, {
+    method: "POST",
+    headers: { Accept: "application/json", ...authHeaders },
+    cache: "no-store",
+    signal,
+  });
+  const payload = await response.json().catch(() => ({
+    ok: false,
+    error: `Optimize scan failed with HTTP ${response.status}`,
+  }));
+  if (!response.ok || payload?.ok === false) {
+    const message = payload?.error || payload?.message || `Optimize scan failed with HTTP ${response.status}`;
+    const error: any = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
 }
 
 export function getPlanView(params: AnyRecord = {}) {

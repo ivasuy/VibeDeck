@@ -163,8 +163,30 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     }
     if (typeof EventSource === "undefined") return;
 
+    let active = true;
     setStatus("connecting");
     setError(null);
+
+    if (typeof fetch === "function") {
+      fetch("/functions/vibedeck-sessions-live-snapshot", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((snapshot) => {
+          if (!active || !isRecord(snapshot)) return;
+          setPayload((prev) => {
+            const next = reduceLivePayloadEvent(prev, { type: "snapshot", ...snapshot });
+            if (hasPayloadData(next)) writeLastGood(LIVE_SESSIONS_CACHE_KEY, next);
+            return next;
+          });
+          setStale(false);
+        })
+        .catch(() => {
+          // The SSE path below remains the primary live transport.
+        });
+    }
+
     const source = new EventSource("/functions/vibedeck-sessions-live");
 
     source.onopen = () => {
@@ -201,6 +223,7 @@ export function useVibeDeckLiveSessions({ enabled = true }: { enabled?: boolean 
     };
 
     return () => {
+      active = false;
       source.close();
     };
   }, [enabled]);

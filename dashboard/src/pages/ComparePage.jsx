@@ -29,13 +29,18 @@ function hasCompareData(payload) {
 export function ComparePage() {
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError("");
     getCompareMetrics()
       .then((nextPayload) => {
         if (active) setPayload(nextPayload || {});
+      })
+      .catch((err) => {
+        if (active) setError(err?.message || "Failed to load compare metrics");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -47,7 +52,8 @@ export function ComparePage() {
 
   const totals = payload?.totals || EMPTY_TOTALS;
   const metrics = payload?.metrics || {};
-  const empty = !loading && !hasCompareData(payload);
+  const hasData = hasCompareData(payload);
+  const empty = !loading && !error && !hasData;
 
   return (
     <PageFrame
@@ -67,8 +73,9 @@ export function ComparePage() {
 
       <Card className="mt-5" title="Totals">
         {loading ? <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">Loading parity data...</p> : null}
+        {error ? <p className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         {empty ? <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">No data for this window yet.</p> : null}
-        {!empty ? (
+        {!loading && !error && hasData ? (
           <div className="grid gap-3 text-sm text-oai-gray-600 dark:text-oai-gray-300 sm:grid-cols-3">
             <div>
               <div className="text-xs uppercase tracking-wide text-oai-gray-500">Tokens</div>

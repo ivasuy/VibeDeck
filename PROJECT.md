@@ -1,7 +1,7 @@
 # VibeDeck
 
-**Version:** 0.1.3 (PR, unreleased)
-**Last updated:** 2026-05-20
+**Version:** 0.1.4 (PR, unreleased)
+**Last updated:** 2026-05-23
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -31,6 +31,330 @@ VibeDeck should stay true to five promises:
 ## Release Audit History
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
+
+### 0.1.4 PR - Provider Enrichment And Subagent Grouping
+
+**Status:** in progress on stacked agent branches, unreleased.
+
+**Branches:**
+
+| Branch | Purpose |
+|---|---|
+| `agent/phase-1-claude-codex-enrichment` | Phase 1: Claude/Codex cost, token-bucket, tool, and session enrichment. |
+| `agent/phase-1-5-subagent-grouping` | Phase 1.5: Claude/Codex subagent grouping as an additive read-model layer. |
+
+#### Problem
+
+The 0.1.3 work made attribution safer, but the product still lacked enough session-level richness for heavy Claude Code and Codex users:
+
+- `/usage`, `/dashboard`, and `/branches` could show totals without enough detail about why a session cost what it cost.
+- Claude cache/token-bucket behavior and Codex reasoning/tool activity were not carried consistently through live, branch, and drawer payloads.
+- Main sessions and spawned subagents appeared as separate raw sessions, which made agentic runs hard to understand even when provider logs had proof of parent/child relationships.
+- Any grouping work had to preserve the honesty rules from 0.1.3: no fake branch inheritance, no token/cost movement, and no loss of `Unknown` or `Historical unknown` buckets.
+
+#### Phase 1 - Claude/Codex Cost And Session Enrichment
+
+**Plan direction:** provider expansion, richer Claude/Codex session facts, and deeper usage drilldown without changing the canonical totals contract.
+
+What changed:
+
+- Added session enrichment schema and carried enrichment data through session events, session rows, branch facts, bucket facts, live rollups, and drawer APIs.
+- Extracted Claude cache and tool enrichment from local Claude Code records.
+- Extracted Codex tool enrichment and persisted pending Codex tool calls across parse boundaries.
+- Added shadow enhanced cost calculation, then used enhanced token buckets for Claude/Codex cost estimates where provider data supports it.
+- Exposed enrichment in live and branch rollups so `/dashboard`, `/branches`, and side drawers can show richer model/tool/cost quality context.
+- Added reconciliation guardrails so enriched cost views do not silently break canonical usage totals.
+
+Evidence from local machine:
+
+| Check | Result |
+|---|---:|
+| Targeted Phase 1 test suite | `166/166` passed |
+| Copied-live DB `/usage` smoke | `131ms` |
+| Copied-live DB `/branches` smoke | `36ms` |
+| Copied-live DB live snapshot smoke | `132ms` |
+| Copied-live DB branch drawer smoke | `43ms` |
+| Isolated real-log rebuild wall clock | `368.6s` |
+| Rebuilt files | `998` |
+| Rebuilt sessions | `934` |
+| Rebuilt session events | `49,369` |
+| Rebuilt branch facts | `935` |
+| Enriched sessions | `878` |
+| `Unknown` facts | `1` |
+| `Historical unknown` facts | `58` |
+
+Full-suite status after Phase 1: `1,131` passed, `12` failed, `1` cancelled. The failing group was the known baseline outside the new enrichment path: init/uninstall, serve session pipeline, sync entire checkpoint backfill, OpenClaw trigger, and rebuild DB tests.
+
+Important commits:
+
+| Area | Commits |
+|---|---|
+| Enrichment schema and carry-through | `9214517`, `142ed3c`, `65edd77` |
+| Claude/Codex extraction | `10b2252`, `3fb2e77`, `abe0fdb` |
+| Enhanced cost and token buckets | `a85f2df`, `be6f00a`, `e8dadea` |
+| Facts and APIs | `77a2147`, `03e1045`, `8504764` |
+| UI and reconciliation | `9d60b41`, `5011948`, `ba10d38`, `0da6c6f` |
+
+#### Phase 1.5 - Claude/Codex Subagent Session Grouping
+
+**Plan:** `docs/superpowers/plans/2026-05-23-claude-codex-subagent-session-grouping.md`
+
+What changed:
+
+- Added additive grouping tables: `vibedeck_session_group_edges` and `vibedeck_session_group_skips`.
+- Added Claude subagent grouping from local transcript path proof: root transcript plus sibling `subagents/*.jsonl`.
+- Added Codex subagent grouping from `session_meta` thread-spawn proof only.
+- Added sync-time projection rebuild and diagnostics at `diagnostics/session-groups.json`.
+- Added branch read-model grouping that annotates raw sessions and returns `session_groups` only in `preview`/`on`.
+- Added live snapshot grouping without changing SSE raw-session routing.
+- Added group cards in `/branches` drawer and live/dashboard workstream drawer.
+- Kept raw sessions visible under `Raw sessions`; group cards are additive, not replacements.
+
+Safety rules preserved:
+
+- No token or cost movement between sessions, branches, projects, or providers.
+- No branch inheritance from parent to child sessions.
+- `Unknown` and `Historical unknown` remain honest buckets.
+- Group cost is `null` if any member cost is unknown, while `known_cost_usd` still reports finite known cost.
+- Default mode is `VIBEDECK_SESSION_GROUPING_V1=shadow`; UI/API group cards require `preview` or `on`.
+
+Evidence from local machine:
+
+| Check | Result |
+|---|---:|
+| Targeted backend reconciliation | `54/54` passed |
+| Dashboard group-card tests | `28/28` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Copied-live DB SQLite `quick_check` | `ok` |
+| Copied-live DB `/usage` preview vs shadow | Totals unchanged |
+| Copied-live DB `/branches` preview vs shadow | Totals unchanged |
+| Copied-live DB raw branch sessions | `1,152` |
+| Copied-live DB `Historical unknown` facts | `58` |
+| Copied-live DB API `Historical unknown` rows | `2` |
+| Copied-live DB API timings | `/usage` `10.9-20.1ms`, `/branches` `18.4-30ms`, live `123.6ms` |
+| Isolated real-log rebuild wall clock | `370.846s` |
+| Rebuilt files | `1,013` |
+| Rebuilt sessions | `949` |
+| Rebuilt branch facts | `950` |
+| Rebuilt session group edges | `594` |
+| Rebuilt session group skips | `2` |
+| Rebuilt `Unknown` facts | `0` |
+| Rebuilt `Historical unknown` facts | `58` |
+| Rebuilt DB API timings | `/usage` `23.7ms`, `/branches` `65.9ms`, live `144.1ms` |
+
+Full-suite status after Phase 1.5: `1,146` passed, `14` failed. The failures remained outside the session-grouping, branch grouping, live snapshot grouping, pricing, and dashboard group-card paths: init local runtime, init uninstall, serve session pipeline, entire checkpoint backfill, OpenClaw trigger, and rebuild DB tests.
+
+Important commits:
+
+| Area | Commits |
+|---|---|
+| Implementation plan | `406e9a9` |
+| Group schema and projection | `5870684`, `5a81944`, `dcf2989`, `1e9ba53` |
+| Branch read model | `4f87dbf`, `7b3ce75` |
+| Live read model | `4c10e9c`, `fb9f887` |
+| Dashboard group cards | `27162ff` |
+
+#### Phase 2 - Tier 1+2 Provider Breadth
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-2-tier-1-2-provider-breadth`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-2-tier-1-2-provider-breadth.md`
+
+What changed:
+
+- Repaired proof-backed cwd pass-through for OpenCode, OMP, Pi, Copilot, and Kiro CLI where the local provider source exposes a real workspace path.
+- Added Goose and Crush provider ingestion through the canonical `SessionEvent` pipeline.
+- Kept Cursor account CSV as account-level/provider-only data; no fake branch/project attribution is inferred.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and session grouping totals through smoke checks.
+- Inspected dashboard and Mac provider display paths and left UI code unchanged: existing dashboard provider icons/text handle arbitrary provider ids honestly, and providers without committed assets continue to use generic fallback rendering.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Exact dashboard test command from plan | Failed before running tests: `npm --prefix dashboard` makes `dashboard/` the package root, so `dashboard/src/pages/...` filters matched no files |
+| Dashboard page tests with package-root-relative paths | `21/21` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Backend provider/session/branch smoke suite | `168/168` passed |
+| Copied-live DB sessions | `1,202` |
+| Copied-live DB `Unknown branch` facts | `1` |
+| Copied-live DB `Historical unknown` facts | `58` |
+| Copied-live DB provider rows | Claude `94`, Codex `864`, Cursor `242`, Gemini `2` |
+| Isolated rebuild wall clock | `365s` |
+| Isolated rebuild sessions | `1,202` |
+| Isolated rebuild session events | `51,407` |
+| Isolated rebuild branch facts | `1,203` |
+| Isolated rebuild `Unknown branch` facts | `1` |
+| Isolated rebuild `Historical unknown` facts | `58` |
+| Isolated rebuild session group edges/skips | `605` / `2` |
+| Isolated rebuild provider rows | Claude `94`, Codex `864`, Cursor `242`, Gemini `2` |
+| Isolated rebuild doctor | `ok: true`; non-critical `base_url` fail plus expected local config/device-token warnings |
+
+Caveats:
+
+- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install.
+- The CLI supports `sync --rebuild-vibedeck-db` but not the plan's `--no-progress`, so the isolated rebuild used `--auto`.
+- The plan's copied-live path `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder on this machine; copied-live DB smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3`.
+- `VIBEDECK_HOME=<tmp>` alone makes this CLI discover provider logs under the temp home too, producing an empty rebuild. The measured rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
+- Cursor IDE local composer workspace mapping remains a future adapter, not part of account CSV.
+- Goose/Crush grouping support is explicitly `none` until those providers expose parent-child proof.
+
+#### Phase 3 - Tier 3+4 Provider Breadth
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-3-tier-3-4-provider-breadth`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-3-tier-3-4-provider-breadth.md`
+
+What changed:
+
+- Added missing Tier 3+4 session-safe providers through canonical `SessionEvent` ingestion.
+- Hardened Gemini, Kiro IDE, and OpenClaw so cwd is used only when local proof exists.
+- Added Droid, Qwen, Cursor Agent, Antigravity, and Cline-family adapters with provider-only/cwd-optional honesty rules.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and session grouping totals through smoke checks.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Backend provider/session/branch smoke suite | `192/192` passed |
+| Dashboard page tests | `21/21` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Copied-live DB sessions/events/branch facts | `1,214` / `53,517` / `1,152` |
+| Copied-live DB Unknown/Historical | `1` / `58` |
+| Copied-live DB provider rows | Claude `94`, Codex `876`, Cursor `242`, Gemini `2` |
+| Isolated rebuild wall clock | `339s` |
+| Isolated rebuild sessions/events/branch facts | `972` / `51,040` / `973` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild providers | Claude `94`, Codex `876`, Gemini `2` |
+| Isolated rebuild doctor | `ok: 14`, `warn: 5`, `fail: 1`, `critical: 0`; expected missing `base_url` fail and local config warnings |
+| Direct branch-fact write boundary scan | Passed: provider adapters do not write `vibedeck_branch_usage_facts` directly |
+
+Caveats:
+
+- Antigravity `.pb` files remain provider-only and unparsed unless a JSON usage cache exists.
+- Cursor Agent transcript rows are estimated when numeric token fields are absent.
+- Cline-family rows are branch/project eligible only when `Current Workspace Directory (...)` contains an absolute path.
+- `dashboard/node_modules` was absent in the task worktree, so dashboard dependencies were installed locally before smoke checks; no tracked files changed from install. The install/audit output reported `9` dependency audit warnings (`7` moderate, `2` high, `0` critical); this is an existing packaging/frontend follow-up, not a Phase 3 smoke failure.
+- The legacy copied-live path `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder on this machine; copied-live DB smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3`.
+- The isolated rebuild used a temporary `HOME` with symlinks to provider log directories and an isolated temp `.vibedeck/tracker` DB, so no live DB writes occurred.
+- The isolated rebuild's doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
+#### Phase 4 - Codeburn Parity Dashboards
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-4-codeburn-parity-dashboards`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-4-codeburn-parity-dashboards.md`
+
+What changed:
+
+- Added read-only Compare, Models, Yield, Export, Status, and Auto-detect endpoints over canonical VibeDeck facts.
+- Added dashboard pages for Compare, Models, Yield, and Export plus additive MCP/yield/settings panels.
+- Added additive Codeburn parity fields for task category, ordered tools, skills, and fast-mode tracking without changing cost facts.
+- Added Mac app Compare/Models/Yield decoding and tabs.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and grouped/raw session totals through copied-live and isolated rebuild smoke.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Backend parity suite | `38/38` passed |
+| Dashboard parity pages | `37/37` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Mac app build/typecheck | Passed via `xcodebuild`; existing embedded-server script warning only |
+| Copied-live endpoint smoke | 6/6 routes returned HTTP 200 |
+| Copied-live sessions/events/branch facts | `1,226` / `54,325` / `1,152` |
+| Copied-live Unknown/Historical | `1` / `58` |
+| Copied-live endpoint totals | `1,151` fact sessions, `5,635,098,413` tokens, `4` providers, `22` models, `23` branches |
+| Isolated rebuild wall clock | `334s`, sync exit `0` |
+| Isolated rebuild doctor | `ok 14`, `warn 5`, `fail 1`, `critical 0` |
+| Isolated rebuild sessions/events/branch facts | `984` / `51,564` / `985` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild provider rows | Claude `94`, Codex `888`, Gemini `2` |
+| Isolated rebuild branch-fact provider rows | Claude `94`, Codex `889`, Gemini `2` |
+| Direct branch-fact write scan | Passed: read models do not write `vibedeck_branch_usage_facts` directly |
+| Browser smoke | `/compare`, `/models`, `/yield`, and `/export` rendered headings with 0 console errors against the isolated temp DB |
+
+Caveats:
+
+- Compare/yield rates are read-side workflow metrics, not billing sources.
+- Cost per activity/tool is a share/read-side metric only; `vibedeck_branch_usage_facts.cost_usd` remains the single dollar source of truth.
+- Auto-detect is filesystem-only and may report installed providers with zero usage if the provider has no logs.
+- The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning during local debug builds.
+- The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
+#### Phase 5 - Optimize Subscription Polish
+
+**Date:** 2026-05-23
+**Branch:** `agent/phase-5-optimize-subscription-polish`
+**Spec:** `docs/superpowers/specs/2026-05-19-provider-umbrella-expansion-phases.md`
+**Plan:** `docs/superpowers/plans/2026-05-23-phase-5-optimize-subscription-polish.md`
+
+What changed:
+
+- Added isolated optimizer findings and health scoring for repeated reads, low read/edit ratio, and large CLAUDE.md context risk.
+- Added plan/subscription display labels so Cursor-style flat-rate plans show `API-equivalent cost` and Claude plans show `Plan usage`.
+- Added display-only currency conversion and forecast/trend/pulse read models.
+- Added dashboard Optimize and Plan pages, settings currency picker, dashboard forecast hints, and matching Mac app surfaces.
+- Preserved `/dashboard`, `/usage`, `/branches`, `Unknown branch`, `Historical unknown`, and canonical branch fact totals through copied-live and isolated rebuild smoke.
+
+Smoke results:
+
+| Check | Result |
+|---|---:|
+| Targeted Phase 5 backend suite | `187/187` passed |
+| Direct optimizer branch-fact write scan | Passed: no `UPDATE`, `INSERT`, or `DELETE` against `vibedeck_branch_usage_facts` in optimizer/plan/currency/forecast code paths |
+| Dashboard exact command from plan | Failed before running tests: `npm --prefix dashboard` makes `dashboard/` the package root, so `dashboard/src/...` filters matched no files |
+| Dashboard Phase 5/parity pages with package-root-relative paths | `36/36` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Mac app build/typecheck | Passed via `xcodebuild`; existing embedded-server script warnings only |
+| Copied-live optimizer smoke duration | `159.9ms` against a temp copy of `~/.vibedeck/tracker/vibedeck.sqlite3` |
+| Copied-live optimizer findings / health | `0` inserted, `0` returned, health grade `A`, score `100` |
+| Copied-live branch facts before/after | `1,152` / `1,152` |
+| Copied-live Unknown/Historical before/after | `1` / `58` before; `1` / `58` after |
+| Copied-live cost totals before/after | `cost_usd` sum `0` / `0`; `total_cost_usd` sum `3,765.7689` / `3,765.7689` |
+| Copied-live plan label | `API-equivalent cost` for `cursor-pro` at `$20` monthly |
+| Copied-live forecast fields | `37` daily points, `10` anomalies, 7-day average `$253.5495`, 30-day forecast `$10,809.9371` |
+| Isolated rebuild wall clock | `332s`, sync exit `0` |
+| Isolated rebuild doctor | `ok 14`, `warn 5`, `fail 1`, `critical 0` |
+| Isolated rebuild sessions/events/branch facts | `994` / `51,933` / `995` |
+| Isolated rebuild Unknown/Historical | `1` / `58` |
+| Isolated rebuild provider rows | Claude `94`, Codex `898`, Gemini `2` |
+| Isolated local route/API smoke | `/dashboard`, `/usage`, and `/branches` returned HTTP `200`; usage summary and branch usage APIs returned HTTP `200` |
+| Browser smoke | `/optimize`, `/plan`, `/settings`, and `/dashboard` rendered headings with 0 console errors against the isolated temp DB |
+
+Post-close live surface audit on 2026-05-24:
+
+| Check | Result |
+|---|---:|
+| Live snapshot after bootstrap/payload fix | `3` sessions, `2` workstreams, no `override_user` or `tools_sequence_json` leaked |
+| Live snapshot payload size | `312,234` bytes before, `223,367` bytes after |
+| Real optimize scan from dashboard endpoint | `0.16s`, `0` findings, health grade `A`, score `100` |
+| `/compare` real local endpoint | `5,992,505,560` tokens, `$4,070.2718`, `1,237` sessions |
+| `/plan` real local endpoint | Shows `$3,632.0315` month-to-date API-equivalent spend and explains the missing monthly-plan config |
+| Branch facts after optimize scan | `1,239` rows, `$4,070.2718`; optimizer wrote only `vibedeck_optimize_*` |
+| Unknown/Historical after optimize scan | `Unknown branch` `2`, `Historical unknown` `58`; no unknown buckets collapsed or hidden |
+| Browser smoke after fix | `/dashboard`, `/compare`, `/optimize`, and `/plan` rendered with 0 console errors |
+
+Safety statement:
+
+- Optimizer estimates are isolated in `vibedeck_optimize_*`; smoke preserved `cost_usd`, `total_cost_usd`, `/dashboard`, `/usage`, `/branches`, `Unknown branch`, and `Historical unknown`.
+- Currency conversion remains display-only; exports keep USD cost columns.
+- Forecast, plan, pulse, and optimizer dashboard surfaces are additive read/display surfaces and do not become billing sources.
+
+Caveats:
+
+- `~/.vibedeck/usage.db` is absent on this machine and `~/.vibedeck/vibedeck.sqlite3` is a zero-byte placeholder, so copied-live smoke used the actual tracker DB at `~/.vibedeck/tracker/vibedeck.sqlite3` after copying it to a temp path.
+- The dashboard test command in the plan still has the known package-root path mismatch; the same intended test files passed when run relative to `dashboard/`.
+- Dashboard tests print Node's experimental localStorage warning, and the production build still emits the existing large chunk warning.
+- The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning and a script-output warning during local debug builds.
+- The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
+
+#### What Remains For 0.1.4
+
+- Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.
+- Add grouping support for other providers only where provider logs expose proof, not heuristics.
+- Continue provider expansion and tool/activity drilldowns beyond Claude/Codex.
+- Keep fixing the unrelated full-suite baseline failures before treating the whole repository as release-clean.
 
 ### 0.1.3 PR - Trust Foundation And Rebuild Speed
 

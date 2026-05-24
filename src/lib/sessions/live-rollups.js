@@ -38,6 +38,104 @@ function safeModel(value) {
   return model || 'unknown';
 }
 
+const NUMERIC_ENRICHMENT_FIELDS = [
+  'cache_creation_5m_input_tokens',
+  'cache_creation_1h_input_tokens',
+  'web_search_requests',
+  'tool_call_count',
+];
+
+const JSON_COUNTER_FIELDS = ['tools_json', 'activity_json'];
+
+function numericField(row, key) {
+  const n = Number(row?.[key] || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function numericWebSearchField(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function hasBillableEnrichment(row) {
+  return (
+    numericField(row, 'cache_creation_5m_input_tokens') > 0 ||
+    numericField(row, 'cache_creation_1h_input_tokens') > 0 ||
+    (numericWebSearchField(row?.web_search_requests) || 0) > 0
+  );
+}
+
+function costTotalTokens(row) {
+  const total = Number(row?.total_tokens);
+  if (Number.isFinite(total) && total === 0 && hasBillableEnrichment(row)) return null;
+  return row?.total_tokens;
+}
+
+function parseCounterJson(value) {
+  if (typeof value !== 'string' || !value.trim()) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out = {};
+  for (const [key, count] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(count) || count < 0) continue;
+    out[key] = count;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  const keys = Object.keys(counter || {}).sort();
+  if (keys.length === 0) return null;
+  const out = {};
+  for (const key of keys) out[key] = counter[key];
+  return JSON.stringify(out);
+}
+
+function mergeCounterJson(existingJson, nextJson) {
+  const counter = parseCounterJson(existingJson);
+  const next = parseCounterJson(nextJson);
+  for (const [key, count] of Object.entries(next)) {
+    counter[key] = (counter[key] || 0) + count;
+  }
+  return stableCounterJson(counter);
+}
+
+function addEnrichmentFields(target, row) {
+  for (const key of NUMERIC_ENRICHMENT_FIELDS) {
+    target[key] += numericField(row, key);
+  }
+  for (const key of JSON_COUNTER_FIELDS) {
+    target[key] = mergeCounterJson(target[key], row?.[key]);
+  }
+}
+
+function enrichmentShape() {
+  return {
+    cache_creation_5m_input_tokens: 0,
+    cache_creation_1h_input_tokens: 0,
+    web_search_requests: 0,
+    tool_call_count: 0,
+    tools_json: null,
+    activity_json: null,
+  };
+}
+
+function stripEmptyEnrichment(row) {
+  const out = { ...row };
+  for (const key of NUMERIC_ENRICHMENT_FIELDS) {
+    if ((Number(out[key]) || 0) === 0) delete out[key];
+  }
+  for (const key of JSON_COUNTER_FIELDS) {
+    if (out[key] == null) delete out[key];
+  }
+  return out;
+}
+
 function sessionKey(row) {
   return `${text(row?.provider)}:${text(row?.session_id)}`;
 }
@@ -108,12 +206,15 @@ function sessionCost(row) {
     stored_cost_is_authoritative: storedIsAuthoritative,
     model: row?.model,
     source: row?.provider,
-    total_tokens: row?.total_tokens,
+    total_tokens: costTotalTokens(row),
     input_tokens: row?.input_tokens,
     cached_input_tokens: row?.cached_input_tokens,
     cache_creation_input_tokens: row?.cache_creation_input_tokens,
+    cache_creation_5m_input_tokens: row?.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: row?.cache_creation_1h_input_tokens,
     output_tokens: row?.output_tokens,
     reasoning_output_tokens: row?.reasoning_output_tokens,
+    web_search_requests: row?.web_search_requests,
   });
   const total = Number(cost?.total_cost_usd);
   if (!Number.isFinite(total)) {
@@ -288,11 +389,12 @@ function addSessionToSet(set, row) {
   set.add(sessionKey(row));
 }
 
-function addContributionToBreakdown(entry, { tokens, cost, session, active }) {
+function addContributionToBreakdown(entry, { tokens, cost, session, active, sourceRow }) {
   entry.audit_total_tokens += tokens;
   entry.audit_known_cost_usd += cost.known_cost_usd;
   entry.audit_cost_unknown_count += cost.unknown_count;
   addSessionToSet(entry.audit_session_keys, session);
+  addEnrichmentFields(entry, sourceRow || session);
 
   if (active) {
     entry.active_total_tokens += tokens;
@@ -316,6 +418,7 @@ function finalizeFactBreakdown(entry) {
 function createFactBreakdown(fields) {
   return {
     ...fields,
+    ...enrichmentShape(),
     session_count: 0,
     active_total_tokens: 0,
     audit_total_tokens: 0,
@@ -364,6 +467,12 @@ function projectSessionToFact(session, fact) {
     estimated_total_cost_usd: finiteCost,
     cost_estimated: Boolean(Number(fact?.cost_estimated || 0)),
     cost_quality: text(fact?.cost_quality) || (finiteCost == null ? 'partial_unknown' : 'stored'),
+    cache_creation_5m_input_tokens: numericField(fact, 'cache_creation_5m_input_tokens'),
+    cache_creation_1h_input_tokens: numericField(fact, 'cache_creation_1h_input_tokens'),
+    web_search_requests: numericField(fact, 'web_search_requests'),
+    tool_call_count: numericField(fact, 'tool_call_count'),
+    tools_json: fact?.tools_json ?? null,
+    activity_json: fact?.activity_json ?? null,
   };
 }
 
@@ -397,6 +506,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
         sessions: new Map(),
         newest_active_ms: 0,
         newest_audit_ms: 0,
+        ...enrichmentShape(),
       });
     }
 
@@ -410,6 +520,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
     branchEntry.audit_total_tokens += tokens;
     branchEntry.audit_known_cost_usd += cost.known_cost_usd;
     branchEntry.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(branchEntry, sourceRow || session);
     branchEntry.newest_audit_ms = Math.max(branchEntry.newest_audit_ms, sessionMs, sourceMs);
 
     if (active) {
@@ -428,8 +539,8 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
     if (!branchEntry.models.has(model)) {
       branchEntry.models.set(model, createFactBreakdown({ model }));
     }
-    addContributionToBreakdown(branchEntry.providers.get(provider), { tokens, cost, session, active });
-    addContributionToBreakdown(branchEntry.models.get(model), { tokens, cost, session, active });
+    addContributionToBreakdown(branchEntry.providers.get(provider), { tokens, cost, session, active, sourceRow });
+    addContributionToBreakdown(branchEntry.models.get(model), { tokens, cost, session, active, sourceRow });
   }
 
   for (const session of rows) {
@@ -473,6 +584,12 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
       audit_known_cost_usd: row.audit_known_cost_usd,
       active_cost_unknown_count: row.active_cost_unknown_count,
       audit_cost_unknown_count: row.audit_cost_unknown_count,
+      cache_creation_5m_input_tokens: row.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: row.cache_creation_1h_input_tokens,
+      web_search_requests: row.web_search_requests,
+      tool_call_count: row.tool_call_count,
+      tools_json: row.tools_json,
+      activity_json: row.activity_json,
       active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
       audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
       providers: Array.from(row.providers.values())
@@ -484,7 +601,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
             recently_completed_keys,
             ...payload
           } = finalized;
-          return payload;
+          return stripEmptyEnrichment(payload);
         })
         .sort((a, b) => a.provider.localeCompare(b.provider)),
       models: Array.from(row.models.values())
@@ -496,7 +613,7 @@ function buildEffectiveBranchGroups(rows, factsBySessionKey, activeSessionKeys, 
             recently_completed_keys,
             ...payload
           } = finalized;
-          return payload;
+          return stripEmptyEnrichment(payload);
         })
         .sort((a, b) => a.model.localeCompare(b.model)),
       sessions: uniqueSortedSessions(row.sessions),
@@ -539,6 +656,7 @@ function buildBreakdowns(rows, activeRows) {
         audit_known_cost_usd: 0,
         active_cost_unknown_count: 0,
         audit_cost_unknown_count: 0,
+        ...enrichmentShape(),
       });
     }
     if (!byModel.has(model)) {
@@ -553,6 +671,7 @@ function buildBreakdowns(rows, activeRows) {
         audit_known_cost_usd: 0,
         active_cost_unknown_count: 0,
         audit_cost_unknown_count: 0,
+        ...enrichmentShape(),
       });
     }
     if (!byBranch.has(branch)) {
@@ -572,6 +691,7 @@ function buildBreakdowns(rows, activeRows) {
         providers: new Map(),
         models: new Map(),
         sessions: [],
+        ...enrichmentShape(),
       });
     }
 
@@ -581,6 +701,7 @@ function buildBreakdowns(rows, activeRows) {
     p.audit_total_cost_usd += cost.total_cost_usd ?? 0;
     p.audit_known_cost_usd += cost.known_cost_usd;
     p.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(p, row);
     if (active) p.active_total_tokens += tokens;
     if (active) p.active_total_cost_usd += cost.total_cost_usd ?? 0;
     if (active) p.active_known_cost_usd += cost.known_cost_usd;
@@ -592,6 +713,7 @@ function buildBreakdowns(rows, activeRows) {
     m.audit_total_cost_usd += cost.total_cost_usd ?? 0;
     m.audit_known_cost_usd += cost.known_cost_usd;
     m.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(m, row);
     if (active) m.active_total_tokens += tokens;
     if (active) m.active_total_cost_usd += cost.total_cost_usd ?? 0;
     if (active) m.active_known_cost_usd += cost.known_cost_usd;
@@ -603,6 +725,7 @@ function buildBreakdowns(rows, activeRows) {
     b.audit_total_cost_usd += cost.total_cost_usd ?? 0;
     b.audit_known_cost_usd += cost.known_cost_usd;
     b.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(b, row);
     b.sessions.push(row);
     if (!b.providers.has(provider)) {
       b.providers.set(provider, {
@@ -616,6 +739,7 @@ function buildBreakdowns(rows, activeRows) {
         audit_known_cost_usd: 0,
         active_cost_unknown_count: 0,
         audit_cost_unknown_count: 0,
+        ...enrichmentShape(),
       });
     }
     if (!b.models.has(model)) {
@@ -630,6 +754,7 @@ function buildBreakdowns(rows, activeRows) {
         audit_known_cost_usd: 0,
         active_cost_unknown_count: 0,
         audit_cost_unknown_count: 0,
+        ...enrichmentShape(),
       });
     }
 
@@ -639,6 +764,7 @@ function buildBreakdowns(rows, activeRows) {
     bp.audit_total_cost_usd += cost.total_cost_usd ?? 0;
     bp.audit_known_cost_usd += cost.known_cost_usd;
     bp.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(bp, row);
 
     const bm = b.models.get(model);
     bm.session_count += 1;
@@ -646,6 +772,7 @@ function buildBreakdowns(rows, activeRows) {
     bm.audit_total_cost_usd += cost.total_cost_usd ?? 0;
     bm.audit_known_cost_usd += cost.known_cost_usd;
     bm.audit_cost_unknown_count += cost.unknown_count;
+    addEnrichmentFields(bm, row);
 
     if (active) {
       b.active_session_count += 1;
@@ -668,21 +795,21 @@ function buildBreakdowns(rows, activeRows) {
 
   return {
     providers: Array.from(byProvider.values())
-      .map((row) => ({
+      .map((row) => stripEmptyEnrichment({
         ...row,
         active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
         audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
       }))
       .sort((a, b) => a.provider.localeCompare(b.provider)),
     models: Array.from(byModel.values())
-      .map((row) => ({
+      .map((row) => stripEmptyEnrichment({
         ...row,
         active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
         audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
       }))
       .sort((a, b) => a.model.localeCompare(b.model)),
     branch_groups: Array.from(byBranch.values())
-      .map((row) => ({
+      .map((row) => stripEmptyEnrichment({
         branch: row.branch,
         active_session_count: row.active_session_count,
         recently_completed_count: row.recently_completed_count,
@@ -693,17 +820,23 @@ function buildBreakdowns(rows, activeRows) {
         audit_known_cost_usd: row.audit_known_cost_usd,
         active_cost_unknown_count: row.active_cost_unknown_count,
         audit_cost_unknown_count: row.audit_cost_unknown_count,
+        cache_creation_5m_input_tokens: row.cache_creation_5m_input_tokens,
+        cache_creation_1h_input_tokens: row.cache_creation_1h_input_tokens,
+        web_search_requests: row.web_search_requests,
+        tool_call_count: row.tool_call_count,
+        tools_json: row.tools_json,
+        activity_json: row.activity_json,
         active_total_cost_usd: row.active_cost_unknown_count > 0 ? null : row.active_known_cost_usd,
         audit_total_cost_usd: row.audit_cost_unknown_count > 0 ? null : row.audit_known_cost_usd,
         providers: Array.from(row.providers.values())
-          .map((providerRow) => ({
+          .map((providerRow) => stripEmptyEnrichment({
             ...providerRow,
             active_total_cost_usd: providerRow.active_cost_unknown_count > 0 ? null : providerRow.active_known_cost_usd,
             audit_total_cost_usd: providerRow.audit_cost_unknown_count > 0 ? null : providerRow.audit_known_cost_usd,
           }))
           .sort((a, b) => a.provider.localeCompare(b.provider)),
         models: Array.from(row.models.values())
-          .map((modelRow) => ({
+          .map((modelRow) => stripEmptyEnrichment({
             ...modelRow,
             active_total_cost_usd: modelRow.active_cost_unknown_count > 0 ? null : modelRow.active_known_cost_usd,
             audit_total_cost_usd: modelRow.audit_cost_unknown_count > 0 ? null : modelRow.audit_known_cost_usd,

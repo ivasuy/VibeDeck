@@ -10,6 +10,7 @@
 		0090B75D6E06B098D66045EF /* ProjectUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1DE8AB3CEF7C00070F9E108 /* ProjectUsage.swift */; };
 		06C31B7E33D558565D290A3C /* StaticSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9089A160FFDC13F0FA9535 /* StaticSnapshotProvider.swift */; };
 		0A8D33915CE7FFDED01F903E /* UsageSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BFE09BAB178C92E55AF7C75 /* UsageSummary.swift */; };
+		0CF2347E890D4C11A0D8F9E2 /* CodeburnParityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0D8F9E20CF2347E890D4C11 /* CodeburnParityModels.swift */; };
 		10F798965E11A08905A314ED /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7A5DC73A77F821FEF1C4C2 /* Colors.swift */; };
 		126FEF46908F4BC621C6E2CF /* MenuBarAnimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896DEB67024C596522CD1170 /* MenuBarAnimator.swift */; };
 		1961F418EE5782731D4FE8F0 /* SharedWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09675DF7D256EE2CF8811CD0 /* SharedWidgetViews.swift */; };
@@ -17,10 +18,13 @@
 		233518A3B1AC062858B0980E /* LimitsSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 582AE74D20AA4374F2D438B1 /* LimitsSettingsView.swift */; };
 		253B6BE0BE59A6D31CCC55CF /* Strings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 874ED50B2C0735D005B7D771 /* Strings.swift */; };
 		26F7CF85E202BD6EB50CFB95 /* NativeLocalization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56EB7E92F732558699166D59 /* NativeLocalization.swift */; };
+		27B6DA74E31F4A1B9C8052D6 /* CodeburnParityTabsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9C8052D627B6DA74E31F4A1 /* CodeburnParityTabsView.swift */; };
+		285F4019FA5E44C7A85A6D11 /* OptimizePlanTabsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D5B7D6D77F64A7FAE25C014 /* OptimizePlanTabsView.swift */; };
 		29393F5D8D12DE869C56DC92 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A88BB499D11819D1E097F0E5 /* StatusBarController.swift */; };
 		2C14BF3641B1576EDDFBC3A8 /* HeatmapWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219B2A4FB59F88C93706A7E9 /* HeatmapWidget.swift */; };
 		2F275B64BC7F1B9658BC0DB3 /* TopModelsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E51990BFC043870F480BDBC8 /* TopModelsView.swift */; };
 		301591213A0DE27E1AB23CDD /* UsageLimitsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25D53AF2F8EBC62DDE246B06 /* UsageLimitsView.swift */; };
+		31E8D83E7B104CE7B198BA62 /* Phase5Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932C78E953894A37B5330147 /* Phase5Models.swift */; };
 		388B262BEAEC498A26CF65CA /* SummaryCardsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ABB2B6A984775A54BFE4168 /* SummaryCardsView.swift */; };
 		3CE5F96D8589783D413A8EC5 /* DashboardBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2010F4EBD35C093595E73C89 /* DashboardBackgroundView.swift */; };
 		43D62680231AD8D7802FD683 /* TokenFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 128364E2EE4005C76D421F54 /* TokenFormatter.swift */; };
@@ -116,6 +120,7 @@
 		56EB7E92F732558699166D59 /* NativeLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeLocalization.swift; sourceTree = "<group>"; };
 		57CC9A459C53F8B2EE506C92 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		582AE74D20AA4374F2D438B1 /* LimitsSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitsSettingsView.swift; sourceTree = "<group>"; };
+		6D5B7D6D77F64A7FAE25C014 /* OptimizePlanTabsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OptimizePlanTabsView.swift; sourceTree = "<group>"; };
 		5E7848D97C02FEC458E7BB99 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6223B5C89A0AD0958F5C90CB /* WidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTheme.swift; sourceTree = "<group>"; };
 		6BECCBDF0ADA6007220399FF /* ActivityHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityHeatmapView.swift; sourceTree = "<group>"; };
@@ -128,14 +133,17 @@
 		896DEB67024C596522CD1170 /* MenuBarAnimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarAnimator.swift; sourceTree = "<group>"; };
 		8BFE09BAB178C92E55AF7C75 /* UsageSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSummary.swift; sourceTree = "<group>"; };
 		8C290298A0632019854B785C /* VibeDeckMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeDeckMacApp.swift; sourceTree = "<group>"; };
+		932C78E953894A37B5330147 /* Phase5Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase5Models.swift; sourceTree = "<group>"; };
 		9341C5A49C80D84102DB7EB2 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		99B1316B6D6620698D3701D4 /* LocalizationObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationObserver.swift; sourceTree = "<group>"; };
 		9BA57427C6F467F66E3F2392 /* WidgetStrings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetStrings.swift; sourceTree = "<group>"; };
+		A0D8F9E20CF2347E890D4C11 /* CodeburnParityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeburnParityModels.swift; sourceTree = "<group>"; };
 		A2E4D71F62423E91406FE27E /* DashboardBrowserOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardBrowserOpener.swift; sourceTree = "<group>"; };
 		A88BB499D11819D1E097F0E5 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		AB48DEEB3B612949EA2DE6F7 /* DateHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateHelpers.swift; sourceTree = "<group>"; };
 		AE83FE35C1FE78E867D2DC3F /* VibeDeckWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibeDeckWidgetBundle.swift; sourceTree = "<group>"; };
 		B7C226CB3571AAFC1D1731EB /* LimitsSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitsSettingsStore.swift; sourceTree = "<group>"; };
+		B9C8052D627B6DA74E31F4A1 /* CodeburnParityTabsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeburnParityTabsView.swift; sourceTree = "<group>"; };
 		BBF5256A66BEEDB71D0F9272 /* TopModelsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopModelsWidget.swift; sourceTree = "<group>"; };
 		BBFE62EECA16EE7A82CF33D7 /* ServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerManager.swift; sourceTree = "<group>"; };
 		BC9D22DF1D472D465DA65365 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
@@ -216,9 +224,11 @@
 				6BECCBDF0ADA6007220399FF /* ActivityHeatmapView.swift */,
 				E60C40E6B513BEEAC04E1D95 /* BoltShape.swift */,
 				C11411694425FB25687D9488 /* ClawdCompanionView.swift */,
+				B9C8052D627B6DA74E31F4A1 /* CodeburnParityTabsView.swift */,
 				9341C5A49C80D84102DB7EB2 /* DashboardView.swift */,
 				C3C3B83D0FEAB6C01B728301 /* FooterView.swift */,
 				582AE74D20AA4374F2D438B1 /* LimitsSettingsView.swift */,
+				6D5B7D6D77F64A7FAE25C014 /* OptimizePlanTabsView.swift */,
 				77193B8F48003CB746DEE84D /* PeriodPickerView.swift */,
 				00158F80C8A1693A9D6E0E11 /* ServerOfflineView.swift */,
 				0BE77CF7461FD7A4B8613E71 /* SharedComponents.swift */,
@@ -291,12 +301,14 @@
 		B20A4B079D273C744C4095D2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A0D8F9E20CF2347E890D4C11 /* CodeburnParityModels.swift */,
 				117A8A1938D89D4EB399C12A /* DailyUsage.swift */,
 				F1A00300744831AD0EE6F7FA /* HeatmapData.swift */,
 				C9F4F9192D1792275BCB9761 /* HourlyUsage.swift */,
 				B7C226CB3571AAFC1D1731EB /* LimitsSettingsStore.swift */,
 				3D2CF322CACEC6EC8861D57A /* ModelBreakdown.swift */,
 				F5AA8B5146A5728E579F48C0 /* MonthlyUsage.swift */,
+				932C78E953894A37B5330147 /* Phase5Models.swift */,
 				F1DE8AB3CEF7C00070F9E108 /* ProjectUsage.swift */,
 				493DEEE73EC700B3094422AD /* SyncResponse.swift */,
 				F73C4722FE6010769A69F20C /* TokenTotals.swift */,
@@ -448,6 +460,8 @@
 				5B19EB69B23C4843577D7A61 /* BoltShape.swift in Sources */,
 				FC79D011D015191DC95637F0 /* BrandLogoResolver.swift in Sources */,
 				689290B7393DE8B4FCB9C0A3 /* ClawdCompanionView.swift in Sources */,
+				0CF2347E890D4C11A0D8F9E2 /* CodeburnParityModels.swift in Sources */,
+				27B6DA74E31F4A1B9C8052D6 /* CodeburnParityTabsView.swift in Sources */,
 				10F798965E11A08905A314ED /* Colors.swift in Sources */,
 				625603966AE9CAC866BECC30 /* Constants.swift in Sources */,
 				570D59B6EC4CC94F5D75EE4B /* DailyUsage.swift in Sources */,
@@ -469,7 +483,9 @@
 				86F5BB58B0091EC3E36EEB9D /* MonthlyUsage.swift in Sources */,
 				5F1F90830BB6C41D2F3F57CD /* NativeBridge.swift in Sources */,
 				26F7CF85E202BD6EB50CFB95 /* NativeLocalization.swift in Sources */,
+				285F4019FA5E44C7A85A6D11 /* OptimizePlanTabsView.swift in Sources */,
 				9E319B3D225C9BAD37EFAFDB /* PeriodPickerView.swift in Sources */,
+				31E8D83E7B104CE7B198BA62 /* Phase5Models.swift in Sources */,
 				0090B75D6E06B098D66045EF /* ProjectUsage.swift in Sources */,
 				6B4B11CD20F62365D7FD44AF /* ServerManager.swift in Sources */,
 				81C0E735D3AECD76B97C475D /* ServerOfflineView.swift in Sources */,

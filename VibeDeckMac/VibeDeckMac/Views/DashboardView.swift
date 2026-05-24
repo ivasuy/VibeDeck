@@ -33,7 +33,11 @@ struct DashboardView: View {
                                 totalTokens: viewModel.totalTokens,
                                 totalCost: viewModel.totalCost
                             )
+                            if let forecast = viewModel.forecastView {
+                                ForecastCard(forecast: forecast)
+                            }
                             UsageLimitsView(limits: viewModel.usageLimits)
+                            CodeburnParityTabsView(viewModel: viewModel)
                             ActivityHeatmapView(heatmap: viewModel.heatmap)
                             UsageTrendChartWrapper(
                                 daily: viewModel.daily,

@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useActivityHeatmap } from "../hooks/use-activity-heatmap.js";
+import { useActivityHeatmap } from "../hooks/use-activity-heatmap";
 import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
-import { useTrendData } from "../hooks/use-trend-data.js";
-import { useUsageData } from "../hooks/use-usage-data.js";
-import { useUsageLimits } from "../hooks/use-usage-limits.js";
-import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown.js";
+import { useTrendData } from "../hooks/use-trend-data";
+import { useUsageData } from "../hooks/use-usage-data";
+import { useUsageLimits } from "../hooks/use-usage-limits";
+import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -37,7 +37,7 @@ import {
   getUserStatus,
   triggerLocalSync,
 } from "../lib/api";
-import { getSyncStatus } from "../lib/vibedeck-api";
+import { getForecastView, getPlanView, getSyncStatus } from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
 import { MatrixButton } from "../ui/foundation/MatrixButton.jsx";
@@ -95,6 +95,145 @@ function addUtcDays(date, days) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
+function parseCounterPayload(value) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  return typeof value === "object" ? value : null;
+}
+
+function mcpServerName(toolKey) {
+  const parts = String(toolKey || "").split("__");
+  if (parts.length >= 3 && parts[0] === "mcp" && parts[1]) return parts[1];
+  return String(toolKey || "").replace(/^mcp__/, "") || "unknown";
+}
+
+function collectMcpCounters(value, counters, seen = new WeakSet()) {
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Object.prototype.hasOwnProperty.call(value, "tools_json")) {
+    const tools = parseCounterPayload(value.tools_json);
+    if (tools) {
+      for (const [toolKey, rawCalls] of Object.entries(tools)) {
+        if (!String(toolKey).startsWith("mcp__")) continue;
+        const calls = Number(rawCalls);
+        if (!Number.isFinite(calls) || calls <= 0) continue;
+        const server = mcpServerName(toolKey);
+        counters.set(server, (counters.get(server) || 0) + calls);
+      }
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectMcpCounters(item, counters, seen);
+    return;
+  }
+
+  for (const child of Object.values(value)) {
+    if (child && typeof child === "object") collectMcpCounters(child, counters, seen);
+  }
+}
+
+function buildMcpServerRows(payloads) {
+  const counters = new Map();
+  for (const payload of payloads) {
+    collectMcpCounters(payload, counters);
+  }
+  return Array.from(counters.entries())
+    .map(([server, calls]) => ({ server, calls }))
+    .sort((left, right) => right.calls - left.calls || left.server.localeCompare(right.server));
+}
+
+function readFiniteCounter(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value == null || value === "") continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function sumPresentCounters(row, keys) {
+  let total = 0;
+  let found = false;
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value == null || value === "") continue;
+    const n = Number(value);
+    if (!Number.isFinite(n)) continue;
+    found = true;
+    total += Math.max(0, n);
+  }
+  return found ? total : null;
+}
+
+function resolveTotalInputTokens(row) {
+  const totalInput = readFiniteCounter(row, ["total_input_tokens"]);
+  if (totalInput != null) return Math.max(0, totalInput);
+  return sumPresentCounters(row, [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_creation_5m_input_tokens",
+    "cache_creation_1h_input_tokens",
+  ]);
+}
+
+function hasLowCacheHitHint(rows) {
+  let inputTokens = 0;
+  let cachedInputTokens = 0;
+  let hasCounters = false;
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const totalInput = resolveTotalInputTokens(row);
+    const cached = readFiniteCounter(row, ["cached_input_tokens", "cache_read_input_tokens"]);
+    if (totalInput == null || cached == null) continue;
+    hasCounters = true;
+    inputTokens += Math.max(0, totalInput);
+    cachedInputTokens += Math.max(0, cached);
+  }
+  if (!hasCounters || inputTokens <= 0) return false;
+  return cachedInputTokens / inputTokens < 0.8;
+}
+
+function McpServersPanel({ rows }) {
+  return (
+    <div className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+      <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
+        {copy("dashboard.mcp.title")}
+      </div>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
+          {copy("dashboard.mcp.empty")}
+        </p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {rows.map((row) => (
+            <div
+              key={row.server}
+              className="flex items-center justify-between gap-3 rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 text-sm dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+            >
+              <span className="min-w-0 truncate font-medium text-oai-black dark:text-white">
+                {row.server}
+              </span>
+              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
+                {toDisplayNumber(row.calls)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function isProductionHost(hostname) {
   if (!hostname) return false;
   return hostname === "github.com";
@@ -139,6 +278,8 @@ export function DashboardPage({
   const forceInstall = useMemo(() => isForceInstallEnabled(), []);
   const [isCapturing, setIsCapturing] = useState(false);
   const [syncFreshnessWarning, setSyncFreshnessWarning] = useState(null);
+  const [forecastView, setForecastView] = useState(null);
+  const [planView, setPlanView] = useState(null);
   const identityScrambleDurationMs = 2200;
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
   const [installCopied, setInstallCopied] = useState(false);
@@ -467,6 +608,27 @@ export function DashboardPage({
   useEffect(() => {
     refreshSyncStatus();
   }, [refreshSyncStatus]);
+
+  useEffect(() => {
+    let active = true;
+    const params = {
+      from,
+      to,
+      tz: timeZone,
+      tz_offset_minutes: tzOffsetMinutes,
+    };
+    Promise.all([
+      getForecastView(params).catch(() => null),
+      getPlanView(params).catch(() => null),
+    ]).then(([nextForecast, nextPlan]) => {
+      if (!active) return;
+      setForecastView(nextForecast && typeof nextForecast === "object" ? nextForecast : null);
+      setPlanView(nextPlan && typeof nextPlan === "object" ? nextPlan : null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [from, timeZone, to, tzOffsetMinutes]);
 
   const shareDailyToTrend = period === "week" || period === "month";
   const useDailyTrend = period === "week" || period === "month";
@@ -876,14 +1038,50 @@ export function DashboardPage({
     return normalized.slice(0, 6);
   }, [publicMode, userStatus]);
 
+  const mcpServerRows = useMemo(
+    () => buildMcpServerRows([
+      summary,
+      daily,
+      dailyBreakdownDaily,
+      modelBreakdown,
+      projectUsageEntries,
+      heatmap,
+      heatmapDaily,
+    ]),
+    [daily, dailyBreakdownDaily, heatmap, heatmapDaily, modelBreakdown, projectUsageEntries, summary],
+  );
+
+  const showForecastBanner = useMemo(() => {
+    const forecast = Number(forecastView?.forecast_30d_usd);
+    const monthly = Number(planView?.monthly_usd ?? planView?.monthly_plan_usd);
+    return Number.isFinite(forecast) && Number.isFinite(monthly) && monthly > 0 && forecast > monthly;
+  }, [forecastView, planView]);
+  const showReadingPatternHint = useMemo(
+    () => hasLowCacheHitHint(dailyBreakdownDaily),
+    [dailyBreakdownDaily],
+  );
+
   const activityHeatmapBlock = (
-    <ActivityHeatmap
-      heatmap={heatmap}
-      timeZoneLabel={timeZoneLabel}
-      timeZoneShortLabel={timeZoneShortLabel}
-      hideLegend={screenshotMode}
-      defaultToLatestMonth={screenshotMode}
-    />
+    <div className="space-y-4">
+      {showForecastBanner ? (
+        <div className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
+          Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.
+        </div>
+      ) : null}
+      {showReadingPatternHint ? (
+        <div className="rounded-md border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-700 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-200">
+          Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.
+        </div>
+      ) : null}
+      <ActivityHeatmap
+        heatmap={heatmap}
+        timeZoneLabel={timeZoneLabel}
+        timeZoneShortLabel={timeZoneShortLabel}
+        hideLegend={screenshotMode}
+        defaultToLatestMonth={screenshotMode}
+      />
+      <McpServersPanel rows={mcpServerRows} />
+    </div>
   );
 
   const rangeLabel = useMemo(() => {

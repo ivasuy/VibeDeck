@@ -7,7 +7,11 @@ import {
   getCheckpoint,
   getCheckpoints,
   getEntireStatus,
+  getCurrencyRates,
+  getForecastView,
   getKnownRepos,
+  getOptimizeFindings,
+  getPlanView,
   getSyncStatus,
   postAttribute,
   postEntireCommand,
@@ -57,6 +61,22 @@ describe("vibedeck-api", () => {
 
     expect(fetchMock.mock.calls[0][0]).toContain("/functions/vibedeck-known-repos");
     expect(fetchMock.mock.calls[0][0]).toContain("limit=20");
+  });
+
+  it("fetches Phase 5 optimize plan currency and forecast endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+
+    await getOptimizeFindings({}, fetchMock as any);
+    await getPlanView({}, fetchMock as any);
+    await getCurrencyRates({ currency: "EUR" }, fetchMock as any);
+    await getForecastView({}, fetchMock as any);
+
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining([
+      expect.stringContaining("/functions/vibedeck-optimize/findings"),
+      expect.stringContaining("/functions/vibedeck-plan"),
+      expect.stringContaining("/functions/vibedeck-currency-rates"),
+      expect.stringContaining("/functions/vibedeck-forecast"),
+    ]));
   });
 
   it("fetches Entire status and checkpoints with repo parameters", async () => {

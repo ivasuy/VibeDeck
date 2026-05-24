@@ -78,6 +78,36 @@ actor APIClient {
         try await fetch("/functions/vibedeck-usage-limits")
     }
 
+    func fetchCompareMetrics() async throws -> CompareMetricsResponse {
+        try await fetch("/functions/vibedeck-compare")
+    }
+
+    func fetchModelsParity() async throws -> ModelsParityResponse {
+        try await fetch("/functions/vibedeck-models")
+    }
+
+    func fetchYield() async throws -> YieldResponse {
+        try await fetch("/functions/vibedeck-yield")
+    }
+
+    func fetchOptimizeFindings() async throws -> OptimizeFindingsResponse {
+        try await fetch("/functions/vibedeck-optimize/findings")
+    }
+
+    func fetchPlanView() async throws -> PlanViewResponse {
+        try await fetch("/functions/vibedeck-plan")
+    }
+
+    func fetchForecast() async throws -> ForecastResponse {
+        try await fetch("/functions/vibedeck-forecast")
+    }
+
+    func fetchCurrencyRates(currency: String) async throws -> CurrencyRatesResponse {
+        try await fetch("/functions/vibedeck-currency-rates", queryItems: [
+            URLQueryItem(name: "currency", value: currency)
+        ])
+    }
+
     func triggerSync() async throws -> SyncResponse {
         try await post("/functions/vibedeck-local-sync")
     }

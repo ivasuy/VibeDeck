@@ -10,6 +10,8 @@ const {
   parseClaudeIncremental,
   parseGeminiIncremental,
   parseOpencodeIncremental,
+  parseOpencodeDbIncremental,
+  parseOpenclawIncremental,
   parseKiroIncremental,
   parseHermesIncremental,
   parseCopilotIncremental,
@@ -24,9 +26,23 @@ const {
   resolvePiSessionFiles,
   resolvePiAgentDir,
   piAgentDirCollidesWithOmp,
+  parseGooseIncremental,
+  parseCrushIncremental,
+  readCrushProjects,
   parseCraftIncremental,
   resolveCraftSessionFiles,
   resolveCraftWorkspaceRoots,
+  parseDroidIncremental,
+  resolveDroidSessionFiles,
+  parseQwenIncremental,
+  resolveQwenChatFiles,
+  parseClineFamilyIncremental,
+  resolveClineFamilyTaskDirs,
+  parseCursorAgentIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseAntigravityIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
 } = require("../src/lib/rollout");
 
 test("parseRolloutIncremental ignores repeated token_count records with unchanged totals", async () => {
@@ -1000,6 +1016,118 @@ test("parseGeminiIncremental defaults missing model to unknown", async () => {
   }
 });
 
+test("parseGeminiIncremental preserves cwd only from adjacent .project_root proof", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-root-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const chatsDir = path.join(tmp, "gemini", "tmp", "hash-a", "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    await fs.writeFile(path.join(tmp, "gemini", "tmp", "hash-a", ".project_root"), repo, "utf8");
+    const sessionPath = path.join(chatsDir, "session-root.json");
+    const session = {
+      sessionId: "gemini-root",
+      messages: [
+        {
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "gemini-2.5-pro",
+          tokens: { input: 10, output: 5 },
+        },
+      ],
+    };
+    await fs.writeFile(sessionPath, JSON.stringify(session), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, gemini: { existing: "keep" } };
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "update")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "end")?.cwd, repo);
+    assert.equal(cursors.gemini.existing, "keep");
+    assert.equal(cursors.gemini.projectRootProofs, 1);
+    assert.equal(cursors.gemini.providerOnlyFiles, 0);
+    assert.ok(cursors.files[sessionPath]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGeminiIncremental keeps temp hash sessions provider-only when .project_root is absent", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-provider-only-"));
+  try {
+    const chatsDir = path.join(tmp, "gemini", "tmp", "hash-b", "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    const sessionPath = path.join(chatsDir, "session-provider.json");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        sessionId: "gemini-provider-only",
+        messages: [
+          {
+            timestamp: "2026-05-22T10:00:00.000Z",
+            model: "gemini-2.5-pro",
+            tokens: { input: 8, output: 3 },
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const cursors = { version: 1 };
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    assert.equal(cursors.gemini.projectRootProofs, 0);
+    assert.equal(cursors.gemini.providerOnlyFiles, 1);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGeminiIncremental ignores non-absolute .project_root proof", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-gemini-relative-root-"));
+  try {
+    const projectDir = path.join(tmp, "gemini", "tmp", "hash-relative");
+    const chatsDir = path.join(projectDir, "chats");
+    await fs.mkdir(chatsDir, { recursive: true });
+    await fs.writeFile(path.join(projectDir, ".project_root"), "relative/repo", "utf8");
+    const sessionPath = path.join(chatsDir, "session-relative.json");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        sessionId: "gemini-relative",
+        messages: [
+          {
+            timestamp: "2026-05-22T10:00:00.000Z",
+            model: "gemini-2.5-pro",
+            tokens: { input: 8, output: 3 },
+          },
+        ],
+      }),
+      "utf8",
+    );
+    const events = [];
+    await parseGeminiIncremental({
+      sessionFiles: [sessionPath],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseCursorApiIncremental treats Cursor CSV as authoritative and replaces prior cursor buckets", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-cursor-reconcile-"));
   try {
@@ -1098,6 +1226,38 @@ test("parseOpencodeIncremental aggregates message tokens and model", async () =>
       queuePath,
     });
     assert.equal(resAgain.bucketsQueued, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseOpencodeDbIncremental preserves message data path cwd in session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-opencode-db-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const message = buildOpencodeMessage({
+      modelID: "gpt-4o",
+      created: "2025-12-29T10:14:00.000Z",
+      completed: "2025-12-29T10:15:00.000Z",
+      tokens: { input: 10, output: 2, reasoning: 1, cached: 3, cacheWrite: 5 },
+    });
+    message.path = { cwd: repo };
+
+    const events = [];
+    const res = await parseOpencodeDbIncremental({
+      dbMessages: [{ id: "msg_db_cwd", sessionID: "ses_db_cwd", timeUpdated: 1, data: message }],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(res.eventsAggregated, 1);
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "update")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "end")?.cwd, repo);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -2689,12 +2849,708 @@ test("parseKiroIncremental ignores JSONL fallback after file truncation until ne
   }
 });
 
+test("parseKiroIncremental does not invent cwd from Kiro IDE paths", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kiro-no-cwd-"));
+  try {
+    const jsonlPath = path.join(tmp, "tokens_generated.jsonl");
+    await fs.writeFile(
+      jsonlPath,
+      JSON.stringify({
+        model: "agent",
+        provider: "kiro",
+        promptTokens: 10,
+        generatedTokens: 5,
+        timestamp: "2026-05-22T10:00:00.000Z",
+      }) + "\n",
+      "utf8",
+    );
+    const events = [];
+    await parseKiroIncremental({
+      jsonlPath,
+      dbPath: path.join(tmp, "missing.db"),
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseOpenclawIncremental remains provider-only when no cwd proof exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-openclaw-no-cwd-"));
+  try {
+    const sessionPath = path.join(tmp, "session.jsonl");
+    await fs.writeFile(
+      sessionPath,
+      JSON.stringify({
+        type: "message",
+        timestamp: "2026-05-22T10:00:00.000Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15 },
+        },
+      }) + "\n",
+      "utf8",
+    );
+    const events = [];
+    await parseOpenclawIncremental({
+      sessionFiles: [sessionPath],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseDroidIncremental uses session_start.cwd proof and marks split usage estimated in activity", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-droid-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const sessionFile = path.join(tmp, ".factory", "sessions", "project-a", "session.jsonl");
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+    await fs.writeFile(sessionFile, [
+      JSON.stringify({ type: "session_start", session_id: "droid-1", cwd: repo, model: "factory-model", timestamp: "2026-05-22T10:00:00.000Z" }),
+      JSON.stringify({ type: "assistant", id: "a1", timestamp: "2026-05-22T10:01:00.000Z", usage: { input_tokens: 100, output_tokens: 25 }, tool: "Edit" }),
+    ].join("\n") + "\n");
+    const events = [];
+    const cursors = { version: 1 };
+    const result = await parseDroidIncremental({ sessionFiles: [sessionFile], cursors, queuePath: path.join(tmp, "queue.jsonl"), onSessionEvent: (event) => events.push(event) });
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    const queued = await readJsonLines(path.join(tmp, "queue.jsonl"));
+    assert.equal(queued[0].source, "droid");
+    assert.match(String(queued[0].activity_json || ""), /estimated/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseQwenIncremental preserves cwd only when entry cwd is absolute", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-qwen-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const chatFile = path.join(tmp, ".qwen", "projects", "hash", "chats", "chat.jsonl");
+    await fs.mkdir(path.dirname(chatFile), { recursive: true });
+    await fs.writeFile(chatFile, [
+      JSON.stringify({ sessionId: "qwen-1", cwd: repo, timestamp: "2026-05-22T10:00:00.000Z", model: "qwen-coder", usage: { input_tokens: 50, output_tokens: 20, cached_tokens: 5 }, tools: [{ name: "Read" }] }),
+      JSON.stringify({ sessionId: "qwen-2", cwd: "hash-only", timestamp: "2026-05-22T10:30:00.000Z", model: "qwen-coder", usage: { input_tokens: 10, output_tokens: 4 } }),
+    ].join("\n") + "\n");
+    const events = [];
+    const result = await parseQwenIncremental({ chatFiles: [chatFile], cursors: { version: 1 }, queuePath: path.join(tmp, "queue.jsonl"), onSessionEvent: (event) => events.push(event) });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.session_id === "qwen-1" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.session_id === "qwen-2" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveDroidSessionFiles walks .factory sessions jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-droid-resolve-"));
+  try {
+    const sessionFile = path.join(tmp, ".factory", "sessions", "a", "session.jsonl");
+    const ignoredFile = path.join(tmp, ".factory", "other", "ignored.jsonl");
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true });
+    await fs.mkdir(path.dirname(ignoredFile), { recursive: true });
+    await fs.writeFile(sessionFile, "{}\n", "utf8");
+    await fs.writeFile(ignoredFile, "{}\n", "utf8");
+    assert.deepEqual(resolveDroidSessionFiles({ HOME: tmp }), [sessionFile]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveQwenChatFiles walks only project chat jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-qwen-resolve-"));
+  try {
+    const chatFile = path.join(tmp, ".qwen", "projects", "a", "chats", "chat.jsonl");
+    const ignoredFile = path.join(tmp, ".qwen", "projects", "a", "notes", "ignored.jsonl");
+    const nestedProjectChatFile = path.join(tmp, ".qwen", "projects", "a", "nested", "chats", "invalid.jsonl");
+    const nestedChatFile = path.join(tmp, ".qwen", "projects", "a", "chats", "nested", "invalid.jsonl");
+    await fs.mkdir(path.dirname(chatFile), { recursive: true });
+    await fs.mkdir(path.dirname(ignoredFile), { recursive: true });
+    await fs.mkdir(path.dirname(nestedProjectChatFile), { recursive: true });
+    await fs.mkdir(path.dirname(nestedChatFile), { recursive: true });
+    await fs.writeFile(chatFile, "{}\n", "utf8");
+    await fs.writeFile(ignoredFile, "{}\n", "utf8");
+    await fs.writeFile(nestedProjectChatFile, "{}\n", "utf8");
+    await fs.writeFile(nestedChatFile, "{}\n", "utf8");
+    assert.deepEqual(resolveQwenChatFiles({ HOME: tmp }), [chatFile]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClineFamilyIncremental uses Current Workspace Directory proof and keeps missing proof provider-only", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cline-family-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const taskWithProof = path.join(tmp, "globalStorage", "rooveterinaryinc.roo-cline", "tasks", "task-a");
+    const taskWithoutProof = path.join(tmp, "globalStorage", "kilocode.kilo-code", "tasks", "task-b");
+    await fs.mkdir(taskWithProof, { recursive: true });
+    await fs.mkdir(taskWithoutProof, { recursive: true });
+    await fs.writeFile(
+      path.join(taskWithProof, "api_conversation_history.json"),
+      JSON.stringify([{ content: `Current Workspace Directory (${repo})` }]),
+      "utf8",
+    );
+    await fs.writeFile(
+      path.join(taskWithoutProof, "api_conversation_history.json"),
+      JSON.stringify([{ content: "No workspace proof here" }]),
+      "utf8",
+    );
+    const ui = [
+      {
+        ts: "2026-05-22T10:00:00.000Z",
+        model: "claude-sonnet-4",
+        tokensIn: 100,
+        tokensOut: 20,
+        tool: "read_file",
+      },
+    ];
+    await fs.writeFile(path.join(taskWithProof, "ui_messages.json"), JSON.stringify(ui), "utf8");
+    await fs.writeFile(path.join(taskWithoutProof, "ui_messages.json"), JSON.stringify(ui), "utf8");
+    const files = resolveClineFamilyTaskDirs({ HOME: tmp });
+    const events = [];
+    const result = await parseClineFamilyIncremental({
+      taskDirs: files,
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.provider === "roo" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.provider === "kilocode" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClineFamilyIncremental snapshots task dirs idempotently and records tools", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cline-family-snapshot-"));
+  try {
+    const taskDir = path.join(tmp, "globalStorage", "ibm.bob-code", "tasks", "task-c");
+    await fs.mkdir(taskDir, { recursive: true });
+    await fs.writeFile(
+      path.join(taskDir, "ui_messages.json"),
+      JSON.stringify([
+        {
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "claude-sonnet-4",
+          input_tokens: 12,
+          outputTokens: 3,
+          cached_tokens: 4,
+          cache_creation_input_tokens: 5,
+          toolName: "write_file",
+        },
+      ]),
+      "utf8",
+    );
+    const cursors = { version: 1 };
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const taskDirs = resolveClineFamilyTaskDirs({ HOME: tmp });
+    const firstEvents = [];
+    const first = await parseClineFamilyIncremental({
+      taskDirs,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => firstEvents.push(event),
+    });
+    const secondEvents = [];
+    const second = await parseClineFamilyIncremental({
+      taskDirs,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => secondEvents.push(event),
+    });
+
+    assert.equal(first.eventsAggregated, 1);
+    assert.equal(second.eventsAggregated, 0);
+    assert.deepEqual(secondEvents, []);
+    const update = firstEvents.find((event) => event.kind === "update");
+    assert.equal(update.provider, "ibm-bob");
+    assert.equal(update.input_tokens, 12);
+    assert.equal(update.cached_input_tokens, 4);
+    assert.equal(update.cache_creation_input_tokens, 5);
+    assert.equal(update.output_tokens, 3);
+    assert.match(update.tools_json, /write_file/);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCursorAgentIncremental keeps transcripts provider-only unless absolute cwd is present", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const transcriptsDir = path.join(tmp, ".cursor", "projects", "project-hash", "agent-transcripts");
+    await fs.mkdir(transcriptsDir, { recursive: true });
+    const jsonl = path.join(transcriptsDir, "agent.jsonl");
+    await fs.writeFile(
+      jsonl,
+      [
+        JSON.stringify({
+          sessionId: "cursor-agent-a",
+          cwd: repo,
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "cursor-agent",
+          usage: { input_tokens: 40, output_tokens: 10 },
+          tool: "edit",
+        }),
+        JSON.stringify({
+          sessionId: "cursor-agent-b",
+          project: "project-hash",
+          timestamp: "2026-05-22T10:30:00.000Z",
+          model: "cursor-agent",
+          usage: { input_tokens: 20, output_tokens: 5 },
+        }),
+      ].join("\n") + "\n",
+    );
+    const events = [];
+    const result = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 2);
+    assert.equal(events.find((event) => event.session_id === "cursor-agent-a" && event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.session_id === "cursor-agent-b" && event.kind === "start")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCursorAgentIncremental estimates missing token fields and advances file offsets idempotently", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-estimate-"));
+  try {
+    const jsonl = path.join(tmp, ".cursor", "projects", "project-hash", "agent-transcripts", "agent.jsonl");
+    await fs.mkdir(path.dirname(jsonl), { recursive: true });
+    await fs.writeFile(
+      jsonl,
+      JSON.stringify({
+        sessionId: "cursor-agent-estimated",
+        timestamp: "2026-05-22T10:00:00.000Z",
+        model: "cursor-agent",
+        text: "A".repeat(44),
+      }) + "\n",
+    );
+    const cursors = { version: 1 };
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const firstEvents = [];
+    const first = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => firstEvents.push(event),
+    });
+    const secondEvents = [];
+    const second = await parseCursorAgentIncremental({
+      transcriptFiles: [jsonl],
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => secondEvents.push(event),
+    });
+
+    assert.equal(first.eventsAggregated, 1);
+    assert.equal(second.eventsAggregated, 0);
+    assert.deepEqual(secondEvents, []);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].source, "cursor-agent");
+    assert.equal(queued[0].input_tokens, 11);
+    assert.equal(queued[0].total_tokens, 11);
+    assert.deepEqual(JSON.parse(queued[0].activity_json), { estimated_tokens: 1 });
+    assert.equal(Object.hasOwn(queued[0], "estimated_cost_usd"), false);
+    const update = firstEvents.find((event) => event.kind === "update");
+    assert.equal(update.input_tokens, 11);
+    assert.deepEqual(JSON.parse(update.activity_json), { estimated_tokens: 1 });
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveCursorAgentTranscriptFiles walks only Cursor Agent transcript jsonl files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-cursor-agent-resolve-"));
+  try {
+    const transcript = path.join(tmp, ".cursor", "projects", "a", "agent-transcripts", "agent.jsonl");
+    const ignored = path.join(tmp, ".cursor", "projects", "a", "chat.jsonl");
+    await fs.mkdir(path.dirname(transcript), { recursive: true });
+    await fs.writeFile(transcript, "{}\n", "utf8");
+    await fs.writeFile(ignored, "{}\n", "utf8");
+    assert.deepEqual(resolveCursorAgentTranscriptFiles({ HOME: tmp }), [transcript]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental reads JSON cache usage and ignores pb-only files", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-"));
+  try {
+    const cachePath = path.join(tmp, ".cache", "codeburn", "antigravity-results.json");
+    await fs.mkdir(path.dirname(cachePath), { recursive: true });
+    await fs.writeFile(
+      cachePath,
+      JSON.stringify([
+        {
+          id: "ag-1",
+          timestamp: "2026-05-22T10:00:00.000Z",
+          model: "gemini-2.5-pro",
+          input_tokens: 12,
+          output_tokens: 4,
+        },
+      ]),
+      "utf8",
+    );
+    const events = [];
+    const result = await parseAntigravityIncremental({
+      cachePath,
+      pbFiles: [path.join(tmp, "raw.pb")],
+      cursors: { version: 1 },
+      queuePath: path.join(tmp, "queue.jsonl"),
+      onSessionEvent: (event) => events.push(event),
+    });
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    const queued = await readJsonLines(path.join(tmp, "queue.jsonl"));
+    assert.equal(queued[0].source, "antigravity");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseAntigravityIncremental records pb-only status without decoding usage", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-pb-only-"));
+  try {
+    const pb = path.join(tmp, ".gemini", "antigravity", "conversations", "raw.pb");
+    await fs.mkdir(path.dirname(pb), { recursive: true });
+    await fs.writeFile(pb, "protobuf bytes", "utf8");
+    const cursors = { version: 1 };
+    const result = await parseAntigravityIncremental({
+      cachePath: path.join(tmp, "missing.json"),
+      pbFiles: [pb],
+      cursors,
+      queuePath: path.join(tmp, "queue.jsonl"),
+    });
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal(result.recordsProcessed, 0);
+    assert.equal(cursors.antigravity.lastPbSeen, pb);
+    assert.deepEqual(await readJsonLines(path.join(tmp, "queue.jsonl")), []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveAntigravity paths honor env overrides and default locations", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-antigravity-resolve-"));
+  try {
+    const pb = path.join(tmp, "ag", "raw.pb");
+    const ignored = path.join(tmp, "ag", "raw.txt");
+    await fs.mkdir(path.dirname(pb), { recursive: true });
+    await fs.writeFile(pb, "pb", "utf8");
+    await fs.writeFile(ignored, "txt", "utf8");
+    assert.equal(
+      resolveAntigravityCachePath({ HOME: tmp }),
+      path.join(tmp, ".cache", "codeburn", "antigravity-results.json"),
+    );
+    assert.equal(resolveAntigravityCachePath({ HOME: tmp, ANTIGRAVITY_CACHE_PATH: "/tmp/ag.json" }), "/tmp/ag.json");
+    assert.deepEqual(resolveAntigravityPbFiles({ HOME: tmp, ANTIGRAVITY_HOME: path.join(tmp, "ag") }), [pb]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 async function readJsonLines(filePath) {
   const text = await fs.readFile(filePath, "utf8").catch(() => "");
   if (!text.trim()) return [];
   const lines = text.split("\n").filter(Boolean);
   return lines.map((l) => JSON.parse(l));
 }
+
+// ── Goose SQLite parser tests ──
+
+function sqliteString(value) {
+  if (value == null) return "NULL";
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function createGooseDb(dbPath, sessions) {
+  cp.execFileSync("sqlite3", [
+    dbPath,
+    `
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      description TEXT,
+      working_dir TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      provider_name TEXT,
+      model_config_json TEXT,
+      model TEXT,
+      accumulated_input_tokens INTEGER,
+      accumulated_output_tokens INTEGER,
+      accumulated_total_tokens INTEGER,
+      cost_usd REAL,
+      total_cost REAL
+    );
+    `,
+  ]);
+  for (const s of sessions) {
+    const modelConfig = s.model_config_json ?? JSON.stringify({ model_name: s.model });
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO sessions (
+        id, description, working_dir, created_at, updated_at, provider_name,
+        model_config_json, model, accumulated_input_tokens, accumulated_output_tokens,
+        accumulated_total_tokens, cost_usd, total_cost
+      ) VALUES (
+        ${sqliteString(s.id)}, ${sqliteString(s.description || "")}, ${sqliteString(s.working_dir)},
+        ${sqliteString(s.created_at)}, ${sqliteString(s.updated_at)}, ${sqliteString(s.provider_name || "anthropic")},
+        ${sqliteString(modelConfig)}, ${sqliteString(s.model_column || null)}, ${Number(s.input || 0)},
+        ${Number(s.output || 0)}, ${Number(s.total || 0)}, ${Number(s.cost_usd || 0)}, ${Number(s.total_cost || 0)}
+      );`,
+    ]);
+  }
+}
+
+test("parseGooseIncremental reads sessions.db with working_dir cwd and emits session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-001",
+      working_dir: repo,
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "claude-sonnet-4-5",
+      input: 100,
+      output: 25,
+      total: 125,
+      cost_usd: 999,
+    }]);
+
+    const events = [];
+    const result = await parseGooseIncremental({
+      dbPath,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.provider, "goose");
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].source, "goose");
+    assert.equal(queued[0].input_tokens, 100);
+    assert.equal(queued[0].output_tokens, 25);
+    assert.equal(queued[0].total_tokens, 125);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGooseIncremental is idempotent and emits only growth deltas", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-001",
+      working_dir: tmp,
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "gpt-5.5",
+      input: 100,
+      output: 25,
+      total: 125,
+    }]);
+
+    assert.equal((await parseGooseIncremental({ dbPath, cursors, queuePath })).eventsAggregated, 1);
+    assert.equal((await parseGooseIncremental({ dbPath, cursors, queuePath })).eventsAggregated, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseGooseIncremental nulls untrusted working_dir values", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-goose-"));
+  try {
+    const dbPath = path.join(tmp, "sessions.db");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    createGooseDb(dbPath, [{
+      id: "goose-relative-cwd",
+      working_dir: "repo-name-only",
+      created_at: "2026-05-20T10:00:00.000Z",
+      updated_at: "2026-05-20T10:30:00.000Z",
+      model: "gpt-5.5",
+      input: 10,
+      output: 5,
+      total: 15,
+    }]);
+
+    const events = [];
+    await parseGooseIncremental({ dbPath, cursors, queuePath, onSessionEvent: (event) => events.push(event) });
+
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, null);
+    assert.equal(events.find((event) => event.kind === "update")?.cwd, null);
+    assert.equal(events.find((event) => event.kind === "end")?.cwd, null);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+// ── Crush registry + SQLite parser tests ──
+
+function createCrushDb(dbPath, sessions) {
+  cp.execFileSync("sqlite3", [
+    dbPath,
+    `
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      model TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      prompt_tokens INTEGER,
+      completion_tokens INTEGER,
+      total_tokens INTEGER,
+      cost_usd REAL
+    );
+    `,
+  ]);
+  for (const s of sessions) {
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO sessions (
+        id, title, model, created_at, updated_at, prompt_tokens, completion_tokens, total_tokens, cost_usd
+      ) VALUES (
+        ${sqliteString(s.id)}, ${sqliteString(s.title || "")}, ${sqliteString(s.model)},
+        ${sqliteString(s.created_at)}, ${sqliteString(s.updated_at)}, ${Number(s.input || 0)},
+        ${Number(s.output || 0)}, ${Number(s.total || 0)}, ${Number(s.cost || 0)}
+      );`,
+    ]);
+  }
+}
+
+test("readCrushProjects accepts registry arrays and object projects with clean absolute paths", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-projects-"));
+  try {
+    const repoA = path.join(tmp, "repo-a");
+    const repoB = path.join(tmp, "repo-b");
+    const repoC = path.join(tmp, "repo-c");
+    const objectPath = path.join(tmp, "projects-object.json");
+    const arrayPath = path.join(tmp, "projects-array.json");
+    await fs.writeFile(
+      objectPath,
+      JSON.stringify({
+        projects: [
+          { path: "relative/repo" },
+          { path: repoA },
+          { projectPath: repoB },
+          { root: repoC },
+        ],
+      }),
+      "utf8",
+    );
+    await fs.writeFile(arrayPath, JSON.stringify([{ cwd: repoB }, { cwd: "basename-only" }]), "utf8");
+
+    assert.deepEqual(readCrushProjects(objectPath), [repoA, repoB, repoC]);
+    assert.deepEqual(readCrushProjects(arrayPath), [repoB]);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCrushIncremental reads projects registry paths and emits cwd-backed session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    const crushDir = path.join(repo, ".crush");
+    await fs.mkdir(crushDir, { recursive: true });
+    const dbPath = path.join(crushDir, "crush.db");
+    createCrushDb(dbPath, [{
+      id: "crush-001",
+      model: "gpt-5.5",
+      created_at: "2026-05-21T10:00:00.000Z",
+      updated_at: "2026-05-21T10:10:00.000Z",
+      input: 90,
+      output: 30,
+      total: 120,
+      cost: 999,
+    }]);
+    const projectsPath = path.join(tmp, "projects.json");
+    await fs.writeFile(projectsPath, JSON.stringify({ projects: [{ id: "repo", path: repo }] }), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    const result = await parseCrushIncremental({
+      projectsPath,
+      cursors,
+      queuePath,
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.equal(result.eventsAggregated, 1);
+    assert.equal(events.find((event) => event.kind === "start")?.provider, "crush");
+    assert.equal(events.find((event) => event.kind === "start")?.cwd, repo);
+    assert.equal(events.find((event) => event.kind === "start")?.branch, null);
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued[0].source, "crush");
+    assert.equal(queued[0].input_tokens, 90);
+    assert.equal(queued[0].output_tokens, 30);
+    assert.equal(queued[0].total_tokens, 120);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCrushIncremental snapshots include project root to avoid session id collisions", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-crush-collide-"));
+  try {
+    const repos = [path.join(tmp, "repo-a"), path.join(tmp, "repo-b")];
+    for (const repo of repos) {
+      const crushDir = path.join(repo, ".crush");
+      await fs.mkdir(crushDir, { recursive: true });
+      createCrushDb(path.join(crushDir, "crush.db"), [{
+        id: "same-session",
+        model: "gpt-5.5",
+        created_at: "2026-05-21T10:00:00.000Z",
+        updated_at: "2026-05-21T10:10:00.000Z",
+        input: 10,
+        output: 5,
+        total: 15,
+      }]);
+    }
+    const projectsPath = path.join(tmp, "projects.json");
+    await fs.writeFile(projectsPath, JSON.stringify(repos.map((repo) => ({ path: repo }))), "utf8");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+
+    assert.equal((await parseCrushIncremental({ projectsPath, cursors, queuePath })).eventsAggregated, 2);
+    assert.equal((await parseCrushIncremental({ projectsPath, cursors, queuePath })).eventsAggregated, 0);
+    assert.equal(Object.keys(cursors.crush.snapshots).length, 2);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
 
 // ── Hermes Agent integration tests ──
 
@@ -3022,6 +3878,60 @@ test("parseCopilotIncremental aggregates chat spans and subtracts cache from inp
     assert.equal(b.input_tokens, 900);
     assert.equal(b.output_tokens, 200);
     assert.equal(b.cached_input_tokens, 100);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental preserves absolute workspace cwd from OTEL attributes in session events", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    const otelPath = path.join(tmp, "copilot-otel.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const span = makeCopilotChatSpan({ traceId: "cwd-t1", spanId: "cwd-s1" });
+    span.attributes["process.cwd"] = repo;
+    writeCopilotOtelFile(otelPath, [span]);
+
+    const events = [];
+    await parseCopilotIncremental({
+      otelPaths: [otelPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "update")?.cwd, repo);
+    assert.equal(events.find((e) => e.kind === "end")?.cwd, repo);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseCopilotIncremental preserves file URL workspace cwd from OTEL resource attributes", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-copilot-resource-cwd-"));
+  try {
+    const repo = path.join(tmp, "repo with space");
+    await fs.mkdir(repo, { recursive: true });
+    const otelPath = path.join(tmp, "copilot-otel.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const span = makeCopilotChatSpan({ traceId: "cwd-t2", spanId: "cwd-s2" });
+    span.resource = { attributes: { "github.copilot.workspace.path": `file://${repo}` } };
+    writeCopilotOtelFile(otelPath, [span]);
+
+    const events = [];
+    await parseCopilotIncremental({
+      otelPaths: [otelPath],
+      cursors,
+      queuePath,
+      onSessionEvent: (e) => events.push(e),
+    });
+
+    assert.equal(events.find((e) => e.kind === "start")?.cwd, repo);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
@@ -3560,6 +4470,165 @@ test("parseKiroCliIncremental aggregates user_turn_metadatas into half-hour kiro
       env: { KIRO_HOME: tmp },
     });
     assert.equal(result2.eventsAggregated, 0, "second run must not double-count");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroCliIncremental sessionFiles parser emits cwd-backed SessionEvents", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-events-"));
+  try {
+    const sessionsDir = path.join(tmp, "sessions", "cli");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1";
+    const activeFixture = await fs.readFile(
+      path.join(__dirname, "fixtures", "kiro-cli", "active-source.json"),
+      "utf8",
+    );
+    const sessionPath = path.join(sessionsDir, `${sessionId}.json`);
+    await fs.writeFile(sessionPath, activeFixture);
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.jsonl`), "");
+
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      sessionFiles: [sessionPath],
+      cursors,
+      queuePath,
+      env: { KIRO_HOME: tmp },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(
+      events.every(
+        (event) => event.session_id === "fixture-active-0000-0000-0000-000000000001",
+      ),
+    );
+    assert.ok(events.every((event) => event.cwd === "/tmp/fake-cwd"));
+    assert.equal(events[0].started_at, "2026-04-20T10:00:00.000Z");
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
+    assert.equal(events[2].observed_at, "2026-04-20T10:40:00.000Z");
+    assert.equal(events[3].ended_at, "2026-04-20T10:45:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroCliIncremental live session path emits cwd-backed SessionEvents from KIRO_HOME", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-live-events-"));
+  try {
+    const sessionsDir = path.join(tmp, "sessions", "cli");
+    await fs.mkdir(sessionsDir, { recursive: true });
+    const sessionId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const repo = path.join(tmp, "repo");
+    await fs.mkdir(repo, { recursive: true });
+    await fs.writeFile(
+      path.join(sessionsDir, `${sessionId}.json`),
+      JSON.stringify({
+        session_id: sessionId,
+        cwd: repo,
+        created_at: "2026-04-20T10:00:00.000Z",
+        updated_at: "2026-04-20T10:45:00.000Z",
+        session_state: {
+          rts_model_state: { model_info: { model_id: "claude-sonnet-4.5" } },
+          conversation_metadata: {
+            user_turn_metadatas: [
+              {
+                loop_id: { rand: 1 },
+                message_ids: ["live-msg-1"],
+                request_start_timestamp_ms: Date.parse("2026-04-20T10:05:00.000Z"),
+                input_token_count: 100,
+                output_token_count: 50,
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await fs.writeFile(path.join(sessionsDir, `${sessionId}.jsonl`), "");
+
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env: { KIRO_HOME: tmp, KIRO_CLI_DB_PATH: path.join(tmp, "missing.sqlite3") },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(events.every((event) => event.session_id === sessionId));
+    assert.ok(events.every((event) => event.cwd === repo));
+    assert.equal(events[0].started_at, "2026-04-20T10:00:00.000Z");
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
+    assert.equal(events[2].ended_at, "2026-04-20T10:45:00.000Z");
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseKiroCliIncremental SQLite-only SessionEvents do not invent cwd", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "tt-kirocli-sqlite-events-"));
+  try {
+    const dbPath = path.join(tmp, "data.sqlite3");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      "CREATE TABLE conversations_v2 (key TEXT, conversation_id TEXT, value TEXT, created_at INTEGER, updated_at INTEGER, PRIMARY KEY (key, conversation_id));",
+    ]);
+    cp.execFileSync("sqlite3", [
+      dbPath,
+      `INSERT INTO conversations_v2 VALUES ('proj', 'conv-sqlite-only', '${JSON.stringify(
+        {
+          model_info: { model_id: "claude-sonnet-4.5" },
+          user_turn_metadata: {
+            continuation_id: "conv-sqlite-only",
+            requests: [
+              {
+                request_id: "sqlite-only-req",
+                message_id: "sqlite-only-msg",
+                request_start_timestamp_ms: Date.parse("2026-04-20T10:05:00.000Z"),
+                user_prompt_length: 400,
+                response_size: 200,
+                model_id: "claude-sonnet-4.5",
+              },
+            ],
+          },
+        },
+      ).replace(/'/g, "''")}', 1, 2);`,
+    ]);
+
+    const cursors = { version: 1 };
+    const events = [];
+
+    await rolloutModule.parseKiroCliIncremental({
+      cursors,
+      queuePath,
+      env: { KIRO_CLI_DB_PATH: dbPath, KIRO_HOME: tmp },
+      onSessionEvent: (event) => events.push(event),
+    });
+
+    assert.deepEqual(
+      events.map((event) => event.kind),
+      ["start", "update", "end"],
+    );
+    assert.ok(events.every((event) => event.provider === "kiro"));
+    assert.ok(events.every((event) => event.session_id === "conv-sqlite-only"));
+    assert.ok(events.every((event) => event.cwd === null));
+    assert.equal(events[1].observed_at, "2026-04-20T10:05:00.000Z");
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

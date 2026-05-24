@@ -653,3 +653,25 @@ Top flush substage counter: `batch_transaction_ms=179,118.717ms`. The next large
 | Historical unknown | Earlier API/UI smoke confirmed visibility; final post-cleanup probe skipped because rebuild benchmark failed |
 
 Final decision: use H.6; do not merge H.7 revised as a speed phase. If we salvage anything later, salvage only the bucket upsert SQL reduction, the disabled-profile overhead guard, and the profiler evidence showing branch/repo resolution is the next real target.
+
+### Startup Caveat: New User First-Run Time
+
+**Date:** 2026-05-22 IST
+
+Current shipped behavior still blocks `vibedeck serve` on an initial sync before the HTTP server starts. A brand-new install does not pay the heavy historical indexing cost during `npm install -g`; the expensive step happens on the first real `vibedeck serve` or first sync.
+
+Expected user-visible startup today:
+
+| User profile | Expected first `vibedeck serve` time | Notes |
+|---|---:|---|
+| No existing provider logs | `5-20s` | Mostly init, schema setup, local runtime install, watcher startup. |
+| Light existing AI usage | `20-60s` | Small provider log scan and first DB population. |
+| Moderate existing AI usage | `1-3m` | Historical provider logs are indexed synchronously. |
+| Heavy user similar to this machine | about `4-5m` | Local H.6 audited rebuild was `249,396ms` (`4m 09.4s`). |
+| Extreme historical corpus / 100GB logs | several minutes or more | The current shipped path should not claim a `30s` usable dashboard for this case. |
+
+After the first DB and cursor state exist, later starts should usually be much faster because sync only needs new or changed provider logs. A repeated `serve --no-sync` readiness check on this machine was `570ms`, but that is not the default first-run path because default `serve` still runs sync.
+
+Product caveat: we should not market current `0.1.3` as instant first-run startup for heavy users. H.6 fixed a real repair resolver bottleneck and kept `/usage`, `/dashboard`, `/branches`, Unknown branch, and Historical unknown data intact, but it did not land the architectural fast-serve behavior.
+
+Next real startup-speed direction: start the dashboard immediately from the last-good DB, show an honest `as of` timestamp / refresh status, and run sync/index refresh in the background. That is the change that would make repeat starts feel instant without sacrificing data richness or correctness.

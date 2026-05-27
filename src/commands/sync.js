@@ -78,8 +78,10 @@ const {
 } = require("../lib/sessions/session-groups");
 const { createProviderBranchCache } = require("../lib/sessions/provider-branch");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
+/*
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
+*/
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -1282,6 +1284,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildProfile?.recordBranchFacts("skipped", 0);
       lifecycle?.providerDone?.("Indexes", "branch usage facts already current");
     }
+    /*
     lifecycle?.provider?.("Indexes", "backfilling checkpoint links");
     await runEntireCheckpointBackfill({
       dbPath,
@@ -1291,6 +1294,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       auto: opts.auto,
     });
     lifecycle?.providerDone?.("Indexes", "checkpoint links backfilled");
+    */
     if (opts.rebuildVibedeckDb) {
       if (!opts.auto) process.stderr.write("Rebuild phase: closing historical idle sessions\n");
       const closure = reapOrphanedSessions(dbPath, {
@@ -1604,8 +1608,8 @@ function clearCanonicalVibedeckTables(dbPath) {
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
         DELETE FROM vibedeck_sessions;
-        DELETE FROM vibedeck_entire_checkpoint_matches;
-        DELETE FROM vibedeck_session_entire_links;
+        -- DELETE FROM vibedeck_entire_checkpoint_matches;
+        -- DELETE FROM vibedeck_session_entire_links;
       `);
       db.exec('COMMIT');
     } catch (err) {
@@ -1915,6 +1919,7 @@ async function readQueueRowsForAudit(queuePath) {
   return out;
 }
 
+/*
 function normalizeRepoRoot(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -2102,6 +2107,7 @@ async function runEntireCheckpointBackfill({
   }
   return { diagnosticsPath, repos, totals };
 }
+*/
 
 module.exports = {
   cmdSync,

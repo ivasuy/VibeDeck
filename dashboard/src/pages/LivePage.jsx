@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Database, FolderGit2, PencilLine } from "lucide-react";
+import { PencilLine } from "lucide-react";
 import { Card } from "../ui/openai/components";
 import { copy } from "../lib/copy";
-import { getAttributionStats, getEntireStatus, getSyncStatus } from "../lib/vibedeck-api";
+import { getAttributionStats, getSyncStatus } from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
 import { useUsageLimits } from "../hooks/use-usage-limits";
@@ -23,6 +23,7 @@ function isActiveSession(row) {
   return String(row.state || "").trim().toLowerCase() !== "ended";
 }
 
+/*
 function entireStateLabel(state) {
   if (state === "not_installed") return copy("entire.state.not_installed");
   if (state === "not_enabled") return copy("entire.state.not_enabled");
@@ -83,6 +84,7 @@ function RepoEntireCard({ session, status, loading, error }) {
     </Card>
   );
 }
+*/
 
 function BranchOverridePlaceholder() {
   return (
@@ -117,9 +119,11 @@ export function LivePage() {
   } = useUsageLimits({ initialRefresh: true });
   const [selectedKey, setSelectedKey] = useState(null);
   const [syncWarning, setSyncWarning] = useState(null);
+  /*
   const [entireStatus, setEntireStatus] = useState(null);
   const [entireLoading, setEntireLoading] = useState(false);
   const [entireError, setEntireError] = useState("");
+  */
 
   const refreshAttributionStats = useCallback(async () => {
     try {
@@ -169,6 +173,7 @@ export function LivePage() {
     [sessions, selectedKey],
   );
 
+  /*
   useEffect(() => {
     const repo = String(selectedSession?.repo_root || "");
     if (!repo) {
@@ -198,6 +203,7 @@ export function LivePage() {
       active = false;
     };
   }, [selectedSession?.repo_root]);
+  */
 
   return (
     <PageFrame
@@ -249,12 +255,14 @@ export function LivePage() {
           ) : (
             <BranchOverridePlaceholder />
           )}
+          {/*
           <RepoEntireCard
             session={selectedSession}
             status={entireStatus}
             loading={entireLoading}
             error={entireError}
           />
+          */}
           <LiveBranchSignalMap sessions={sessions} />
         </aside>
       </div>

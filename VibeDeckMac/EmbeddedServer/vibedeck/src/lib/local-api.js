@@ -14,6 +14,7 @@ const {
   listExcludedSources,
   normalizeUsageScope,
 } = require("./source-metadata");
+/*
 const {
   checkpointGroupId,
   buildCheckpointUsage,
@@ -23,6 +24,7 @@ const {
   normalizeCheckpointPath,
   isValidCheckpointPath,
 } = require("./entire-checkpoint-paths");
+*/
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -2279,6 +2281,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    /*
     // --- vibedeck-checkpoints (GET) ---
     if (p === "/functions/vibedeck-checkpoints") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
@@ -2347,6 +2350,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       }
       return true;
     }
+    */
 
     if (p === "/functions/vibedeck-confirm-destructive") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -2372,6 +2376,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    /*
     if (p === "/functions/vibedeck-entire/rewind") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { error: "Method Not Allowed" }, 405);
@@ -2591,6 +2596,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       json(res, cached ? { ...status, ...cached } : status);
       return true;
     }
+    */
 
     // --- vibedeck-known-repos (GET) ---
     if (p === "/functions/vibedeck-known-repos") {

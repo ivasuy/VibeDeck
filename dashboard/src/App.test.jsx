@@ -12,7 +12,6 @@ vi.mock("@vercel/speed-insights/react", () => ({ SpeedInsights: () => null }));
 vi.mock("./pages/DashboardPage.jsx", () => ({ DashboardPage: () => <div>Usage Page</div> }));
 vi.mock("./pages/LivePage.jsx", () => ({ LivePage: () => <div>Live Page</div> }));
 vi.mock("./pages/BranchesPage.jsx", () => ({ BranchesPage: () => <div>Branches Page</div> }));
-vi.mock("./pages/EntirePage.jsx", () => ({ EntirePage: () => <div>Entire Page</div> }));
 vi.mock("./pages/SettingsPage.jsx", () => ({ SettingsPage: () => <div>Settings Page</div> }));
 vi.mock("./pages/SkillsPage.jsx", () => ({ SkillsPage: () => <div>Skills Page</div> }));
 vi.mock("./pages/WidgetsPage.jsx", () => ({ WidgetsPage: () => <div>Widgets Page</div> }));
@@ -43,16 +42,15 @@ beforeEach(() => {
 });
 
 describe("App routes", () => {
-  it("redirects the temporarily hidden Entire dashboard route to the live dashboard", async () => {
+  it("renders unknown dashboard routes as the live dashboard", async () => {
     render(
-      <MemoryRouter initialEntries={["/entire"]}>
+      <MemoryRouter initialEntries={["/unknown"]}>
         <LocaleProvider>
           <App />
         </LocaleProvider>
       </MemoryRouter>,
     );
 
-    expect(screen.queryByText("Entire Page")).toBeNull();
     expect(await screen.findByText("Live Page")).toBeTruthy();
   });
 

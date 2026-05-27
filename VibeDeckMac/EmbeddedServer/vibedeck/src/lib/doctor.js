@@ -6,7 +6,7 @@ const pathMod = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 const { readJsonStrict } = require("./fs");
-const { detectEntire } = require("./entire-bridge");
+// const { detectEntire } = require("./entire-bridge");
 const { readBootstrapState } = require("./bootstrap/state");
 const { readReadmeSyncConfig, readGitHubToken } = require("./readme-sync/config");
 const hookSignature = require("./hook-merger/signature");
@@ -47,7 +47,7 @@ async function runDoctorChecks({
 
   checks.push(...buildRuntimeChecks(runtime));
 
-  checks.push(await checkEntireCli());
+  // checks.push(await checkEntireCli());
 
   if (paths.trackerDir) {
     checks.push(await checkTrackerDir(paths.trackerDir));
@@ -93,6 +93,7 @@ async function buildBootstrapChecks() {
     },
   });
 
+  /*
   const entireInstalled = Boolean(bootstrapState?.entire?.installed);
   const entireLoggedIn = entireInstalled ? Boolean(bootstrapState?.entire?.logged_in) : false;
   checks.push({
@@ -115,6 +116,7 @@ async function buildBootstrapChecks() {
     critical: false,
     meta: { logged_in: entireLoggedIn, installed: entireInstalled },
   });
+  */
 
   const readmeReady = Boolean(readmeSyncConfig?.enabled && githubToken);
   checks.push({
@@ -320,6 +322,7 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         critical: false,
         meta: { path: resolved },
       },
+      /*
       {
         id: "db.entire_checkpoint_coverage",
         status: "info",
@@ -334,6 +337,7 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         critical: false,
         meta: { path: resolved },
       },
+      */
     ];
   }
 
@@ -473,6 +477,7 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
       });
     }
 
+    /*
     // entire_checkpoint_coverage + entire_checkpoint_unmatched
     try {
       const row = db
@@ -528,6 +533,7 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         meta: { path: resolved },
       });
     }
+    */
 
     return checks;
   } finally {
@@ -535,6 +541,7 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
   }
 }
 
+/*
 async function checkEntireCli() {
   const ent = await detectEntire({ timeoutMs: 2000 });
   if (ent.present) {
@@ -556,6 +563,7 @@ async function checkEntireCli() {
     meta: { present: false, version: null },
   };
 }
+*/
 
 function buildRuntimeChecks(runtime = {}) {
   const checks = [];

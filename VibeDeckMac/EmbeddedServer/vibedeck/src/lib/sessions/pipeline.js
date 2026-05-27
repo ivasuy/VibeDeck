@@ -11,7 +11,7 @@ const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
 const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
-const { upsertEntireLink } = require('./entire-links');
+// const { upsertEntireLink } = require('./entire-links');
 const providerBranch = require('./provider-branch');
 const { cleanProviderBranch } = providerBranch;
 
@@ -410,6 +410,7 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
             tier: branchRes.tier,
             confidence: branchRes.confidence,
           });
+          /*
           if (isNonEmptyString(branchRes.entire_link)) {
             upsertEntireLink(db, {
               provider: session.provider,
@@ -419,6 +420,7 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
               match_confidence: branchRes.confidence,
             });
           }
+          */
         }
 
         let latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
@@ -604,6 +606,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
           tier: branchRes.tier,
           confidence: branchRes.confidence,
         });
+        /*
         if (isNonEmptyString(branchRes.entire_link)) {
           upsertEntireLink(db, {
             provider: session.provider,
@@ -613,6 +616,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
             match_confidence: branchRes.confidence,
           });
         }
+        */
         session = loadSession(db, { provider: session.provider, session_id: session.session_id });
       }
 

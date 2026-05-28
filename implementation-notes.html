@@ -1,0 +1,702 @@
+<h2>Design Decisions</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Decision</th>
+      <th>Spec line</th>
+      <th>Choice</th>
+      <th>Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Worktree boundary</td>
+      <td>DESIGN.md full spec, user instruction</td>
+      <td>Implement code changes only in <code>.worktrees/ui-revamp</code>; keep this notes file in the project root.</td>
+      <td>The user explicitly asked for the revamp to happen in the worktree while implementation notes are updated from the root.</td>
+    </tr>
+    <tr>
+      <td>Initial implementation slice</td>
+      <td>DESIGN.md §14 and §26</td>
+      <td>Start with web dashboard tokens, sidebar lane grouping, provider-logo centralization, and visible page composition cleanup.</td>
+      <td>The design spec itself lists nav lanes, token cleanup, and dashboard page rebuild as the earliest shippable chunks. This avoids touching macOS/widgets before the web shell is stable.</td>
+    </tr>
+    <tr>
+      <td>Sidebar implementation target</td>
+      <td>DESIGN.md §8, §14.1, §21, §26.3-4</td>
+      <td>Update the existing React sidebar instead of replacing the shell.</td>
+      <td>The current app routes are already centralized in <code>dashboard/src/ui/openai/components/Sidebar.jsx</code>, so grouping lanes there gives every web page the requested IA without duplicating navigation state.</td>
+    </tr>
+    <tr>
+      <td>Provider logo abstraction</td>
+      <td>DESIGN.md §27.2</td>
+      <td>Create a reusable web <code>ProviderLogo</code> helper backed by local <code>dashboard/public/brand-logos</code> assets.</td>
+      <td>The spec explicitly forbids provider identity dots and asks for a central module, so new and touched UI can import one canonical renderer.</td>
+    </tr>
+    <tr>
+      <td>Dashboard route ownership</td>
+      <td>DESIGN.md §8 and §21.1</td>
+      <td>Route <code>/</code> and <code>/dashboard</code> to the dashboard synthesis surface; route live operations to <code>/live</code>.</td>
+      <td>The spec says DashboardPage is the landing route and LivePage is a lane. Keeping them separate makes the sidebar IA honest.</td>
+    </tr>
+    <tr>
+      <td>Sidebar visual chrome</td>
+      <td>DESIGN.md §17, §18.1, §26.3-4</td>
+      <td>Use four lane groups, a 240px expanded web sidebar, a dark macOS setup card, and a solid mobile drawer background.</td>
+      <td>This brings the global shell in line with the spec's first shippable chunk and the drawer rule that overlays must not use glass.</td>
+    </tr>
+    <tr>
+      <td>Dashboard landing composition</td>
+      <td>DESIGN.md §21.1, §28.1-28.7</td>
+      <td>Rebuild the web landing dashboard around one spend hero, one active-session sibling card, provider breakdown, attribution/attention cards, and a five-row recent activity section.</td>
+      <td>The previous dashboard rendered many independent cards. The spec requires a 3-tier glance hierarchy and a smaller number of distinct surfaces.</td>
+    </tr>
+    <tr>
+      <td>Dependency cleanup</td>
+      <td>DESIGN.md §13</td>
+      <td>Remove Geist Mono font package imports/dependency and remove inactive 3D dependencies from package metadata.</td>
+      <td>The dashboard now loads Outfit, Plus Jakarta Sans, and JetBrains Mono from the document font link, and no live route imports the old 3D marketing components.</td>
+    </tr>
+    <tr>
+      <td>Shared web revamp surfaces</td>
+      <td>DESIGN.md §17, §21.3, §21.4, §21.5</td>
+      <td>Add a small reusable surface layer for page headers, hero cards, KPI cards, empty states, section headers, and progress bars.</td>
+      <td>Optimize, Plan, and analytics pages need the same card hierarchy and spacing discipline; centralizing the primitives keeps follow-up page rewrites consistent.</td>
+    </tr>
+    <tr>
+      <td>Optimize and Plan page patterns</td>
+      <td>DESIGN.md §21.3 and §21.4</td>
+      <td>Rebuild Optimize around the savings hero plus sidecar metrics, and rebuild Plan around a forecast hero plus subscription/breakeven cards.</td>
+      <td>These are the two weakest pages called out in the spec's implementation order, so they are the next web surfaces after the dashboard shell.</td>
+    </tr>
+    <tr>
+      <td>Analytics surface pattern</td>
+      <td>DESIGN.md §21.5 and §28</td>
+      <td>Move Compare, Models, and Yield onto the shared revamp shell with top KPI strips, one primary data surface, capped rows, tabular numbers, and provider logos where identity is shown.</td>
+      <td>These pages share a composition contract in the spec, so they should no longer use unrelated one-off card/table layouts.</td>
+    </tr>
+    <tr>
+      <td>Test-safe mascot rendering</td>
+      <td>DESIGN.md §28.6</td>
+      <td>Keep Clawd in the Optimize hero, but make the SVG loader tolerate missing <code>matchMedia</code> and relative asset fetch failures.</td>
+      <td>The mascot is a required brand component, while Vitest/jsdom does not serve <code>/clawd</code> assets. The component should fail quiet when decorative assets are unavailable.</td>
+    </tr>
+    <tr>
+      <td>Live page hierarchy</td>
+      <td>DESIGN.md §21.2 and §29.3</td>
+      <td>Restructure Live around a page header, full-width overview, primary sessions list, right-side attribution/limits/override column, separate branch signal map, and a Tier 1 operations table.</td>
+      <td>The previous Live composition nested sessions and limits inside one large card. The spec calls for fewer visible surfaces and a clearer now-lane hierarchy.</td>
+    </tr>
+    <tr>
+      <td>Live branch override drawer</td>
+      <td>DESIGN.md §18.1 and §21.2</td>
+      <td>Move branch correction out of the Live right rail into a solid right-side drawer opened from each active workstream row.</td>
+      <td>The spec says session correction is a triggered drawer, not a persistent side card. Keeping the existing override form as drawer content preserves backend behavior while aligning the interaction model.</td>
+    </tr>
+    <tr>
+      <td>Export setup shell</td>
+      <td>DESIGN.md §21.8</td>
+      <td>Move Export onto the shared page shell with one filter surface, one totals surface, and a primary export action.</td>
+      <td>Export is a setup workflow, so it benefits from the same restrained form hierarchy without altering download data flow.</td>
+    </tr>
+    <tr>
+      <td>macOS offline state and menubar popover</td>
+      <td>DESIGN.md §22.6 and §23</td>
+      <td>Replace the raw server error view with a branded offline panel and replace the popover's full-dashboard host with a compact Today / Active Now / Limits / actions view.</td>
+      <td>The menubar is always visible and must not host charts or settings. The offline state should guide recovery without showing stack/error text.</td>
+    </tr>
+    <tr>
+      <td>Widget composition pass</td>
+      <td>DESIGN.md §24.1-24.4</td>
+      <td>Make Summary cost-first with title/update rows and provider/this-week sections; add missing small-family support for Limits and Heatmap; reduce Top Models small to one primary model.</td>
+      <td>The WidgetKit surfaces should match the spec's size-specific information hierarchy before detailed visual tuning.</td>
+    </tr>
+    <tr>
+      <td>Branch attribution page shell</td>
+      <td>DESIGN.md §21.6</td>
+      <td>Move Branches onto the shared analytics shell with a single attribution controls surface, preserved cached drawer behavior, and full-width attribution table.</td>
+      <td>The existing drawer has extensive cache and drill-in tests; keeping its data flow while aligning page hierarchy avoids breaking branch provenance workflows.</td>
+    </tr>
+    <tr>
+      <td>Skills analytics page shell</td>
+      <td>DESIGN.md §21.5</td>
+      <td>Move Skills onto the shared analytics shell with installed/catalog/target/source KPI cards plus a usage-attribution summary panel around the existing installed and browse flows.</td>
+      <td>The page currently manages skill installation and target sync, so the revamp should expose analytics structure without discarding the working catalog manager.</td>
+    </tr>
+    <tr>
+      <td>Settings two-column setup layout</td>
+      <td>DESIGN.md §21.8 and §31</td>
+      <td>Rebuild Settings as a setup workspace with left-side section anchors and right-side grouped content for Account, Appearance, Providers, Menu Bar, Advanced, and Privacy.</td>
+      <td>The design calls for setup flows to be form-first and predictable, not dashboard-card heavy. Anchored sections make the existing controls easier to scan without changing persistence.</td>
+    </tr>
+    <tr>
+      <td>Provider-logo sweep continuation</td>
+      <td>DESIGN.md §27.2-27.4</td>
+      <td>Move widget previews, usage-limit settings, and the live usage limits panel onto the canonical <code>ProviderLogo</code> helper; leave raw logo paths only in <code>provider-logos.jsx</code> and inactive Entire code.</td>
+      <td>The spec requires one centralized renderer so mono logos inherit current color and color logos are not tinted. These were the remaining active dashboard consumers still carrying local logo maps.</td>
+    </tr>
+    <tr>
+      <td>Skeleton loader primitives</td>
+      <td>DESIGN.md §19 and §33.14</td>
+      <td>Add reusable skeleton KPI/row primitives, use them on Compare, Models, Yield, Optimize, Plan, Export, and Skills loading states, and disable shimmer animation for reduced motion.</td>
+      <td>Plain loading text and centered spinners do not match known page structure. Skeletons preserve layout, while screen-reader-only loading labels keep existing accessibility/test semantics.</td>
+    </tr>
+    <tr>
+      <td>Native provider-logo parity</td>
+      <td>DESIGN.md §27.1-27.4</td>
+      <td>Mirror the missing provider logo assets into the macOS asset catalog and centralize native rendering through <code>ProviderLogoView</code> inside the already-compiled shared Swift component file.</td>
+      <td>The spec requires provider logos instead of identity dots across macOS surfaces. Placing the helper in <code>SharedComponents.swift</code> avoids adding an unregistered Swift source file to the Xcode project graph.</td>
+    </tr>
+    <tr>
+      <td>Native loading state pass</td>
+      <td>DESIGN.md §19, §22.6, and §33.14</td>
+      <td>Replace active native spinner usage in the server starting/offline/dashboard sync surfaces with an instrument-style loading panel, indeterminate bar, skeleton rows, and reduced-motion behavior.</td>
+      <td>The design explicitly bans blank spinner states. The native app now gives loading a stable, branded structure while preserving the existing embedded-server lifecycle.</td>
+    </tr>
+    <tr>
+      <td>macOS dashboard window spec tightening</td>
+      <td>DESIGN.md §20.1 and §22.1</td>
+      <td>Set the native dashboard window to the specified 1100×720 opening size with 960×640 minimum, read the current <code>vd-theme</code> storage key before the legacy key, and reuse <code>InstrumentLoadingPanel</code> for the WKWebView loading overlay.</td>
+      <td>This advances native shell parity without replacing the current web-hosted dashboard architecture. It fixes measurable window, theme, and loading requirements that were still drifting from the spec.</td>
+    </tr>
+    <tr>
+      <td>Web command palette</td>
+      <td>DESIGN.md §18.6</td>
+      <td>Add a global <code>⌘K</code>/<code>Ctrl+K</code> command palette to the dashboard shell with recent commands, route commands, session entry point, and provider entry points.</td>
+      <td>The spec calls for a command palette as its own overlay primitive. The implementation uses existing route metadata and does not fabricate searchable session records that the shell does not have.</td>
+    </tr>
+    <tr>
+      <td>Widget provider-logo parity</td>
+      <td>DESIGN.md §24 and §27.1-§27.6</td>
+      <td>Add a shared <code>WidgetProviderLogo</code> renderer and replace provider identity color dots in Summary, Usage Limits, Top Models, and shared widget list rows with local provider logos.</td>
+      <td>The spec reserves dots for status and requires provider identity to come from local logo assets. Chart fills and segmented bars can still use provider color because they encode data, not identity labels.</td>
+    </tr>
+    <tr>
+      <td>Native split shell bridge</td>
+      <td>DESIGN.md §9 and §22.1</td>
+      <td>Wrap the existing macOS dashboard <code>WKWebView</code> detail in a SwiftUI <code>NavigationSplitView</code> on macOS 13+, with a fixed 220pt native sidebar, four lane groups, active accent bar, bottom utility card, and a compiled fixed split fallback for macOS 12.</td>
+      <td>This moves the primary macOS window toward the required native shell while preserving the current web dashboard bridge, OAuth handling, settings messages, deep dashboard routes, and the app's macOS 12 deployment target.</td>
+    </tr>
+    <tr>
+      <td>Widget size-composition tightening</td>
+      <td>DESIGN.md §24.1-§24.5 and §10.5.2</td>
+      <td>Align WidgetKit family layouts more closely to the spec: line-only sparklines, Top Models small hero/list split, Top Models large provider breakdown, Usage Limits large reset timeline, Heatmap medium 13-week grid, Heatmap large full-year grid, and visible day labels.</td>
+      <td>The first widget pass fixed identity; this pass addresses per-size composition. Model-level cost remains omitted because the widget snapshot exposes model tokens/share but not model cost, and the design's no-fabrication rule takes priority.</td>
+    </tr>
+    <tr>
+      <td>Active loader spinner sweep</td>
+      <td>DESIGN.md §19, §25, and §26.11</td>
+      <td>Replace active dashboard spinner animations in Skills, Optimize, Settings menu bar sync, the live DashboardView sync action, and BootScreen with skeleton/shimmer-style busy marks.</td>
+      <td>The spec bans blank or long-running spinner states. Inline actions now keep their button geometry stable while showing a reduced-motion-safe skeleton mark instead of a rotating glyph.</td>
+    </tr>
+    <tr>
+      <td>Shared web motion shell</td>
+      <td>DESIGN.md §33.2, §33.4, and §33.9</td>
+      <td>Add shared motion tokens in <code>dashboard/src/lib/motion.js</code>, wrap routed pages in a reduced-motion-aware <code>PageTransition</code>, and let <code>PageShell</code> compose page bodies after the header renders.</td>
+      <td>The dashboard previously had isolated motion components but no route-level choreography. This creates one consistent route/page entrance contract without reworking every page's internal data logic.</td>
+    </tr>
+    <tr>
+      <td>Optimize and Plan data-state polish</td>
+      <td>DESIGN.md §28.6, §29.4, and §29.5</td>
+      <td>Replace Optimize's zero-savings hero with a Clawd-backed no-findings state, keep side metrics visible, and add Plan's seven-day forecast unlock state when the backend reports insufficient active days.</td>
+      <td>The design explicitly says zero headlines should become explanatory states and Plan forecasts should disclose insufficient history instead of implying a complete projection.</td>
+    </tr>
+    <tr>
+      <td>Live provider breadth parity</td>
+      <td>DESIGN.md §8, §23, §27.1-27.6, and §30.2</td>
+      <td>Expand Live provider limit surfaces to the full canonical provider set, normalize common provider aliases, keep provider identity routed through <code>ProviderIcon</code>/<code>ProviderLogo</code>, and reserve dots for status only.</td>
+      <td>The spec says all provider identity must use logos and the 1.0.4-era provider breadth must show through active dashboard surfaces. The Live limit grid and overview now count the same expanded provider set instead of the older eight-provider subset.</td>
+    </tr>
+    <tr>
+      <td>Provider breadth and token parity</td>
+      <td>DESIGN.md §3, §8, §11, §26.2, §27, and §30.2</td>
+      <td>Expose the full brand scale in macOS <code>Colors.swift</code> and WidgetKit <code>WidgetTheme.swift</code>, expand dashboard usage-limit settings/panels to all 12 canonical providers, and mirror provider source colors across web, native, and widgets.</td>
+      <td>The revamp checklist requires Swift token parity and expanded provider breadth beyond the old eight-provider subset. Keeping the same maps across settings, live limits, widget previews, and native colors avoids drift between the three product surfaces.</td>
+    </tr>
+    <tr>
+      <td>Widget VoiceOver summaries</td>
+      <td>DESIGN.md §12, §24, and §32.1</td>
+      <td>Add explicit accessibility labels to Top Models rows, Usage Limits rows/reset timeline items, and Heatmap's activity summary.</td>
+      <td>The spec says widget numbers need VoiceOver labels beyond visual text. These summaries state the metric, value, provider/model context, and freshness without adding visual chrome or motion to WidgetKit surfaces.</td>
+    </tr>
+    <tr>
+      <td>Menubar popover geometry and live header</td>
+      <td>DESIGN.md §23.1-§23.4, §33.11, and §33.14</td>
+      <td>Set the popover to the spec's 320pt width and 560pt max height, use a regular material panel with a 12pt corner and separator stroke, add the Clawd header mark, active/idle/stale header status, settings gear routing, equal footer actions, and a 5-second refresh loop while open.</td>
+      <td>The menubar spec gives exact popover anatomy and live-state behavior. This aligns the active system surface without introducing fabricated charts or a separate settings flow inside the popover.</td>
+    </tr>
+    <tr>
+      <td>Deterministic web Clawd state mapping</td>
+      <td>DESIGN.md §10.6, §21.1-§21.4, §29, and §33.10</td>
+      <td>Rework <code>useClawdState()</code> around product state priority: error/disconnected/sync result, attribution confusion, current operation, live session count, then idle duration. Wire it into Dashboard header, Live overview, Optimize scan states, Plan forecast, and the macOS download banner.</td>
+      <td>The spec says Clawd state must derive from real product state, not arbitrary token-volume tiers. A shared resolver keeps web pages consistent with the macOS state machine without duplicating animation assets or placing Clawd in widgets.</td>
+    </tr>
+    <tr>
+      <td>Menubar first-run and offline states</td>
+      <td>DESIGN.md §23.4, §29.1, and §31.2-§31.3</td>
+      <td>Add explicit popover branches for local-server offline and first-run/no-session state. Offline now shows server copy plus a retry button wired to <code>ServerManager.retry()</code>; first-run shows a setup-oriented onboarding card and keeps Sync disabled while offline.</td>
+      <td>The spec requires offline and first-run states to replace the normal TODAY/ACTIVE/LIMITS sections instead of showing zero-like data. This closes the menubar state matrix without inventing session records.</td>
+    </tr>
+    <tr>
+      <td>Top Models widget cost fidelity</td>
+      <td>DESIGN.md §24.2, §28.2-§28.4, and §32.1</td>
+      <td>Thread per-model USD cost from native model breakdown into <code>WidgetSnapshot</code>, preserve backward decoding for existing snapshots, and make Top Models small/medium/large rows display cost alongside token count and share.</td>
+      <td>The exact Top Models widget compositions are cost-forward. Carrying real model cost through the snapshot avoids fake widget numbers and makes the small widget's hero metric match the spec.</td>
+    </tr>
+    <tr>
+      <td>Shared WidgetKit progress primitives</td>
+      <td>DESIGN.md §10.5.1, §24.1, §24.5, and §27.5</td>
+      <td>Add shared <code>SegmentedBar</code>, <code>SteppedBar</code>, and <code>DualTrackBar</code> views to WidgetKit, backed by Canvas where appropriate, and wire <code>SegmentedBar</code> into Summary widget provider mix.</td>
+      <td>The spec explicitly calls for these WidgetKit primitives so progress bars, provider mix, count bars, and budget bars share one visual system. Using provider source colors only inside the segmented chart keeps identity logos and chart fills separated.</td>
+    </tr>
+    <tr>
+      <td>Freshness indicator pass</td>
+      <td>DESIGN.md §30.4 and §32.1</td>
+      <td>Add a reusable web <code>FreshnessBadge</code> and wire dashboard/live Tier 2 cards to sync timestamps, generated-at values, and stale/error flags.</td>
+      <td>The spec requires freshness on data cards. The badge only uses real backend/live timestamps and state flags, so it improves observability without inventing recency.</td>
+    </tr>
+    <tr>
+      <td>Dashboard attribution and recent rows</td>
+      <td>DESIGN.md §21.1, §28.6, §29.3, and §32.1</td>
+      <td>Use the existing local attribution-stats endpoint for the dashboard health gauge, add <code>/functions/vibedeck-recent-sessions</code> for historical canonical rows, and merge those exact rows with live-snapshot rows for Recent Activity.</td>
+      <td>This removes placeholder dashboard attribution copy and lets the landing page show real session-level recency beyond the live snapshot window.</td>
+    </tr>
+    <tr>
+      <td>Skill usage provenance</td>
+      <td>DESIGN.md §21.5 and §32.1</td>
+      <td>Add <code>mode=usage</code> to the local skills API, aggregate stored <code>skills_json</code> counters, apportion known session cost across skill counts, and render usage rows with installed-source links when available.</td>
+      <td>The spec requires invocation count, attributed cost, and source links. The existing session schema already stores skill counters, so this can be read-only and backend-backed instead of placeholder copy.</td>
+    </tr>
+    <tr>
+      <td>Widget title row chrome</td>
+      <td>DESIGN.md §24.5</td>
+      <td>Normalize the shared WidgetKit header to a 16pt uppercase title row with right-aligned relative time and no decorative icon.</td>
+      <td>The widget spec treats title rows as dense instrumentation, not icon-led app headers. Fixing the shared header aligns Top Models, Limits, and Heatmap at once.</td>
+    </tr>
+    <tr>
+      <td>Summary widget empty state</td>
+      <td>DESIGN.md §24.5, §29.1, and §30.3</td>
+      <td>Route Summary widget snapshots with no usage signals to an explicit empty state that keeps the required title row and relative timestamp, and hide the delta row when there is no baseline.</td>
+      <td>The spec forbids fallback values such as <code>0</code> or <code>—</code> when data is missing. The widget now distinguishes missing usage data from real zero-valued usage history without fabricating numbers.</td>
+    </tr>
+    <tr>
+      <td>Heatmap widget empty state</td>
+      <td>DESIGN.md §24.4, §29.1, and §30.3</td>
+      <td>Route Heatmap snapshots with no activity levels or token history to an explicit empty state instead of an all-zero calendar and zero-token summary.</td>
+      <td>The heatmap grid should represent real activity density. Showing a blank calendar plus zero totals made missing data look like measured inactivity.</td>
+    </tr>
+    <tr>
+      <td>Native dashboard first-run state</td>
+      <td>DESIGN.md §22.2 and §29.2</td>
+      <td>Add a macOS dashboard first-run card with Clawd, Detect now, and Setup guide actions when the server is running but no tracked usage exists; move the Clawd companion strip below the dashboard content.</td>
+      <td>The native dashboard previously fell through to zero-value KPI cards and placed the ambient Clawd strip above the content. The spec calls for an instructional first-run state and bottom-of-view companion placement.</td>
+    </tr>
+    <tr>
+      <td>Native dashboard stale refresh banner</td>
+      <td>DESIGN.md §29.2 and §31.3</td>
+      <td>Show an inline stale-data banner with retry when the native dashboard has last-known values but refresh fails.</td>
+      <td>The error state should not replace populated dashboard content. Keeping values visible with calm recovery copy matches the spec and avoids alarming full-page failure states for transient local refresh errors.</td>
+    </tr>
+    <tr>
+      <td>Clawd and alert copy discipline</td>
+      <td>DESIGN.md §10.6, §31.8, and design-taste-frontend anti-emoji rule</td>
+      <td>Remove emoji from the native Clawd quip pool and upgrade alert banner, replace the banner symbol with a Lucide icon, and make menubar/Clawd copy factual rather than user-personal.</td>
+      <td>The spec allows personality only through Clawd's pixel expression and short dry quips. Emoji and copy such as user-name jokes made the native/menu surfaces feel less engineered.</td>
+    </tr>
+    <tr>
+      <td>Web dashboard first-run and identity copy</td>
+      <td>DESIGN.md §21.1, §29.2, and §31.2</td>
+      <td>Pass a real <code>hasDashboardUsage</code> signal into the active dashboard view, render the first-run Clawd card when no tracked usage exists, and replace the hard-coded <code>Welcome back, Vasu</code> header with derived identity or neutral dashboard copy.</td>
+      <td>The dashboard should not show zero-value KPI cards as the first-run state, and sample/user-specific copy should not leak into the shipped UI.</td>
+    </tr>
+    <tr>
+      <td>Summary widget tabular numbers</td>
+      <td>DESIGN.md §24.1 and §24.5</td>
+      <td>Apply tabular digit rendering to SummaryWidget hero cost, token counts, relative time, delta, provider percentages, weekly total, and active-day count.</td>
+      <td>The widget shared rules require every digit-bearing value to use tabular numbers. This prevents metric jitter during WidgetKit refreshes and aligns the exact Summary composition.</td>
+    </tr>
+    <tr>
+      <td>Cross-widget tabular sweep</td>
+      <td>DESIGN.md §24.2, §24.4, and §24.5</td>
+      <td>Apply tabular digit rendering to remaining digit-bearing widget text in HeatmapWidget, TopModelsWidget, shared widget stat blocks, and shared widget footer timestamps.</td>
+      <td>The audit found non-hero strings such as streak labels, active-day summaries, token subtitles, generic stat values, and footer timestamps still had proportional digits. These values can update on every timeline refresh, so they need the same no-jitter treatment as hero values.</td>
+    </tr>
+    <tr>
+      <td>Menubar status icon identity</td>
+      <td>DESIGN.md §23.1 and §23.2</td>
+      <td>Switch the always-visible macOS status item to the monochrome three-plane mark while keeping Clawd inside the popover header and onboarding/offline states.</td>
+      <td>DESIGN.md separates the menu bar icon from the popover companion. The status item needs to tint like native macOS chrome, while Clawd remains a contained expressive element in the popover.</td>
+    </tr>
+    <tr>
+      <td>Web first-launch overlay</td>
+      <td>DESIGN.md §33.13 and §33.14</td>
+      <td>Add a one-time dashboard launch overlay keyed by <code>vd-first-launch-seen</code>, animating the three-plane mark from centered to header scale and skipping entirely when reduced motion is requested.</td>
+      <td>The spec calls for a first-device "wow" moment without repeating on later launches. Keeping it as an overlay preserves existing page routing and data loading while adding the missing first-launch choreography.</td>
+    </tr>
+    <tr>
+      <td>macOS first-launch overlay</td>
+      <td>DESIGN.md §33.13 and §33.14</td>
+      <td>Add a UserDefaults-backed native first-launch overlay to the SwiftUI dashboard shell, using the same <code>vd-first-launch-seen</code> flag name and reduced-motion skip behavior.</td>
+      <td>The macOS app does not use a standard <code>WindowGroup</code>; the shell is owned by <code>DashboardWindowController</code>. Putting the animation in <code>NativeDashboardShellView</code> satisfies the native launch requirement without rewriting window ownership.</td>
+    </tr>
+    <tr>
+      <td>Widget deep links and refresh cadence</td>
+      <td>DESIGN.md §24.5</td>
+      <td>Change WidgetKit timelines to refresh every 5 minutes and add <code>widgetURL</code> deep links from Summary, Top Models, Usage Limits, and Heatmap widgets into the matching macOS app tab.</td>
+      <td>The shared widget rules require a 5-minute cadence and app-opening deep links rather than inert widgets. Reusing the existing <code>vibedeck://</code> scheme keeps the behavior native without adding interactive controls inside the widget body.</td>
+    </tr>
+    <tr>
+      <td>Widget family scope</td>
+      <td>DESIGN.md §24</td>
+      <td>Restrict Summary and Heatmap widgets to <code>.systemSmall</code>, <code>.systemMedium</code>, and <code>.systemLarge</code>, matching the spec's twelve total widget compositions.</td>
+      <td>The spec defines four widgets across three sizes. Advertising an extra-large family creates an unsupported thirteenth composition that was not designed or audited.</td>
+    </tr>
+    <tr>
+      <td>Entire surface stays non-shipping</td>
+      <td>DESIGN.md §8, §22, and §26</td>
+      <td>Keep the Entire route, Live sidebar card, client API helpers, local API endpoints, init login prompt, CLI command route, sync checkpoint backfill, and doctor checks commented out rather than active.</td>
+      <td>The spec explicitly excludes Entire UI, setup, and backend from this revamp. Commenting the paths preserves the code for a future spec while ensuring the current product flow does not link to, call, or surface Entire.</td>
+    </tr>
+    <tr>
+      <td>Inactive Entire test and endpoint boundary</td>
+      <td>DESIGN.md §8, §22, §26, and §32.1</td>
+      <td>Exclude inactive Entire page/component tests from the active Vitest suite, comment out Entire-specific API test cases and the destructive confirm helper/endpoint, and remove active SQL-string traces from sync reset SQL.</td>
+      <td>The route and UI were already out of the app flow, but the active test suite and one backend support endpoint still exercised non-shipping behavior. The revamp needs a clean active surface: current tests should validate the shipping dashboard/menu-bar/widget system, while old Entire logic remains commented for a future spec.</td>
+    </tr>
+    <tr>
+      <td>Dashboard stays outside sidebar lanes</td>
+      <td>DESIGN.md §8 and §26.3</td>
+      <td>Remove Dashboard from the Live sidebar group while keeping it reachable from the brand mark and command palette.</td>
+      <td>The spec defines Dashboard as the landing synthesis surface, not one of the four navigation lanes. The sidebar now starts the Live lane with Live and Branches, preserving the required lane model without hiding the home route.</td>
+    </tr>
+    <tr>
+      <td>Error boundary copy and material cleanup</td>
+      <td>DESIGN.md §7, §25, and §31.3</td>
+      <td>Replace the generic "Something went wrong" copy and hardcoded white/dark card chrome in the dashboard error boundary with specific copy and shared glass tokens.</td>
+      <td>The final pass forbids generic error phrases and direct white/dark card classes. Error states should be calm, concrete, and visually part of the same surface system as the rest of the dashboard.</td>
+    </tr>
+    <tr>
+      <td>Widgets page preview/config workbench</td>
+      <td>DESIGN.md §21.7 and §23.1</td>
+      <td>Add a two-column widget workbench with selectable widget kind, size, refresh cadence, and highlighted provider controls; switch the menu-bar preview icon from Clawd to the monochrome three-plane mark.</td>
+      <td>The active page previously behaved like a gallery plus menu-bar settings surface. The spec requires a configuration panel next to previews, and the menu-bar icon must remain the brand mark while Clawd stays inside companion/onboarding contexts.</td>
+    </tr>
+    <tr>
+      <td>Widget empty-state title rows</td>
+      <td>DESIGN.md §24.5 and §29.9</td>
+      <td>Wrap Top Models and Usage Limits widget empty states with their normal title rows and trailing relative update timestamps.</td>
+      <td>Empty states still need the same widget chrome and freshness metadata as populated states. This avoids bare, contextless empty tiles while preserving the no-fake-data rule.</td>
+    </tr>
+    <tr>
+      <td>Menubar active-session truth source</td>
+      <td>DESIGN.md §23.1, §23.3, §30.2, and §32.1</td>
+      <td>Read the native menu-bar ACTIVE NOW section from <code>/functions/vibedeck-sessions-live-snapshot</code>, pulse the status item only when active sessions exist, and reduce the right-click menu to Open VibeDeck / Preferences / Quit.</td>
+      <td>The previous popover used historical top-model data under an active-session label. The design requires the menubar to reflect current work, so the UI must use the live snapshot contract instead of repurposing aggregate model breakdowns.</td>
+    </tr>
+    <tr>
+      <td>Active surface token audit</td>
+      <td>DESIGN.md §13, §26, §31, and §32</td>
+      <td>Removed redundant hardcoded white/dark drawer and card backgrounds from active Dashboard, Live, Branch drawer, and sidebar drawer surfaces; rely on <code>.vd-card</code>, <code>.vd-card-solid</code>, <code>.vd-subcard</code>, <code>.vd-control</code>, and <code>.vd-drawer</code> primitives instead.</td>
+      <td>The CSS primitives already carry the indigo token system and dark-mode material. Removing competing utility backgrounds makes the implementation easier to audit and prevents future regressions where a Tailwind utility masks the intended design token.</td>
+    </tr>
+    <tr>
+      <td>Widget empty and accessibility states</td>
+      <td>DESIGN.md §12, §24.5, and §29</td>
+      <td>Replace the generic widget empty-state symbol with the three-plane VibeDeck mark, lock Summary title rows to the shared 16pt rhythm, and add explicit Summary widget VoiceOver labels for spend, tokens, delta, provider mix, and freshness.</td>
+      <td>Widgets must never use Clawd, but their empty states still need the brand mark and accessible number summaries. Summary was the remaining widget without a single spoken label for its hero numbers.</td>
+    </tr>
+    <tr>
+      <td>Native appearance control</td>
+      <td>DESIGN.md §20.1, §20.2, and §26.15</td>
+      <td>Add a macOS Settings Appearance picker for Light / Dark / System, add a View-menu <code>Cmd+Shift+L</code> cycle command, persist the native <code>theme</code> user default, and sync that preference into the embedded dashboard shell.</td>
+      <td>The web surface already had the theme switcher, but the native Settings scene was empty. The macOS app now has its own appearance control while preserving the hybrid WKWebView detail architecture.</td>
+    </tr>
+    <tr>
+      <td>Native sidebar utility state</td>
+      <td>DESIGN.md §22.1 and §26.3</td>
+      <td>Wire the macOS <code>NavigationSplitView</code> sidebar bottom card to <code>ServerManager.status</code> and <code>DashboardViewModel.isSyncing</code>; replace the static Reload affordance with a disabled-aware <code>Sync now</code> button backed by <code>triggerSync()</code>.</td>
+      <td>The spec calls for embedded server health and a Sync now pill, not a placeholder reload card. Reusing the existing app model keeps the utility card truthful without duplicating backend polling or inventing state.</td>
+    </tr>
+    <tr>
+      <td>Web sidebar utility card</td>
+      <td>DESIGN.md §16, §20.2, §26.4, and §30.4</td>
+      <td>Replace the static macOS-only sidebar promo with a server health card backed by <code>/functions/vibedeck-sync-status</code>, retain the macOS setup CTA, switch the sidebar theme menu to the solid popover token, and align the dark browser theme color to <code>#0a0a0a</code>.</td>
+      <td>The sidebar bottom card needs to be useful chrome, not a decorative promo. Sync status gives the card an honest local-server signal without fabricating health metrics, and solid popover chrome matches the overlay rules.</td>
+    </tr>
+    <tr>
+      <td>Menu-bar icon sizing</td>
+      <td>DESIGN.md §23.1</td>
+      <td>Render the status-item product mark at <code>16pt</code> inside the <code>22pt</code> menu-bar image composition and center it vertically when stats text is shown beside it.</td>
+      <td>The always-visible menu-bar mark should use the native macOS glyph size, while the composite image can still occupy the full menu-bar height for aligned text badges.</td>
+    </tr>
+    <tr>
+      <td>Dashboard landing spec tightening</td>
+      <td>DESIGN.md §21.1 and §28.5</td>
+      <td>Add the saved Provider Breakdown <code>bar</code>/<code>list</code> toggle, replace generic dashboard subtitle copy with the current date line, and change the empty attention card into a concrete cache-opportunity state.</td>
+      <td>The landing surface already had the five-surface hierarchy, but these details were still drifting from the exact composition. The toggle uses localStorage for progressive disclosure without adding another card or fabricated metric.</td>
+    </tr>
+    <tr>
+      <td>Dashboard hidden-surface cleanup</td>
+      <td>DESIGN.md §21.1, §28.1-§28.7, and §30.3</td>
+      <td>Remove hidden project-usage, activity-heatmap, and MCP-server card construction from <code>DashboardPage</code>; route forecast-plan pressure and cache-hit insight into the visible <code>Needs attention</code> surface.</td>
+      <td>The landing dashboard should answer the current-state question with five visible surfaces, not fetch and compose legacy cards that the active view no longer renders. Moving the useful warnings into the existing attention card preserves real backend-derived signals without adding more dashboard chrome.</td>
+    </tr>
+    <tr>
+      <td>Menubar keyboard affordances</td>
+      <td>DESIGN.md §23.4</td>
+      <td>Add popover keyboard handling for <code>Esc</code>, <code>Cmd+O</code>, and <code>Cmd+R</code>; opening the dashboard now closes the popover first.</td>
+      <td>The menubar is a native utility surface and should be operable without the pointer. This covers the explicit close/open/sync shortcuts while preserving the existing compact one-screen popover model.</td>
+    </tr>
+    <tr>
+      <td>Menubar reduced-motion and sync affordance</td>
+      <td>DESIGN.md §23.1, §23.3, and §33.14</td>
+      <td>Keep a static status dot on the menu-bar mark when reduced motion disables the active pulse, and make the popover Sync button render a refresh icon plus inline syncing progress.</td>
+      <td>The active state should remain perceivable when animation is disabled, and the footer action needs to read as a sync command before and during refresh without changing button geometry.</td>
+    </tr>
+    <tr>
+      <td>Menubar active-row heartbeat</td>
+      <td>DESIGN.md §23.3 and §33.8</td>
+      <td>Replace the static ACTIVE NOW row diode with a dedicated <code>MenuBarLiveDot</code> that cycles opacity from <code>1.0</code> to <code>0.6</code> and back over a 1.6s period, with a static dot when reduced motion is enabled.</td>
+      <td>The row-level dot represents live work, not provider identity. Matching the specified heartbeat makes active rows visually distinct while keeping reduced-motion users on a stable indicator.</td>
+    </tr>
+    <tr>
+      <td>Menubar session keyboard navigation</td>
+      <td>DESIGN.md §23.4</td>
+      <td>Add native up/down focus for ACTIVE NOW rows and open the focused row with Enter by deep-linking the app to <code>/live?session=&lt;provider:session_id&gt;</code>; the web Live page reads that query and selects the matching session.</td>
+      <td>The current product has a Live workstream/session selection model but no separate native session-detail route. Deep-linking to Live preserves the existing source of truth while making the menubar rows keyboard-operable.</td>
+    </tr>
+    <tr>
+      <td>Dashboard visual QA endpoint coverage</td>
+      <td>DESIGN.md §32.2</td>
+      <td>Add conservative Vite dev handlers for active dashboard endpoints used by visual QA: sync status, live snapshot/SSE, attribution stats, recent sessions, optimize findings/scan, plan, and forecast.</td>
+      <td>The browser pass should test the rendered revamp, not fail because the development server fell through to an unavailable local CLI proxy. Empty/derived local responses preserve first-run truth without fabricating production metrics.</td>
+    </tr>
+    <tr>
+      <td>Menubar Clawd state matrix and live transitions</td>
+      <td>DESIGN.md §23.3, §23.4, §33.5, and §33.14</td>
+      <td>Expose a reusable native <code>StateMascotView</code> for Clawd, wire the popover header/body to disconnected, first-run, sleeping, syncing, and live states, make the header tick pulse only for active sessions, and add 180ms fade/bar transitions with reduced-motion shortening.</td>
+      <td>The popover previously reused the loading mascot for every state, which made offline and first-run behavior visually wrong. This keeps Clawd state tied to actual product state while keeping the menubar compact and battery-safe.</td>
+    </tr>
+    <tr>
+      <td>Native motion token centralization</td>
+      <td>DESIGN.md §33.2 and §33.14</td>
+      <td>Add <code>Motion.swift</code> with <code>NativeMotion</code> spring/ease tokens, register it in the app target, and move active native hover, first-launch, menubar, loading, and Clawd reaction timings onto those tokens with reduced-motion guards where the animation can run continuously.</td>
+      <td>The spec requires macOS animation values to be centralized and reduced-motion-aware. Keeping Clawd reactions on the named bouncy token preserves the companion's personality while eliminating hard-coded timing drift from native surfaces.</td>
+    </tr>
+    <tr>
+      <td>Widget preview token cleanup and menubar spinner removal</td>
+      <td>DESIGN.md §26.1, §26.11, §26.13, and §32.2</td>
+      <td>Move active web widget-preview source colors, heatmap levels, preview surfaces, menu-bar preview chrome, and CTA shadows onto CSS tokens in <code>styles.css</code>; replace the native menubar sync footer <code>ProgressView</code> with a stable icon/text busy state.</td>
+      <td>The widget preview page is an active dashboard surface, so page-local hex palettes undermine token parity. The menubar popover also had one remaining spinner even though the design requires skeleton/progress or stable busy states instead of spinner loaders.</td>
+    </tr>
+    <tr>
+      <td>Widget configuration provider focus</td>
+      <td>DESIGN.md §21.7, §24, and §27</td>
+      <td>Expand the widget setup provider selector to the full canonical provider set and make the selected provider visibly focus matching provider/model/limit rows in the live preview while keeping identity rendered through <code>ProviderLogo</code>.</td>
+      <td>The prior selector only exposed four providers and did not affect the preview, so the configuration panel was not truthfully representing the "provider to highlight" control requested by the spec.</td>
+    </tr>
+    <tr>
+      <td>Active dashboard token sweep continuation</td>
+      <td>DESIGN.md §26.1, §30.4, and §32.2</td>
+      <td>Move Dashboard screenshot capture background, Live branch routing conic chart colors, and widget preview bar tracks onto design tokens instead of local hard-coded hex/RGBA color strings.</td>
+      <td>These surfaces are active dashboard routes, so screenshots, live signal charts, and widget previews should follow the same light/dark token source as the rest of the revamp rather than carrying isolated color decisions.</td>
+    </tr>
+    <tr>
+      <td>Native theme parity and Appearance settings</td>
+      <td>DESIGN.md §20.1 and §20.2</td>
+      <td>Keep the native theme override in <code>UserDefaults.standard["theme"]</code>, apply it through <code>.preferredColorScheme(.light | .dark | nil)</code> on the SwiftUI dashboard shell and Settings view, expose a macOS Settings Appearance tab with a three-segment System/Light/Dark picker, and preserve the <code>⌘⇧L</code> View-menu cycle command.</td>
+      <td>The spec requires the macOS shell to share the same explicit Light/Dark/System model as the web dashboard while still allowing System to follow the OS. Applying the preference at the root SwiftUI shell keeps native chrome, loading states, first-launch overlay, and settings aligned with the dashboard theme source.</td>
+    </tr>
+    <tr>
+      <td>Top-right web theme menu</td>
+      <td>DESIGN.md §20.2</td>
+      <td>Add a shared <code>HeaderThemeMenu</code> with a compact user-menu trigger and three-segment Light/Dark/System control, render it in the common <code>PageShell</code>, and add it to the custom dashboard landing header.</td>
+      <td>The web theme control already existed in Settings and the sidebar footer, but the spec explicitly calls for the same control in the top-right header/user menu. A shared header menu gives all PageShell routes the required control and covers the custom dashboard route that does not use PageShell.</td>
+    </tr>
+    <tr>
+      <td>Resolved web theme class contract</td>
+      <td>DESIGN.md §20.1 and §20.2</td>
+      <td>Update the no-flash inline script and <code>ThemeProvider</code> so <code>&lt;html&gt;</code> always has exactly one resolved <code>light</code> or <code>dark</code> class, render the same header theme menu in the mobile top bar, and add arrow-key/Enter/Esc handling to the header popover.</td>
+      <td>The spec names the root class behavior directly and defines popover keyboard operation. Keeping both the boot script and React provider on the same class contract prevents first-paint drift, the mobile top bar closes the viewport gap for the top-right user-menu switcher, and keyboard handling keeps the popover aligned with the shared menu contract.</td>
+    </tr>
+    <tr>
+      <td>WidgetKit bundle coverage and deterministic margins</td>
+      <td>DESIGN.md §24 and §24.5</td>
+      <td>Register <code>TopModelsWidget</code> and <code>UsageLimitsWidget</code> in <code>VibeDeckWidgetBundle</code>, keep all four widgets on static deep-link configurations, disable WidgetKit's default content margins, and apply explicit family padding of 12pt small, 14pt medium, and 16pt large.</td>
+      <td>DESIGN.md defines four widgets across three sizes and names exact padding rules. The Top Models and Limits implementations already existed in source and the target, but without bundle registration they would not ship. Explicit margins make the composition contract testable instead of dependent on OS default widget insets.</td>
+    </tr>
+    <tr>
+      <td>Heatmap large metadata uses real token evidence</td>
+      <td>DESIGN.md §24.4</td>
+      <td>Extend <code>HeatmapPayload</code> with optional <code>bestDay</code> and <code>longestStreak</code> metadata derived from the existing heatmap cells, and render those rows in the large Heatmap widget below the legend.</td>
+      <td>The spec asks the large Heatmap widget to show best-day and longest-streak detail. The current backend heatmap cells expose dated token activity but not per-day cost, so the widget now shows real token-based best-day evidence instead of fabricating a dollar amount from unavailable data.</td>
+    </tr>
+    <tr>
+      <td>Usage Limits widget hierarchy without fake quotas</td>
+      <td>DESIGN.md §24.3</td>
+      <td>Specialize the small Usage Limits widget so the hottest provider owns the composition, show the percent beside the bar, add reset copy, and add the large-widget reset timeline axis. Keep medium/large rows percentage-based because the active usage-limit API only exposes utilization percent and reset time.</td>
+      <td>The spec's hierarchy can be matched from existing data, but its <code>used / limit tokens</code> line cannot be rendered honestly until the provider limit contracts include used-token and quota-token fields. The widget now moves closer to the target while avoiding fabricated token totals.</td>
+    </tr>
+    <tr>
+      <td>Dashboard modal and popover token cleanup</td>
+      <td>DESIGN.md §18, §25, and §26.17</td>
+      <td>Move the shared confirmation modal, cost-analysis modal, legacy theme dropdown, and Skills source/repo management controls from hardcoded white/gray chrome to <code>--vd-popover-bg</code>, <code>--vd-control-bg</code>, <code>--vd-border</code>, <code>--vd-tint</code>, and <code>--vd-shadow</code>.</td>
+      <td>These controls are active dashboard surfaces. Aligning them with the popover/modal/control tokens removes visible design-system drift and supports the final no-cheap pass without touching inactive Entire UI.</td>
+    </tr>
+    <tr>
+      <td>Active dashboard route token sweep</td>
+      <td>DESIGN.md §18, §25, §26.4, §26.8, and §26.17</td>
+      <td>Normalize active matrix project usage, data details, usage overview, usage limits copy action, Settings form controls, Branches selectors, Export date fields, and Widgets menubar selector chrome onto <code>vd-card-solid</code>, <code>vd-subcard</code>, <code>vd-control</code>, <code>vd-popover</code>, <code>--vd-border</code>, <code>--vd-control-bg</code>, and <code>--vd-tint</code>.</td>
+      <td>The audit still found old white/gray control and card styling in user-visible routes after the broad revamp. This pass removes those active leftovers while preserving intentional widget preview canvases and inactive legacy components for separate follow-up work.</td>
+    </tr>
+    <tr>
+      <td>Menubar limits use real urgency and reset data</td>
+      <td>DESIGN.md §23.3, §23.4, §26.12, and §30.2</td>
+      <td>Expand the macOS menubar popover's Limits section beyond Claude/Codex/Cursor to include every configured provider limit window currently modeled by the native API, sort by semantic urgency and utilization, and render reset countdowns from provider reset timestamps instead of placeholder window labels.</td>
+      <td>The menubar is the most-seen native surface. Showing only three providers with static labels like <code>7d</code> or <code>plan</code> weakened §23's urgency-ranked glance contract and disconnected the popover from the same data truth used by widgets. The footer sync affordance now also uses the native motion token while honoring reduced motion.</td>
+    </tr>
+    <tr>
+      <td>Native detail routing for compiled SwiftUI surfaces</td>
+      <td>DESIGN.md §22.2, §22.4, §22.5, and §26.5</td>
+      <td>Route the macOS split-detail column to native <code>DashboardView</code>, native Optimize/Plan segmented tabs, and native Analytics segmented tabs for Compare/Models/Yield/Skills; keep Live, Branches, Widgets, Export, and Settings on the existing web fallback until dedicated native detail surfaces exist.</td>
+      <td>The sidebar alone did not satisfy the native active-surface spec because every destination still showed the embedded dashboard route. Reusing already-compiled native view models and SwiftUI components closes the highest-confidence native parity gap without inventing incomplete native workflows for web-only routes.</td>
+    </tr>
+    <tr>
+      <td>Native Live detail surface</td>
+      <td>DESIGN.md §22.3, §21.2, §28, and §30.2</td>
+      <td>Add a compact SwiftUI Live detail for the macOS app with a four-cell KPI strip, active-session list, provider-limits side card, and recent operations table, all sourced from <code>DashboardViewModel.liveSessionsSnapshot</code>, usage totals, and provider-limit data.</td>
+      <td>Live was still a web fallback despite being called out as a native tab. This moves the macOS app toward the requested premier native surface while avoiding fake tokens/sec or attribution values that are not currently exposed by the native data model.</td>
+    </tr>
+    <tr>
+      <td>Native Settings detail promoted into dashboard setup lane</td>
+      <td>DESIGN.md §21.8, §22.1, §23.5, and §26.15</td>
+      <td>Replace the macOS Settings fallback in the split-detail column with a native two-column settings surface: Tier 1 section list on the left and vertical form rows for Appearance, Providers, Menu Bar, Advanced, and Privacy on the right.</td>
+      <td>Settings was still reachable as a web page inside the premier macOS surface. The existing native settings shell already owned appearance and provider visibility, so promoting it into the dashboard closes a setup-lane gap without duplicating backend workflows or adding fake account state.</td>
+    </tr>
+    <tr>
+      <td>Native Widgets setup detail</td>
+      <td>DESIGN.md §21.7, §24, §24.5, and §30.2</td>
+      <td>Replace the macOS Widgets fallback with a native setup detail that previews Summary, Top Models, Usage Limits, and Heatmap from <code>WidgetSnapshotStore</code>, exposes timeline reload, and shows the native Add Widgets instruction alert.</td>
+      <td>Widgets are a core setup surface and already have a shared snapshot contract between the app and WidgetKit extension. Reusing that snapshot keeps the native preview aligned with shipped widget data while showing an explicit empty state when no snapshot exists.</td>
+    </tr>
+    <tr>
+      <td>Native Export detail with local file download</td>
+      <td>DESIGN.md §21.8, §30.2, and §31.3</td>
+      <td>Replace the macOS Export fallback with a native form for date range and JSON/CSV format, a preview backed by <code>/functions/vibedeck-export</code>, and a download action that saves the selected export to the user's Downloads folder.</td>
+      <td>The export endpoint already owns the authoritative totals and rows, so native UI can avoid duplicating export math. Date fields stay textual because the backend contract accepts normalized <code>YYYY-MM-DD</code> filters and preserves timezone query parameters.</td>
+    </tr>
+    <tr>
+      <td>Native Branches attribution detail</td>
+      <td>DESIGN.md §21.6, §22.1, §27.4, and §30.3</td>
+      <td>Replace the macOS Branches fallback with a native branch attribution surface backed by <code>/functions/vibedeck-branch-usage</code>, including summary metrics, filtering, branch rows, confidence bars, repo context, and cost/token/session columns.</td>
+      <td>Branch attribution already has an authoritative backend rollup. Rendering that data natively removes the final macOS split-detail web fallback while preserving the web page as the deeper override workflow until a native override drawer is scoped separately.</td>
+    </tr>
+    <tr>
+      <td>Active chrome gradient cleanup</td>
+      <td>DESIGN.md §25, §32</td>
+      <td>Replace the active sidebar setup card's two-indigo gradient and the widgets page menu-bar preview backdrop gradient with solid tokenized surfaces. The widget tile preview frame now uses <code>--vd-card-bg-solid</code> instead of raw white.</td>
+      <td>The spec explicitly bans cheap gradient chrome and raw white card surfaces. Keeping gradients only inside widget artwork/material simulation avoids changing the intended widget visual while removing generic app-shell treatment.</td>
+    </tr>
+    <tr>
+      <td>Embedded sync Entire backfill inactive</td>
+      <td>DESIGN.md §8, §13, §22.5, and §25</td>
+      <td>Comment out the remaining embedded-server sync helper block for Entire checkpoint backfill so the macOS-bundled backend matches the root backend's inactive state.</td>
+      <td>Hiding the route is not enough if a packaged backend can still run Entire checkpoint linking during sync. Leaving the code commented preserves recoverability while ensuring the current revamp has no active Entire setup/backend flow.</td>
+    </tr>
+    <tr>
+      <td>Mobile widget preview density cap</td>
+      <td>DESIGN.md §12, §24, §25, and §32</td>
+      <td>Keep the medium Summary widget web preview's four provider logos for desktop/accessibility coverage, but hide the fourth provider row below 520px so the fixed-format widget canvas does not collide with the footer copy on narrow mobile viewports.</td>
+      <td>The WidgetKit composition is dense by design, but the dashboard preview scales inside a mobile card. Responsive row suppression preserves the provider-logo proof on desktop while avoiding text overlap on mobile.</td>
+    </tr>
+    <tr>
+      <td>Dashboard mobile action wrapping</td>
+      <td>DESIGN.md §5, §12, §21.1, and §32</td>
+      <td>Allow the Dashboard header action cluster to wrap on narrow viewports and tighten the period-picker button padding below <code>sm</code>.</td>
+      <td>The desktop header has enough room for period, sync, settings, theme, and Clawd controls in one row. Mobile does not, so wrapping preserves the controls without clipped text or horizontal scrolling.</td>
+    </tr>
+    <tr>
+      <td>Local-only copy cleanup</td>
+      <td>DESIGN.md §25 and §31</td>
+      <td>Replace active UI copy that said <code>Sign in</code> with local-only language: Gemini OAuth setup now says <code>Authorize</code>, and launch-at-login helper copy refers to the Mac session starting.</td>
+      <td>The product is local-only. OAuth authorization and macOS login-item behavior should not read like an application sign-in prompt.</td>
+    </tr>
+    <tr>
+      <td>Analytics/export outage states</td>
+      <td>DESIGN.md §29, §31, and §32</td>
+      <td>Catch failed Compare, Models, Yield, and Export preview requests and render inline empty/error states instead of allowing unhandled <code>Request failed with HTTP 502</code> page errors.</td>
+      <td>The dashboard can be opened before the local backend is ready. These pages should explain the local-server dependency without surfacing stack traces or throwing runtime page errors.</td>
+    </tr>
+    <tr>
+      <td>Exact limit token pairs</td>
+      <td>DESIGN.md §24.3, §30.2, and §32.1</td>
+      <td>Extend the usage-limit backend contract with optional <code>used_tokens</code>, <code>limit_tokens</code>, and <code>unit: tokens</code> fields when upstream provider responses expose token-keyed quota data; thread those fields through native models, widget snapshots, web usage-limit rows, native widget previews, and the Usage Limits widget.</td>
+      <td>The widget can now render exact <code>used / limit tokens</code> when the source contract provides real token counts, while preserving percent/reset fallback for providers that only expose percentages, credits, or remaining fractions.</td>
+    </tr>
+    <tr>
+      <td>Heatmap best-day dollars</td>
+      <td>DESIGN.md §24.4 and §32.1</td>
+      <td>Carry existing per-day <code>total_cost_usd</code> from <code>aggregateByDay()</code> into <code>/functions/vibedeck-usage-heatmap</code> cells, decode it natively, store it in <code>HeatmapBestDay.costUsd</code>, and render the large Heatmap widget's best-day value as dollars plus token context.</td>
+      <td>The backend already computes daily cost; the missing piece was contract propagation. This closes the best-day dollar requirement without estimating cost in WidgetKit.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Deviations</h2>
+<section>
+  <h3>Historical recent activity depth</h3>
+  <p><strong>Spec quote:</strong> <code>Attribution Health uses Pattern F half-gauge. Center label text-h2.</code></p>
+  <p><strong>What I did:</strong> Replaced the placeholder attribution card with a real half-gauge sourced from <code>/functions/vibedeck-attribution-stats</code>. Recent Activity now prefers exact live/recent session rows from <code>/functions/vibedeck-sessions-live-snapshot</code>, then falls back to aggregate period rows when no recent session rows exist.</p>
+  <p><strong>Justification:</strong> The attribution health metric now has a real backend numerator/denominator. The dashboard also reads exact historical canonical session rows through <code>/functions/vibedeck-recent-sessions</code>, so the aggregate period fallback is only for missing/unavailable local history.</p>
+</section>
+<section>
+  <h3>macOS app shell source of truth</h3>
+  <p><strong>Spec quote:</strong> <code>Sidebar spec: Width: 220pt fixed.</code></p>
+  <p><strong>What I did:</strong> Added a SwiftUI <code>NavigationSplitView</code> wrapper around the existing macOS <code>WKWebView</code> detail instead of replacing the web-hosted dashboard with separate native implementations for every tab.</p>
+  <p><strong>Justification:</strong> The current app routes dashboard auth, settings, and bridge messages through the web shell. The native split wrapper satisfies the window/sidebar structure while avoiding duplicated dashboard business logic and preserving the bridge contracts already used by the app.</p>
+</section>
+<section>
+  <h3>Dashboard recent activity granularity</h3>
+  <p><strong>Spec quote:</strong> <code>Recent Activity is Tier 1 (no card around the list). 5 rows max. Each row 40px tall.</code></p>
+  <p><strong>What I did:</strong> Used exact live/recent session rows plus historical canonical recent-session rows when present, capped at five rows, and kept the section uncarded; aggregate period rows remain the fallback when local session history is unavailable.</p>
+  <p><strong>Justification:</strong> The combined live snapshot and recent-session endpoint covers active, recently ended, and historical rows without inventing session filenames or metrics.</p>
+</section>
+<section>
+  <h3>Skills usage attribution data</h3>
+  <p><strong>Spec quote:</strong> <code>List of detected Claude Code / Codex skills sorted by usage. Each row: skill name, invocation count, cost attributed, link to skill source.</code></p>
+  <p><strong>What I did:</strong> Added a read-only skills usage mode backed by stored session <code>skills_json</code> counters, sorted rows by invocation count, apportioned known session cost by each skill's share of recorded skill calls, and linked usage rows to installed skill source metadata when available.</p>
+  <p><strong>Justification:</strong> This keeps the numbers tied to recorded provenance. If a session has no known cost, its skill calls still count but do not create fake attributed dollars.</p>
+</section>
+<section>
+  <h3>Full DESIGN.md coverage status</h3>
+  <p><strong>Spec quote:</strong> <code>Either way, every surface ends up on this design system or none of them do.</code></p>
+  <p><strong>What I did:</strong> Covered the web shell/pages, central provider-logo rendering, active native menu bar/offline/loading/sidebar utility surfaces, command palette, first-launch overlays, WidgetKit provider-logo/tabular/deep-link/cadence pass, menu-bar live-session truth source, standard right-click menu, native split-detail tabs for Dashboard, Live, Optimize, Plan, Compare, Models, Yield, Skills, Branches, Widgets, Export, and Settings, and the non-shipping Entire audit including inactive tests/client helpers/backend support endpoints.</p>
+  <p><strong>Justification:</strong> DESIGN.md is a broad cross-surface product spec. The implemented path keeps the existing embedded WKWebView available for bridge/auth compatibility, but the active macOS split-detail route now resolves to native SwiftUI detail views whenever the app model is available.</p>
+</section>
+
+<h2>Tradeoffs</h2>
+<section>
+  <h3>Revamp scope sequencing</h3>
+  <p><strong>Alternatives considered:</strong> implement web, macOS, widgets, menubar, motion, and backend data wiring in one pass; or ship the spec's own incremental order.</p>
+  <p><strong>Choice:</strong> ship the web dashboard shell and highest-visibility surfaces first, then audit remaining surfaces.</p>
+  <p><strong>Reason:</strong> the spec spans 17 implementation chunks across three surfaces. Starting with shared web tokens, navigation, logos, and page composition lowers design debt without destabilizing native/widget code before the dashboard patterns are proven.</p>
+</section>
+
+<h2>Open Questions</h2>
+<details>
+  <summary>Open questions tracked during implementation</summary>
+  <ul>
+    <li>Should the macOS app move away from the existing web-hosted dashboard shell before implementing the full native <code>NavigationSplitView</code> IA?</li>
+    <li>Which backend contract should expose dashboard attribution half-gauge data, skill invocation/cost attribution, and exact recent session rows so those surfaces can avoid UI-only fabricated metrics?</li>
+    <li>Should the remaining exact native-tab parity work replace the current web-hosted detail view, or should it continue as a hybrid shell with native chrome and web content?</li>
+  </ul>
+</details>
+
+<h2>Summary</h2>
+<section>
+  <p>Implemented the broad first revamp pass against <a href="DESIGN.md">DESIGN.md</a>: dashboard/live route separation, four-lane sidebar, solid drawer chrome including the Live branch override drawer, command palette, root theme key alignment, Bunny font loading, Geist/3D dependency cleanup, central provider-logo rendering, no-shadow card defaults, rebuilt dashboard/live/optimize/plan/analytics/setup page shells, skeleton loading states, native offline/menu bar/window/loading/logo alignment, and WidgetKit composition/logo refresh.</p>
+  <p><strong>Passing checks:</strong> full dashboard suite <code>npm test -- --reporter=dot</code> (44 files, 191 tests), focused IA check <code>npm test -- --reporter=dot Sidebar.test.jsx App.test.jsx</code>, focused widget/theme check <code>npm test -- --reporter=dot ThemeProvider Sidebar.test.jsx WidgetsPage.test.jsx</code>, <code>npm run lint</code>, <code>npm run build</code>, <code>node -c src/lib/local-api.js</code>, <code>node -c VibeDeckMac/EmbeddedServer/vibedeck/src/lib/local-api.js</code>, <code>node -c src/commands/sync.js</code>, <code>node -c VibeDeckMac/EmbeddedServer/vibedeck/src/commands/sync.js</code>, <code>node -c dashboard/src/lib/vibedeck-api.ts</code>, <code>git diff --check</code>, root notes diff check, focused checks <code>npm test -- Sidebar.test.jsx</code>, <code>npm test -- BranchesPage.test.jsx SkillsPage.test.jsx SettingsPage.test.jsx</code>, loader/logo checks <code>npm test -- WidgetsPage.test.jsx ComparePage.test.jsx ModelsPage.test.jsx YieldPage.test.jsx OptimizePage.test.jsx PlanPage.test.jsx ExportPage.test.jsx SkillsPage.test.jsx</code> and <code>npm test -- UsageLimitsPanel.test.jsx SettingsPage.test.jsx WidgetsPage.test.jsx</code>, Live provider breadth check <code>npm test -- LiveProviderLimitsGrid.test.jsx LiveWorkbenchOverview.test.jsx LivePage.test.jsx</code>, Live branch override drawer check <code>npm test -- LivePage.override.test.jsx LivePage.test.jsx LiveSessionList.test.jsx</code>, menubar session deep-link regression check <code>npm test -- --reporter=dot LivePage.test.jsx LiveSessionList.test.jsx</code>, active sidebar/widget chrome check <code>npm test -- --reporter=dot Sidebar.test.jsx WidgetsPage.test.jsx</code>, production bundle check <code>npm run build</code> plus <code>rg "Entire|entire|vibedeck-entire|RepoEntire|isEntirePath" dist/assets/*.js dist/assets/*.css dist/index.html</code> returning no matches, Playwright visual smoke across <code>/</code>, <code>/live</code>, <code>/optimize</code>, <code>/plan</code>, <code>/widgets</code>, and <code>/settings</code> at 1440×1000 and 390×844, historical recent sessions check <code>node --test test/local-api-vibedeck-sessions-live-snapshot.test.js</code>, skills usage provenance check <code>node --test test/local-api-skills.test.js</code>, active Entire route/API audit, widget family/deep-link/cadence audit, active web spinner sweep, active native spinner sweep, widget provider-dot audit, widget tabular audit, emoji audit, active drawer/card token audit, native sidebar utility audit, and native/widget build <code>xcodebuild -project VibeDeckMac/VibeDeckMac.xcodeproj -scheme VibeDeckMac -configuration Debug -destination 'platform=macOS' build</code>.</p>
+  <p><strong>Latest audit additions:</strong> focused dashboard/widget/settings/analytics regression <code>npm test -- --reporter=dot ComparePage.test.jsx ModelsPage.test.jsx YieldPage.test.jsx ExportPage.test.jsx UsageLimitsPanel.test.jsx SettingsPage.test.jsx WidgetsPage.test.jsx DashboardPage.test.jsx Sidebar.test.jsx</code> passed (9 files, 33 tests), dashboard production build passed, active source and built bundle scans found no visible <code>Entire</code>, login, stack trace, or HTTP 502 copy, and a Playwright route sweep across <code>/dashboard</code>, <code>/live</code>, <code>/branches</code>, <code>/optimize</code>, <code>/plan</code>, <code>/compare</code>, <code>/models</code>, <code>/yield</code>, <code>/skills</code>, <code>/widgets</code>, <code>/export</code>, <code>/settings</code>, <code>/usage</code>, and <code>/limits</code> at 1440×1000 and 390×844 returned 200s with no page errors, no horizontal overflow, no active spinners, no fallback body font, and no removed-copy leaks. The final data-contract pass added <code>node --test test/usage-limits.test.js test/local-api-phase5.test.js</code> and <code>npm test -- --reporter=dot UsageLimitsPanel.test.jsx</code> coverage for exact limit token pairs and heatmap per-day cost.</p>
+  <p><strong>Failing checks:</strong> none currently reproduced. The dashboard test run still emits existing React <code>act(...)</code> warnings from SkillsPage/Base UI interactions and Node localStorage availability warnings, but the suite exits green.</p>
+  <p><strong>Deferred items:</strong> deeper chart-specific animation choreography remains a polish follow-up from <code>DESIGN.md §33</code>. The previous Usage Limits token-pair and Heatmap best-day-dollar data gaps are now implemented through backend contracts and widget rendering.</p>
+</section>

@@ -11,13 +11,16 @@ struct HeatmapWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             HeatmapWidgetView(entry: entry)
+                .modifier(WidgetFamilyPadding())
                 .containerBackground(for: .widget) {
                     WidgetTheme.widgetBackground
                 }
+                .widgetURL(WidgetDeepLink.url("yield"))
         }
+        .contentMarginsDisabled()
         .configurationDisplayName(WidgetStrings.heatmapName)
         .description(WidgetStrings.heatmapDescription)
-        .supportedFamilies([.systemMedium, .systemLarge, .systemExtraLarge])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
@@ -27,8 +30,9 @@ struct HeatmapWidgetView: View {
 
     private var weeks: Int {
         switch family {
-        case .systemMedium: return 26
-        case .systemLarge: return 40
+        case .systemSmall: return 4
+        case .systemMedium: return 13
+        case .systemLarge: return 52
         default: return 52
         }
     }
@@ -36,34 +40,134 @@ struct HeatmapWidgetView: View {
     var body: some View {
         let snap = entry.snapshot
         let streak = snap.heatmap.streakDays
+        // Show all-time tokens so the number lines up with the all-time
+        // active-days count shown next to it.
+        let totalTokens = snap.total.tokens > 0 ? snap.total.tokens : snap.last30d.tokens
 
-        VStack(alignment: .leading, spacing: 12) {
-            HeatmapGridView(payload: snap.heatmap, maxWeeks: weeks)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    if streak > 0 {
-                        Text(WidgetStrings.streak(streak))
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundColor(WidgetTheme.brandStrong)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(WidgetTheme.brand.opacity(0.16), in: Capsule())
+        if snap.hasHeatmapActivity {
+            VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
+                WidgetHeader(title: "ACTIVITY", subtitle: WidgetFormat.relativeUpdated(snap.generatedAt), icon: "square.grid.3x3.fill")
+                HeatmapGridView(payload: snap.heatmap, maxWeeks: weeks, showDayLabels: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .topTrailing) {
+                        if streak > 0 {
+                            Text(WidgetStrings.streak(streak))
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundColor(WidgetTheme.brandStrong)
+                                .monospacedDigit()
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(WidgetTheme.brand.opacity(0.16), in: Capsule())
+                        }
+                    }
+
+                if family == .systemLarge {
+                    HeatmapLegend()
+                    HeatmapLargeMetadata(payload: snap.heatmap)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(WidgetFormat.compact(totalTokens))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                        .monospacedDigit()
+                    Text(WidgetStrings.tokensActiveDays(activeDays: snap.heatmap.activeDays))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                    Spacer(minLength: 0)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                "Activity, \(WidgetFormat.compact(totalTokens)) tokens, \(snap.heatmap.activeDays) active days, \(streak) day streak, updated \(WidgetFormat.relativeUpdated(snap.generatedAt))"
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                WidgetHeader(title: "ACTIVITY", subtitle: WidgetFormat.relativeUpdated(snap.generatedAt), icon: "square.grid.3x3.fill")
+                WidgetEmptyState(message: WidgetStrings.noActivityData)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("No activity yet, updated \(WidgetFormat.relativeUpdated(snap.generatedAt))")
+        }
+    }
+}
+
+private extension WidgetSnapshot {
+    var hasHeatmapActivity: Bool {
+        heatmap.activeDays > 0 ||
+            heatmap.streakDays > 0 ||
+            heatmap.weeks.contains { week in
+                week.contains { $0 > 0 }
+            } ||
+            total.tokens > 0 ||
+            total.costUsd > 0 ||
+            last30d.tokens > 0 ||
+            last30d.costUsd > 0
+    }
+}
+
+private struct HeatmapLegend: View {
+    var body: some View {
+        HStack(spacing: 5) {
+            Text("none")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            ForEach(0..<5, id: \.self) { level in
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(WidgetTheme.heatmapLevels[level])
+                    .frame(width: 8, height: 8)
+            }
+            Text("peak")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct HeatmapLargeMetadata: View {
+    let payload: HeatmapPayload
+
+    var body: some View {
+        if payload.bestDay != nil || payload.longestStreak != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                Divider()
+
+                if let bestDay = payload.bestDay {
+                    HStack(spacing: 4) {
+                        Text("Best day:")
+                            .foregroundStyle(.secondary)
+                        Text(WidgetFormat.cost(bestDay.costUsd))
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                        Text("on")
+                            .foregroundStyle(.secondary)
+                        Text(WidgetFormat.shortDate(bestDay.day))
+                            .monospacedDigit()
+                        Text("(\(WidgetFormat.compact(bestDay.tokens)) tokens)")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                 }
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                // Show all-time tokens so the number lines up with the
-                // all-time active-days count shown next to it.
-                let totalTokens = snap.total.tokens > 0 ? snap.total.tokens : snap.last30d.tokens
-                Text(WidgetFormat.compact(totalTokens))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .monospacedDigit()
-                Text(WidgetStrings.tokensActiveDays(activeDays: snap.heatmap.activeDays))
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                Spacer(minLength: 0)
+                if let longestStreak = payload.longestStreak {
+                    HStack(spacing: 4) {
+                        Text("Longest streak:")
+                            .foregroundStyle(.secondary)
+                        Text("\(longestStreak.days) days")
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                        Text("(\(WidgetFormat.monthDay(longestStreak.startDay)) - \(WidgetFormat.monthDay(longestStreak.endDay)))")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
             }
+            .font(.system(size: 10, weight: .medium, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
         }
     }
 }

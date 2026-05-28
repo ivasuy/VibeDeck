@@ -88,7 +88,7 @@ export function OpenCodeIcon({ className = "w-5 h-5" }) {
 /**
  * OpenClaw Logo (Lobster/Claw Icon)
  * OpenClaw brand: lobster-themed personal AI assistant
- * Based on 🦞 emoji and claw concept
+ * Based on the claw mark concept.
  */
 export function OpenClawIcon({ className = "w-5 h-5" }) {
   return (

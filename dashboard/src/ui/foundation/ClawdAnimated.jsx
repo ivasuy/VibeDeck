@@ -63,9 +63,14 @@ const svgCache = new Map();
 
 async function fetchSvg(path) {
   if (svgCache.has(path)) return svgCache.get(path);
-  const resp = await fetch(`/clawd/${path}`);
-  if (!resp.ok) return null;
-  const raw = await resp.text();
+  let raw = "";
+  try {
+    const resp = await fetch(`/clawd/${path}`);
+    if (!resp.ok) return null;
+    raw = await resp.text();
+  } catch {
+    return null;
+  }
   // Strip fixed width/height so SVG scales to container, keep viewBox
   const result = raw.replace(/<svg([^>]*)>/, (_match, attrs) => {
     const cleaned = attrs
@@ -141,15 +146,23 @@ export const CLAWD_STATES = Object.keys(STATE_TO_PATH);
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(() => {
-    if (typeof window === "undefined") return false;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
 
   useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const handler = (e) => setReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", handler);
+      return () => mq.removeEventListener("change", handler);
+    }
+    if (typeof mq.addListener === "function") {
+      mq.addListener(handler);
+      return () => mq.removeListener(handler);
+    }
+    return undefined;
   }, []);
 
   return reduced;

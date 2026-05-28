@@ -106,6 +106,22 @@ describe("LiveWorkbenchOverview", () => {
     expect(container.querySelector('[data-counter-root="true"]')).not.toBeNull();
   });
 
+  it("counts expanded provider breadth in limit sources", () => {
+    render(
+      <LiveWorkbenchOverview
+        status="connected"
+        limits={{
+          factoryai: { configured: true, primary_window: { used_percent: 14 } },
+          hermes: { configured: true, primary_window: { used_percent: 28 } },
+          openclaw: { configured: true, secondary_window: { used_percent: 42 } },
+          opencode: { configured: true, tertiary_window: { used_percent: 56 } },
+        }}
+      />,
+    );
+
+    expect(within(tileFor("Limit sources")).getByText("4")).toBeTruthy();
+  });
+
   it("does not count cwd_only sessions as attribution gaps", () => {
     render(
       <LiveWorkbenchOverview

@@ -1,5 +1,6 @@
 import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
+import { AlertTriangle } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { copy } from "../../../lib/copy";
 import { safeGetItem, safeSetItem, safeWriteClipboard } from "../../../lib/safe-browser";
@@ -9,7 +10,6 @@ export function UpgradeAlertModal({ requiredVersion, installCommand, onClose }) 
   const hasVersion = normalizedRequired.length > 0;
   const unknownDismissKey = "vibedeck_upgrade_dismissed_unknown";
   const resolvedInstallCommand = installCommand ?? copy("dashboard.upgrade_alert.install_command");
-  const sparkleLabel = copy("dashboard.upgrade_alert.sparkle");
   const titleLabel = copy("dashboard.upgrade_alert.title");
   const subtitleLabel = hasVersion
     ? copy("dashboard.upgrade_alert.subtitle", {
@@ -84,7 +84,7 @@ export function UpgradeAlertModal({ requiredVersion, installCommand, onClose }) 
       <div className="max-w-7xl mx-auto px-4 py-2 relative flex flex-col md:flex-row items-center justify-between gap-4">
         {/* Left Side: Notice & Mission */}
         <div className="flex items-center space-x-3">
-          <span className="text-xl animate-pulse">{sparkleLabel}</span>
+          <AlertTriangle className="h-5 w-5 animate-pulse text-gold" aria-hidden="true" />
           <div className="flex flex-col">
             <h3 className="text-gold font-black text-heading uppercase leading-none">
               {titleLabel}

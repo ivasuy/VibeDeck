@@ -170,7 +170,7 @@ export function UsageOverview({
                     </Popover.Trigger>
                     <Popover.Portal>
                       <Popover.Positioner sideOffset={8} side="bottom" align="start" className="!z-[9999]">
-                        <Popover.Popup className="vd-popover bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded-xl shadow-lg">
+                        <Popover.Popup className="vd-popover rounded-xl border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] shadow-[var(--vd-shadow)]">
                           <DateRangePopover
                             from={customFrom}
                             to={customTo}
@@ -204,7 +204,7 @@ export function UsageOverview({
                 type="button"
                 onClick={onOpenShare}
                 aria-label={copy("share.button.aria")}
-                className="vd-control inline-flex items-center justify-center gap-1.5 h-8 px-3 text-xs font-medium rounded-md border border-oai-gray-300 dark:border-oai-gray-700 bg-oai-white dark:bg-oai-gray-900 text-oai-black dark:text-oai-white hover:border-oai-brand hover:text-oai-brand transition-colors duration-200"
+                className="vd-control inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 text-xs font-medium text-oai-black transition-colors duration-200 hover:bg-[var(--vd-tint)] hover:text-oai-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-white"
               >
                 <SquareArrowOutUpRight className="h-3.5 w-3.5" strokeWidth={2} />
                 {copy("share.button.label")}
@@ -314,8 +314,8 @@ export function UsageOverview({
                     onClick={() => setExpandedProvider(isExpanded ? null : provider.label)}
                     className={`min-w-0 text-left p-3 rounded-lg border transition-colors duration-200 ${
                       isExpanded
-                        ? "vd-card-solid border-oai-brand-300 dark:border-oai-brand-500 bg-oai-brand-50 dark:bg-oai-brand-950/40"
-                        : "vd-card-solid border-oai-gray-200 dark:border-oai-gray-700 hover:border-oai-brand-300 dark:hover:border-oai-brand-500"
+                        ? "vd-card-solid border-[var(--vd-border-strong)] bg-[var(--vd-tint)]"
+                        : "vd-card-solid border-[var(--vd-border)] hover:border-[var(--vd-border-strong)] hover:bg-[var(--vd-tint)]"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 mb-1 min-w-0">

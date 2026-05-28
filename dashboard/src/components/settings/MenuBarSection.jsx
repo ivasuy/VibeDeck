@@ -2,7 +2,6 @@ import React from "react";
 import { Download, RefreshCw } from "lucide-react";
 import { useNativeSettings } from "../../hooks/use-native-settings.js";
 import { copy } from "../../lib/copy";
-import { cn } from "../../lib/cn";
 import { SectionCard, SettingsRow, ToggleSwitch } from "./Controls.jsx";
 
 export function MenuBarSection() {
@@ -43,7 +42,11 @@ export function MenuBarSection() {
             disabled={isSyncing}
             className="inline-flex h-8 items-center gap-1.5 rounded-md border border-oai-gray-200 px-3 text-xs font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-oai-gray-800 dark:text-oai-gray-300 dark:hover:bg-oai-gray-800"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin")} aria-hidden />
+            {isSyncing ? (
+              <span aria-hidden className="shimmer inline-block h-3.5 w-3.5 rounded-sm" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            )}
             {isSyncing ? copy("settings.menubar.syncing") : copy("settings.menubar.syncNow")}
           </button>
         }

@@ -2,20 +2,38 @@ import React, { useMemo } from "react";
 import { AlertTriangle, Clock3, Gauge } from "lucide-react";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
 import { copy } from "../../lib/copy";
+import { FreshnessBadge } from "../RevampSurfaces.jsx";
 
 const PROVIDERS = [
+  { id: "antigravity", name: "Antigravity" },
   { id: "claude", name: "Claude" },
   { id: "codex", name: "Codex" },
+  { id: "copilot", name: "GitHub Copilot" },
   { id: "cursor", name: "Cursor" },
+  { id: "factoryai", name: "Factory AI" },
   { id: "gemini", name: "Gemini" },
+  { id: "hermes", name: "Hermes" },
   { id: "kimi", name: "Kimi" },
   { id: "kiro", name: "Kiro" },
-  { id: "copilot", name: "GitHub Copilot" },
-  { id: "antigravity", name: "Antigravity" },
+  { id: "openclaw", name: "OpenClaw" },
+  { id: "opencode", name: "OpenCode" },
 ];
 
 function providerId(value) {
-  return String(value || "").trim().toLowerCase();
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  if (normalized.includes("factory") || normalized.includes("droid")) return "factoryai";
+  if (normalized.includes("open-claw") || normalized.includes("openclaw")) return "openclaw";
+  if (normalized.includes("open-code") || normalized.includes("opencode")) return "opencode";
+  if (normalized.includes("openai") || normalized.includes("codex")) return "codex";
+  if (normalized.includes("claude") || normalized.includes("anthropic")) return "claude";
+  if (normalized.includes("google") || normalized.includes("gemini")) return "gemini";
+  if (normalized.includes("copilot")) return "copilot";
+  if (normalized.includes("cursor")) return "cursor";
+  if (normalized.includes("hermes")) return "hermes";
+  if (normalized.includes("kimi")) return "kimi";
+  if (normalized.includes("kiro")) return "kiro";
+  if (normalized.includes("antigravity")) return "antigravity";
+  return normalized;
 }
 
 function isActiveSession(row) {
@@ -122,7 +140,11 @@ function resolveWindows(id, data) {
       windowFrom("Flash", data.tertiary_window),
     ].filter(Boolean);
   }
-  return [];
+  return [
+    windowFrom("Primary", data.primary_window),
+    windowFrom("Secondary", data.secondary_window),
+    windowFrom("Tertiary", data.tertiary_window),
+  ].filter(Boolean);
 }
 
 function resolveProviderState(id, data) {
@@ -190,7 +212,7 @@ function ProviderLimitRow({ provider }) {
   const { id, name, active, windows, state } = provider;
 
   return (
-    <article className="vd-card-solid grid min-h-[112px] gap-3 rounded-lg border border-oai-gray-200 bg-white p-3.5 dark:border-oai-gray-800 dark:bg-oai-gray-900 lg:grid-cols-[168px_minmax(0,1fr)]">
+    <article className="vd-card-solid grid min-h-[112px] gap-3 rounded-lg border border-[var(--vd-border)] p-3.5 lg:grid-cols-[168px_minmax(0,1fr)]">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <ProviderIcon provider={id} size={18} className="shrink-0" />
@@ -215,7 +237,7 @@ function ProviderLimitRow({ provider }) {
   );
 }
 
-export function LiveProviderLimitsGrid({ sessions = [], limits = null, loading = false, error = null, className = "", embedded = false }) {
+export function LiveProviderLimitsGrid({ sessions = [], limits = null, loading = false, error = null, freshnessTimestamp = null, stale = false, className = "", embedded = false }) {
   const activeProviders = useMemo(() => {
     return new Set(
       (Array.isArray(sessions) ? sessions : [])
@@ -240,7 +262,7 @@ export function LiveProviderLimitsGrid({ sessions = [], limits = null, loading =
   }, [activeProviders, limits]);
 
   return (
-    <section className={`flex min-h-0 flex-col overflow-hidden ${embedded ? "" : "vd-card h-[520px] rounded-xl border border-oai-gray-200 bg-white dark:border-oai-gray-800 dark:bg-oai-gray-900"} ${className}`}>
+    <section className={`flex min-h-0 flex-col overflow-hidden ${embedded ? "" : "vd-card h-[520px] rounded-xl border border-[var(--vd-border)]"} ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--vd-border)] px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -248,9 +270,12 @@ export function LiveProviderLimitsGrid({ sessions = [], limits = null, loading =
             <h2 className="text-sm font-semibold text-oai-black dark:text-white">Provider limits</h2>
           </div>
         </div>
-        <span className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
-          {providers.length} recording
-        </span>
+        <div className="flex items-center gap-2">
+          <FreshnessBadge timestamp={freshnessTimestamp} live={!stale && !error && providers.length > 0} stale={stale || Boolean(error)} />
+          <span className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-2.5 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+            {providers.length} recording
+          </span>
+        </div>
       </div>
 
       {loading ? (

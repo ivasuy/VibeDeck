@@ -3,12 +3,28 @@ import Foundation
 enum Strings {
     static var appTitle: String { "VibeDeck" }
     static var serverUnavailable: String { "Server Unavailable" }
+    static var serverOfflineTitle: String { "VibeDeck is offline" }
+    static var serverOfflineBody: String { "The local server isn't responding." }
+    static var serverOfflineLogs: String { "~/Library/Application Support/VibeDeck/logs" }
     static var serverStarting: String { "Starting VibeDeck" }
     static var serverPreparing: String { "This usually takes a few seconds." }
     static var loadingData: String { "Loading data..." }
     static var noData: String { "No data" }
+    static var welcomeToVibeDeck: String { "Welcome to VibeDeck" }
+    static var firstRunDashboardBody: String {
+        "Run any AI coding tool to start tracking. VibeDeck listens automatically."
+    }
+    static var refreshFailedTitle: String { "Could not refresh data" }
+    static var showingLastKnownValues: String { "Showing last-known values." }
+    static func showingValuesFrom(_ relative: String) -> String {
+        "Showing values from \(relative)."
+    }
+    static var detectNow: String { "Detect now" }
+    static var setupGuide: String { "Setup guide" }
     static var retryButton: String { "Retry" }
+    static var restartServerButton: String { "Restart server" }
     static var openDashboard: String { "Open Dashboard" }
+    static var openDashboardInBrowser: String { "Open dashboard in browser" }
     static var quitButton: String { "Quit" }
     static var justNow: String { "just now" }
     static var activityTitle: String { "Activity" }
@@ -156,10 +172,10 @@ enum Strings {
     }
     static func aiTabToday(_ cost: String) -> String { "AI tab today: \(cost)" }
     static func sevenDayTotal(_ tokens: String) -> String { "7-day total: \(tokens) tokens" }
-    static var perfectStreak: String { "7/7 active days - perfect streak!" }
+    static var perfectStreak: String { "7 active days this week" }
     static func thirtyDayTotal(_ tokens: String) -> String { "30-day total: \(tokens) tokens" }
     static func averagingPerDay(_ tokens: String) -> String { "Averaging ~\(tokens)/day this month" }
-    static func streakDays(_ n: Int) -> String { "\(n)-day streak! Keep it going" }
+    static func streakDays(_ n: Int) -> String { "\(n)-day active streak" }
     static func activeDaysAllTime(_ n: Int) -> String { "\(n) active days all-time!" }
     static func topModel(_ name: String, _ percent: String) -> String { "Top model: \(name) (\(percent))" }
     static func runnerUp(_ name: String, _ percent: String) -> String { "Runner-up: \(name) at \(percent)" }
@@ -171,18 +187,18 @@ enum Strings {
     static func busyTalker(_ count: Int) -> String { "\(count) chats today" }
 
     static var syncingQuips: [String] {
-        ["Crunching numbers...", "Fetching latest data!", "One moment, syncing...", "Counting your tokens"]
+        ["Syncing usage.", "Reading local totals.", "Updating counters.", "Refreshing state."]
     }
     static var emptyTodayQuips: [String] {
-        ["No tokens yet today", "Start chatting to wake me up!", "Quiet day so far...", "Waiting for your first prompt", "Nothing to count yet", "The calm before the storm?", "Ready when you are"]
+        ["All quiet. Tokens unspent.", "No sessions yet today.", "Waiting for local usage.", "Nothing's running."]
     }
-    static var warmupQuips: [String] { ["Just warming up!", "A gentle start"] }
-    static var flowQuips: [String] { ["Getting into the flow!", "Solid progress today"] }
-    static var busyQuips: [String] { ["Busy day!", "You're on a roll!"] }
-    static var heavyQuips: [String] { ["Heavy usage today!", "Token machine is running"] }
-    static var massiveQuips: [String] { ["Massive usage day!", "Token counter is running hot"] }
+    static var warmupQuips: [String] { ["Light usage today.", "Small session recorded."] }
+    static var flowQuips: [String] { ["Usage is active.", "Steady usage today."] }
+    static var busyQuips: [String] { ["Several sessions today.", "Context is moving."] }
+    static var heavyQuips: [String] { ["High usage today.", "Large context load."] }
+    static var massiveQuips: [String] { ["Very high usage today.", "Token count is high."] }
     static var personalityQuips: [String] {
-        ["Tap me for more", "I count so you don't have to", "Every token tells a story", "Your AI spending companion", "Hey there"]
+        ["Local counters ready.", "Nothing's running.", "Usage stays local.", "Sync on demand.", "Watching local state."]
     }
 
     static func limitAccessibility(toolName: String, label: String, percent: Int, reset: String?) -> String {

@@ -9,36 +9,33 @@ import { useCallback, useEffect, useMemo, useState } from "react";
  */
 
 export const ALL_LIMIT_PROVIDERS = [
+  "antigravity",
   "claude",
   "codex",
+  "copilot",
   "cursor",
+  "factoryai",
   "gemini",
+  "hermes",
   "kimi",
   "kiro",
-  "copilot",
-  "antigravity",
+  "openclaw",
+  "opencode",
 ];
 
 export const LIMIT_PROVIDER_NAMES = {
+  antigravity: "Antigravity",
   claude: "Claude",
   codex: "Codex",
+  copilot: "GitHub Copilot",
   cursor: "Cursor",
+  factoryai: "Factory AI",
   gemini: "Gemini",
+  hermes: "Hermes",
   kimi: "Kimi",
   kiro: "Kiro",
-  copilot: "GitHub Copilot",
-  antigravity: "Antigravity",
-};
-
-export const LIMIT_PROVIDER_ICONS = {
-  claude: "/brand-logos/claude-code.svg",
-  codex: "/brand-logos/codex.svg",
-  cursor: "/brand-logos/cursor.svg",
-  gemini: "/brand-logos/gemini.svg",
-  kimi: "/brand-logos/kimi.svg",
-  kiro: "/brand-logos/kiro.svg",
-  copilot: "/brand-logos/copilot.svg",
-  antigravity: "/brand-logos/antigravity.svg",
+  openclaw: "OpenClaw",
+  opencode: "OpenCode",
 };
 
 const ORDER_KEY = "tt.limits.providerOrder";

@@ -48,6 +48,7 @@
 		81C0E735D3AECD76B97C475D /* ServerOfflineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00158F80C8A1693A9D6E0E11 /* ServerOfflineView.swift */; };
 		83B67A40C6A5C43306960A80 /* LaunchAtLoginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 740E8D150D12210E1A3458F2 /* LaunchAtLoginManager.swift */; };
 		86F5BB58B0091EC3E36EEB9D /* MonthlyUsage.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5AA8B5146A5728E579F48C0 /* MonthlyUsage.swift */; };
+		8A68E03B1F2B4C99B1B9F2B4 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9D2A6E752C148A7BE14A99B /* Motion.swift */; };
 		900E87FF2DD320D054C9D5EA /* VibeDeckWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FB99FAEDA9BD765149E147A2 /* VibeDeckWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9C1D0F713CAAAB1F7BC5848C /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 348F5305B491583ACED4D10C /* UpdateChecker.swift */; };
 		9E319B3D225C9BAD37EFAFDB /* PeriodPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77193B8F48003CB746DEE84D /* PeriodPickerView.swift */; };
@@ -152,6 +153,7 @@
 		C11411694425FB25687D9488 /* ClawdCompanionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawdCompanionView.swift; sourceTree = "<group>"; };
 		C3C3B83D0FEAB6C01B728301 /* FooterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FooterView.swift; sourceTree = "<group>"; };
 		C9F4F9192D1792275BCB9761 /* HourlyUsage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HourlyUsage.swift; sourceTree = "<group>"; };
+		C9D2A6E752C148A7BE14A99B /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
 		DE40DB4912E686279D9E9C68 /* SummaryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SummaryWidget.swift; sourceTree = "<group>"; };
 		E3611E096621563F8352AA4D /* VibeDeckMac.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VibeDeckMac.entitlements; sourceTree = "<group>"; };
 		E51990BFC043870F480BDBC8 /* TopModelsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopModelsView.swift; sourceTree = "<group>"; };
@@ -177,6 +179,7 @@
 				A2E4D71F62423E91406FE27E /* DashboardBrowserOpener.swift */,
 				AB48DEEB3B612949EA2DE6F7 /* DateHelpers.swift */,
 				99B1316B6D6620698D3701D4 /* LocalizationObserver.swift */,
+				C9D2A6E752C148A7BE14A99B /* Motion.swift */,
 				874ED50B2C0735D005B7D771 /* Strings.swift */,
 				128364E2EE4005C76D421F54 /* TokenFormatter.swift */,
 			);
@@ -480,6 +483,7 @@
 				6E5851C3C82C548C2805DCD9 /* LocalizationObserver.swift in Sources */,
 				126FEF46908F4BC621C6E2CF /* MenuBarAnimator.swift in Sources */,
 				AA04BA391B059A2D939CDD57 /* ModelBreakdown.swift in Sources */,
+				8A68E03B1F2B4C99B1B9F2B4 /* Motion.swift in Sources */,
 				86F5BB58B0091EC3E36EEB9D /* MonthlyUsage.swift in Sources */,
 				5F1F90830BB6C41D2F3F57CD /* NativeBridge.swift in Sources */,
 				26F7CF85E202BD6EB50CFB95 /* NativeLocalization.swift in Sources */,

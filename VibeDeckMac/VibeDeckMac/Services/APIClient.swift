@@ -78,6 +78,10 @@ actor APIClient {
         try await fetch("/functions/vibedeck-usage-limits")
     }
 
+    func fetchLiveSessionsSnapshot() async throws -> LiveSessionsSnapshotResponse {
+        try await fetch("/functions/vibedeck-sessions-live-snapshot")
+    }
+
     func fetchCompareMetrics() async throws -> CompareMetricsResponse {
         try await fetch("/functions/vibedeck-compare")
     }
@@ -100,6 +104,37 @@ actor APIClient {
 
     func fetchForecast() async throws -> ForecastResponse {
         try await fetch("/functions/vibedeck-forecast")
+    }
+
+    func fetchExportPreview(from: String? = nil, to: String? = nil) async throws -> ExportPreviewResponse {
+        try await fetch("/functions/vibedeck-export", queryItems: exportQueryItems(format: "json", from: from, to: to))
+    }
+
+    func fetchBranchUsage(limit: Int = 100) async throws -> BranchUsageResponse {
+        try await fetch("/functions/vibedeck-branch-usage", queryItems: [
+            URLQueryItem(name: "include_archived", value: "1"),
+            URLQueryItem(name: "include_sessions", value: "0"),
+            URLQueryItem(name: "limit", value: String(limit))
+        ])
+    }
+
+    func downloadExport(format: String, from: String? = nil, to: String? = nil) async throws -> URL {
+        let normalizedFormat = format.lowercased() == "csv" ? "csv" : "json"
+        let data = try await download("/functions/vibedeck-export", queryItems: exportQueryItems(
+            format: normalizedFormat,
+            from: from,
+            to: to
+        ))
+        let downloads = try FileManager.default.url(
+            for: .downloadsDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let stamp = DateHelpers.todayString().replacingOccurrences(of: "-", with: "")
+        let url = downloads.appendingPathComponent("vibedeck-export-\(stamp).\(normalizedFormat)")
+        try data.write(to: url, options: [.atomic])
+        return url
     }
 
     func fetchCurrencyRates(currency: String) async throws -> CurrencyRatesResponse {
@@ -161,6 +196,48 @@ actor APIClient {
             throw APIError.httpError(statusCode: httpResponse.statusCode)
         }
         throw APIError.httpError(statusCode: 404)
+    }
+
+    private func download(_ path: String, queryItems: [URLQueryItem] = []) async throws -> Data {
+        let candidatePaths = legacyAwarePaths(for: path)
+        for (index, candidatePath) in candidatePaths.enumerated() {
+            guard var components = URLComponents(string: baseURL + candidatePath) else {
+                throw APIError.invalidURL
+            }
+            if !queryItems.isEmpty {
+                components.queryItems = queryItems
+            }
+            guard let url = components.url else {
+                throw APIError.invalidURL
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw APIError.invalidResponse
+            }
+            if (200...299).contains(httpResponse.statusCode) {
+                return data
+            }
+            if httpResponse.statusCode == 404 && index < candidatePaths.count - 1 {
+                continue
+            }
+            throw APIError.httpError(statusCode: httpResponse.statusCode)
+        }
+        throw APIError.httpError(statusCode: 404)
+    }
+
+    private func exportQueryItems(format: String, from: String?, to: String?) -> [URLQueryItem] {
+        var items = withTimeZoneQueryItems([
+            URLQueryItem(name: "format", value: format)
+        ])
+        if let from, !from.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "from", value: from))
+        }
+        if let to, !to.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "to", value: to))
+        }
+        return items
     }
 
 	private func withTimeZoneQueryItems(_ items: [URLQueryItem]) -> [URLQueryItem] {

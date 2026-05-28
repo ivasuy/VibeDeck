@@ -1,4 +1,5 @@
 import React from "react";
+import { ProviderLogo } from "../../../lib/provider-logos.jsx";
 
 /**
  * SVG icon data for AI provider tools.
@@ -185,53 +186,6 @@ const PROVIDER_ICON_MAP = {
   PI: PiIcon,
 };
 
-// Multi-color brand SVG assets in /public/brand-logos/. Only logos that have
-// real brand colors live here — mono logos (cursor/kiro/copilot/kimi all use
-// `fill="currentColor"`) must render through the inline component path so they
-// inherit the surrounding text color, since <img> doesn't resolve currentColor.
-const PROVIDER_LOGO_MAP = {
-  ANTIGRAVITY: "/brand-logos/antigravity.svg",
-  CLAUDE: "/brand-logos/claude-code.svg",
-  CODEX: "/brand-logos/codex.svg",
-  GEMINI: "/brand-logos/gemini.svg",
-  HERMES: "/brand-logos/hermes.svg",
-  OPENCLAW: "/brand-logos/openclaw.svg",
-  OPENCODE: "/brand-logos/opencode.svg",
-};
-
-/**
- * Renders a provider's brand icon. Prefers the original multi-color logo from
- * /brand-logos/ when available, otherwise falls back to a mono SVG (currentColor).
- */
 export function ProviderIcon({ provider, size = 16, color, className = "" }) {
-  const normalized = provider?.toUpperCase?.() || "";
-  const logoSrc = PROVIDER_LOGO_MAP[normalized];
-
-  if (logoSrc) {
-    return (
-      <img
-        src={logoSrc}
-        alt=""
-        width={size}
-        height={size}
-        className={className}
-        style={{ width: size, height: size, objectFit: "contain" }}
-        aria-hidden
-      />
-    );
-  }
-
-  const IconComponent = PROVIDER_ICON_MAP[normalized];
-
-  if (IconComponent) {
-    return <IconComponent size={size} className={className} />;
-  }
-
-  // Fallback: colored dot for unknown providers
-  return (
-    <div
-      className="rounded-full shrink-0"
-      style={{ width: size * 0.5, height: size * 0.5, backgroundColor: color }}
-    />
-  );
+  return <ProviderLogo provider={provider} size={size} className={className} />;
 }

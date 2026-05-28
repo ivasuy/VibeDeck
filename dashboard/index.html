@@ -21,14 +21,13 @@
       name="twitter:description"
       content="Local-first cost, usage, and provenance dashboard for AI coding agents."
     />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.bunny.net" />
+    <link href="https://fonts.bunny.net/css?family=outfit:300,400,500,600,700|plus-jakarta-sans:300,400,500,600,700,800|jetbrains-mono:400,500,600&display=swap" rel="stylesheet" />
     <link rel="icon" href="/icon-light.svg?v=4" type="image/svg+xml" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/icon.svg?v=4" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="/icon.svg?v=4" type="image/svg+xml" />
     <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <script>
       document.documentElement.classList.add("js");
       (function () {
@@ -41,10 +40,10 @@
       (function () {
         var t;
         try {
-          t = localStorage.getItem("vibedeck-theme") || localStorage.getItem("vibedeck-theme-legacy");
+          t = localStorage.getItem("vd-theme") || localStorage.getItem("vibedeck-theme") || localStorage.getItem("vibedeck-theme-legacy");
         } catch (e) {}
         var dark = t === "dark" || (t !== "light" && matchMedia("(prefers-color-scheme:dark)").matches);
-        if (dark) document.documentElement.classList.add("dark");
+        document.documentElement.classList.add(dark ? "dark" : "light");
       })();
     </script>
     <style>

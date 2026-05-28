@@ -9,7 +9,7 @@ import { LocaleProvider } from "./ui/foundation/LocaleProvider.jsx";
 
 vi.mock("@vercel/analytics/react", () => ({ Analytics: () => null }));
 vi.mock("@vercel/speed-insights/react", () => ({ SpeedInsights: () => null }));
-vi.mock("./pages/DashboardPage.jsx", () => ({ DashboardPage: () => <div>Usage Page</div> }));
+vi.mock("./pages/DashboardPage.jsx", () => ({ DashboardPage: () => <div>Dashboard Page</div> }));
 vi.mock("./pages/LivePage.jsx", () => ({ LivePage: () => <div>Live Page</div> }));
 vi.mock("./pages/BranchesPage.jsx", () => ({ BranchesPage: () => <div>Branches Page</div> }));
 vi.mock("./pages/SettingsPage.jsx", () => ({ SettingsPage: () => <div>Settings Page</div> }));
@@ -42,7 +42,7 @@ beforeEach(() => {
 });
 
 describe("App routes", () => {
-  it("renders unknown dashboard routes as the live dashboard", async () => {
+  it("renders unknown dashboard routes as the dashboard landing surface", async () => {
     render(
       <MemoryRouter initialEntries={["/unknown"]}>
         <LocaleProvider>
@@ -51,10 +51,11 @@ describe("App routes", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Live Page")).toBeTruthy();
+    expect(await screen.findByText("Dashboard Page")).toBeTruthy();
   });
 
   it.each([
+    ["/live", "Live Page"],
     ["/compare", "Compare Page"],
     ["/models", "Models Page"],
     ["/yield", "Yield Page"],

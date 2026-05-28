@@ -24,6 +24,7 @@ struct TopModel: Identifiable {
     let name: String
     let source: String
     let tokens: Int
+    let usd: Double
     let percent: String
 }
 
@@ -46,6 +47,7 @@ class DashboardViewModel: ObservableObject {
     @Published var modelBreakdown: ModelBreakdownResponse?
     @Published var projectUsage: ProjectUsageResponse?
     @Published var usageLimits: UsageLimitsResponse?
+    @Published var liveSessionsSnapshot: LiveSessionsSnapshotResponse?
     @Published var compareMetrics: CompareMetricsResponse?
     @Published var parityModels: ModelsParityResponse?
     @Published var yieldSummary: YieldResponse?
@@ -82,6 +84,22 @@ class DashboardViewModel: ObservableObject {
     // All-time total (matches dashboard "Total" period)
     var totalTokens: Int { totalSummary?.totals.totalTokens ?? 0 }
     var totalCost: String { TokenFormatter.formatCostFromString(totalSummary?.totals.totalCostUsd) }
+    var activeLiveSessions: [LiveSessionRow] { liveSessionsSnapshot?.currentSessions ?? [] }
+
+    var hasTrackedUsage: Bool {
+        todayTokens > 0 ||
+            last7dTokens > 0 ||
+            last30dTokens > 0 ||
+            totalTokens > 0 ||
+            (summary?.totals.totalTokens ?? 0) > 0 ||
+            daily.contains { $0.totalTokens > 0 } ||
+            monthly.contains { $0.totalTokens > 0 } ||
+            hourly.contains { $0.totalTokens > 0 } ||
+            (heatmap?.activeDays ?? 0) > 0 ||
+            !fleetData.isEmpty ||
+            !topModels.isEmpty ||
+            !activeLiveSessions.isEmpty
+    }
 
     // MARK: - Period Switching
 
@@ -213,6 +231,14 @@ class DashboardViewModel: ObservableObject {
                     self.usageLimits = try await APIClient.shared.fetchUsageLimits()
                 } catch {
                     // Non-fatal: usage limits are best-effort, don't increment errorCount
+                }
+            }
+            // Live snapshot (best-effort, non-fatal)
+            group.addTask { @MainActor in
+                do {
+                    self.liveSessionsSnapshot = try await APIClient.shared.fetchLiveSessionsSnapshot()
+                } catch {
+                    self.liveSessionsSnapshot = nil
                 }
             }
         }
@@ -381,6 +407,7 @@ class DashboardViewModel: ObservableObject {
         guard let sources = modelBreakdown?.sources, !sources.isEmpty else { return [] }
 
         var totalsByKey: [String: Int] = [:]
+        var costsByKey: [String: Double] = [:]
         var nameByKey: [String: String] = [:]
         var sourceByKey: [String: String] = [:]
         var nameWeight: [String: Int] = [:]
@@ -397,6 +424,7 @@ class DashboardViewModel: ObservableObject {
                 guard !key.isEmpty else { continue }
 
                 totalsByKey[key, default: 0] += tokens
+                costsByKey[key, default: 0] += Double(model.totals.totalCostUsd ?? "0") ?? 0
                 let currentWeight = nameWeight[key] ?? 0
                 if tokens >= currentWeight {
                     nameWeight[key] = tokens
@@ -421,6 +449,7 @@ class DashboardViewModel: ObservableObject {
                     name: nameByKey[key] ?? "—",
                     source: sourceByKey[key] ?? "",
                     tokens: tokens,
+                    usd: costsByKey[key] ?? 0,
                     percent: percent
                 )
             }

@@ -37,10 +37,14 @@ struct ClaudeLimits: Codable, Equatable {
 struct ClaudeWindow: Codable, Equatable {
     let utilization: Double
     let resetsAt: String?
+    let usedTokens: Int?
+    let limitTokens: Int?
 
     enum CodingKeys: String, CodingKey {
         case utilization
         case resetsAt = "resets_at"
+        case usedTokens = "used_tokens"
+        case limitTokens = "limit_tokens"
     }
 }
 
@@ -75,21 +79,29 @@ struct CodexWindow: Codable, Equatable {
     let usedPercent: Int
     let resetAt: Int?
     let limitWindowSeconds: Int?
+    let usedTokens: Int?
+    let limitTokens: Int?
 
     enum CodingKeys: String, CodingKey {
         case usedPercent = "used_percent"
         case resetAt = "reset_at"
         case limitWindowSeconds = "limit_window_seconds"
+        case usedTokens = "used_tokens"
+        case limitTokens = "limit_tokens"
     }
 }
 
 struct GenericLimitWindow: Codable, Equatable {
     let usedPercent: Double
     let resetAt: String?
+    let usedTokens: Int?
+    let limitTokens: Int?
 
     enum CodingKeys: String, CodingKey {
         case usedPercent = "used_percent"
         case resetAt = "reset_at"
+        case usedTokens = "used_tokens"
+        case limitTokens = "limit_tokens"
     }
 }
 

@@ -1,17 +1,10 @@
 import React, { useState } from "react";
 import { LayoutGroup, motion } from "motion/react";
 import { GripVertical } from "lucide-react";
-import {
-  LIMIT_PROVIDER_NAMES,
-  LIMIT_PROVIDER_ICONS,
-} from "../hooks/use-limits-display-prefs.js";
+import { LIMIT_PROVIDER_NAMES } from "../hooks/use-limits-display-prefs.js";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
-
-// Providers whose brand logo is a pure mono glyph (fill="currentColor")
-// — these render black in <img> and must be inverted under dark mode.
-// Colored logos (claude, codex, gemini, antigravity) are left as-is.
-const MONO_LOGO_PROVIDERS = new Set(["cursor", "kiro", "copilot", "kimi"]);
+import { ProviderLogo } from "../lib/provider-logos.jsx";
 
 function ToggleSwitch({ checked, onChange, ariaLabel }) {
   return (
@@ -103,16 +96,10 @@ export function LimitsSettingsPanel({ prefs }) {
                 aria-hidden
               />
 
-              <img
-                src={LIMIT_PROVIDER_ICONS[id]}
-                alt=""
-                width={18}
-                height={18}
-                className={cn(
-                  "h-[18px] w-[18px] shrink-0 pointer-events-none",
-                  MONO_LOGO_PROVIDERS.has(id) && "dark:invert",
-                )}
-                draggable={false}
+              <ProviderLogo
+                provider={id}
+                size={18}
+                className="pointer-events-none text-oai-gray-700 dark:text-oai-gray-200"
               />
 
               <span className="flex-1 text-sm text-oai-gray-900 dark:text-oai-gray-200 select-none">

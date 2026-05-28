@@ -124,11 +124,19 @@ vi.mock("../lib/vibedeck-api", () => ({
       open_session_count: 1,
       sync_enabled: false,
     }),
-  getEntireStatus: () => Promise.resolve({ state: "active", version: "1.0.0" }),
 }));
 
 describe("LivePage", () => {
+  it("selects the session passed by native menubar deep link", async () => {
+    window.history.pushState({}, "", "/live?session=gemini%3As4");
+    render(<LivePage />);
+
+    const zeroWorkstream = await screen.findByRole("button", { name: /select zero workstream/i });
+    expect(zeroWorkstream.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("renders active sessions and attribution confidence", async () => {
+    window.history.pushState({}, "", "/live");
     render(<LivePage />);
 
     expect(await screen.findByText("Live control center")).toBeTruthy();

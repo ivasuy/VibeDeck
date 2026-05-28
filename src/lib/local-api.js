@@ -14,7 +14,7 @@ const {
   readSessionGroupDiagnostics,
 } = require("./sessions/session-groups");
 const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
-const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
+const { requireWriteAuth /*, issueConfirmToken, consumeConfirmToken */ } = require("./local-auth");
 const {
   filterRowsByUsageScope,
   getSourceScope,
@@ -458,6 +458,61 @@ function sanitizeLiveWorkstream(workstream) {
   };
 }
 
+function readRecentSessions(dbPath, { limit = 5 } = {}) {
+  const maxRows = Math.max(1, Math.min(50, Number(limit) || 5));
+  try {
+    if (!fs.existsSync(dbPath)) return { sessions: [] };
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const rows = db
+        .prepare(`
+          SELECT
+            provider,
+            session_id,
+            started_at,
+            ended_at,
+            end_reason,
+            cwd,
+            repo_root,
+            repo_common_dir,
+            parent_repo,
+            branch,
+            branch_resolution_tier,
+            confidence,
+            model,
+            total_tokens,
+            total_cost_usd,
+            input_tokens,
+            cached_input_tokens,
+            cache_creation_input_tokens,
+            cache_creation_5m_input_tokens,
+            cache_creation_1h_input_tokens,
+            output_tokens,
+            reasoning_output_tokens,
+            web_search_requests,
+            tool_call_count,
+            last_observed_at,
+            created_at,
+            updated_at
+          FROM vibedeck_sessions
+          ORDER BY COALESCE(last_observed_at, ended_at, started_at, updated_at) DESC
+          LIMIT ?
+        `)
+        .all(maxRows);
+      return {
+        sessions: rows.map((row) => ({
+          ...sanitizeLiveSessionRow(enrichLiveSessionCost(row)),
+          activity_at: normalizeIsoTimestamp(row.last_observed_at || row.ended_at || row.started_at || row.updated_at),
+        })),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return { sessions: [] };
+  }
+}
+
 function readLiveSessionsSnapshot(queuePath) {
   const trackerDir = path.dirname(queuePath);
   const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
@@ -837,6 +892,76 @@ function readCanonicalDbStats(dbPath) {
         canonical_bucket_count: Number(bucketRow?.canonical_bucket_count || 0),
         session_rows_missing_cost: Number(sessionRow?.session_rows_missing_cost || 0),
         unattributed_session_count: Number(sessionRow?.unattributed_session_count || 0),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return empty;
+  }
+}
+
+function parseJsonCounter(value) {
+  if (!value) return null;
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSkillUsageStats(dbPath, { limit = 10 } = {}) {
+  const maxRows = Math.max(1, Math.min(100, Number(limit) || 10));
+  const empty = { skills: [], totalInvocationCount: 0, totalCostUsd: "0.000000" };
+  try {
+    if (!fs.existsSync(dbPath)) return empty;
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const rows = db
+        .prepare(`
+          SELECT skills_json, total_cost_usd
+          FROM vibedeck_sessions
+          WHERE skills_json IS NOT NULL AND skills_json != ''
+        `)
+        .all();
+      const bySkill = new Map();
+      let totalInvocationCount = 0;
+      let totalCostUsd = 0;
+      for (const row of rows) {
+        const counters = parseJsonCounter(row.skills_json);
+        if (!counters) continue;
+        const entries = Object.entries(counters)
+          .map(([name, rawCount]) => [String(name || "").trim(), Number(rawCount)])
+          .filter(([name, count]) => name && Number.isFinite(count) && count > 0);
+        if (!entries.length) continue;
+        const sessionCount = entries.reduce((sum, [, count]) => sum + count, 0);
+        const sessionCost = Number(row.total_cost_usd);
+        const costKnown = Number.isFinite(sessionCost) && sessionCost > 0 && sessionCount > 0;
+        for (const [name, count] of entries) {
+          const current = bySkill.get(name) || { name, invocation_count: 0, cost_usd: 0 };
+          const costShare = costKnown ? sessionCost * (count / sessionCount) : 0;
+          current.invocation_count += count;
+          current.cost_usd += costShare;
+          bySkill.set(name, current);
+          totalInvocationCount += count;
+          totalCostUsd += costShare;
+        }
+      }
+      const skills = Array.from(bySkill.values())
+        .sort((left, right) => right.invocation_count - left.invocation_count || left.name.localeCompare(right.name))
+        .slice(0, maxRows)
+        .map((row) => ({
+          name: row.name,
+          invocation_count: row.invocation_count,
+          cost_usd: row.cost_usd.toFixed(6),
+        }));
+      return {
+        skills,
+        totalInvocationCount,
+        totalCostUsd: totalCostUsd.toFixed(6),
       };
     } finally {
       db.close();
@@ -2222,6 +2347,18 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    // --- vibedeck-recent-sessions (GET) ---
+    if (p === "/functions/vibedeck-recent-sessions") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const limit = Number(url.searchParams.get("limit") || 5);
+      json(res, readRecentSessions(dbPath, { limit }));
+      return true;
+    }
+
     // --- local-sync (POST) ---
     if (isRouteMatch(p, ROUTES.localSync)) {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -2512,7 +2649,13 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         const day = cursor.toISOString().slice(0, 10);
         const data = byDay.get(day);
         const billable = data?.billable_total_tokens || 0;
-        cells.push({ day, total_tokens: data?.total_tokens || 0, billable_total_tokens: billable, level: calcLevel(billable) });
+        cells.push({
+          day,
+          total_tokens: data?.total_tokens || 0,
+          billable_total_tokens: billable,
+          total_cost_usd: Number(data?.total_cost_usd || 0),
+          level: calcLevel(billable),
+        });
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       const weeksArr = [];
@@ -2678,6 +2821,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     }
     */
 
+    /*
     if (p === "/functions/vibedeck-confirm-destructive") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { error: "Method Not Allowed" }, 405);
@@ -2701,6 +2845,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       json(res, { token: confirmToken, op, expiresInMs: 30000 });
       return true;
     }
+    */
 
     /*
     if (p === "/functions/vibedeck-entire/rewind") {
@@ -3345,6 +3490,12 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           }
           if (mode === "repos") {
             json(res, { repos: skills.listRepos() });
+            return true;
+          }
+          if (mode === "usage") {
+            const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+            const limit = Number(url.searchParams.get("limit") || 10);
+            json(res, readSkillUsageStats(dbPath, { limit }));
             return true;
           }
           if (mode === "discover") {

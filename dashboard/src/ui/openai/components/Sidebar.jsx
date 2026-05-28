@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   Activity,
-  BarChart3,
   Cpu,
   Download,
   GitBranch,
   GitCompare,
+  Home,
   Lightbulb,
   LayoutGrid,
   Puzzle,
@@ -21,6 +21,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  Search,
+  CornerDownLeft,
 } from "lucide-react";
 import { copy } from "../../../lib/copy";
 import { cn } from "../../../lib/cn";
@@ -29,45 +31,128 @@ import { useLocale } from "../../../hooks/useLocale.js";
 import { shouldFetchGithubStars } from "../../matrix-a/util/should-fetch-github-stars.js";
 import { GITHUB_REPO, GITHUB_REPO_API_URL, GITHUB_REPO_URL } from "../../../lib/public-links.js";
 import { isNativeApp, isNativeEmbed } from "../../../lib/native-bridge.js";
+import { getSyncStatus } from "../../../lib/vibedeck-api";
 import { SlidePanel } from "../../foundation/SlidePanel.jsx";
+import { HeaderThemeMenu } from "../../../components/RevampSurfaces.jsx";
 
 const STORAGE_KEY = "tt.sidebarCollapsed";
+const COMMAND_RECENTS_KEY = "vd-command-palette-recent";
 const LG_BREAKPOINT = 1024;
 const XL_BREAKPOINT = 1280;
 
 export function getNavGroups() {
   return [
     {
-      id: "work",
-      label: copy("nav.group.general"),
+      id: "live",
+      label: "Live",
       items: [
-        { id: "live", to: "/dashboard", icon: Activity, label: copy("nav.live") },
-        { id: "usage", to: "/usage", icon: BarChart3, label: copy("nav.usage") },
+        { id: "live", to: "/live", icon: Activity, label: "Live" },
         { id: "branches", to: "/branches", icon: GitBranch, label: copy("nav.branches") },
-        { id: "compare", to: "/compare", icon: GitCompare, label: copy("nav.compare") },
-        { id: "models", to: "/models", icon: Cpu, label: copy("nav.models") },
-        { id: "yield", to: "/yield", icon: TrendingUp, label: copy("nav.yield") },
-        { id: "optimize", to: "/optimize", icon: Lightbulb, label: copy("nav.optimize") },
-        { id: "plan", to: "/plan", icon: ReceiptText, label: copy("nav.plan") },
-        { id: "export", to: "/export", icon: Download, label: copy("nav.export") },
       ],
     },
     {
-      id: "control",
-      label: copy("nav.group.tools"),
+      id: "intelligence",
+      label: "Intelligence",
       items: [
+        { id: "optimize", to: "/optimize", icon: Lightbulb, label: copy("nav.optimize") },
+        { id: "plan", to: "/plan", icon: ReceiptText, label: copy("nav.plan") },
+        { id: "compare", to: "/compare", icon: GitCompare, label: copy("nav.compare") },
+        { id: "models", to: "/models", icon: Cpu, label: copy("nav.models") },
+      ],
+    },
+    {
+      id: "analytics",
+      label: "Analytics",
+      items: [
+        { id: "yield", to: "/yield", icon: TrendingUp, label: copy("nav.yield") },
         { id: "skills", to: "/skills", icon: Puzzle, label: copy("nav.skills") },
       ],
     },
     {
-      id: "system",
-      label: copy("nav.group.account"),
+      id: "setup",
+      label: "Setup",
       items: [
         { id: "widgets", to: "/widgets", icon: LayoutGrid, label: copy("nav.widgets") },
+        { id: "export", to: "/export", icon: Download, label: copy("nav.export") },
         { id: "settings", to: "/settings", icon: SettingsIcon, label: copy("nav.settings") },
       ],
     },
   ];
+}
+
+export function getCommandPaletteCatalog() {
+  const homeItem = {
+    id: "nav:dashboard",
+    group: "Commands",
+    label: "Dashboard",
+    detail: "Home",
+    to: "/dashboard",
+    icon: Home,
+    keywords: ["dashboard", "home", "summary"],
+  };
+  const navItems = getNavGroups().flatMap((group) =>
+    group.items.map((item) => ({
+      id: `nav:${item.id}`,
+      group: "Commands",
+      label: item.label,
+      detail: group.label,
+      to: item.to,
+      icon: item.icon,
+      keywords: [item.id, item.label, group.label],
+    })),
+  );
+
+  return [
+    homeItem,
+    ...navItems,
+    {
+      id: "provider:limits",
+      group: "Providers",
+      label: "Provider limits",
+      detail: "Open live quota windows",
+      to: "/live",
+      icon: Activity,
+      keywords: ["provider", "limits", "quota", "reset"],
+    },
+    {
+      id: "provider:settings",
+      group: "Providers",
+      label: "Provider settings",
+      detail: "Configure auto-detect and display",
+      to: "/settings",
+      icon: SettingsIcon,
+      keywords: ["provider", "settings", "detect", "limits"],
+    },
+    {
+      id: "session:active",
+      group: "Sessions",
+      label: "Active sessions",
+      detail: "Open the live session list",
+      to: "/live",
+      icon: Activity,
+      keywords: ["sessions", "live", "active", "running"],
+    },
+  ];
+}
+
+function readCommandRecents() {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COMMAND_RECENTS_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string").slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCommandRecent(id) {
+  if (typeof window === "undefined" || !id) return;
+  try {
+    const next = [id, ...readCommandRecents().filter((existing) => existing !== id)].slice(0, 5);
+    window.localStorage.setItem(COMMAND_RECENTS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
 }
 
 function readCollapsed() {
@@ -166,7 +251,7 @@ function NavGroupLabel({ label, collapsed, first }) {
   return (
     <div
       className={cn(
-        "px-3 pb-1 text-[10px] uppercase tracking-wider text-oai-gray-500 dark:text-oai-gray-500 font-mono",
+        "px-3 pb-1 text-[11px] uppercase tracking-[0.08em] text-oai-gray-500 dark:text-oai-gray-500 font-medium",
         first ? "pt-2" : "pt-4",
       )}
     >
@@ -188,14 +273,14 @@ function NavItem({ item, collapsed, active, onClick }) {
         "relative flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] no-underline transition-colors duration-150",
         collapsed && "justify-center px-0 py-2",
         active
-          ? "vd-sidebar-active font-medium"
-          : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-brand-50/70 hover:text-oai-brand dark:hover:bg-oai-brand-950/35 dark:hover:text-oai-brand-300",
+          ? "vd-sidebar-active font-semibold text-oai-black dark:text-white"
+          : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-[var(--vd-tint)] hover:text-oai-black dark:hover:text-white",
       )}
     >
       {active && (
         <motion.div
           layoutId="nav-active-indicator"
-          className="vd-sidebar-active-bg absolute inset-0 rounded-md bg-oai-gray-200/70 dark:bg-oai-gray-800"
+          className="vd-sidebar-active-bg absolute inset-0 rounded-md bg-[var(--vd-tint)]"
           transition={shouldReduceMotion ? { duration: 0 } : {
             type: "spring",
             stiffness: 500,
@@ -204,6 +289,9 @@ function NavItem({ item, collapsed, active, onClick }) {
           style={{ zIndex: -1 }}
         />
       )}
+      {active && !collapsed ? (
+        <span className="absolute left-0 top-1.5 h-[calc(100%-12px)] w-[3px] rounded-full bg-[var(--brand-500)]" aria-hidden />
+      ) : null}
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">
         <Icon className="h-[15px] w-[15px]" aria-hidden />
       </span>
@@ -215,7 +303,7 @@ function NavItem({ item, collapsed, active, onClick }) {
             animate={{ opacity: 1, width: "auto" }}
             exit={shouldReduceMotion ? {} : { opacity: 0, width: 0 }}
             transition={{ duration: 0.15 }}
-            className="truncate overflow-hidden whitespace-nowrap"
+            className="whitespace-nowrap"
           >
             {item.label}
           </motion.span>
@@ -338,7 +426,7 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={shouldReduceMotion ? {} : { opacity: 0, scale: 0.95, y: 4 }}
             transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
-            className="vd-popover absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] shadow-glass"
+            className="vd-popover absolute bottom-full left-0 mb-2 z-50 min-w-[140px] py-1 rounded-lg border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] shadow-[var(--vd-shadow)]"
           >
             {THEME_OPTIONS.map(({ value, labelKey, Icon }) => {
               const active = theme === value;
@@ -363,6 +451,153 @@ function ThemePill({ theme, resolvedTheme, onSetTheme, glassChrome = false }) {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+function latestSyncTimestamp(status) {
+  const candidates = [
+    status?.canonical_db_updated_at,
+    status?.last_parse_at,
+    status?.queue_updated_at,
+    status?.project_queue_updated_at,
+  ];
+  let latest = 0;
+  for (const value of candidates) {
+    const parsed = Date.parse(String(value || ""));
+    if (Number.isFinite(parsed) && parsed > latest) latest = parsed;
+  }
+  return latest || null;
+}
+
+function relativeSyncAge(timestamp) {
+  if (!timestamp) return "";
+  const elapsed = Math.max(0, Date.now() - timestamp);
+  const minutes = Math.floor(elapsed / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function useSidebarServerHealth() {
+  const [state, setState] = useState({ status: "checking", payload: null });
+
+  useEffect(() => {
+    let active = true;
+    let timer = null;
+
+    const refresh = async () => {
+      try {
+        const payload = await getSyncStatus();
+        if (!active) return;
+        const latest = latestSyncTimestamp(payload);
+        const stale = latest ? Date.now() - latest > 30 * 60 * 1000 : false;
+        setState({
+          status: stale ? "stale" : "healthy",
+          payload,
+          latest,
+        });
+      } catch {
+        if (!active) return;
+        setState({ status: "offline", payload: null, latest: null });
+      }
+    };
+
+    refresh();
+    timer = window.setInterval(refresh, 30000);
+    return () => {
+      active = false;
+      if (timer) window.clearInterval(timer);
+    };
+  }, []);
+
+  return state;
+}
+
+function SidebarUtilityCard({ collapsed }) {
+  const health = useSidebarServerHealth();
+  const statusCopy = {
+    checking: {
+      eyebrow: "Server",
+      title: "Checking",
+      detail: "Reading local sync status",
+      filled: 2,
+    },
+    healthy: {
+      eyebrow: "Server",
+      title: "Healthy",
+      detail: health.latest ? `Updated ${relativeSyncAge(health.latest)}` : "Local bridge responding",
+      filled: 6,
+    },
+    stale: {
+      eyebrow: "Server",
+      title: "Stale",
+      detail: health.latest ? `Last sync ${relativeSyncAge(health.latest)}` : "Refresh recommended",
+      filled: 4,
+    },
+    offline: {
+      eyebrow: "Server",
+      title: "Offline",
+      detail: "Open VibeDeck to reconnect",
+      filled: 1,
+    },
+  };
+  const current = statusCopy[health.status] || statusCopy.checking;
+  const sessionCount = Number(health.payload?.session_count);
+  const indexedCopy = Number.isFinite(sessionCount)
+    ? `${sessionCount.toLocaleString()} sessions indexed`
+    : current.detail;
+
+  if (collapsed) {
+    return (
+      <Link
+        to="/widgets"
+        aria-label="Open macOS app and widget setup"
+        title="Open macOS app and widget setup"
+        className="mx-2 mb-2 flex h-10 items-center justify-center rounded-lg bg-[var(--brand-950)] text-white no-underline transition-colors hover:bg-[var(--brand-900)]"
+      >
+        <Download className="h-4 w-4" aria-hidden />
+      </Link>
+    );
+  }
+
+  return (
+    <div className="mx-3 mb-3 rounded-xl border border-white/10 bg-[var(--brand-950)] p-3 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/60">
+            {current.eyebrow}
+          </p>
+          <p className="mt-1 text-sm font-semibold leading-5">
+            {current.title}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] leading-4 text-white/60" title={indexedCopy}>
+            {indexedCopy}
+          </p>
+        </div>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/10">
+          <Monitor className="h-4 w-4" aria-hidden />
+        </span>
+      </div>
+      <div className="mt-3 flex gap-1" aria-hidden="true">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <span
+            key={index}
+            className={cn(
+              "h-1.5 flex-1 rounded-full",
+              index < current.filled ? "bg-white/85" : "bg-white/20",
+            )}
+          />
+        ))}
+      </div>
+      <Link
+        to="/widgets"
+        className="mt-3 inline-flex h-8 w-full items-center justify-center rounded-full bg-white px-3 text-xs font-semibold text-[var(--brand-950)] no-underline transition-colors hover:bg-[var(--brand-50)]"
+      >
+        macOS setup
+      </Link>
     </div>
   );
 }
@@ -419,6 +654,8 @@ function SidebarBody({ collapsed, onToggleCollapsed, onItemClick, showCloseButto
         ))}
       </nav>
 
+      <SidebarUtilityCard collapsed={collapsed} />
+
       <div
         className={cn(
           "flex items-center px-2 py-3",
@@ -459,7 +696,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }) {
   return (
     <motion.aside
       aria-label={copy("nav.aside_label")}
-      animate={{ width: collapsed ? 72 : 220 }}
+      animate={{ width: collapsed ? 72 : 240 }}
       transition={shouldReduceMotion ? { duration: 0 } : {
         type: "spring",
         stiffness: 400,
@@ -479,7 +716,7 @@ function MobileDrawer({ open, onClose }) {
       onClose={onClose}
       side="left"
       width="w-[260px] max-w-[80vw]"
-      className="vd-drawer bg-[var(--glass-bg)] backdrop-blur-[24px] border-r border-[var(--glass-border)] shadow-2xl"
+      className="vd-drawer border-r border-[var(--vd-border)]"
     >
       <SidebarBody
         collapsed={false}
@@ -507,8 +744,222 @@ function MobileTopBar({ onOpenDrawer }) {
         <img src="/wordmark.svg" alt="" className="h-5 w-auto max-w-[108px] dark:hidden" />
         <img src="/wordmark-dark.svg" alt="" className="hidden h-5 w-auto max-w-[108px] dark:block" />
       </Link>
-      <div className="w-10 shrink-0" aria-hidden />
+      <div className="flex w-10 shrink-0 justify-end">
+        <HeaderThemeMenu />
+      </div>
     </div>
+  );
+}
+
+function CommandPalette() {
+  const navigate = useNavigate();
+  const shouldReduceMotion = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [recentIds, setRecentIds] = useState(readCommandRecents);
+  const inputRef = useRef(null);
+  const lastFocusedRef = useRef(null);
+  const catalog = useMemo(() => getCommandPaletteCatalog(), []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const base = q
+      ? catalog.filter((item) =>
+          [item.label, item.detail, ...(item.keywords || [])]
+            .join(" ")
+            .toLowerCase()
+            .includes(q),
+        )
+      : catalog;
+
+    if (q) return base.slice(0, 10);
+
+    const recentItems = recentIds
+      .map((id) => catalog.find((item) => item.id === id))
+      .filter(Boolean);
+    const rest = catalog.filter((item) => !recentIds.includes(item.id));
+    return [...recentItems, ...rest].slice(0, 12);
+  }, [catalog, query, recentIds]);
+
+  const grouped = useMemo(() => {
+    const groups = [];
+    const seen = new Map();
+    for (const item of filtered) {
+      const group = recentIds.includes(item.id) && !query.trim() ? "Recent" : item.group;
+      if (!seen.has(group)) {
+        seen.set(group, { label: group, items: [] });
+        groups.push(seen.get(group));
+      }
+      seen.get(group).items.push(item);
+    }
+    return groups;
+  }, [filtered, query, recentIds]);
+
+  const flatItems = useMemo(() => grouped.flatMap((group) => group.items), [grouped]);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+    setActiveIndex(0);
+    requestAnimationFrame(() => {
+      if (lastFocusedRef.current && typeof lastFocusedRef.current.focus === "function") {
+        lastFocusedRef.current.focus();
+      }
+    });
+  }, []);
+
+  const openPalette = useCallback(() => {
+    lastFocusedRef.current = document.activeElement;
+    setOpen(true);
+    setActiveIndex(0);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const runItem = useCallback((item) => {
+    if (!item) return;
+    writeCommandRecent(item.id);
+    setRecentIds(readCommandRecents());
+    navigate(item.to);
+    close();
+  }, [close, navigate]);
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const isCommandK = event.key?.toLowerCase() === "k" && (event.metaKey || event.ctrlKey);
+      if (isCommandK) {
+        event.preventDefault();
+        if (open) close();
+        else openPalette();
+        return;
+      }
+      if (!open) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((index) => Math.min(index + 1, Math.max(flatItems.length - 1, 0)));
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((index) => Math.max(index - 1, 0));
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        runItem(flatItems[activeIndex]);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeIndex, close, flatItems, open, openPalette, runItem]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query]);
+
+  useEffect(() => {
+    if (!open) return;
+    const active = document.getElementById(`command-palette-item-${activeIndex}`);
+    active?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-4 pt-[10vh] backdrop-blur-[3px]"
+          initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: shouldReduceMotion ? 0.08 : 0.18 }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) close();
+          }}
+          role="presentation"
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
+            className="vd-popover flex max-h-[480px] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] shadow-[var(--vd-shadow)]"
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 4, scale: 0.98 }}
+            transition={shouldReduceMotion ? { duration: 0.08 } : {
+              type: "spring",
+              stiffness: 320,
+              damping: 28,
+              mass: 0.6,
+            }}
+          >
+            <div className="flex h-14 items-center gap-3 border-b border-[var(--vd-border)] px-4">
+              <Search className="h-4 w-4 shrink-0 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-full flex-1 bg-transparent text-[18px] font-medium text-oai-black outline-none placeholder:text-oai-gray-400 dark:text-white dark:placeholder:text-oai-gray-600"
+                placeholder="Search sessions, commands, providers..."
+                aria-activedescendant={flatItems[activeIndex] ? `command-palette-item-${activeIndex}` : undefined}
+                aria-controls="command-palette-results"
+              />
+              <kbd className="hidden rounded border border-[var(--vd-border)] bg-[var(--vd-tint)] px-1.5 py-0.5 font-mono text-[11px] text-oai-gray-500 dark:text-oai-gray-400 sm:inline">
+                esc
+              </kbd>
+            </div>
+            <div id="command-palette-results" className="min-h-0 flex-1 overflow-y-auto p-2">
+              {grouped.length === 0 ? (
+                <div className="px-3 py-8 text-center text-sm text-oai-gray-500 dark:text-oai-gray-400">
+                  No matching commands.
+                </div>
+              ) : (
+                grouped.map((group) => (
+                  <div key={group.label} className="py-1">
+                    <div className="px-2 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-oai-gray-500 dark:text-oai-gray-500">
+                      {group.label}
+                    </div>
+                    <div className="space-y-1">
+                      {group.items.map((item) => {
+                        const index = flatItems.indexOf(item);
+                        const Icon = item.icon;
+                        const active = index === activeIndex;
+                        return (
+                          <button
+                            key={item.id}
+                            id={`command-palette-item-${index}`}
+                            type="button"
+                            role="option"
+                            aria-selected={active}
+                            onMouseEnter={() => setActiveIndex(index)}
+                            onClick={() => runItem(item)}
+                            className={cn(
+                              "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left transition-colors",
+                              active
+                                ? "bg-[var(--vd-tint)] text-oai-black dark:text-white"
+                                : "text-oai-gray-700 hover:bg-[var(--vd-tint)] dark:text-oai-gray-200",
+                            )}
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)]">
+                              <Icon className="h-3.5 w-3.5" aria-hidden />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-medium">{item.label}</span>
+                              <span className="block truncate text-caption text-oai-gray-500 dark:text-oai-gray-400">
+                                {item.detail}
+                              </span>
+                            </span>
+                            {active ? <CornerDownLeft className="h-3.5 w-3.5 text-oai-gray-400" aria-hidden /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -545,7 +996,6 @@ export function AppLayout({ children }) {
             className={cn(
               "vd-card flex-1 min-h-0 flex flex-col bg-[var(--glass-bg)] backdrop-blur-[var(--glass-blur)] border border-[var(--glass-border)] overflow-hidden",
               nativeEmbed ? "tt-native-main-card" : "rounded-2xl",
-              !nativeEmbed && "shadow-glass",
             )}
           >
             <MobileTopBar onOpenDrawer={openDrawer} />
@@ -555,6 +1005,7 @@ export function AppLayout({ children }) {
           </div>
         </div>
       </div>
+      <CommandPalette />
     </div>
   );
 }

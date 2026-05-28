@@ -5,7 +5,7 @@ import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../test/test-utils";
 import { LivePage } from "./LivePage.jsx";
-import { getAttributionStats, getEntireStatus, postAttribute } from "../lib/vibedeck-api";
+import { getAttributionStats, postAttribute } from "../lib/vibedeck-api";
 
 vi.mock("../hooks/use-vibedeck-live-sessions", () => ({
   useVibeDeckLiveSessions: () => ({
@@ -52,7 +52,6 @@ vi.mock("../lib/vibedeck-api", async () => {
   return {
     ...actual,
     getAttributionStats: vi.fn(),
-    getEntireStatus: vi.fn(),
     postAttribute: vi.fn(),
   };
 });
@@ -66,7 +65,6 @@ beforeEach(() => {
     unattributed: 0,
     total: 1,
   });
-  vi.mocked(getEntireStatus).mockResolvedValue({ state: "active" });
   vi.mocked(postAttribute).mockResolvedValue({ ok: true });
 });
 
@@ -78,8 +76,11 @@ describe("LivePage override actions", () => {
   it("shows override controls for selected low confidence sessions and posts branch override", async () => {
     render(<LivePage />);
 
-    const headings = await screen.findAllByRole("heading", { name: "Branch override" });
-    expect(headings.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(getAttributionStats).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Correct branch for vibedeck/i }));
+    expect(await screen.findByRole("dialog", { name: "Branch override" })).toBeTruthy();
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "feature/live-fix" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -100,8 +101,11 @@ describe("LivePage override actions", () => {
   it("clears branch override for selected sessions", async () => {
     render(<LivePage />);
 
-    const headings = await screen.findAllByRole("heading", { name: "Branch override" });
-    expect(headings.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(getAttributionStats).toHaveBeenCalledTimes(1);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Correct branch for vibedeck/i }));
+    expect(await screen.findByRole("dialog", { name: "Branch override" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
 
     await waitFor(() => {

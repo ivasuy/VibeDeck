@@ -36,11 +36,12 @@ struct HeatmapCell: Codable, Equatable {
     var day: String
     var totalTokens: Int
     var billableTotalTokens: Int
+    var totalCostUsd: Double
     var level: Int
 
-    init(day: String = "", totalTokens: Int = 0, billableTotalTokens: Int = 0, level: Int = 0) {
+    init(day: String = "", totalTokens: Int = 0, billableTotalTokens: Int = 0, totalCostUsd: Double = 0, level: Int = 0) {
         self.day = day; self.totalTokens = totalTokens
-        self.billableTotalTokens = billableTotalTokens; self.level = level
+        self.billableTotalTokens = billableTotalTokens; self.totalCostUsd = totalCostUsd; self.level = level
     }
 
     init(from decoder: Decoder) throws {
@@ -48,6 +49,7 @@ struct HeatmapCell: Codable, Equatable {
         day = try c.decodeIfPresent(String.self, forKey: .day) ?? ""
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
         billableTotalTokens = try c.decodeIfPresent(Int.self, forKey: .billableTotalTokens) ?? 0
+        totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
         level = try c.decodeIfPresent(Int.self, forKey: .level) ?? 0
     }
 
@@ -55,6 +57,7 @@ struct HeatmapCell: Codable, Equatable {
         case day
         case totalTokens = "total_tokens"
         case billableTotalTokens = "billable_total_tokens"
+        case totalCostUsd = "total_cost_usd"
         case level
     }
 }

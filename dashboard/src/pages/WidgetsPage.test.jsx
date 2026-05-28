@@ -37,10 +37,10 @@ describe("WidgetsPage menu bar configurator", () => {
   it("renders concrete widget gallery labels instead of unresolved copy keys", () => {
     render(<WidgetsPage />);
 
-    expect(screen.getByText("Summary")).toBeTruthy();
-    expect(screen.getByText("Heatmap")).toBeTruthy();
-    expect(screen.getByText("Top Models")).toBeTruthy();
-    expect(screen.getByText("Usage Limits")).toBeTruthy();
+    expect(screen.getAllByText("Summary").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Heatmap").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Top Models").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Usage Limits").length).toBeGreaterThan(0);
     expect(screen.queryByText("widgets.summary.name")).toBeNull();
     expect(screen.queryByText("widgets.heatmap.name")).toBeNull();
     expect(screen.queryByText("widgets.topModels.name")).toBeNull();
@@ -54,6 +54,33 @@ describe("WidgetsPage menu bar configurator", () => {
     expect(screen.getAllByRole("img", { name: "Codex logo" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("img", { name: "Cursor logo" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("img", { name: "Gemini logo" }).length).toBeGreaterThan(0);
+  });
+
+  it("renders the widget configuration workbench controls", () => {
+    render(<WidgetsPage />);
+
+    const providerSelect = screen.getByLabelText("Highlighted Provider");
+
+    expect(screen.getByText("Widget Configuration")).toBeTruthy();
+    expect(screen.getByText("Size")).toBeTruthy();
+    expect(screen.getByText("Refresh")).toBeTruthy();
+    expect(screen.getByText("Highlighted Provider")).toBeTruthy();
+    expect(screen.getByLabelText("Refresh")).toHaveValue("5m");
+    expect(providerSelect).toHaveValue("claude");
+    expect([...providerSelect.options].map((option) => option.value)).toEqual([
+      "antigravity",
+      "claude",
+      "codex",
+      "copilot",
+      "cursor",
+      "factoryai",
+      "gemini",
+      "hermes",
+      "kimi",
+      "kiro",
+      "openclaw",
+      "opencode",
+    ]);
   });
 
   it("edits the two menu bar preview slots through NativeBridge", async () => {

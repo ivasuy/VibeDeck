@@ -66,7 +66,7 @@ struct ClawdCompanionView: View {
                     .shadow(color: .black.opacity(0.08), radius: 1.5, y: 0.5)
             }
             .scaleEffect(hoveringBubble ? 1.03 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: hoveringBubble)
+            .animation(NativeMotion.Ease.micro(), value: hoveringBubble)
             .onHover { h in
                 hoveringBubble = h
                 if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -89,7 +89,7 @@ struct ClawdCompanionView: View {
                 .foregroundStyle(viewModel.isSyncing ? .tertiary : (hoveringSync ? .primary : .secondary))
                 .rotationEffect(.degrees(syncRotation))
                 .scaleEffect(hoveringSync && !viewModel.isSyncing ? 1.15 : 1.0)
-                .animation(.easeOut(duration: 0.15), value: hoveringSync)
+                .animation(NativeMotion.Ease.micro(), value: hoveringSync)
         }
         .frame(width: 24, height: 24)
         .contentShape(Rectangle())
@@ -102,9 +102,9 @@ struct ClawdCompanionView: View {
         .accessibilityLabel(viewModel.isSyncing ? Strings.syncingUsageData : Strings.syncUsageData)
         .onChange(of: viewModel.isSyncing) { syncing in
             if syncing {
-                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { syncRotation = 360 }
+                withAnimation(NativeMotion.syncSpin()) { syncRotation = 360 }
             } else {
-                withAnimation(.default) { syncRotation = 0 }
+                withAnimation(NativeMotion.Ease.short()) { syncRotation = 0 }
             }
         }
     }
@@ -192,6 +192,57 @@ struct ClawdCompanionView: View {
                         hoverSide: .none
                     )
                     ClawdCompanionView.drawWorkingUltrathink(ctx: ctx, context: &context)
+                }
+            }
+            .frame(width: 15 * px, height: 16 * px)
+        }
+    }
+
+    struct StateMascotView: View {
+        let state: ClawdState
+        private let px: CGFloat = 4.0
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+        @ViewBuilder
+        var body: some View {
+            if reduceMotion {
+                mascotCanvas(t: 0)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 15.0)) { timeline in
+                    mascotCanvas(t: timeline.date.timeIntervalSinceReferenceDate)
+                }
+            }
+        }
+
+        private func mascotCanvas(t: Double) -> some View {
+            Canvas { context, size in
+                let s = px
+                let yBase: CGFloat = 6
+                let ctx = DrawCtx(
+                    t: t,
+                    s: s,
+                    yBase: yBase,
+                    yOff: (size.height - 10 * s) / 2,
+                    size: size,
+                    bodyColor: Color(red: 0.87, green: 0.53, blue: 0.43),
+                    eyeColor: Color.black,
+                    eyesClosed: false,
+                    hoverLeanX: 0,
+                    hoverEyeShift: 0,
+                    hoveringCharacter: false,
+                    hoverSide: .none
+                )
+
+                switch state {
+                case .idleLiving:      ClawdCompanionView.drawIdleLiving(ctx: ctx, context: &context)
+                case .idleLook:        ClawdCompanionView.drawIdleLook(ctx: ctx, context: &context)
+                case .idleDoze:        ClawdCompanionView.drawIdleDoze(ctx: ctx, context: &context)
+                case .sleeping:        ClawdCompanionView.drawSleeping(ctx: ctx, context: &context)
+                case .workingTyping:   ClawdCompanionView.drawWorkingTyping(ctx: ctx, context: &context)
+                case .workingThinking: ClawdCompanionView.drawWorkingThinking(ctx: ctx, context: &context)
+                case .workingUltrathink: ClawdCompanionView.drawWorkingUltrathink(ctx: ctx, context: &context)
+                case .disconnected:    ClawdCompanionView.drawDisconnected(ctx: ctx, context: &context)
+                case .error:           ClawdCompanionView.drawError(ctx: ctx, context: &context)
                 }
             }
             .frame(width: 15 * px, height: 16 * px)
@@ -779,7 +830,7 @@ struct ClawdCompanionView: View {
         if w7 > 0 {
             pool.append(Strings.sevenDayTotal(TokenFormatter.formatCompact(w7)))
             if d7 > 0 {
-                pool.append("🗓️ \(Strings.activeDaysThisWeek(d7))")
+                pool.append(Strings.activeDaysThisWeek(d7))
                 if d7 >= 7 {
                     pool.append(Strings.perfectStreak)
                 }
@@ -853,7 +904,7 @@ struct ClawdCompanionView: View {
     @State private var tapAnimIndex = 0
 
     private func handleTap() {
-        withAnimation(.easeInOut(duration: 0.25)) { quipIndex += 1 }
+        withAnimation(NativeMotion.Ease.short()) { quipIndex += 1 }
 
         // Physical reaction (jump/wiggle/flip via ActionModifier)
         let physicalActions: [CharacterAction] = [.jump, .wiggle, .flip, .multiBlink, .wave]
@@ -941,14 +992,14 @@ private struct ActionModifier: ViewModifier {
             .onChange(of: action) { a in
                 switch a {
                 case .jump:
-                    withAnimation(.interpolatingSpring(stiffness: 500, damping: 12)) { offset = -10 }
-                    after(0.15) { withAnimation(.interpolatingSpring(stiffness: 500, damping: 12)) { offset = 0 } }
+                    withAnimation(NativeMotion.Spring.bouncy) { offset = -10 }
+                    after(0.15) { withAnimation(NativeMotion.Spring.bouncy) { offset = 0 } }
                 case .wiggle:
-                    withAnimation(.easeInOut(duration: 0.07).repeatCount(6, autoreverses: true)) { rotation = 6 }
-                    after(0.45) { withAnimation(.easeOut(duration: 0.1)) { rotation = 0 } }
+                    withAnimation(NativeMotion.Ease.micro().repeatCount(6, autoreverses: true)) { rotation = 6 }
+                    after(0.45) { withAnimation(NativeMotion.Ease.micro()) { rotation = 0 } }
                 case .flip:
-                    withAnimation(.easeInOut(duration: 0.2)) { scaleX = -1 }
-                    after(0.35) { withAnimation(.easeInOut(duration: 0.2)) { scaleX = 1 } }
+                    withAnimation(NativeMotion.Ease.short()) { scaleX = -1 }
+                    after(0.35) { withAnimation(NativeMotion.Ease.short()) { scaleX = 1 } }
                 default: break
                 }
             }

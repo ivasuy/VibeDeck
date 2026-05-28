@@ -97,6 +97,59 @@ describe("UsageLimitsPanel", () => {
 
     expect(screen.getByText("Gemini")).toBeInTheDocument();
     expect(screen.getByText("Setup required")).toBeInTheDocument();
-    expect(screen.getByText("Sign in with Gemini CLI OAuth, then refresh limits.")).toBeInTheDocument();
+    expect(screen.getByText("Authorize Gemini CLI OAuth, then refresh limits.")).toBeInTheDocument();
+  });
+
+  it("renders exact token numerator and denominator when the backend supplies them", () => {
+    render(
+      <UsageLimitsPanel
+        codex={{
+          configured: true,
+          error: null,
+          primary_window: {
+            used_percent: 92,
+            used_tokens: 2_300_000,
+            limit_tokens: 2_500_000,
+            reset_at: null,
+          },
+        }}
+        order={["codex"]}
+      />,
+    );
+
+    expect(screen.getByText("Codex")).toBeInTheDocument();
+    expect(screen.getByText("2.3M / 2.5M tokens")).toBeInTheDocument();
+  });
+
+  it("renders expanded provider breadth with generic limit windows", () => {
+    render(
+      <UsageLimitsPanel
+        factoryai={{
+          configured: true,
+          primary_window: { used_percent: 18, reset_at: "2026-05-04T06:02:56.054Z" },
+        }}
+        hermes={{
+          configured: true,
+          secondary_window: { used_percent: 33, reset_at: "2026-05-04T06:02:56.054Z" },
+        }}
+        openclaw={{
+          configured: true,
+          tertiary_window: { used_percent: 47, reset_at: "2026-05-04T06:02:56.054Z" },
+        }}
+        opencode={{ configured: false }}
+        order={["factoryai", "hermes", "openclaw", "opencode"]}
+      />,
+    );
+
+    expect(screen.getByText("Factory AI")).toBeInTheDocument();
+    expect(screen.getByText("Hermes")).toBeInTheDocument();
+    expect(screen.getByText("OpenClaw")).toBeInTheDocument();
+    expect(screen.getByText("OpenCode")).toBeInTheDocument();
+    expect(screen.getByText("Primary")).toBeInTheDocument();
+    expect(screen.getByText("Secondary")).toBeInTheDocument();
+    expect(screen.getByText("Tertiary")).toBeInTheDocument();
+    expect(screen.getByText("18%")).toBeInTheDocument();
+    expect(screen.getByText("33%")).toBeInTheDocument();
+    expect(screen.getByText("47%")).toBeInTheDocument();
   });
 });

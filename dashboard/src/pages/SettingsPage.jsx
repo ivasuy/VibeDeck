@@ -7,6 +7,7 @@ import { MenuBarSection, NativeAppFooter } from "../components/settings/MenuBarS
 import { useLimitsDisplayPrefs } from "../hooks/use-limits-display-prefs.js";
 import { getAutoDetectedProviders, getCurrencyRates } from "../lib/api";
 import { copy } from "../lib/copy";
+import { PageShell } from "../components/RevampSurfaces.jsx";
 
 const MODEL_ALIASES_STORAGE_KEY = "vibedeck.modelAliases.v1";
 const DISPLAY_CURRENCY_STORAGE_KEY = "vibedeck.displayCurrency";
@@ -77,7 +78,7 @@ function ModelAliasesSection() {
             <input
               value={alias}
               onChange={(event) => setAlias(event.target.value)}
-              className="vd-control h-10 rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white"
+              className="vd-control h-10 rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 text-sm text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-white"
             />
           </label>
           <label className="grid gap-1 text-xs font-medium text-oai-gray-600 dark:text-oai-gray-300">
@@ -85,14 +86,14 @@ function ModelAliasesSection() {
             <input
               value={canonical}
               onChange={(event) => setCanonical(event.target.value)}
-              className="vd-control h-10 rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white"
+              className="vd-control h-10 rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 text-sm text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-white"
             />
           </label>
         </div>
         <div>
           <button
             type="submit"
-            className="rounded-md border border-oai-gray-300 px-3 py-2 text-sm font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+            className="vd-control rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 py-2 text-sm font-medium text-oai-gray-700 transition-colors hover:bg-[var(--vd-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-gray-200"
           >
             {copy("settings.model_aliases.add")}
           </button>
@@ -149,7 +150,7 @@ function ProviderAutoDetectSection() {
           type="button"
           onClick={scanProviders}
           disabled={loading}
-          className="rounded-md border border-oai-gray-300 px-3 py-2 text-sm font-medium text-oai-gray-700 transition-colors hover:bg-oai-gray-50 disabled:opacity-60 dark:border-oai-gray-700 dark:text-oai-gray-200 dark:hover:bg-oai-gray-800"
+          className="vd-control rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 py-2 text-sm font-medium text-oai-gray-700 transition-colors hover:bg-[var(--vd-tint)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] disabled:opacity-60 dark:text-oai-gray-200"
         >
           {loading ? copy("settings.provider_detect.scanning") : copy("settings.provider_detect.scan")}
         </button>
@@ -190,7 +191,7 @@ function DisplayCurrencySection() {
           <select
             value={currency}
             onChange={onCurrencyChange}
-            className="vd-control h-10 rounded-md border border-oai-gray-300 bg-oai-white px-3 text-sm text-oai-black dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white"
+            className="vd-control h-10 rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 text-sm text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-white"
           >
             {DISPLAY_CURRENCIES.map((option) => (
               <option key={option} value={option}>{option}</option>
@@ -207,35 +208,62 @@ function DisplayCurrencySection() {
 
 export function SettingsPage() {
   const limitsPrefs = useLimitsDisplayPrefs();
+  const navSections = [
+    "Account",
+    "Appearance",
+    "Providers",
+    "Menu Bar",
+    "Advanced",
+    "Privacy",
+  ];
 
   return (
-    <div className="flex flex-1 flex-col font-oai text-oai-black antialiased dark:text-oai-white">
-      <main className="flex-1 pb-12 pt-8 sm:pb-16 sm:pt-10">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6">
-          <div className="mb-8">
-            <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
-              {copy("settings.page.title")}
-            </h1>
-            <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-              {copy("settings.page.subtitle")}
-            </p>
-          </div>
+    <PageShell title={copy("settings.page.title")} subtitle={copy("settings.page.subtitle")}>
+      <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="lg:sticky lg:top-8 lg:self-start">
+          <nav className="grid gap-1 border-l border-[var(--vd-border)] pl-3" aria-label="Settings sections">
+            {navSections.map((section) => (
+              <a
+                key={section}
+                href={`#settings-${section.toLowerCase().replace(/\s+/g, "-")}`}
+                className="rounded-md px-2 py-2 text-sm font-medium text-oai-gray-600 transition-colors hover:bg-[var(--vd-tint)] hover:text-oai-black dark:text-oai-gray-300 dark:hover:text-white"
+              >
+                {section}
+              </a>
+            ))}
+          </nav>
+        </aside>
 
-          <div className="space-y-4">
-            <AppearanceSection />
-            <MenuBarSection />
+        <div className="min-w-0 space-y-5">
+          <section id="settings-account" className="scroll-mt-8">
             <AccountSection />
+          </section>
+          <section id="settings-appearance" className="scroll-mt-8">
+            <AppearanceSection />
+          </section>
+          <section id="settings-providers" className="scroll-mt-8 space-y-4">
+            <ProviderAutoDetectSection />
             <SectionCard title={copy("settings.section.limits")}>
               <LimitsSettingsPanel prefs={limitsPrefs} />
             </SectionCard>
+          </section>
+          <section id="settings-menu-bar" className="scroll-mt-8">
+            <MenuBarSection />
+          </section>
+          <section id="settings-advanced" className="scroll-mt-8 space-y-4">
             <DisplayCurrencySection />
             <ModelAliasesSection />
-            <ProviderAutoDetectSection />
-          </div>
-
+          </section>
+          <section id="settings-privacy" className="scroll-mt-8">
+            <SectionCard title="Privacy">
+              <p className="py-3 text-sm leading-6 text-oai-gray-500 dark:text-oai-gray-400">
+                VibeDeck keeps usage data local by default. Exports and provider scans run from this machine.
+              </p>
+            </SectionCard>
+          </section>
           <NativeAppFooter />
         </div>
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

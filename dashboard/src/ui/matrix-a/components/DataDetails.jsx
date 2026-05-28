@@ -97,7 +97,7 @@ function ProjectUsageCard({ entry, copy }) {
     ? entry.project_ref
     : null;
   const content = (
-    <div className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 transition-colors hover:bg-oai-brand-50/60 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:hover:bg-oai-brand-950/35">
+    <div className="vd-card-solid rounded-xl border border-[var(--vd-border)] p-4 transition-colors hover:bg-[var(--vd-tint)]">
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-oai-brand-100 text-sm font-medium text-oai-brand-700 dark:bg-oai-brand-950/60 dark:text-oai-brand-300">
           {projectInitial(entry)}
@@ -165,7 +165,7 @@ function ProjectUsageCard({ entry, copy }) {
                         return (
                           <div
                             key={`${providerName}-${modelName}`}
-                            className="border-b border-oai-gray-100 py-2 last:border-b-0 dark:border-oai-gray-800"
+                            className="border-b border-[var(--vd-border)] py-2 last:border-b-0"
                           >
                             <div className="mb-1.5 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-4 text-sm">
                               <span className="truncate text-oai-gray-700 dark:text-oai-gray-200">{modelName}</span>
@@ -179,7 +179,7 @@ function ProjectUsageCard({ entry, copy }) {
                                 {percentLabel(tokens, projectTokens)}
                               </span>
                             </div>
-                            <div className="h-0.5 overflow-hidden rounded-full bg-oai-gray-100 dark:bg-oai-gray-800">
+                            <div className="h-0.5 overflow-hidden rounded-full bg-[var(--vd-tint)]">
                               <div
                                 className="h-full rounded-full bg-oai-brand dark:bg-oai-brand-400"
                                 style={{ width: `${width}%` }}
@@ -209,7 +209,7 @@ function ProjectUsageCard({ entry, copy }) {
 
 function ProjectStat({ icon: Icon, label, value }) {
   return (
-    <div className="vd-subcard rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
+    <div className="vd-subcard rounded-lg border border-[var(--vd-border)] px-3 py-2">
       <div className="flex min-w-0 items-center gap-1.5 text-[10px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
         {Icon ? <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
         <span className="truncate">{label}</span>
@@ -295,7 +295,7 @@ export function DataDetails({
             aria-label="Number of projects to display"
             value={projectLimit}
             onChange={(e) => onProjectLimitChange?.(Number(e.target.value))}
-            className="vd-control text-xs text-oai-gray-600 dark:text-oai-gray-300 bg-white dark:bg-oai-gray-900 border border-oai-gray-200 dark:border-oai-gray-700 rounded px-2 py-1 hover:border-oai-gray-300 dark:hover:border-oai-gray-600 focus:border-oai-brand dark:focus:border-oai-brand focus:outline-none transition-colors"
+            className="vd-control rounded border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-2 py-1 text-xs text-oai-gray-600 transition-colors hover:bg-[var(--vd-tint)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-gray-300"
           >
             <option value={3}>{copy("dashboard.projects.limit_top_3")}</option>
             <option value={6}>{copy("dashboard.projects.limit_top_6")}</option>
@@ -344,7 +344,7 @@ export function DataDetails({
           ) : dailyBreakdownRows?.length === 0 ? (
             <div className="oai-text-body-sm text-oai-gray-500 dark:text-oai-gray-300 mb-4">
               {dailyEmptyPrefix}
-              <code className="mx-1 rounded border border-oai-gray-300 dark:border-oai-gray-700 oai-bg-elevated px-1.5 py-0.5 font-mono oai-text-caption">
+              <code className="mx-1 rounded border border-[var(--vd-border)] bg-[var(--vd-tint)] px-1.5 py-0.5 font-mono oai-text-caption">
                 {installSyncCmd}
               </code>
               {dailyEmptySuffix}
@@ -470,7 +470,7 @@ function InlineProjectSkeleton() {
       {[0, 1, 2].map((index) => (
         <div
           key={index}
-          className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900"
+          className="vd-card-solid rounded-xl border border-[var(--vd-border)] p-4"
         >
           <div className="flex items-center gap-3">
             <div className="shimmer h-9 w-9 rounded-lg bg-oai-gray-100 dark:bg-oai-gray-800" />

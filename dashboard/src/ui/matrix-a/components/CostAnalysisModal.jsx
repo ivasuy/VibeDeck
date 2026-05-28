@@ -74,7 +74,7 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
       <Dialog.Portal>
         <Dialog.Backdrop className="cost-modal-backdrop" data-cost-analysis-backdrop="true" />
         <Dialog.Viewport className="fixed inset-0 z-[101] flex items-center justify-center p-4">
-          <Dialog.Popup className="cost-modal-popup relative w-full max-w-[460px] max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl bg-white dark:bg-oai-gray-950 shadow-[0_20px_60px_-20px_rgba(0,0,0,0.25)] dark:shadow-[0_20px_60px_-10px_rgba(0,0,0,0.65)] ring-1 ring-oai-gray-200 dark:ring-oai-gray-800 overflow-hidden">
+          <Dialog.Popup className="cost-modal-popup vd-popover relative flex max-h-[calc(100vh-2rem)] w-full max-w-[460px] flex-col overflow-hidden rounded-xl border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] shadow-[var(--vd-shadow)]">
             {/* Modal purpose — visually hidden, announced by screen readers */}
             <Dialog.Title
               render={<h2 className="sr-only" />}
@@ -84,7 +84,7 @@ export const CostAnalysisModal = React.memo(function CostAnalysisModal({
 
             <Dialog.Close
               type="button"
-              className="absolute top-3 right-3 flex h-9 w-9 items-center justify-center rounded-md text-oai-gray-500 dark:text-oai-gray-400 hover:text-oai-gray-800 dark:hover:text-oai-gray-100 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand/50 transition-colors z-10"
+              className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-md text-oai-gray-500 transition-colors hover:bg-[var(--vd-tint)] hover:text-oai-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-gray-400 dark:hover:text-oai-gray-100"
               aria-label={copy("dashboard.cost_breakdown.close")}
             >
               <X size={16} strokeWidth={2} aria-hidden />

@@ -12,10 +12,10 @@ export function BootScreen({ onSkip }) {
   const content = (
     <>
       <div className="flex flex-col items-center gap-4">
-        {/* Elegant loading spinner */}
-        <div className="relative w-12 h-12">
-          <div className="absolute inset-0 border-2 border-matrix-panelStrong rounded-full"></div>
-          <div className="absolute inset-0 border-2 border-transparent border-t-matrix-primary rounded-full animate-spin"></div>
+        <div className="grid w-44 gap-2" aria-label={copy("boot.prompt")}>
+          <div className="shimmer h-3 rounded-full"></div>
+          <div className="shimmer h-3 w-4/5 rounded-full"></div>
+          <div className="shimmer h-3 w-2/3 rounded-full"></div>
         </div>
         {canSkip ? (
           <p className="text-caption text-matrix-muted uppercase mt-4">{copy("boot.skip_hint")}</p>

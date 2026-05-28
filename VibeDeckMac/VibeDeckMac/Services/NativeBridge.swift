@@ -43,9 +43,11 @@ final class NativeBridge {
             DashboardWindowController.shared.pushCurrentSystemAppearanceToWeb()
         case "setChromeAppearance":
             if let theme = dict["theme"] as? String {
+                UserDefaults.standard.set(NativeAppearancePreference.normalize(theme).rawValue, forKey: NativeAppearancePreference.storageKey)
                 let isDark = dict["isDark"] as? Bool ?? false
                 DashboardWindowController.shared.applyChromeAppearance(theme: theme, resolvedIsDark: isDark)
             } else if let isDark = dict["isDark"] as? Bool {
+                UserDefaults.standard.set(isDark ? "dark" : "light", forKey: NativeAppearancePreference.storageKey)
                 DashboardWindowController.shared.applyChromeAppearance(theme: isDark ? "dark" : "light", resolvedIsDark: isDark)
             }
         case "setSetting":

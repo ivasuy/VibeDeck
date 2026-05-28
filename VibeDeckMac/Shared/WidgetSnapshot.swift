@@ -122,6 +122,17 @@ public struct WidgetSnapshot: Codable, Equatable {
             return DailyPoint(day: day, totalTokens: base, costUsd: Double(base) / 1_500_000.0)
         }
         let weeks: [[Int]] = (0..<26).map { _ in (0..<7).map { _ in Int.random(in: 0...4) } }
+        let bestDay = trend.max { lhs, rhs in
+            lhs.totalTokens < rhs.totalTokens
+        }.flatMap { point -> HeatmapBestDay? in
+            guard point.totalTokens > 0 else { return nil }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = .current
+            return HeatmapBestDay(day: formatter.string(from: point.day), tokens: point.totalTokens, costUsd: point.costUsd)
+        }
+
         return WidgetSnapshot(
             generatedAt: Date(),
             serverOnline: true,
@@ -132,11 +143,11 @@ public struct WidgetSnapshot: Codable, Equatable {
             selected: PeriodTotals(tokens: 22_900_000, costUsd: 15.10, conversations: 180),
             dailyTrend: trend,
             topModels: [
-                SnapshotModelEntry(id: "claude-opus-4-6", name: "claude-opus-4-6", source: "claude", tokens: 12_400_000, sharePercent: 38.2),
-                SnapshotModelEntry(id: "gpt-5.4", name: "gpt-5.4", source: "codex", tokens: 9_100_000, sharePercent: 28.0),
-                SnapshotModelEntry(id: "claude-sonnet-4-6", name: "claude-sonnet-4-6", source: "claude", tokens: 5_800_000, sharePercent: 17.9),
-                SnapshotModelEntry(id: "gemini-2.5-pro", name: "gemini-2.5-pro", source: "gemini", tokens: 3_200_000, sharePercent: 9.9),
-                SnapshotModelEntry(id: "cursor-fast", name: "cursor-fast", source: "cursor", tokens: 1_900_000, sharePercent: 5.9)
+                SnapshotModelEntry(id: "claude-opus-4-6", name: "claude-opus-4-6", source: "claude", tokens: 12_400_000, costUsd: 8.40, sharePercent: 38.2),
+                SnapshotModelEntry(id: "gpt-5.4", name: "gpt-5.4", source: "codex", tokens: 9_100_000, costUsd: 6.20, sharePercent: 28.0),
+                SnapshotModelEntry(id: "claude-sonnet-4-6", name: "claude-sonnet-4-6", source: "claude", tokens: 5_800_000, costUsd: 3.92, sharePercent: 17.9),
+                SnapshotModelEntry(id: "gemini-2.5-pro", name: "gemini-2.5-pro", source: "gemini", tokens: 3_200_000, costUsd: 1.10, sharePercent: 9.9),
+                SnapshotModelEntry(id: "cursor-fast", name: "cursor-fast", source: "cursor", tokens: 1_900_000, costUsd: 1.52, sharePercent: 5.9)
             ],
             sources: [
                 SnapshotSourceEntry(source: "claude", tokens: 18_200_000, costUsd: 12.40, sharePercent: 56.0),
@@ -144,11 +155,17 @@ public struct WidgetSnapshot: Codable, Equatable {
                 SnapshotSourceEntry(source: "gemini", tokens: 3_200_000, costUsd: 1.10, sharePercent: 9.9),
                 SnapshotSourceEntry(source: "cursor", tokens: 1_900_000, costUsd: 1.52, sharePercent: 5.9)
             ],
-            heatmap: HeatmapPayload(weeks: weeks, activeDays: 110, streakDays: 14),
+            heatmap: HeatmapPayload(
+                weeks: weeks,
+                activeDays: 110,
+                streakDays: 14,
+                bestDay: bestDay,
+                longestStreak: HeatmapStreakRange(days: 47, startDay: "2026-03-12", endDay: "2026-04-28")
+            ),
             limits: [
-                LimitProvider(source: "claude", label: "Claude · 5h",  fraction: 0.42, resetsAt: nil),
-                LimitProvider(source: "claude", label: "Claude · 7d",  fraction: 0.71, resetsAt: nil),
-                LimitProvider(source: "codex",  label: "Codex · 5h",   fraction: 0.18, resetsAt: nil),
+                LimitProvider(source: "claude", label: "Claude · 5h",  fraction: 0.42, resetsAt: nil, usedTokens: 1_050_000, limitTokens: 2_500_000),
+                LimitProvider(source: "claude", label: "Claude · 7d",  fraction: 0.71, resetsAt: nil, usedTokens: 7_100_000, limitTokens: 10_000_000),
+                LimitProvider(source: "codex",  label: "Codex · 5h",   fraction: 0.18, resetsAt: nil, usedTokens: 450_000, limitTokens: 2_500_000),
                 LimitProvider(source: "cursor", label: "Cursor",       fraction: 0.55, resetsAt: nil),
                 LimitProvider(source: "gemini", label: "Gemini",       fraction: 0.32, resetsAt: nil)
             ]
@@ -191,14 +208,35 @@ public struct SnapshotModelEntry: Codable, Equatable, Identifiable {
     public var name: String
     public var source: String
     public var tokens: Int
+    public var costUsd: Double
     public var sharePercent: Double
 
-    public init(id: String, name: String, source: String, tokens: Int, sharePercent: Double) {
+    public init(id: String, name: String, source: String, tokens: Int, costUsd: Double = 0, sharePercent: Double) {
         self.id = id
         self.name = name
         self.source = source
         self.tokens = tokens
+        self.costUsd = costUsd
         self.sharePercent = sharePercent
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case source
+        case tokens
+        case costUsd
+        case sharePercent
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        costUsd = try c.decodeIfPresent(Double.self, forKey: .costUsd) ?? 0
+        sharePercent = try c.decodeIfPresent(Double.self, forKey: .sharePercent) ?? 0
     }
 }
 
@@ -222,14 +260,61 @@ public struct HeatmapPayload: Codable, Equatable {
     public var weeks: [[Int]]
     public var activeDays: Int
     public var streakDays: Int
+    public var bestDay: HeatmapBestDay?
+    public var longestStreak: HeatmapStreakRange?
 
-    public init(weeks: [[Int]] = [], activeDays: Int = 0, streakDays: Int = 0) {
+    public init(
+        weeks: [[Int]] = [],
+        activeDays: Int = 0,
+        streakDays: Int = 0,
+        bestDay: HeatmapBestDay? = nil,
+        longestStreak: HeatmapStreakRange? = nil
+    ) {
         self.weeks = weeks
         self.activeDays = activeDays
         self.streakDays = streakDays
+        self.bestDay = bestDay
+        self.longestStreak = longestStreak
     }
 
     public static let empty = HeatmapPayload()
+}
+
+public struct HeatmapBestDay: Codable, Equatable {
+    public var day: String
+    public var tokens: Int
+    public var costUsd: Double
+
+    public init(day: String, tokens: Int, costUsd: Double = 0) {
+        self.day = day
+        self.tokens = tokens
+        self.costUsd = costUsd
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case day
+        case tokens
+        case costUsd
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        day = try c.decodeIfPresent(String.self, forKey: .day) ?? ""
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        costUsd = try c.decodeIfPresent(Double.self, forKey: .costUsd) ?? 0
+    }
+}
+
+public struct HeatmapStreakRange: Codable, Equatable {
+    public var days: Int
+    public var startDay: String
+    public var endDay: String
+
+    public init(days: Int, startDay: String, endDay: String) {
+        self.days = days
+        self.startDay = startDay
+        self.endDay = endDay
+    }
 }
 
 public struct LimitProvider: Codable, Equatable, Identifiable {
@@ -239,12 +324,35 @@ public struct LimitProvider: Codable, Equatable, Identifiable {
     /// 0.0 – 1.0+ (clamped at render time).
     public var fraction: Double
     public var resetsAt: Date?
+    public var usedTokens: Int?
+    public var limitTokens: Int?
 
-    public init(source: String, label: String, fraction: Double, resetsAt: Date?) {
+    public init(source: String, label: String, fraction: Double, resetsAt: Date?, usedTokens: Int? = nil, limitTokens: Int? = nil) {
         self.source = source
         self.label = label
         self.fraction = fraction
         self.resetsAt = resetsAt
+        self.usedTokens = usedTokens
+        self.limitTokens = limitTokens
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case label
+        case fraction
+        case resetsAt
+        case usedTokens
+        case limitTokens
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? ""
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
+        fraction = try c.decodeIfPresent(Double.self, forKey: .fraction) ?? 0
+        resetsAt = try c.decodeIfPresent(Date.self, forKey: .resetsAt)
+        usedTokens = try c.decodeIfPresent(Int.self, forKey: .usedTokens)
+        limitTokens = try c.decodeIfPresent(Int.self, forKey: .limitTokens)
     }
 }
 

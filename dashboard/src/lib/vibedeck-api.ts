@@ -100,6 +100,10 @@ export function getAttributionStats(fetchImpl: FetchImpl = fetch) {
   return fetchImpl("/functions/vibedeck-attribution-stats", readOptions).then(jsonOrThrow);
 }
 
+export function getRecentSessions(params: { limit?: number } = {}, fetchImpl: FetchImpl = fetch) {
+  return fetchImpl(query("vibedeck-recent-sessions", params), readOptions).then(jsonOrThrow);
+}
+
 export function getSyncStatus(fetchImpl: FetchImpl = fetch) {
   return fetchImpl("/functions/vibedeck-sync-status", readOptions).then(jsonOrThrow<SyncStatus>);
 }
@@ -209,6 +213,8 @@ export function postEntireCommand(cmd: string, body: AnyRecord = {}, fetchImpl: 
 */
 
 
+/*
 export function confirmDestructive(op: string, fetchImpl: FetchImpl = fetch) {
   return postVibeDeckJson("vibedeck-confirm-destructive", { op }, fetchImpl);
 }
+*/

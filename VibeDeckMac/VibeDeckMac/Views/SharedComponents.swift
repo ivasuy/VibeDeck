@@ -70,3 +70,83 @@ struct PlaceholderBlock: View {
             )
     }
 }
+
+struct ProviderLogoView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let provider: String
+    var size: CGFloat = 16
+
+    var body: some View {
+        logo
+            .frame(width: size, height: size)
+            .accessibilityLabel("\(displayName(for: providerId)) logo")
+    }
+
+    private var providerId: String {
+        Self.normalizedProviderId(from: provider)
+    }
+
+    @ViewBuilder
+    private var logo: some View {
+        if let filename = Self.monoSVGFilename(for: providerId),
+           let image = BrandLogoResolver.shared.image(
+               named: filename,
+               replacingCurrentColorWith: colorScheme == .dark ? "#FFFFFF" : "#111111",
+               targetSize: Int(max(size, 16))
+           ) {
+            Image(nsImage: image)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+        } else if let iconName = LimitsSettingsStore.iconNames[providerId] {
+            Image(iconName)
+                .renderingMode(.original)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+        } else {
+            Image(colorScheme == .dark ? "VibeDeckIconDark" : "VibeDeckIconLight")
+                .renderingMode(.original)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+        }
+    }
+
+    private func displayName(for id: String) -> String {
+        LimitsSettingsStore.displayNames[id] ?? "Provider"
+    }
+
+    static func normalizedProviderId(from source: String) -> String {
+        let normalized = source
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+
+        if normalized.contains("copilot") { return "copilot" }
+        if normalized.contains("cursor") { return "cursor" }
+        if normalized.contains("gemini") || normalized.contains("google") { return "gemini" }
+        if normalized.contains("kiro") { return "kiro" }
+        if normalized.contains("kimi") { return "kimi" }
+        if normalized.contains("factory") || normalized.contains("droid") { return "factoryai" }
+        if normalized.contains("hermes") { return "hermes" }
+        if normalized.contains("openclaw") || normalized.contains("open-claw") { return "openclaw" }
+        if normalized.contains("opencode") || normalized.contains("open-code") { return "opencode" }
+        if normalized.contains("claw") || normalized.contains("antigravity") { return "antigravity" }
+        if normalized.contains("openai") || normalized.contains("codex") { return "codex" }
+        if normalized.contains("claude") || normalized.contains("anthropic") { return "claude" }
+        return normalized
+    }
+
+    static func monoSVGFilename(for providerId: String) -> String? {
+        switch providerId {
+        case "copilot": return "copilot.svg"
+        case "cursor": return "cursor.svg"
+        case "factoryai": return "factoryai-droid.svg"
+        case "kimi": return "kimi.svg"
+        case "kiro": return "kiro.svg"
+        default: return nil
+        }
+    }
+}

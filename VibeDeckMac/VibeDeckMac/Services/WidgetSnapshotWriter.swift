@@ -156,7 +156,7 @@ enum WidgetSnapshotWriter {
         return daily.suffix(30).compactMap { entry in
             guard let date = formatter.date(from: entry.day) else { return nil }
             let tokens = entry.billableTotalTokens > 0 ? entry.billableTotalTokens : entry.totalTokens
-            return DailyPoint(day: date, totalTokens: tokens, costUsd: 0)
+            return DailyPoint(day: date, totalTokens: tokens, costUsd: entry.totalCostUsd)
         }
     }
 
@@ -167,6 +167,7 @@ enum WidgetSnapshotWriter {
                 name: m.name,
                 source: m.source,
                 tokens: m.tokens,
+                costUsd: m.usd,
                 sharePercent: Double(m.percent) ?? 0
             )
         }
@@ -187,11 +188,13 @@ enum WidgetSnapshotWriter {
         guard let heatmap else { return .empty }
         // Compress to a 2D Int matrix of levels — one entry per day, 7 per week.
         // Missing days become level 0.
+        var cells: [HeatmapCell] = []
         let weeks: [[Int]] = heatmap.weeks.map { week in
             var row = Array(repeating: 0, count: 7)
             for (idx, cell) in week.enumerated() where idx < 7 {
                 if let cell {
                     row[idx] = max(0, min(4, cell.level))
+                    cells.append(cell)
                 }
             }
             return row
@@ -199,8 +202,57 @@ enum WidgetSnapshotWriter {
         return HeatmapPayload(
             weeks: weeks,
             activeDays: heatmap.activeDays,
-            streakDays: heatmap.streakDays
+            streakDays: heatmap.streakDays,
+            bestDay: bestHeatmapDay(from: cells),
+            longestStreak: longestHeatmapStreak(from: cells)
         )
+    }
+
+    private static func bestHeatmapDay(from cells: [HeatmapCell]) -> HeatmapBestDay? {
+        guard let best = cells.max(by: { lhs, rhs in
+            let lhsTokens = lhs.billableTotalTokens > 0 ? lhs.billableTotalTokens : lhs.totalTokens
+            let rhsTokens = rhs.billableTotalTokens > 0 ? rhs.billableTotalTokens : rhs.totalTokens
+            return lhsTokens < rhsTokens
+        }) else { return nil }
+
+        let tokens = best.billableTotalTokens > 0 ? best.billableTotalTokens : best.totalTokens
+        guard tokens > 0, !best.day.isEmpty else { return nil }
+        return HeatmapBestDay(day: best.day, tokens: tokens, costUsd: best.totalCostUsd)
+    }
+
+    private static func longestHeatmapStreak(from cells: [HeatmapCell]) -> HeatmapStreakRange? {
+        let ordered = cells.sorted { $0.day < $1.day }
+        var currentStart: String?
+        var currentEnd: String?
+        var currentCount = 0
+        var best: HeatmapStreakRange?
+
+        for cell in ordered {
+            let tokens = cell.billableTotalTokens > 0 ? cell.billableTotalTokens : cell.totalTokens
+            if tokens > 0 {
+                currentStart = currentStart ?? cell.day
+                currentEnd = cell.day
+                currentCount += 1
+            } else {
+                best = maxStreak(best, currentCount: currentCount, currentStart: currentStart, currentEnd: currentEnd)
+                currentStart = nil
+                currentEnd = nil
+                currentCount = 0
+            }
+        }
+
+        return maxStreak(best, currentCount: currentCount, currentStart: currentStart, currentEnd: currentEnd)
+    }
+
+    private static func maxStreak(
+        _ best: HeatmapStreakRange?,
+        currentCount: Int,
+        currentStart: String?,
+        currentEnd: String?
+    ) -> HeatmapStreakRange? {
+        guard currentCount > 0, let currentStart, let currentEnd else { return best }
+        if let best, best.days >= currentCount { return best }
+        return HeatmapStreakRange(days: currentCount, startDay: currentStart, endDay: currentEnd)
     }
 
     // MARK: - Limits flattening
@@ -220,17 +272,23 @@ enum WidgetSnapshotWriter {
             if let w = limits.claude.fiveHour {
                 out.append(LimitProvider(source: "claude", label: "Claude · 5h",
                                          fraction: w.utilization / 100.0,
-                                         resetsAt: parseISO(w.resetsAt)))
+                                         resetsAt: parseISO(w.resetsAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
             if let w = limits.claude.sevenDay {
                 out.append(LimitProvider(source: "claude", label: "Claude · 7d",
                                          fraction: w.utilization / 100.0,
-                                         resetsAt: parseISO(w.resetsAt)))
+                                         resetsAt: parseISO(w.resetsAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
             if let w = limits.claude.sevenDayOpus {
                 out.append(LimitProvider(source: "claude", label: "Claude · 7d Opus",
                                          fraction: w.utilization / 100.0,
-                                         resetsAt: parseISO(w.resetsAt)))
+                                         resetsAt: parseISO(w.resetsAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -239,12 +297,16 @@ enum WidgetSnapshotWriter {
             if let w = limits.codex.primaryWindow {
                 out.append(LimitProvider(source: "codex", label: "Codex · 5h",
                                          fraction: Double(w.usedPercent) / 100.0,
-                                         resetsAt: parseEpoch(w.resetAt)))
+                                         resetsAt: parseEpoch(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
             if let w = limits.codex.secondaryWindow {
                 out.append(LimitProvider(source: "codex", label: "Codex · weekly",
                                          fraction: Double(w.usedPercent) / 100.0,
-                                         resetsAt: parseEpoch(w.resetAt)))
+                                         resetsAt: parseEpoch(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -253,7 +315,9 @@ enum WidgetSnapshotWriter {
             if let w = limits.cursor.primaryWindow {
                 out.append(LimitProvider(source: "cursor", label: "Cursor",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -262,7 +326,9 @@ enum WidgetSnapshotWriter {
             if let w = limits.gemini.primaryWindow {
                 out.append(LimitProvider(source: "gemini", label: "Gemini",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -271,17 +337,23 @@ enum WidgetSnapshotWriter {
             if let w = kimi.primaryWindow {
                 out.append(LimitProvider(source: "kimi", label: "Kimi · weekly",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
             if let w = kimi.secondaryWindow {
                 out.append(LimitProvider(source: "kimi", label: "Kimi · 5h",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
             if let w = kimi.tertiaryWindow {
                 out.append(LimitProvider(source: "kimi", label: "Kimi · total",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -290,7 +362,9 @@ enum WidgetSnapshotWriter {
             if let w = limits.kiro.primaryWindow {
                 out.append(LimitProvider(source: "kiro", label: "Kiro",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -299,7 +373,9 @@ enum WidgetSnapshotWriter {
             if let w = limits.antigravity.primaryWindow {
                 out.append(LimitProvider(source: "antigravity", label: "Antigravity",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 
@@ -308,7 +384,9 @@ enum WidgetSnapshotWriter {
             if let w = copilot.primaryWindow {
                 out.append(LimitProvider(source: "copilot", label: "Copilot",
                                          fraction: w.usedPercent / 100.0,
-                                         resetsAt: parseISO(w.resetAt)))
+                                         resetsAt: parseISO(w.resetAt),
+                                         usedTokens: w.usedTokens,
+                                         limitTokens: w.limitTokens))
             }
         }
 

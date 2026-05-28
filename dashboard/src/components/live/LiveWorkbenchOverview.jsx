@@ -1,9 +1,25 @@
 import React, { useMemo } from "react";
 import { Activity, CircleDollarSign, Cpu, Radio, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Counter } from "../../ui/openai/components";
+import { ClawdAnimated } from "../../ui/foundation/ClawdAnimated.jsx";
+import { useClawdState } from "../../hooks/useClawdState.js";
 import { formatCompactNumber, formatUsdCurrency, toDisplayNumber } from "../../lib/format";
+import { FreshnessBadge } from "../RevampSurfaces.jsx";
 
-const LIMIT_PROVIDERS = ["claude", "codex", "cursor", "gemini", "kimi", "kiro", "copilot", "antigravity"];
+const LIMIT_PROVIDERS = [
+  "antigravity",
+  "claude",
+  "codex",
+  "copilot",
+  "cursor",
+  "factoryai",
+  "gemini",
+  "hermes",
+  "kimi",
+  "kiro",
+  "openclaw",
+  "opencode",
+];
 
 function isActiveRow(row) {
   if (!row) return false;
@@ -62,6 +78,8 @@ export function LiveWorkbenchOverview({
   limits = null,
   canonicalIncomplete = false,
   initialLoading = false,
+  freshnessTimestamp = null,
+  stale = false,
 }) {
   const model = useMemo(() => {
     const active = (Array.isArray(sessions) ? sessions : []).filter(isActiveRow);
@@ -110,13 +128,19 @@ export function LiveWorkbenchOverview({
   const activeProjectCount = Number(totals?.active_projects ?? workstreams.length ?? 0) || 0;
   const costDisplay = formatUsdCurrency(auditCost.toFixed(2), { decimals: 2 });
   const hasAttributionNeeds = model.attributionGaps > 0;
+  const clawdState = useClawdState({
+    activeSessionCount: total,
+    todayTokens: activeTokens,
+    isDisconnected: status === "disconnected" || status === "error",
+    hasLowConfidence: model.confidence.low > 0 || model.confidence.unattributed > 0 || hasAttributionNeeds,
+  });
 
   if (initialLoading) {
     return <LiveWorkbenchOverviewSkeleton />;
   }
 
   return (
-    <section className="vd-card rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900">
+    <section className="vd-card rounded-xl border border-[var(--vd-border)] p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
@@ -149,8 +173,16 @@ export function LiveWorkbenchOverview({
             />
           </div>
         </div>
-        <div className="vd-chip inline-flex h-8 items-center rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
-          {status === "connected" ? "Live stream connected" : status}
+        <div className="flex items-start gap-3">
+          <ClawdAnimated state={clawdState} size={56} />
+          <div className="vd-chip inline-flex h-8 items-center gap-2 rounded-md bg-oai-black/[0.04] px-3 text-xs font-medium text-oai-gray-700 dark:bg-white/[0.08] dark:text-oai-gray-200">
+            <span>{status === "connected" ? "Live stream connected" : status}</span>
+            <FreshnessBadge
+              timestamp={freshnessTimestamp}
+              live={status === "connected" && !stale}
+              stale={stale || status === "reconnecting" || status === "degraded"}
+            />
+          </div>
         </div>
       </div>
 
@@ -199,7 +231,7 @@ export function LiveWorkbenchOverview({
 
 function LiveWorkbenchOverviewSkeleton() {
   return (
-    <section className="vd-card rounded-xl border border-oai-gray-200 bg-white p-5 dark:border-oai-gray-800 dark:bg-oai-gray-900" aria-busy="true">
+    <section className="vd-card rounded-xl border border-[var(--vd-border)] p-5" aria-busy="true">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">

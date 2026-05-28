@@ -3,7 +3,7 @@ import AppKit
 
 struct LimitsSettingsView: View {
     @ObservedObject var store: LimitsSettingsStore
-    @Environment(\.colorScheme) private var colorScheme
+    var showsTitle = true
     @State private var draggingId: String?
     @AppStorage("vibedeck.displayCurrency") private var displayCurrency: String = "USD"
 
@@ -11,11 +11,13 @@ struct LimitsSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(Strings.limitsDisplayTitle)
-                .font(.system(.headline, design: .default))
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-                .padding(.bottom, 6)
+            if showsTitle {
+                Text(Strings.limitsDisplayTitle)
+                    .font(.system(.headline, design: .default))
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+            }
 
             VStack(spacing: 0) {
                 ForEach(store.providerOrder, id: \.self) { id in
@@ -63,7 +65,7 @@ struct LimitsSettingsView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
         }
-        .frame(width: 240)
+        .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
     }
 
     private func providerRow(id: String) -> some View {
@@ -104,38 +106,7 @@ struct LimitsSettingsView: View {
 
     @ViewBuilder
     private func providerIcon(id: String) -> some View {
-        switch id {
-        case "cursor", "kimi", "kiro", "copilot":
-            let filename: String = {
-                switch id {
-                case "cursor": return "cursor.svg"
-                case "kimi": return "kimi.svg"
-                case "kiro": return "kiro.svg"
-                default: return "copilot.svg"
-                }
-            }()
-            if let image = BrandLogoResolver.shared.image(
-                named: filename,
-                replacingCurrentColorWith: colorScheme == .dark ? "#FFFFFF" : "#111111"
-            ) {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            } else {
-                Color.clear
-            }
-        default:
-            if let iconName = LimitsSettingsStore.iconNames[id] {
-                Image(iconName)
-                    .renderingMode(.original)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            } else {
-                Color.clear
-            }
-        }
+        ProviderLogoView(provider: id, size: 18)
     }
 }
 
@@ -152,7 +123,7 @@ private struct ReorderDropDelegate: DropDelegate {
               let from = store.providerOrder.firstIndex(of: dragging),
               let to = store.providerOrder.firstIndex(of: targetId) else { return }
 
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation(NativeMotion.Ease.short()) {
             store.move(from: IndexSet(integer: from), to: to > from ? to + 1 : to)
         }
     }

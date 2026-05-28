@@ -8,7 +8,7 @@ import { getBranchUsage, getYieldView } from "../lib/vibedeck-api";
 import { readLastGood, writeLastGood } from "../lib/last-good-cache";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
-import { PageFrame } from "../components/PageFrame.jsx";
+import { PageShell, SectionHeader, Surface } from "../components/RevampSurfaces.jsx";
 
 const BRANCHES_PAGE_SIZE = 10;
 const BRANCH_SUMMARY_CACHE_KEY = "branches.summary.default";
@@ -521,9 +521,21 @@ export function BranchesPage() {
       : copy("branches.empty");
 
   return (
-    <PageFrame maxWidth="max-w-[1760px]" hideHeader>
+    <PageShell
+      title="Branches"
+      subtitle="Review attribution by branch and drill into sessions where routing looks wrong."
+      maxWidth="max-w-[1760px]"
+    >
       <div className="grid min-h-0 gap-6">
-        <Card bodyClassName="p-6">
+        <Surface>
+          <SectionHeader
+            title="Branch attribution"
+            action={refreshing ? (
+              <span className="text-caption font-semibold uppercase text-oai-gray-500 dark:text-oai-gray-400">
+                Refreshing
+              </span>
+            ) : null}
+          />
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <div className="w-full">
               <label
@@ -538,7 +550,7 @@ export function BranchesPage() {
                   value={effectiveSelectedRepo}
                   onChange={(event) => setSelectedRepo(event.target.value)}
                   disabled={repos.length === 0}
-                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] disabled:cursor-not-allowed disabled:opacity-55 dark:text-oai-white"
                   aria-label={copy("branches.project.select_label")}
                 >
                   {repos.map((repoEntry) => {
@@ -577,7 +589,7 @@ export function BranchesPage() {
                   value={effectiveSelectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
                   disabled={trackedBranches.length <= 1}
-                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] disabled:cursor-not-allowed disabled:opacity-55 dark:text-oai-white"
                   aria-label={copy("branches.branch.select_label")}
                 >
                   {trackedBranches.map((branchName) => (
@@ -632,7 +644,7 @@ export function BranchesPage() {
               </>
             )}
           </div>
-        </Card>
+        </Surface>
 
         {error ? (
           <Card>
@@ -669,6 +681,6 @@ export function BranchesPage() {
         onSelectDate={(sessionDate) => selectedRow && loadSessionDetails(selectedRow, sessionDate)}
         onClose={closeSessionDrawer}
       />
-    </PageFrame>
+    </PageShell>
   );
 }

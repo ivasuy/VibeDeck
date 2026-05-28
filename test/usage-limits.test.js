@@ -141,7 +141,13 @@ describe("getUsageLimits", () => {
               json: async () => ({
                 rate_limit: {
                   primary_window: { used_percent: 30, limit_window_seconds: 604800, reset_at: 99999 },
-                  secondary_window: { used_percent: 12, limit_window_seconds: 18000, reset_at: 11111 },
+                  secondary_window: {
+                    used_percent: 12,
+                    limit_window_seconds: 18000,
+                    reset_at: 11111,
+                    used_tokens: 300000,
+                    limit_tokens: 2500000,
+                  },
                 },
               }),
             });
@@ -158,6 +164,9 @@ describe("getUsageLimits", () => {
         used_percent: 12,
         limit_window_seconds: 18000,
         reset_at: 11111,
+        used_tokens: 300000,
+        limit_tokens: 2500000,
+        unit: "tokens",
       });
       assert.deepEqual(result.codex.secondary_window, {
         used_percent: 30,

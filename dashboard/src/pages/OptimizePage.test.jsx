@@ -65,6 +65,7 @@ describe("OptimizePage", () => {
     await waitFor(() => {
       expect(screen.getByText("No optimize scan has run yet. Run a local scan to populate findings from this machine.")).toBeTruthy();
     });
+    expect(screen.queryByText("$0.00 / mo")).toBeNull();
   });
 
   it("runs a local scan and reloads findings from the page", async () => {

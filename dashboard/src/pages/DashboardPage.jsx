@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useActivityHeatmap } from "../hooks/use-activity-heatmap";
-import { useProjectUsageSummary } from "../hooks/use-project-usage-summary";
 import { useTrendData } from "../hooks/use-trend-data";
 import { useUsageData } from "../hooks/use-usage-data";
 import { useUsageLimits } from "../hooks/use-usage-limits";
 import { useUsageModelBreakdown } from "../hooks/use-usage-model-breakdown";
+import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
 import {
   isAccessTokenReady,
   normalizeAccessToken,
@@ -37,12 +36,14 @@ import {
   getUserStatus,
   triggerLocalSync,
 } from "../lib/api";
-import { getForecastView, getPlanView, getSyncStatus } from "../lib/vibedeck-api";
+import {
+  getAttributionStats,
+  getForecastView,
+  getPlanView,
+  getRecentSessions,
+  getSyncStatus,
+} from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
-import { AsciiBox } from "../ui/foundation/AsciiBox.jsx";
-import { MatrixButton } from "../ui/foundation/MatrixButton.jsx";
-import { ActivityHeatmap } from "../ui/matrix-a/components/ActivityHeatmap.jsx";
-import { ProjectUsagePanel } from "../ui/matrix-a/components/ProjectUsagePanel.jsx";
 import { DashboardView } from "../ui/matrix-a/views/DashboardView.jsx";
 
 const PERIODS = ["day", "week", "month", "total", "custom"];
@@ -74,11 +75,6 @@ function getBillableTotal(row) {
   return row?.billable_total_tokens ?? row?.total_tokens;
 }
 
-function getHeatmapValue(cell) {
-  if (!cell) return null;
-  return cell?.billable_total_tokens ?? cell?.value ?? cell?.total_tokens;
-}
-
 function parseUtcDateKey(yyyyMmDd) {
   if (typeof yyyyMmDd !== "string" || !yyyyMmDd) return null;
   const parts = yyyyMmDd.split("-");
@@ -93,63 +89,6 @@ function parseUtcDateKey(yyyyMmDd) {
 
 function addUtcDays(date, days) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
-}
-
-function parseCounterPayload(value) {
-  if (!value) return null;
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" ? parsed : null;
-    } catch (_err) {
-      return null;
-    }
-  }
-  return typeof value === "object" ? value : null;
-}
-
-function mcpServerName(toolKey) {
-  const parts = String(toolKey || "").split("__");
-  if (parts.length >= 3 && parts[0] === "mcp" && parts[1]) return parts[1];
-  return String(toolKey || "").replace(/^mcp__/, "") || "unknown";
-}
-
-function collectMcpCounters(value, counters, seen = new WeakSet()) {
-  if (!value || typeof value !== "object") return;
-  if (seen.has(value)) return;
-  seen.add(value);
-
-  if (Object.prototype.hasOwnProperty.call(value, "tools_json")) {
-    const tools = parseCounterPayload(value.tools_json);
-    if (tools) {
-      for (const [toolKey, rawCalls] of Object.entries(tools)) {
-        if (!String(toolKey).startsWith("mcp__")) continue;
-        const calls = Number(rawCalls);
-        if (!Number.isFinite(calls) || calls <= 0) continue;
-        const server = mcpServerName(toolKey);
-        counters.set(server, (counters.get(server) || 0) + calls);
-      }
-    }
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) collectMcpCounters(item, counters, seen);
-    return;
-  }
-
-  for (const child of Object.values(value)) {
-    if (child && typeof child === "object") collectMcpCounters(child, counters, seen);
-  }
-}
-
-function buildMcpServerRows(payloads) {
-  const counters = new Map();
-  for (const payload of payloads) {
-    collectMcpCounters(payload, counters);
-  }
-  return Array.from(counters.entries())
-    .map(([server, calls]) => ({ server, calls }))
-    .sort((left, right) => right.calls - left.calls || left.server.localeCompare(right.server));
 }
 
 function readFiniteCounter(row, keys) {
@@ -203,35 +142,10 @@ function hasLowCacheHitHint(rows) {
   return cachedInputTokens / inputTokens < 0.8;
 }
 
-function McpServersPanel({ rows }) {
-  return (
-    <div className="vd-card-solid rounded-xl border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-900">
-      <div className="text-xs font-semibold uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-300">
-        {copy("dashboard.mcp.title")}
-      </div>
-      {rows.length === 0 ? (
-        <p className="mt-3 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("dashboard.mcp.empty")}
-        </p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          {rows.map((row) => (
-            <div
-              key={row.server}
-              className="flex items-center justify-between gap-3 rounded-lg border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 text-sm dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
-            >
-              <span className="min-w-0 truncate font-medium text-oai-black dark:text-white">
-                {row.server}
-              </span>
-              <span className="tabular-nums text-oai-gray-600 dark:text-oai-gray-300">
-                {toDisplayNumber(row.calls)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function isActiveLiveSession(row) {
+  if (!row) return false;
+  if (row.ended_at) return false;
+  return String(row.state || "").trim().toLowerCase() !== "ended";
 }
 
 function isProductionHost(hostname) {
@@ -278,6 +192,10 @@ export function DashboardPage({
   const forceInstall = useMemo(() => isForceInstallEnabled(), []);
   const [isCapturing, setIsCapturing] = useState(false);
   const [syncFreshnessWarning, setSyncFreshnessWarning] = useState(null);
+  const [syncStatusPayload, setSyncStatusPayload] = useState(null);
+  const [attributionStats, setAttributionStats] = useState(null);
+  const [attributionLoading, setAttributionLoading] = useState(false);
+  const [recentSessions, setRecentSessions] = useState([]);
   const [forecastView, setForecastView] = useState(null);
   const [planView, setPlanView] = useState(null);
   const identityScrambleDurationMs = 2200;
@@ -575,32 +493,18 @@ export function DashboardPage({
     tzOffsetMinutes,
   });
 
-  const [projectUsageLimit, setProjectUsageLimit] = useState(3);
-  const {
-    entries: projectUsageEntries,
-    loading: projectUsageLoading,
-    error: projectUsageError,
-    refresh: refreshProjectUsage,
-  } = useProjectUsageSummary({
-    baseUrl,
-    accessToken,
-    limit: 10,
-    sort: "recent",
-    from,
-    to,
-    timeZone,
-    tzOffsetMinutes,
-  });
-
   const refreshSyncStatus = useCallback(async () => {
     if (!isLocalMode) {
       setSyncFreshnessWarning(null);
+      setSyncStatusPayload(null);
       return;
     }
     try {
       const payload = await getSyncStatus();
+      setSyncStatusPayload(payload);
       setSyncFreshnessWarning(getSyncFreshnessWarning(payload));
     } catch (_err) {
+      setSyncStatusPayload(null);
       setSyncFreshnessWarning(null);
     }
   }, [isLocalMode]);
@@ -662,25 +566,52 @@ export function DashboardPage({
   });
 
   const {
-    daily: heatmapDaily,
-    heatmap,
-    loading: heatmapLoading,
-    refresh: refreshHeatmap,
-  } = useActivityHeatmap({
-    baseUrl,
-    accessToken,
-    guestAllowed,
-    weeks: 52,
-    cacheKey,
-    timeZone,
-    tzOffsetMinutes,
-    now: mockNow,
-  });
-
-  const {
     data: usageLimits,
     refresh: refreshUsageLimits,
   } = useUsageLimits();
+  const {
+    sessions: liveSessions,
+    initialLoading: liveSessionsLoading,
+    stale: liveSessionsStale,
+  } = useVibeDeckLiveSessions();
+
+  const refreshAttributionStats = useCallback(async () => {
+    if (!isLocalMode) {
+      setAttributionStats(null);
+      setAttributionLoading(false);
+      return;
+    }
+    setAttributionLoading(true);
+    try {
+      const payload = await getAttributionStats();
+      setAttributionStats(payload && typeof payload === "object" ? payload : null);
+    } catch (_err) {
+      setAttributionStats(null);
+    } finally {
+      setAttributionLoading(false);
+    }
+  }, [isLocalMode]);
+
+  useEffect(() => {
+    refreshAttributionStats();
+  }, [refreshAttributionStats]);
+
+  const refreshRecentSessions = useCallback(async () => {
+    if (!isLocalMode) {
+      setRecentSessions([]);
+      return;
+    }
+    try {
+      const payload = await getRecentSessions({ limit: 5 });
+      setRecentSessions(Array.isArray(payload?.sessions) ? payload.sessions : []);
+    } catch (_err) {
+      setRecentSessions([]);
+    }
+  }, [isLocalMode]);
+
+  useEffect(() => {
+    refreshRecentSessions();
+  }, [refreshRecentSessions]);
 
   const detailsDateKey = useMemo(() => {
     if (period === "day") return "hour";
@@ -840,35 +771,25 @@ export function DashboardPage({
   const activeDays = useMemo(() => {
 
     if (!signedIn && !mockEnabled && !publicMode && !isLocalMode) return 0;
-    const serverActive = Number(heatmap?.active_days);
-    if (Number.isFinite(serverActive)) return serverActive;
-
     let count = 0;
     const seen = new Set();
-    const considerDay = (day, value, level) => {
+    const considerDay = (day, value) => {
       if (typeof day !== "string" || !day) return;
       if (seen.has(day)) return;
-      if (!hasUsageValue(value, level)) return;
+      if (!hasUsageValue(value)) return;
       seen.add(day);
       count += 1;
     };
 
-    if (Array.isArray(heatmapDaily)) {
-      for (const row of heatmapDaily) {
+    for (const sourceRows of [dailyBreakdownDaily, daily]) {
+      if (!Array.isArray(sourceRows)) continue;
+      for (const row of sourceRows) {
         considerDay(row?.day, getBillableTotal(row));
       }
     }
 
-    const weeks = Array.isArray(heatmap?.weeks) ? heatmap.weeks : [];
-    for (const week of weeks) {
-      for (const cell of Array.isArray(week) ? week : []) {
-        const value = getHeatmapValue(cell);
-        considerDay(cell?.day, value, cell?.level);
-      }
-    }
-
     return count;
-  }, [signedIn, mockEnabled, heatmap?.active_days, heatmap?.weeks, heatmapDaily]);
+  }, [signedIn, mockEnabled, publicMode, isLocalMode, dailyBreakdownDaily, daily]);
 
   const [prevPeriod, setPrevPeriod] = useState("month");
   const handlePeriodChange = useCallback((p) => {
@@ -905,20 +826,20 @@ export function DashboardPage({
   const refreshAll = useCallback(async () => {
     await Promise.all([
       refreshUsage(),
-      refreshHeatmap(),
       refreshTrend(),
       refreshModelBreakdown(),
-      refreshProjectUsage(),
       refreshDailyBreakdown(),
       refreshUsageLimits(),
       refreshSyncStatus(),
+      refreshAttributionStats(),
+      refreshRecentSessions(),
     ]);
   }, [
     refreshDailyBreakdown,
-    refreshHeatmap,
     refreshModelBreakdown,
-    refreshProjectUsage,
     refreshSyncStatus,
+    refreshAttributionStats,
+    refreshRecentSessions,
     refreshTrend,
     refreshUsage,
     refreshUsageLimits,
@@ -942,10 +863,8 @@ export function DashboardPage({
     manualSyncLoading ||
     usageLoading ||
     dailyBreakdownLoading ||
-    heatmapLoading ||
     trendLoading ||
-    modelBreakdownLoading ||
-    projectUsageLoading;
+    modelBreakdownLoading;
   const usageSourceLabel = useMemo(
     () =>
       copy("shared.data_source", {
@@ -984,27 +903,16 @@ export function DashboardPage({
       if (!earliest || day < earliest) earliest = day;
     };
 
-    if (Array.isArray(heatmapDaily)) {
-      for (const row of heatmapDaily) {
+    if (Array.isArray(dailyBreakdownDaily)) {
+      for (const row of dailyBreakdownDaily) {
         if (!row?.day) continue;
         if (!hasUsageValue(getBillableTotal(row))) continue;
         considerDay(row.day);
       }
     }
 
-    const weeks = Array.isArray(heatmap?.weeks) ? heatmap.weeks : [];
-    for (const week of weeks) {
-      for (const cell of Array.isArray(week) ? week : []) {
-        if (!cell?.day) continue;
-        const value = getHeatmapValue(cell);
-        const level = cell?.level;
-        if (!hasUsageValue(value, level)) continue;
-        considerDay(cell.day);
-      }
-    }
-
     return earliest;
-  }, [heatmap?.weeks, heatmapDaily]);
+  }, [dailyBreakdownDaily]);
   const identitySubscriptions = useMemo(() => {
     if (publicMode) return [];
     const rows = Array.isArray(userStatus?.subscriptions?.items)
@@ -1038,19 +946,6 @@ export function DashboardPage({
     return normalized.slice(0, 6);
   }, [publicMode, userStatus]);
 
-  const mcpServerRows = useMemo(
-    () => buildMcpServerRows([
-      summary,
-      daily,
-      dailyBreakdownDaily,
-      modelBreakdown,
-      projectUsageEntries,
-      heatmap,
-      heatmapDaily,
-    ]),
-    [daily, dailyBreakdownDaily, heatmap, heatmapDaily, modelBreakdown, projectUsageEntries, summary],
-  );
-
   const showForecastBanner = useMemo(() => {
     const forecast = Number(forecastView?.forecast_30d_usd);
     const monthly = Number(planView?.monthly_usd ?? planView?.monthly_plan_usd);
@@ -1061,28 +956,21 @@ export function DashboardPage({
     [dailyBreakdownDaily],
   );
 
-  const activityHeatmapBlock = (
-    <div className="space-y-4">
-      {showForecastBanner ? (
-        <div className="rounded-md border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200">
-          Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.
-        </div>
-      ) : null}
-      {showReadingPatternHint ? (
-        <div className="rounded-md border border-oai-gray-200 bg-oai-gray-50 px-3 py-2 text-xs text-oai-gray-700 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-oai-gray-200">
-          Reading pattern hint: cache hit below 80%. Repeated reads may be costing extra tokens.
-        </div>
-      ) : null}
-      <ActivityHeatmap
-        heatmap={heatmap}
-        timeZoneLabel={timeZoneLabel}
-        timeZoneShortLabel={timeZoneShortLabel}
-        hideLegend={screenshotMode}
-        defaultToLatestMonth={screenshotMode}
-      />
-      <McpServersPanel rows={mcpServerRows} />
-    </div>
-  );
+  const attentionInsight = useMemo(() => {
+    if (showForecastBanner) {
+      return {
+        title: "Plan pressure",
+        body: "Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.",
+      };
+    }
+    if (showReadingPatternHint) {
+      return {
+        title: "Cache opportunity",
+        body: "Cache hit below 80%. Repeated reads may be costing extra tokens.",
+      };
+    }
+    return null;
+  }, [showForecastBanner, showReadingPatternHint]);
 
   const rangeLabel = useMemo(() => {
     return `${from}..${to}`;
@@ -1194,6 +1082,11 @@ export function DashboardPage({
     const root = document.querySelector("#root") || document.body;
     const docEl = document.documentElement;
     const { scrollWidth, scrollHeight } = document.documentElement;
+    const computedStyle = getComputedStyle(docEl);
+    const captureBackground =
+      computedStyle.getPropertyValue("--oai-white").trim() ||
+      computedStyle.getPropertyValue("--vd-card-bg-solid").trim() ||
+      "#fafafa";
     docEl?.classList.add("screenshot-capture");
     document.body?.classList.add("screenshot-capture");
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -1201,7 +1094,7 @@ export function DashboardPage({
     try {
       const { toBlob, toPng } = await import("html-to-image");
       const blob = await toBlob(root, {
-        backgroundColor: "#050505",
+        backgroundColor: captureBackground,
         pixelRatio: 2,
         cacheBust: true,
         width: scrollWidth,
@@ -1215,7 +1108,7 @@ export function DashboardPage({
       });
       if (blob) return blob;
       const dataUrl = await toPng(root, {
-        backgroundColor: "#050505",
+        backgroundColor: captureBackground,
         pixelRatio: 2,
         cacheBust: true,
         width: scrollWidth,
@@ -1327,6 +1220,45 @@ export function DashboardPage({
   const openCostModal = useCallback(() => setCostModalOpen(true), []);
   const closeCostModal = useCallback(() => setCostModalOpen(false), []);
   const costInfoEnabled = summaryCostValue && summaryCostValue !== "-" && fleetData.length > 0;
+  const activeLiveSessions = useMemo(
+    () => (Array.isArray(liveSessions) ? liveSessions.filter(isActiveLiveSession).length : 0),
+    [liveSessions],
+  );
+  const recentSessionRows = useMemo(() => {
+    const seen = new Set();
+    const rows = [...(Array.isArray(liveSessions) ? liveSessions : []), ...(Array.isArray(recentSessions) ? recentSessions : [])]
+      .filter((row) => {
+        const key = `${String(row?.provider || "")}:${String(row?.session_id || "")}`;
+        if (key === ":") return false;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    return rows
+      .slice()
+      .sort((left, right) => {
+        const leftStamp = String(left?.activity_at || left?.last_observed_at || left?.observed_at || left?.ended_at || left?.started_at || left?.updated_at || "");
+        const rightStamp = String(right?.activity_at || right?.last_observed_at || right?.observed_at || right?.ended_at || right?.started_at || right?.updated_at || "");
+        return rightStamp.localeCompare(leftStamp);
+      })
+      .slice(0, 5);
+  }, [liveSessions, recentSessions]);
+  const hasDashboardUsage = useMemo(() => {
+    const summaryTokens = toFiniteNumber(summaryTotalTokens) || 0;
+    return summaryTokens > 0 ||
+      activeDays > 0 ||
+      recentSessionRows.length > 0 ||
+      activeLiveSessions > 0 ||
+      fleetData.some((entry) => Number(entry?.usage) > 0) ||
+      topModels.length > 0;
+  }, [activeDays, activeLiveSessions, fleetData, recentSessionRows.length, summaryTotalTokens, topModels.length]);
+  const syncFreshnessSource = useMemo(() => {
+    return syncStatusPayload?.last_parse_at
+      || syncStatusPayload?.canonical_db_updated_at
+      || syncStatusPayload?.queue_updated_at
+      || syncStatusPayload?.project_queue_updated_at
+      || null;
+  }, [syncStatusPayload]);
 
   const installInitCmdBase = copy("dashboard.install.cmd.init");
   const resolvedLinkCode = !linkCodeExpired ? linkCode : null;
@@ -1351,7 +1283,7 @@ export function DashboardPage({
     screenshotMode,
     forceInstall,
     accessEnabled,
-    heatmapLoading,
+    heatmapLoading: dailyBreakdownLoading,
     activeDays,
     hasActiveDeviceToken,
   });
@@ -1400,6 +1332,7 @@ export function DashboardPage({
       screenshotMode={screenshotMode}
       showExpiredGate={showExpiredGate}
       showAuthGate={showAuthGate}
+      hasDashboardUsage={hasDashboardUsage}
       screenshotTitleLine1={screenshotTitleLine1}
       screenshotTitleLine2={screenshotTitleLine2}
       identityDisplayName={identityDisplayName}
@@ -1408,11 +1341,7 @@ export function DashboardPage({
       identitySubscriptions={identitySubscriptions}
       identityScrambleDurationMs={identityScrambleDurationMs}
       syncFreshnessWarning={syncFreshnessWarning}
-      projectUsageEntries={projectUsageEntries}
-      projectUsageLimit={projectUsageLimit}
-      setProjectUsageLimit={setProjectUsageLimit}
-      projectUsageLoading={projectUsageLoading}
-      projectUsageError={projectUsageError}
+      syncFreshnessSource={syncFreshnessSource}
       topModels={topModels}
       signedIn={signedIn}
       publicMode={publicMode}
@@ -1431,7 +1360,7 @@ export function DashboardPage({
       trendToForDisplay={trendToForDisplay}
       period={period}
       trendTimeZoneLabel={trendTimeZoneLabel}
-      activityHeatmapBlock={activityHeatmapBlock}
+      attentionInsight={attentionInsight}
       isCapturing={isCapturing}
       handleShareToX={handleShareToX}
       screenshotTwitterLabel={screenshotTwitterLabel}
@@ -1450,6 +1379,12 @@ export function DashboardPage({
       summaryTotalTokensRaw={toFiniteNumber(summaryTotalTokens) || 0}
       summaryCostValue={summaryCostValue}
       summaryConversationsValue={summaryConversationsValue}
+      activeLiveSessions={activeLiveSessions}
+      liveSessionsLoading={liveSessionsLoading}
+      liveSessionsStale={liveSessionsStale}
+      recentSessionRows={recentSessionRows}
+      attributionStats={attributionStats}
+      attributionLoading={attributionLoading}
       rollingUsage={rolling}
       costInfoEnabled={costInfoEnabled}
       openCostModal={openCostModal}

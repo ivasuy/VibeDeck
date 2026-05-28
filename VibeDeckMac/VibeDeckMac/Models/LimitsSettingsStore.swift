@@ -7,7 +7,20 @@ final class LimitsSettingsStore: ObservableObject {
     static let shared = LimitsSettingsStore()
 
     /// All known provider identifiers, in default display order.
-    static let allProviders: [String] = ["claude", "codex", "cursor", "gemini", "kimi", "kiro", "copilot", "antigravity"]
+    static let allProviders: [String] = [
+        "claude",
+        "codex",
+        "cursor",
+        "gemini",
+        "kimi",
+        "kiro",
+        "copilot",
+        "antigravity",
+        "factoryai",
+        "hermes",
+        "openclaw",
+        "opencode",
+    ]
 
     static let displayNames: [String: String] = [
         "claude": "Claude",
@@ -18,6 +31,10 @@ final class LimitsSettingsStore: ObservableObject {
         "kiro": "Kiro",
         "copilot": "GitHub Copilot",
         "antigravity": "Antigravity",
+        "factoryai": "Factory AI",
+        "hermes": "Hermes",
+        "openclaw": "OpenClaw",
+        "opencode": "OpenCode",
     ]
 
     static let iconNames: [String: String] = [
@@ -29,6 +46,10 @@ final class LimitsSettingsStore: ObservableObject {
         "kiro": "KiroLogo",
         "copilot": "CopilotLogo",
         "antigravity": "AntigravityLogo",
+        "factoryai": "FactoryAIDroidLogo",
+        "hermes": "HermesLogo",
+        "openclaw": "OpenClawLogo",
+        "opencode": "OpenCodeLogo",
     ]
 
     // MARK: - Published state

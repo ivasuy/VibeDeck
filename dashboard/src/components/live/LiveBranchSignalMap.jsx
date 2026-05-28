@@ -91,14 +91,14 @@ export function LiveBranchSignalMap({ sessions = [] }) {
             <div className="h-full shrink-0 bg-amber-500" style={{ flexBasis: `${model.unroutedPct}%` }} aria-hidden />
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="vd-card-solid rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+            <div className="vd-card-solid rounded-md px-2.5 py-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
                 <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 Routed
               </div>
               <div className="mt-1 text-sm font-semibold tabular-nums text-oai-black dark:text-white">{model.routedCount}</div>
             </div>
-            <div className="vd-card-solid rounded-md bg-white/70 px-2.5 py-2 dark:bg-oai-gray-950/40">
+            <div className="vd-card-solid rounded-md px-2.5 py-2">
               <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
                 <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
                 Unrouted
@@ -112,11 +112,11 @@ export function LiveBranchSignalMap({ sessions = [] }) {
           <div
             className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
             style={{
-              background: `conic-gradient(rgb(99 102 241) ${model.routePct}%, rgba(255,255,255,0.08) 0)`,
+              background: `conic-gradient(var(--brand-500) ${model.routePct}%, var(--vd-border) 0)`,
             }}
             aria-hidden
           >
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-white text-xs font-semibold tabular-nums text-oai-black dark:bg-oai-gray-950 dark:text-white">
+            <div className="grid h-11 w-11 place-items-center rounded-full bg-[var(--vd-card-bg-solid)] text-xs font-semibold tabular-nums text-oai-black dark:text-white">
               {model.routePct}%
             </div>
           </div>

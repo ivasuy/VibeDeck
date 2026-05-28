@@ -1,8 +1,8 @@
 import WidgetKit
 import SwiftUI
 
-// Provider used by widgets that don't expose user configuration (Heatmap,
-// Limits, Clawd). Same on-disk snapshot, no AppIntent.
+// Provider used by widgets that don't expose user configuration. Same on-disk
+// snapshot, no AppIntent.
 
 struct StaticEntry: TimelineEntry {
     let date: Date
@@ -24,7 +24,7 @@ struct StaticSnapshotProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<StaticEntry>) -> Void) {
         let snap = WidgetSnapshotStore.read() ?? .empty
         let entry = StaticEntry(date: Date(), snapshot: snap)
-        let next = Date().addingTimeInterval(15 * 60)
+        let next = Date().addingTimeInterval(5 * 60)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 }

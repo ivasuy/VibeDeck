@@ -1608,8 +1608,6 @@ function clearCanonicalVibedeckTables(dbPath) {
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
         DELETE FROM vibedeck_sessions;
-        -- DELETE FROM vibedeck_entire_checkpoint_matches;
-        -- DELETE FROM vibedeck_session_entire_links;
       `);
       db.exec('COMMIT');
     } catch (err) {

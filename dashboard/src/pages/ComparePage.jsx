@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Card } from "../ui/openai/components";
-import { PageFrame } from "../components/PageFrame.jsx";
+import { EmptyState, KpiCard, PageShell, SkeletonKpiGrid, SkeletonRows, Surface } from "../components/RevampSurfaces.jsx";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
 import { getCompareMetrics } from "../lib/api";
 
@@ -39,8 +38,11 @@ export function ComparePage() {
       .then((nextPayload) => {
         if (active) setPayload(nextPayload || {});
       })
-      .catch((err) => {
-        if (active) setError(err?.message || "Failed to load compare metrics");
+      .catch(() => {
+        if (active) {
+          setPayload(null);
+          setError("Unable to load compare metrics.");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -56,48 +58,64 @@ export function ComparePage() {
   const empty = !loading && !error && !hasData;
 
   return (
-    <PageFrame
-      title="Compare"
-      subtitle="Model and workflow efficiency across the selected window"
-      maxWidth="max-w-7xl"
-    >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {METRICS.map(([label, key, kind]) => (
-          <Card key={key} title={label}>
-            <div className="text-2xl font-semibold tabular-nums text-oai-black dark:text-white">
-              {metricValue(metrics[key], kind)}
-            </div>
-          </Card>
-        ))}
-      </div>
+    <PageShell title="Compare" subtitle="Model and workflow efficiency across the selected window.">
+      {loading ? (
+        <>
+          <span className="sr-only">Loading parity data...</span>
+          <SkeletonKpiGrid count={3} />
+        </>
+      ) : error ? (
+        <EmptyState
+          title={error}
+          body="Check that the local VibeDeck server is running, then refresh."
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {METRICS.map(([label, key, kind], index) => (
+          <KpiCard
+            key={key}
+            label={label}
+            value={metricValue(metrics[key], kind)}
+            detail={index < 3 ? "workflow signal" : "cost signal"}
+            accent={index === 0}
+          />
+          ))}
+        </div>
+      )}
 
-      <Card className="mt-5" title="Totals">
-        {loading ? <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">Loading parity data...</p> : null}
-        {error ? <p className="text-sm text-red-700 dark:text-red-300">{error}</p> : null}
-        {empty ? <p className="text-sm text-oai-gray-500 dark:text-oai-gray-400">No data for this window yet.</p> : null}
-        {!loading && !error && hasData ? (
-          <div className="grid gap-3 text-sm text-oai-gray-600 dark:text-oai-gray-300 sm:grid-cols-3">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-oai-gray-500">Tokens</div>
-              <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
-                {toDisplayNumber(totals.total_tokens)}
+      <div className="mt-5">
+        <Surface>
+          <h2 className="text-label uppercase text-oai-gray-500 dark:text-oai-gray-400">Totals</h2>
+          {loading ? <SkeletonRows rows={3} className="mt-3" /> : null}
+          {empty ? (
+            <div className="mt-3">
+              <EmptyState title="No data for this window yet." body="Try a wider range, or check back after more sessions." />
+            </div>
+          ) : null}
+          {!loading && !error && hasData ? (
+            <div className="mt-4 grid gap-3 text-sm text-oai-gray-600 dark:text-oai-gray-300 sm:grid-cols-3">
+              <div>
+                <div className="text-label uppercase text-oai-gray-500">Tokens</div>
+                <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
+                  {toDisplayNumber(totals.total_tokens)}
+                </div>
+              </div>
+              <div>
+                <div className="text-label uppercase text-oai-gray-500">Cost</div>
+                <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
+                  {formatUsdCurrency(totals.total_cost_usd, { decimals: 4 })}
+                </div>
+              </div>
+              <div>
+                <div className="text-label uppercase text-oai-gray-500">Sessions</div>
+                <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
+                  {toDisplayNumber(totals.session_count)}
+                </div>
               </div>
             </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-oai-gray-500">Cost</div>
-              <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
-                {formatUsdCurrency(totals.total_cost_usd, { decimals: 4 })}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-oai-gray-500">Sessions</div>
-              <div className="mt-1 font-semibold tabular-nums text-oai-black dark:text-white">
-                {toDisplayNumber(totals.session_count)}
-              </div>
-            </div>
-          </div>
-        ) : null}
-      </Card>
-    </PageFrame>
+          ) : null}
+        </Surface>
+      </div>
+    </PageShell>
   );
 }

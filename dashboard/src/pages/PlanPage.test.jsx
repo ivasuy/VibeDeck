@@ -73,4 +73,22 @@ describe("PlanPage", () => {
     expect(screen.getByText("Budget percentage unavailable until a monthly plan amount is configured.")).toBeTruthy();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
+
+  it("marks forecast as locked until seven active days are available", async () => {
+    api.getPlanView.mockResolvedValue({
+      ok: true,
+      plan: "claude-pro",
+      monthly_usd: 20,
+      month_to_date_api_equivalent_usd: "4.20",
+      usage_percent: "21.00",
+      active_days: 3,
+      label: "Plan usage",
+      label_detail: "Plan usage",
+    });
+
+    render(<PlanPage />);
+
+    expect(await screen.findAllByText("Forecast unlocks after 7 days of usage.")).toHaveLength(2);
+    expect(screen.getByText("VibeDeck has 3 active days so far. Current spend stays visible, while projected bars are marked as forecast data.")).toBeTruthy();
+  });
 });

@@ -78,14 +78,14 @@ export function ThemeToggle({ theme, resolvedTheme, onSetTheme, className = "", 
         aria-label="Theme"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-center w-9 h-9 rounded-lg text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-100 dark:hover:bg-oai-gray-800 hover:text-oai-black dark:hover:text-white transition-colors"
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-oai-gray-600 transition-colors hover:bg-[var(--vd-tint)] hover:text-oai-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] dark:text-oai-gray-400 dark:hover:text-white"
       >
         <ActiveIcon />
       </button>
 
       {open && (
         <div
-          className={`absolute z-50 min-w-[140px] py-1 rounded-lg border border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-oai-gray-900 shadow-lg ${
+          className={`vd-popover absolute z-50 min-w-[140px] rounded-lg border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] py-1 shadow-[var(--vd-shadow)] ${
             direction === "up" ? "bottom-full mb-1" : "top-full mt-1"
           } ${align === "left" ? "left-0" : "right-0"}`}
         >
@@ -98,8 +98,8 @@ export function ThemeToggle({ theme, resolvedTheme, onSetTheme, className = "", 
                 onClick={() => { onSetTheme(value); close(); }}
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
                   active
-                    ? "text-oai-black dark:text-white bg-oai-gray-100 dark:bg-oai-gray-800"
-                    : "text-oai-gray-600 dark:text-oai-gray-400 hover:bg-oai-gray-50 dark:hover:bg-oai-gray-800/60 hover:text-oai-black dark:hover:text-white"
+                    ? "bg-[var(--vd-tint)] text-oai-black dark:text-white"
+                    : "text-oai-gray-600 hover:bg-[var(--vd-tint)] hover:text-oai-black dark:text-oai-gray-400 dark:hover:text-white"
                 }`}
               >
                 <Icon />

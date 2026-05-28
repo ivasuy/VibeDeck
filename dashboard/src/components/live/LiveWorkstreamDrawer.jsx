@@ -224,7 +224,7 @@ function BreakdownCard({ title, rows, labelKey, iconForRow }) {
           return (
             <div
               key={`${title}:${label}:${index}`}
-              className="vd-card-solid grid gap-3 rounded-md border border-oai-gray-200 bg-white px-3 py-2.5 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40 lg:grid-cols-[minmax(150px,1fr)_repeat(5,minmax(84px,auto))]"
+              className="vd-card-solid grid gap-3 rounded-md border border-[var(--vd-border)] px-3 py-2.5 text-xs lg:grid-cols-[minmax(150px,1fr)_repeat(5,minmax(84px,auto))]"
             >
               <div className="flex min-w-0 items-center gap-2">
                 {iconForRow ? iconForRow(row) : null}
@@ -315,7 +315,7 @@ function AgentGroupCard({ group }) {
           {models.map((modelEntry, index) => (
             <div
               key={`${String(modelEntry?.provider || group?.provider || "unknown")}:${String(modelEntry?.model || index)}`}
-              className="rounded-md border border-oai-gray-200 bg-white px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+              className="vd-card-solid rounded-md border border-[var(--vd-border)] px-3 py-2 text-xs"
             >
               <div className="flex min-w-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -337,7 +337,7 @@ function AgentGroupCard({ group }) {
           {members.map((member, index) => (
             <div
               key={`${String(member?.provider || group?.provider || "unknown")}:${String(member?.session_id || index)}`}
-              className="grid gap-2 rounded-md border border-oai-gray-200 bg-white px-3 py-2 text-xs dark:border-oai-gray-800 dark:bg-oai-gray-950/40 sm:grid-cols-[minmax(0,1fr)_auto_auto]"
+              className="vd-card-solid grid gap-2 rounded-md border border-[var(--vd-border)] px-3 py-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto_auto]"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <ProviderIcon provider={member?.provider || group?.provider} size={14} className="shrink-0" />
@@ -373,7 +373,7 @@ function SessionRow({ session, workstream, primary = false, selected = false, on
         "sm:grid-cols-[minmax(130px,0.7fr)_minmax(0,1.1fr)_minmax(90px,0.45fr)_minmax(90px,0.45fr)]",
         selected
           ? "border-oai-brand/50 bg-oai-brand/5 dark:border-oai-brand/40 dark:bg-oai-brand/10"
-          : "border-oai-gray-200 bg-white hover:bg-oai-gray-50 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:hover:bg-white/[0.05]",
+          : "border-[var(--vd-border)] bg-[var(--vd-card-bg-solid)] hover:bg-[var(--vd-tint)]",
       )}
     >
       <div className="flex min-w-0 items-center gap-2">
@@ -463,7 +463,7 @@ export function LiveWorkstreamDrawer({ workstream = null, selectedKey = null, on
       onClose={onClose}
       side="right"
       width="w-full max-w-5xl"
-      className="vd-drawer border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
+      className="vd-drawer border-l border-[var(--vd-border-strong)]"
     >
       {workstream && <div
         role="dialog"

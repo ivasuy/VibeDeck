@@ -7,9 +7,11 @@ enum WidgetStrings {
     static var sevenDays: String { "7 DAYS" }
     static var thirtyDays: String { "30 DAYS" }
     static var vsYesterday: String { "vs. yesterday" }
+    static var noUsageData: String { "No usage yet" }
 
     static var heatmapName: String { "VibeDeck Heatmap" }
     static var heatmapDescription: String { "GitHub-style daily activity calendar." }
+    static var noActivityData: String { "No activity yet" }
     static func streak(_ days: Int) -> String { "\(days)d streak" }
     static func tokensActiveDays(activeDays: Int) -> String {
         "tokens - \(activeDays) active days"

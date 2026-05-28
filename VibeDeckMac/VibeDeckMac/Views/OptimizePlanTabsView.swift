@@ -1,6 +1,207 @@
 import SwiftUI
 import AppKit
 
+enum NativeOptimizePlanTab: String, CaseIterable, Identifiable {
+    case optimize
+    case plan
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .optimize: return "Optimize"
+        case .plan: return "Plan"
+        }
+    }
+}
+
+struct OptimizePlanTabsView: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    @State private var selected: NativeOptimizePlanTab
+
+    init(viewModel: DashboardViewModel, initialTab: NativeOptimizePlanTab = .optimize) {
+        self.viewModel = viewModel
+        _selected = State(initialValue: initialTab)
+    }
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(title: "Intelligence") {
+                    Picker("", selection: $selected) {
+                        ForEach(NativeOptimizePlanTab.allCases) { tab in
+                            Text(tab.title).tag(tab)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 220)
+                }
+
+                if let parityError = viewModel.parityError, !parityError.isEmpty {
+                    NativeParityWarning(message: parityError)
+                }
+
+                Group {
+                    switch selected {
+                    case .optimize:
+                        optimizeContent
+                    case .plan:
+                        planContent
+                    }
+                }
+                .animation(NativeMotion.Ease.short(), value: selected.rawValue)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color.chromeTop, Color.chromeBottom],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var optimizeContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NativeOptimizeHero(response: viewModel.optimizeFindings)
+            OptimizeTab(response: viewModel.optimizeFindings)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.panelBorder, lineWidth: 0.5)
+                        )
+                )
+        }
+    }
+
+    private var planContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let forecast = viewModel.forecastView {
+                ForecastCard(forecast: forecast)
+            }
+            PlanTab(response: viewModel.planView)
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.panelBorder, lineWidth: 0.5)
+                        )
+                )
+        }
+    }
+}
+
+private struct NativeOptimizeHero: View {
+    let response: OptimizeFindingsResponse?
+
+    private var totalWaste: Double {
+        response?.findings.reduce(0) { $0 + $1.estimatedCostWasteUsd } ?? 0
+    }
+
+    private var highCount: Int {
+        response?.findings.filter { $0.severity.lowercased() == "high" }.count ?? 0
+    }
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 18) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(totalWaste > 0 ? "Potential savings" : "Nothing to optimize yet")
+                    .font(.caption)
+                    .modifier(FontWeightModifier(weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.76))
+                    .textCase(.uppercase)
+                    .modifier(TrackingModifier(value: 0.7))
+
+                Text(totalWaste > 0 ? formatWasteCost(totalWaste) : "Running tight")
+                    .font(.system(size: 44, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+
+                Text(totalWaste > 0 ? "\(response?.findings.count ?? 0) findings · \(highCount) high impact" : "Savings will appear after the scanner sees a real pattern.")
+                    .font(.callout)
+                    .foregroundStyle(Color.white.opacity(0.82))
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 7) {
+                NativeHeroSideStat(label: "Grade", value: response?.health?.healthGrade ?? "-")
+                NativeHeroSideStat(label: "Score", value: "\(response?.health?.score ?? 0)")
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(
+                colors: [Color.brand700, Color.brand600],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct NativeHeroSideStat: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(Color.white.opacity(0.62))
+            Text(value)
+                .font(.headline)
+                .modifier(FontWeightModifier(weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.12))
+        )
+    }
+}
+
+private struct NativeParityWarning: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(Color.statusWarning)
+                .accessibilityHidden(true)
+            Text("Some intelligence data is stale.")
+                .font(.caption)
+                .modifier(FontWeightModifier(weight: .semibold))
+            Spacer(minLength: 8)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.brand.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.brand.opacity(0.18), lineWidth: 0.5)
+                )
+        )
+        .help(message)
+    }
+}
+
 struct OptimizeTab: View {
     let response: OptimizeFindingsResponse?
 

@@ -156,7 +156,7 @@ function AgentGroupCard({ group }) {
   const members = Array.isArray(group?.members) ? group.members.slice(0, 4) : [];
 
   return (
-    <article className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40">
+    <article className="vd-card-solid rounded-md border border-[var(--vd-border)] p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -276,7 +276,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
       onClose={onClose}
       side="right"
       width="w-full max-w-5xl"
-      className="vd-drawer border-l border-oai-gray-200 dark:border-oai-gray-800 bg-white dark:bg-[#0f0f14] shadow-oai-lg"
+      className="vd-drawer border-l border-[var(--vd-border-strong)]"
     >
       <div
         role="dialog"
@@ -321,7 +321,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                 aria-label="Session date"
                 value={selectedDate}
                 onChange={(event) => onSelectDate?.(event.target.value)}
-                className="vd-control h-10 w-full max-w-xs rounded-md border border-oai-gray-300 bg-white px-3 text-sm text-oai-black focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-white"
+                className="vd-control h-10 w-full max-w-xs rounded-md border border-[var(--vd-border-strong)] px-3 text-sm text-oai-black focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 dark:text-white"
               >
                 {dateBuckets.map((bucket) => (
                   <option key={String(bucket?.date || "")} value={String(bucket?.date || "")}>
@@ -343,7 +343,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                 {models.map((modelEntry) => (
                   <div
                     key={String(modelEntry?.model || "unknown")}
-                    className="vd-card-solid min-w-0 rounded-md border border-oai-gray-200 bg-white px-3 py-2.5 dark:border-oai-gray-700 dark:bg-oai-gray-900"
+                    className="vd-card-solid min-w-0 rounded-md border border-[var(--vd-border)] px-3 py-2.5"
                   >
                     <div className="max-w-[220px] truncate text-xs font-medium text-oai-black dark:text-white">
                       {String(modelEntry?.model || "—")}
@@ -406,7 +406,7 @@ export function BranchSessionDrawer({ row = null, loading = false, error = "", o
                 {visibleSessions.map((session, index) => (
                   <article
                     key={`${String(session?.provider || "unknown")}:${String(session?.session_id || index)}`}
-                    className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+                    className="vd-card-solid rounded-md border border-[var(--vd-border)] p-4"
                   >
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
@@ -488,7 +488,7 @@ function SessionDrawerSkeleton() {
       {[0, 1, 2].map((index) => (
         <div
           key={index}
-          className="vd-card-solid rounded-md border border-oai-gray-200 bg-white p-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+          className="vd-card-solid rounded-md border border-[var(--vd-border)] p-4"
         >
           <div className="flex items-center justify-between gap-4">
             <div className="space-y-2">

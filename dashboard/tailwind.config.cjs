@@ -36,7 +36,7 @@ module.exports = {
           {
             lineHeight: "1",
             fontWeight: "700",
-            letterSpacing: "-0.03em",
+            letterSpacing: "0",
           },
         ],
         "display-sm": [
@@ -44,7 +44,7 @@ module.exports = {
           {
             lineHeight: "1.05",
             fontWeight: "700",
-            letterSpacing: "-0.02em",
+            letterSpacing: "0",
           },
         ],
         hero: [
@@ -52,7 +52,7 @@ module.exports = {
           {
             lineHeight: "1.1",
             fontWeight: "600",
-            letterSpacing: "-0.02em",
+            letterSpacing: "0",
           },
         ],
         h1: [
@@ -60,7 +60,7 @@ module.exports = {
           {
             lineHeight: "1.2",
             fontWeight: "600",
-            letterSpacing: "-0.02em",
+            letterSpacing: "0",
           },
         ],
         h2: [
@@ -68,7 +68,7 @@ module.exports = {
           {
             lineHeight: "1.25",
             fontWeight: "600",
-            letterSpacing: "-0.01em",
+            letterSpacing: "0",
           },
         ],
         h3: [
@@ -76,7 +76,7 @@ module.exports = {
           {
             lineHeight: "1.3",
             fontWeight: "600",
-            letterSpacing: "-0.01em",
+            letterSpacing: "0",
           },
         ],
         h4: [

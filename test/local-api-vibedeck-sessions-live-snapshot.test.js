@@ -175,6 +175,61 @@ test("GET /functions/vibedeck-sessions-live-snapshot excludes ended sessions out
   await fs.rm(root, { recursive: true, force: true });
 });
 
+test("GET /functions/vibedeck-recent-sessions returns exact recent canonical rows", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "vd-recent-sessions-"));
+  const trackerDir = path.join(root, ".vibedeck", "tracker");
+  const queuePath = path.join(trackerDir, "queue.jsonl");
+  const dbPath = path.join(trackerDir, "vibedeck.sqlite3");
+  await fs.mkdir(trackerDir, { recursive: true });
+  await fs.writeFile(queuePath, "", "utf8");
+  ensureSchema(dbPath);
+
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    INSERT INTO vibedeck_sessions (
+      provider, session_id, started_at, ended_at, end_reason,
+      cwd, repo_root, repo_common_dir, parent_repo,
+      branch, branch_resolution_tier, confidence, override_user,
+      tools_sequence_json,
+      model, total_tokens, total_cost_usd, last_observed_at,
+      created_at, updated_at
+    ) VALUES
+    ('codex', 'older-session', '2026-05-21T09:00:00.000Z', '2026-05-21T09:10:00.000Z', 'complete',
+     '/tmp/older', '/tmp/older', NULL, NULL,
+     'main', 'A', 'high', '{"internal":true}',
+     '["Read"]',
+     'gpt-5.5', 800, 0.12, '2026-05-21T09:10:00.000Z',
+     '2026-05-21T09:00:00.000Z', '2026-05-21T09:10:00.000Z'),
+    ('claude', 'newer-session', '2026-05-22T09:00:00.000Z', '2026-05-22T09:20:00.000Z', 'complete',
+     '/tmp/newer', '/tmp/newer', NULL, NULL,
+     'feature/revamp', 'A', 'high', '{"internal":true}',
+     '["Read","Edit"]',
+     'claude-sonnet-4', 1200, 0.34, '2026-05-22T09:20:00.000Z',
+     '2026-05-22T09:00:00.000Z', '2026-05-22T09:20:00.000Z');
+  `);
+  db.close();
+
+  const { createLocalApiHandler } = require("../src/lib/local-api");
+  const handler = createLocalApiHandler({ queuePath });
+  const req = createRequest({ method: "GET" });
+  const res = createResponse();
+  const handled = await handler(req, res, new URL("http://127.0.0.1/functions/vibedeck-recent-sessions?limit=1"));
+
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200);
+  const payload = parseResponseJson(res);
+  assert.equal(Array.isArray(payload.sessions), true);
+  assert.equal(payload.sessions.length, 1);
+  assert.equal(payload.sessions[0].session_id, "newer-session");
+  assert.equal(payload.sessions[0].provider, "claude");
+  assert.equal(payload.sessions[0].branch, "feature/revamp");
+  assert.equal(payload.sessions[0].activity_at, "2026-05-22T09:20:00.000Z");
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.sessions[0], "override_user"), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(payload.sessions[0], "tools_sequence_json"), false);
+
+  await fs.rm(root, { recursive: true, force: true });
+});
+
 test("GET /functions/vibedeck-sessions-live-snapshot reaps old open rows using last_observed_at", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "vd-live-snapshot-reap-"));
   const trackerDir = path.join(root, ".vibedeck", "tracker");

@@ -1,16 +1,14 @@
 import AppKit
 
-/// Clawd-style pixel art character for the menu bar icon.
-/// Uses exact coordinates from clawd-static-base.svg (15×16 grid),
-/// scaled at 1.2pt per SVG unit to fill 18×18pt canvas.
-///
-/// Body parts drawn as filled rects, eyes cut out as transparent holes
-/// so the menu bar background peeks through (works for template images).
+/// Three-plane menu bar mark with subtle state frames.
+/// The popover can use Clawd, but the always-visible status item stays on the
+/// monochrome product mark so it tints cleanly with macOS menu bar colors.
 @MainActor
 final class MenuBarAnimator {
 
     enum State: Equatable {
         case idle
+        case active
         case syncing
         case disconnected
     }
@@ -30,14 +28,6 @@ final class MenuBarAnimator {
     /// Static fallback icon (original lightning bolt)
     private let fallbackIcon: NSImage
 
-    // SVG → canvas transform:
-    // scale 1.4pt per SVG unit, character top at SVG y=6
-    // canvas: 22x22 (matches menu bar height)
-    // x offset: (22 - 15*1.4)/2 = 0.5, y offset: (22 - 9*1.4)/2 = 4.7
-    private let px: CGFloat = 1.54
-    private let svgYBase: CGFloat = 6
-    private let offsetX: CGFloat = -0.1
-    private let offsetY: CGFloat = 4.07
     private let canvasSize = NSSize(width: 22, height: 22)
 
     // Pre-rendered frames
@@ -45,8 +35,9 @@ final class MenuBarAnimator {
     var currentImage: NSImage { renderedImage }
     var onImageUpdated: ((NSImage) -> Void)?
 
-    private lazy var idleFrame = buildFrame(eyesClosed: false, yShift: 0)
-    private lazy var blinkFrame = buildFrame(eyesClosed: true, yShift: 0)
+    private lazy var idleFrame = buildMarkFrame(alpha: 1.0)
+    private lazy var blinkFrame = buildMarkFrame(alpha: 0.6)
+    private lazy var reducedMotionActiveFrame = buildMarkFrame(alpha: 1.0, drawStatusDot: true)
     private lazy var syncFrames = buildSyncFrames()
     private lazy var disconnectedFrame = buildDisconnectedFrame()
 
@@ -89,16 +80,24 @@ final class MenuBarAnimator {
         }
 
         if reduceMotion {
-            setButtonImage(idleFrame)
+            switch currentState {
+            case .active, .syncing:
+                setButtonImage(reducedMotionActiveFrame)
+            case .disconnected:
+                setButtonImage(disconnectedFrame)
+            case .idle:
+                setButtonImage(idleFrame)
+            }
             return
         }
 
         switch currentState {
         case .idle:
             setButtonImage(idleFrame)
-            scheduleNextBlink()
+        case .active:
+            startAnimation(interval: 0.4)
         case .syncing:
-            startAnimation(interval: 0.15)
+            startAnimation(interval: 0.4)
         case .disconnected:
             setButtonImage(disconnectedFrame)
         }
@@ -119,7 +118,7 @@ final class MenuBarAnimator {
     }
 
     private func tick() {
-        guard currentState == .syncing, !syncFrames.isEmpty else { return }
+        guard (currentState == .syncing || currentState == .active), !syncFrames.isEmpty else { return }
         setButtonImage(syncFrames[frameIndex % syncFrames.count])
         frameIndex += 1
     }
@@ -154,95 +153,76 @@ final class MenuBarAnimator {
 
     // MARK: - Sync Frames
 
-    /// Bounce animation: character hops up 1pt every other frame, with a blink mid-cycle.
+    /// Opacity pulse: 1.6s full cycle, matching the DESIGN.md menubar pulse.
     private func buildSyncFrames() -> [NSImage] {
         [
-            buildFrame(eyesClosed: false, yShift: 0),
-            buildFrame(eyesClosed: false, yShift: -1),
-            buildFrame(eyesClosed: false, yShift: 0),
-            buildFrame(eyesClosed: false, yShift: -1),
-            buildFrame(eyesClosed: true,  yShift: 0),
-            buildFrame(eyesClosed: true,  yShift: -1),
-            buildFrame(eyesClosed: false, yShift: 0),
-            buildFrame(eyesClosed: false, yShift: -1),
+            buildMarkFrame(alpha: 1.0),
+            buildMarkFrame(alpha: 0.8),
+            buildMarkFrame(alpha: 0.6),
+            buildMarkFrame(alpha: 0.8),
         ]
     }
 
-    // MARK: - Disconnected Frame (dimmed character with ?)
+    // MARK: - Disconnected Frame
 
     private func buildDisconnectedFrame() -> NSImage {
+        buildMarkFrame(alpha: 0.45, drawSlash: true)
+    }
+
+    // MARK: - Frame Drawing
+
+    private func buildMarkFrame(alpha: CGFloat, drawSlash: Bool = false, drawStatusDot: Bool = false) -> NSImage {
         let img = NSImage(size: canvasSize, flipped: true) { [self] _ in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
 
-            NSColor.black.withAlphaComponent(0.5).setFill()
+            drawPlane(points: [
+                CGPoint(x: 3.0, y: 8.2),
+                CGPoint(x: 13.6, y: 8.2),
+                CGPoint(x: 17.3, y: 5.6),
+                CGPoint(x: 6.7, y: 5.6),
+            ], alpha: alpha * 0.55)
+            drawPlane(points: [
+                CGPoint(x: 3.0, y: 11.0),
+                CGPoint(x: 13.6, y: 11.0),
+                CGPoint(x: 17.3, y: 8.2),
+                CGPoint(x: 6.7, y: 8.2),
+            ], alpha: alpha * 0.78)
+            drawPlane(points: [
+                CGPoint(x: 3.0, y: 13.8),
+                CGPoint(x: 13.6, y: 13.8),
+                CGPoint(x: 17.3, y: 11.0),
+                CGPoint(x: 6.7, y: 11.0),
+            ], alpha: alpha)
 
-            svgRect(2, 6, 11, 7).fill()     // torso
-            svgRect(0, 9, 2, 2).fill()      // left arm
-            svgRect(13, 9, 2, 2).fill()     // right arm
-            svgRect(3, 13, 1, 2).fill()
-            svgRect(5, 13, 1, 2).fill()
-            svgRect(9, 13, 1, 2).fill()
-            svgRect(11, 13, 1, 2).fill()
+            if drawSlash {
+                ctx.setLineWidth(1.8)
+                ctx.setLineCap(.round)
+                NSColor.black.withAlphaComponent(0.68).setStroke()
+                ctx.move(to: CGPoint(x: 5.0, y: 16.0))
+                ctx.addLine(to: CGPoint(x: 17.0, y: 4.0))
+                ctx.strokePath()
+            }
 
-            // "?" mark above head
-            let font = NSFont.systemFont(ofSize: 7, weight: .bold)
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: NSColor.black.withAlphaComponent(0.7),
-            ]
-            let str = NSAttributedString(string: "?", attributes: attrs)
-            let strSize = str.size()
-            let qx = (canvasSize.width - strSize.width) / 2
-            str.draw(at: NSPoint(x: qx, y: 0))
-
-            return true
-        }
-        img.isTemplate = true
-        return img
-    }
-
-    // MARK: - Frame Drawing (exact SVG geometry)
-
-    /// Convert SVG coordinates to canvas rect
-    private func svgRect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
-        NSRect(
-            x: x * px + offsetX,
-            y: (y - svgYBase) * px + offsetY,
-            width: w * px,
-            height: h * px
-        )
-    }
-
-    private func buildFrame(eyesClosed: Bool, yShift: CGFloat) -> NSImage {
-        let img = NSImage(size: canvasSize, flipped: true) { [self] _ in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-
-            // Vertical shift for bounce animation
-            if yShift != 0 { ctx.translateBy(x: 0, y: yShift) }
-
-            // --- Draw body (all parts from clawd-static-base.svg) ---
-            NSColor.black.setFill()
-
-            svgRect(2, 6, 11, 7).fill()     // torso
-            svgRect(0, 9, 2, 2).fill()      // left arm
-            svgRect(13, 9, 2, 2).fill()     // right arm
-            svgRect(3, 13, 1, 2).fill()     // outer-left-leg
-            svgRect(5, 13, 1, 2).fill()     // inner-left-leg
-            svgRect(9, 13, 1, 2).fill()     // inner-right-leg
-            svgRect(11, 13, 1, 2).fill()    // outer-right-leg
-
-            // --- Cut out eyes (transparent holes) unless blinking ---
-            if !eyesClosed {
-                ctx.setBlendMode(.clear)
-                NSColor.clear.setFill()
-                svgRect(4, 8, 1, 2).fill()  // left eye
-                svgRect(10, 8, 1, 2).fill() // right eye
+            if drawStatusDot {
+                let dot = CGRect(x: 15.2, y: 3.2, width: 3.8, height: 3.8)
+                NSColor.black.withAlphaComponent(0.9).setFill()
+                ctx.fillEllipse(in: dot)
             }
 
             return true
         }
         img.isTemplate = true
         return img
+    }
+
+    private func drawPlane(points: [CGPoint], alpha: CGFloat) {
+        guard let first = points.first else { return }
+        let path = NSBezierPath()
+        path.move(to: first)
+        points.dropFirst().forEach { path.line(to: $0) }
+        path.close()
+        NSColor.black.withAlphaComponent(alpha).setFill()
+        path.fill()
     }
 
     // MARK: - Helpers

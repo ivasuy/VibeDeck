@@ -1,8 +1,6 @@
 import SwiftUI
-import AppKit
 
 struct UsageLimitsView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var settings = LimitsSettingsStore.shared
     @State private var showSettings = false
     let limits: UsageLimitsResponse?
@@ -64,24 +62,24 @@ struct UsageLimitsView: View {
 
             switch id {
             case "claude" where limits.claude.configured && limits.claude.error == nil:
-                groups.append(AnyView(toolSection(title: "Claude", assetName: "ClaudeLogo") { claudeContent(limits.claude) }))
+                groups.append(AnyView(toolSection(title: "Claude", providerId: "claude") { claudeContent(limits.claude) }))
             case "codex" where limits.codex.configured && limits.codex.error == nil:
-                groups.append(AnyView(toolSection(title: "Codex", assetName: "CodexLogo") { codexContent(limits.codex) }))
+                groups.append(AnyView(toolSection(title: "Codex", providerId: "codex") { codexContent(limits.codex) }))
             case "cursor" where limits.cursor.configured && limits.cursor.error == nil:
-                groups.append(AnyView(toolSection(title: "Cursor", assetName: "CursorLogo") { cursorContent(limits.cursor) }))
+                groups.append(AnyView(toolSection(title: "Cursor", providerId: "cursor") { cursorContent(limits.cursor) }))
             case "gemini" where limits.gemini.configured && limits.gemini.error == nil:
-                groups.append(AnyView(toolSection(title: "Gemini", assetName: "GeminiLogo") { geminiContent(limits.gemini) }))
+                groups.append(AnyView(toolSection(title: "Gemini", providerId: "gemini") { geminiContent(limits.gemini) }))
             case "kimi":
                 if let kimi = limits.kimi, kimi.configured, kimi.error == nil {
-                    groups.append(AnyView(toolSection(title: "Kimi", assetName: "KimiLogo") { kimiContent(kimi) }))
+                    groups.append(AnyView(toolSection(title: "Kimi", providerId: "kimi") { kimiContent(kimi) }))
                 }
             case "kiro" where limits.kiro.configured && limits.kiro.error == nil:
-                groups.append(AnyView(toolSection(title: "Kiro", assetName: "KiroLogo") { kiroContent(limits.kiro) }))
+                groups.append(AnyView(toolSection(title: "Kiro", providerId: "kiro") { kiroContent(limits.kiro) }))
             case "antigravity" where limits.antigravity.configured && limits.antigravity.error == nil:
-                groups.append(AnyView(toolSection(title: "Antigravity", assetName: "AntigravityLogo") { antigravityContent(limits.antigravity) }))
+                groups.append(AnyView(toolSection(title: "Antigravity", providerId: "antigravity") { antigravityContent(limits.antigravity) }))
             case "copilot":
                 if let copilot = limits.copilot, copilot.configured, copilot.error == nil {
-                    groups.append(AnyView(toolSection(title: "GitHub Copilot", assetName: "CopilotLogo") { copilotContent(copilot) }))
+                    groups.append(AnyView(toolSection(title: "GitHub Copilot", providerId: "copilot") { copilotContent(copilot) }))
                 }
             default:
                 break
@@ -94,15 +92,12 @@ struct UsageLimitsView: View {
 
     private func toolSection<Content: View>(
         title: String,
-        assetName: String?,
+        providerId: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 5) {
-                if let assetName {
-                    brandIcon(assetName)
-                        .frame(width: 14, height: 14)
-                }
+                ProviderLogoView(provider: providerId, size: 14)
                 Text(title)
                     .font(.system(.caption, design: .default))
                     .modifier(FontWeightModifier(weight: .medium))
@@ -309,36 +304,6 @@ struct UsageLimitsView: View {
         return "\(Int(s) / 60)m"
     }
 
-    @ViewBuilder
-    private func brandIcon(_ name: String) -> some View {
-        switch name {
-        case "CursorLogo", "KimiLogo", "KiroLogo", "CopilotLogo":
-            let filename: String = {
-                switch name {
-                case "CursorLogo": return "cursor.svg"
-                case "KimiLogo": return "kimi.svg"
-                case "KiroLogo": return "kiro.svg"
-                default: return "copilot.svg"
-                }
-            }()
-            if let image = BrandLogoResolver.shared.image(
-                named: filename,
-                replacingCurrentColorWith: colorScheme == .dark ? "#FFFFFF" : "#111111"
-            ) {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFit()
-            }
-        default:
-            Image(name)
-                .renderingMode(.original)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-        }
-    }
-
 }
 
 // MARK: - Settings Gear Button
@@ -367,6 +332,7 @@ private struct SettingsGearButton<Popover: View>: View {
 // MARK: - Skeleton Loading
 
 private struct LimitsSkeleton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: CGFloat = -1
 
     var body: some View {
@@ -390,7 +356,8 @@ private struct LimitsSkeleton: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+            guard !reduceMotion else { return }
+            withAnimation(NativeMotion.Ease.linear(duration: 1.2).repeatForever(autoreverses: true)) {
                 phase = 1
             }
         }

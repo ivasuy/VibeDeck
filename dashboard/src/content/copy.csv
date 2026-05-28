@@ -7,7 +7,7 @@ shared.unit.million_abbrev,shared,*,*,unit_million_abbrev,M,,active
 shared.unit.billion_abbrev,shared,*,*,unit_billion_abbrev,B,,active
 shared.range.simple,shared,*,*,label,Range: {{range}},,active
 shared.data_source,shared,*,*,label,Data source: {{source}},,active
-shared.error.prefix,shared,*,*,label,Error: {{error}},,active
+shared.error.prefix,shared,*,*,label,Details: {{error}},,active
 shared.status.unsynced,shared,*,*,status,—,,active
 shared.confidence.high,shared,*,Shared,confidence_high,high,,active
 shared.confidence.medium,shared,*,Shared,confidence_medium,medium,,active
@@ -15,9 +15,9 @@ shared.confidence.low,shared,*,Shared,confidence_low,low,,active
 shared.confidence.unattributed,shared,*,Shared,confidence_unattributed,unattributed,,active
 shared.badge.decommissioned,shared,*,Shared,badge_decommissioned,Decommissioned,,active
 brand.name,shared,*,Shared,brand_name,VibeDeck,,active
-error.boundary.title,shared,*,ErrorBoundary,title,Something went wrong,,active
-error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to render,,active
-error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload the page",,active
+error.boundary.title,shared,*,ErrorBoundary,title,View paused,,active
+error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,VibeDeck could not render this view,,active
+error.boundary.hint,shared,*,ErrorBoundary,hint,Reload the view after checking the local logs,,active
 error.boundary.no_details,shared,*,ErrorBoundary,details,No error details,,active
 error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,Reload,,active
 
@@ -128,7 +128,7 @@ dashboard.upgrade_alert.title,ui,UpgradeAlertModal,UpgradeAlertModal,title,Updat
 dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,VibeDeck v{{required}} is now available.,,active
 dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,A new version of VibeDeck is available.,,active
 dashboard.upgrade_alert.prompt,ui,UpgradeAlertModal,UpgradeAlertModal,prompt,$,,active
-dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,✨,,active
+dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,Update,,active
 dashboard.upgrade_alert.install_command,ui,UpgradeAlertModal,UpgradeAlertModal,install_command,npx --yes vibedeck-cli init,,active
 dashboard.upgrade_alert.copy,ui,UpgradeAlertModal,UpgradeAlertModal,copy,[ COPY ],,active
 dashboard.upgrade_alert.copied,ui,UpgradeAlertModal,UpgradeAlertModal,copied,[ COPIED ],,active
@@ -141,6 +141,15 @@ widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,Open
 widgets.cta.download,dashboard,WidgetsPage,WidgetsPage,cta_download,Download Mac App,,active
 widgets.cta.macos_only,dashboard,WidgetsPage,WidgetsPage,cta_macos_only,macOS only,,active
 widgets.menubar.section.title,dashboard,WidgetsPage,WidgetsPage,menubar_section_title,Menu Bar,,active
+widgets.config.section.title,dashboard,WidgetsPage,WidgetWorkbench,config_section_title,Widget Configuration,,active
+widgets.config.kind,dashboard,WidgetsPage,WidgetWorkbench,config_kind,Widget,,active
+widgets.config.size,dashboard,WidgetsPage,WidgetWorkbench,config_size,Size,,active
+widgets.config.refresh,dashboard,WidgetsPage,WidgetWorkbench,config_refresh,Refresh,,active
+widgets.config.refresh_hint,dashboard,WidgetsPage,WidgetWorkbench,config_refresh_hint,Widgets refresh every 5 minutes and update after the app writes a new snapshot.,,active
+widgets.config.provider,dashboard,WidgetsPage,WidgetWorkbench,config_provider,Highlighted Provider,,active
+widgets.config.provider_hint,dashboard,WidgetsPage,WidgetWorkbench,config_provider_hint,Controls which provider preview receives focus in the setup panel.,,active
+widgets.config.previewing,dashboard,WidgetsPage,WidgetWorkbench,config_previewing,Previewing,,active
+widgets.config.note,dashboard,WidgetsPage,WidgetWorkbench,config_note,The native widgets open the matching VibeDeck tab when clicked; no controls run inside the widget body.,,active
 widgets.gallery.section.title,dashboard,WidgetsPage,WidgetsPage,gallery_section_title,Desktop Widgets,,active
 widgets.summary.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Summary,,active
 widgets.summary.description,dashboard,WidgetsPage,WidgetCatalogCard,description,Today and rolling totals in one glance.,,active
@@ -415,9 +424,9 @@ settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,Menu Bar App,,
 settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,Show stats in menu bar,,active
 settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,Display today's token count and cost beside the menu bar icon.,,active
 settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,Animated icon,,active
-settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Blink the Clawd character and play the syncing animation in the menu bar.,,active
+settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Animate the menu-bar mark while live sessions or sync work are active.,,active
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,Launch at login,,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start VibeDeckMac automatically when you sign in to macOS.,,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start VibeDeckMac automatically when your Mac session starts.,,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,Sync now,,active
 settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Trigger an immediate parse and upload of local AI tool logs.,,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
@@ -459,7 +468,7 @@ limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,No live limi
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,All limit providers are hidden. Open display settings to show them.,,active
 limits.status.cooldown,ui,LimitsPage,UsageLimitsPanel,status_cooldown,Rate limited. Try again in {{duration}}.,,active
 limits.status.setup_required,ui,LimitsPage,UsageLimitsPanel,status_setup_required,Setup required,,active
-limits.gemini.setup_hint,ui,LimitsPage,UsageLimitsPanel,gemini_setup_hint,"Sign in with Gemini CLI OAuth, then refresh limits.",,active
+limits.gemini.setup_hint,ui,LimitsPage,UsageLimitsPanel,gemini_setup_hint,"Authorize Gemini CLI OAuth, then refresh limits.",,active
 shared.time.now,shared,*,Shared,time_now,now,,active
 nav.skills,shared,*,Sidebar,nav_skills,Skills,,active
 skills.page.title,ui,SkillsPage,SkillsPage,title,Skills,,active

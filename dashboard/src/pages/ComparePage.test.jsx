@@ -65,7 +65,9 @@ describe("ComparePage", () => {
 
     render(<ComparePage />);
 
-    expect(await screen.findByText("compare endpoint failed")).toBeTruthy();
+    expect(await screen.findByText("Unable to load compare metrics.")).toBeTruthy();
+    expect(screen.getByText("Check that the local VibeDeck server is running, then refresh.")).toBeTruthy();
+    expect(screen.queryByText("compare endpoint failed")).toBeNull();
     expect(screen.queryByText("No data for this window yet.")).toBeNull();
   });
 });

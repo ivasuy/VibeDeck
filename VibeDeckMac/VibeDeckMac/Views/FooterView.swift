@@ -17,7 +17,7 @@ struct FooterView: View {
                     .modifier(FontWeightModifier(weight: .medium))
                     .foregroundStyle(hoveringDashboard ? .primary : Color.brand)
                     .scaleEffect(hoveringDashboard ? 1.03 : 1.0)
-                    .animation(.easeOut(duration: 0.12), value: hoveringDashboard)
+                    .animation(NativeMotion.Ease.micro(), value: hoveringDashboard)
             }
             .frame(minHeight: 28)
             .contentShape(Rectangle())
@@ -39,7 +39,7 @@ struct FooterView: View {
                     .font(.caption)
                     .foregroundStyle(hoveringQuit ? .primary : .secondary)
                     .scaleEffect(hoveringQuit ? 1.03 : 1.0)
-                    .animation(.easeOut(duration: 0.12), value: hoveringQuit)
+                    .animation(NativeMotion.Ease.micro(), value: hoveringQuit)
             }
             .frame(minHeight: 28)
             .contentShape(Rectangle())

@@ -22,6 +22,15 @@ const LOCAL_API_ROUTES = {
   projectUsageSummary: "/functions/vibedeck-project-usage-summary",
   usageLimits: "/functions/vibedeck-usage-limits",
   userStatus: "/functions/vibedeck-user-status",
+  syncStatus: "/functions/vibedeck-sync-status",
+  liveSessionsSnapshot: "/functions/vibedeck-sessions-live-snapshot",
+  liveSessionsStream: "/functions/vibedeck-sessions-live",
+  attributionStats: "/functions/vibedeck-attribution-stats",
+  recentSessions: "/functions/vibedeck-recent-sessions",
+  optimizeFindings: "/functions/vibedeck-optimize/findings",
+  optimizeScan: "/functions/vibedeck-optimize/scan",
+  plan: "/functions/vibedeck-plan",
+  forecast: "/functions/vibedeck-forecast",
 };
 
 function legacyRoute(primaryRoute) {
@@ -214,6 +223,141 @@ async function handleLocalApi(req, res, url) {
   }
 
   const pathname = url.pathname;
+
+  function writeJson(payload, statusCode = 200) {
+    res.statusCode = statusCode;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(payload));
+  }
+
+  function activeDayCount(rows) {
+    return aggregateByDay(rows).filter((row) => Number(row.billable_total_tokens || 0) > 0).length;
+  }
+
+  function latestQueueTimestamp(rows) {
+    const stamps = rows
+      .map((row) => String(row.hour_start || row.updated_at || row.created_at || ""))
+      .filter(Boolean)
+      .sort();
+    return stamps.length > 0 ? stamps[stamps.length - 1] : null;
+  }
+
+  function monthToDateRows(rows) {
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7);
+    return rows.filter((row) => String(row.hour_start || "").startsWith(month));
+  }
+
+  function rowsCost(rows) {
+    return rows.reduce((sum, row) => sum + computeRowCost(row), 0);
+  }
+
+  function emptyLiveSnapshot(rows = readQueueData()) {
+    const lastSyncAt = latestQueueTimestamp(rows);
+    return {
+      ok: true,
+      sessions: [],
+      active_sessions: [],
+      workstreams: [],
+      totals: {
+        active_session_count: 0,
+        total_sessions: 0,
+        total_tokens: 0,
+        total_cost_usd: "0.000000",
+      },
+      generated_at: new Date().toISOString(),
+      last_sync_at: lastSyncAt,
+      canonical_incomplete: false,
+      live_canonical: null,
+    };
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.syncStatus)) {
+    const rows = readQueueData();
+    const lastSyncAt = latestQueueTimestamp(rows);
+    writeJson({
+      ok: true,
+      last_parse_at: lastSyncAt,
+      queue_updated_at: lastSyncAt,
+      project_queue_updated_at: null,
+      session_count: 0,
+      open_session_count: 0,
+      sync_enabled: false,
+      canonical_db_updated_at: lastSyncAt,
+      canonical_event_count: rows.length,
+      canonical_bucket_count: rows.length,
+      session_rows_missing_cost: 0,
+      unattributed_session_count: 0,
+    });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.liveSessionsSnapshot)) {
+    writeJson(emptyLiveSnapshot());
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.liveSessionsStream)) {
+    const snapshot = emptyLiveSnapshot();
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.write(`data: ${JSON.stringify({ type: "snapshot", ...snapshot })}\n\n`);
+    res.write(": keep-alive\n\n");
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.attributionStats)) {
+    writeJson({ ok: true, high: 0, medium: 0, low: 0, unattributed: 0, total: 0 });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.recentSessions)) {
+    writeJson({ ok: true, sessions: [], generated_at: new Date().toISOString() });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.optimizeFindings)) {
+    writeJson({ ok: true, findings: [], health: null, latest_run: null });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.optimizeScan)) {
+    writeJson({ ok: true, inserted: 0, health_grade: null });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.plan)) {
+    const rows = readQueueData();
+    const monthRows = monthToDateRows(rows);
+    writeJson({
+      ok: true,
+      plan: "custom",
+      monthly_plan_usd: 0,
+      monthly_usd: 0,
+      month_to_date_api_equivalent_usd: Number(rowsCost(monthRows).toFixed(6)),
+      usage_percent: 0,
+      active_days: activeDayCount(rows),
+      label: "API-equivalent cost",
+      label_detail: "API-equivalent cost from local usage. Configure a monthly plan to calculate subscription efficiency.",
+      generated_at: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.forecast)) {
+    const rows = readQueueData();
+    writeJson({
+      ok: true,
+      forecast_30d_usd: 0,
+      forecast_60d_usd: 0,
+      forecast_90d_usd: 0,
+      active_days: activeDayCount(rows),
+      generated_at: new Date().toISOString(),
+    });
+    return true;
+  }
 
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.localSync)) {
     if (String(req.method || "GET").toUpperCase() !== "POST") {

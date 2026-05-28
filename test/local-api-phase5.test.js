@@ -322,3 +322,30 @@ test('GET /functions/vibedeck-export keeps USD costs unchanged when a display cu
     f.cleanup();
   }
 });
+
+test('GET /functions/vibedeck-usage-heatmap includes per-day cost for widget best-day dollars', async () => {
+  const f = makeFixture();
+  try {
+    fs.writeFileSync(f.queuePath, `${JSON.stringify({
+      source: 'codex',
+      model: 'gpt-5.5',
+      hour_start: '2026-05-20T12:00:00.000Z',
+      total_tokens: 5000,
+      billable_total_tokens: 5000,
+      total_cost_usd: 4.2,
+      cost_estimated: false,
+    })}\n`, 'utf8');
+
+    const payload = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-usage-heatmap?weeks=2&tz=UTC',
+    )).body);
+    const cells = payload.weeks.flat();
+    const day = cells.find((cell) => cell.day === '2026-05-20');
+
+    assert.equal(day.total_tokens, 5000);
+    assert.equal(day.total_cost_usd, 4.2);
+  } finally {
+    f.cleanup();
+  }
+});

@@ -1,7 +1,7 @@
 # VibeDeck
 
 **Version:** 1.0.4 (release branch, unreleased)
-**Last updated:** 2026-05-24
+**Last updated:** 2026-05-28
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -31,6 +31,38 @@ VibeDeck should stay true to five promises:
 ## Release Audit History
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
+
+### 1.0.4 UI Revamp - DESIGN.md Coverage
+
+**Date:** 2026-05-28
+**Status:** implemented on `ui-revamp` and merged into `release/1.0.4`.
+**Spec:** root `DESIGN.md`
+**Implementation notes:** root `implementation-notes.html`
+
+#### Problem
+
+The DESIGN.md pass required VibeDeck to remove active Entire traces from the user-facing product, rebuild the dashboard around a focused left-rail workflow, refresh the native Mac and widget surfaces, and close the remaining data-contract gaps that were previously documented as limitations.
+
+#### What changed
+
+- Rebuilt the web dashboard shell around four primary lanes: Overview, Workstreams, Insights, and Settings.
+- Commented out Entire-facing backend, setup, and UI paths so they are no longer active in the current product flow.
+- Refreshed the native Mac dashboard, menubar, widgets, copy, colors, provider identity, and motion helpers to match the DESIGN.md direction.
+- Added exact Usage Limits token numerator/denominator support where provider payloads expose token fields.
+- Added per-day heatmap cost data so best-day widget copy can display dollars without guessing.
+- Updated root implementation notes so the former data-contract limitations are now recorded as implemented.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Focused dashboard regression suite | `33/33` passed |
+| Backend usage/data-contract tests | `35/35` passed |
+| UsageLimitsPanel token-pair tests | `6/6` passed |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| Native Mac/widget build | Passed, existing script-output warning only |
+| Rendered route sweep | 14 routes across desktop and mobile passed |
+| Built bundle removed-surface scan | No Entire, sign-in, stack-trace, or canned 502 traces found |
 
 ### 1.0.4 Release Candidate - Provider Enrichment, Session Grouping, And Codeburn Surfaces
 

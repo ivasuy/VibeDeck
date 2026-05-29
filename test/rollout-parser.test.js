@@ -194,6 +194,104 @@ test("parseRolloutIncremental leaves Codex provider branch null when raw log has
   }
 });
 
+test("parseRolloutIncremental skips unchanged source files using stored watermarks", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-watermark-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const usage = {
+      input_tokens: 3,
+      cached_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 5,
+    };
+
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: "2026-05-29T00:00:00.000Z", last: usage, total: usage })}\n`,
+      "utf8",
+    );
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    const cursor = cursors.files[rolloutPath];
+    assert.equal(cursor.sourcePath, rolloutPath);
+    assert.equal(cursor.size, cursor.offset);
+    assert.equal(typeof cursor.mtimeMs, "number");
+    assert.equal(typeof cursor.contentHash, "string");
+
+    const completed = [];
+    const second = await parseRolloutIncremental({
+      rolloutFiles: [rolloutPath],
+      cursors,
+      queuePath,
+      onFileComplete: (meta) => completed.push(meta),
+    });
+
+    assert.equal(second.filesProcessed, 0);
+    assert.equal(second.eventsAggregated, 0);
+    assert.deepEqual(completed, []);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseRolloutIncremental reparses rewritten source files without keeping stale bucket totals", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-rewrite-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const cursors = { version: 1, files: {}, updatedAt: null };
+    const first = {
+      input_tokens: 7,
+      cached_input_tokens: 0,
+      output_tokens: 3,
+      reasoning_output_tokens: 0,
+      total_tokens: 10,
+    };
+    const replacement = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 4,
+    };
+
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: "2026-05-29T00:10:00.000Z", last: first, total: first })}\n`,
+      "utf8",
+    );
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({
+        ts: "2026-05-29T00:10:00.000Z",
+        last: replacement,
+        total: replacement,
+      })}\n`,
+      "utf8",
+    );
+
+    const second = await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(second.filesProcessed, 1);
+    assert.equal(second.eventsAggregated, 1);
+
+    const bucket =
+      cursors.hourly.buckets["codex|unknown|2026-05-29T00:00:00.000Z"]?.totals;
+    assert.equal(bucket.total_tokens, replacement.total_tokens);
+    assert.equal(bucket.input_tokens, replacement.input_tokens);
+    assert.equal(bucket.output_tokens, replacement.output_tokens);
+
+    const queued = await readJsonLines(queuePath);
+    assert.equal(queued.at(-1).total_tokens, replacement.total_tokens);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental prefers cumulative total_token_usage delta over larger last_token_usage", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-"));
   try {

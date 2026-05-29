@@ -48,11 +48,203 @@ const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.vibedeck/claude-mem/observer-sessions";
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SOURCE_HASH_ALGORITHM = "sha256";
+const TOTAL_FIELD_NAMES = Object.freeze([
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+  "conversation_count",
+]);
 
 function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   const mtimeMs = Number(stat?.mtimeMs);
   if (!Number.isFinite(mtimeMs)) return "historical";
   return mtimeMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS ? "recent" : "historical";
+}
+
+function sourceGroupForProvider(source) {
+  const normalized = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  return `${normalized}-jsonl`;
+}
+
+function statSourceSize(stat) {
+  const size = Number(stat?.size);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function statSourceMtimeMs(stat) {
+  const mtimeMs = Number(stat?.mtimeMs);
+  return Number.isFinite(mtimeMs) && mtimeMs >= 0 ? mtimeMs : 0;
+}
+
+function statSourceInode(stat) {
+  const inode = Number(stat?.ino);
+  return Number.isFinite(inode) && inode >= 0 ? inode : 0;
+}
+
+function hashFileRange(filePath, byteLength) {
+  const length = Math.max(0, Math.floor(Number(byteLength) || 0));
+  const hash = crypto.createHash(SOURCE_HASH_ALGORITHM);
+  if (length === 0) return Promise.resolve(hash.digest("hex"));
+
+  return new Promise((resolve, reject) => {
+    const stream = fssync.createReadStream(filePath, {
+      start: 0,
+      end: length - 1,
+    });
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+function normalizeCursorOffset(prev) {
+  const offset = Number(prev?.offset ?? prev?.size);
+  return Number.isFinite(offset) && offset >= 0 ? offset : 0;
+}
+
+function normalizeCursorSize(prev) {
+  const size = Number(prev?.size ?? prev?.offset);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+async function classifySourceFileRead({ filePath, stat, prev }) {
+  const size = statSourceSize(stat);
+  const inode = statSourceInode(stat);
+  if (!prev || typeof prev !== "object") {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  const sameInode = prevInode === inode;
+  if (!sameInode) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevSize = normalizeCursorSize(prev);
+  const prevOffset = normalizeCursorOffset(prev);
+  if (prevSize > size || prevOffset > size) {
+    return { mode: "full", startOffset: 0, previousSize: prevSize };
+  }
+
+  if (typeof prev.contentHash === "string" && prev.contentHash) {
+    const prefixHash = await hashFileRange(filePath, prevSize);
+    if (prefixHash !== prev.contentHash) {
+      return { mode: "full", startOffset: 0, previousSize: prevSize };
+    }
+    if (size === prevSize && prevOffset >= size) {
+      return { mode: "skip", startOffset: size, previousSize: prevSize, contentHash: prefixHash };
+    }
+    return {
+      mode: "append",
+      startOffset: Math.min(prevOffset, size),
+      previousSize: prevSize,
+      contentHash: prefixHash,
+    };
+  }
+
+  const prevMtimeMs = Number(prev.mtimeMs);
+  if (size === prevSize && prevOffset >= size && prevMtimeMs === statSourceMtimeMs(stat)) {
+    return { mode: "skip", startOffset: size, previousSize: prevSize };
+  }
+  if (size >= prevOffset && prevOffset > 0) {
+    return { mode: "append", startOffset: prevOffset, previousSize: prevSize };
+  }
+  return { mode: "full", startOffset: 0, previousSize: prevSize };
+}
+
+function cloneContributionTotals(value) {
+  const out = initTotals();
+  if (!value || typeof value !== "object") return out;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const n = Number(value[key]);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+
+function contributionMapFromCursor(value) {
+  const map = new Map();
+  if (!value || typeof value !== "object") return map;
+  for (const [key, totals] of Object.entries(value)) {
+    if (!key) continue;
+    map.set(key, cloneContributionTotals(totals));
+  }
+  return map;
+}
+
+function contributionMapToCursor(map) {
+  const out = {};
+  if (!(map instanceof Map)) return out;
+  for (const [key, totals] of map.entries()) {
+    if (!key) continue;
+    out[key] = cloneContributionTotals(totals);
+  }
+  return out;
+}
+
+function recordContribution(map, key, delta) {
+  if (!(map instanceof Map) || !key || !delta) return;
+  const totals = map.get(key) || initTotals();
+  addTotals(totals, delta);
+  map.set(key, totals);
+}
+
+function subtractContributionTotals(target, delta) {
+  if (!target || !delta) return;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const current = Number(target[key]) || 0;
+    const next = current - (Number(delta[key]) || 0);
+    target[key] = next > 0 ? next : 0;
+  }
+}
+
+function subtractStoredSourceContributions({
+  hourlyState,
+  projectState,
+  prev,
+  touchedBuckets,
+  projectTouchedBuckets,
+}) {
+  const bucketContributions = prev?.bucketContributions;
+  if (bucketContributions && typeof bucketContributions === "object") {
+    for (const [key, delta] of Object.entries(bucketContributions)) {
+      const bucket = hourlyState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      touchedBuckets?.add(key);
+    }
+  }
+
+  const projectContributions = prev?.projectBucketContributions;
+  if (projectContributions && typeof projectContributions === "object") {
+    for (const [key, delta] of Object.entries(projectContributions)) {
+      const bucket = projectState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      projectTouchedBuckets?.add(key);
+    }
+  }
+}
+
+async function buildSourceWatermark({ filePath, stat, offset, contentHash, source }) {
+  const size = statSourceSize(stat);
+  return {
+    sourcePath: filePath,
+    sourceGroup: sourceGroupForProvider(source),
+    inode: statSourceInode(stat),
+    offset: Math.max(0, Math.floor(Number(offset) || 0)),
+    size,
+    mtimeMs: statSourceMtimeMs(stat),
+    contentHash: contentHash || (await hashFileRange(filePath, size)),
+  };
 }
 
 async function orderRebuildProviderFilesRecentFirst(files, { now = Date.now() } = {}) {
@@ -298,14 +490,42 @@ async function parseRolloutIncremental({
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-    const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
-    const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
+    if (readPlan.mode === "skip") {
+      if (projectEnabled) {
+        await resolveProjectContextForFile({
+          filePath,
+          projectMetaCache,
+          publicRepoCache,
+          publicRepoResolver,
+          projectState,
+        });
+      }
+      continue;
+    }
+    if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+    }
+    const startOffset = readPlan.startOffset;
+    const canReuseCursor = readPlan.mode === "append";
+    const lastTotal = canReuseCursor ? prev?.lastTotal || null : null;
+    const lastModel = canReuseCursor ? prev?.lastModel || null : null;
     const pendingCodexTools =
-      fileSource === "codex" && prev && prev.inode === inode
+      fileSource === "codex" && canReuseCursor
         ? normalizePendingCodexTools(prev.pendingCodexTools)
         : [];
+    const bucketContributions =
+      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      readPlan.mode === "append"
+        ? contributionMapFromCursor(prev?.projectBucketContributions)
+        : new Map();
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -337,6 +557,8 @@ async function parseRolloutIncremental({
       publicRepoCache,
       publicRepoResolver,
       rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
@@ -345,6 +567,7 @@ async function parseRolloutIncremental({
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -355,17 +578,27 @@ async function parseRolloutIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
+      offset: result.endOffset,
+      source: fileSource,
+    });
     cursors.files[key] = {
-      inode,
+      ...sourceWatermark,
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
       ...(fileSource === "codex" ? { pendingCodexTools: result.pendingCodexTools } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -464,8 +697,40 @@ async function parseClaudeIncremental({
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
+    if (readPlan.mode === "skip") {
+      if (projectEnabled) {
+        await resolveProjectContextForFile({
+          filePath,
+          projectMetaCache,
+          publicRepoCache,
+          publicRepoResolver,
+          projectState,
+        });
+      }
+      continue;
+    }
+    if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+      if (seenMessageHashes && Array.isArray(prev?.messageHashes)) {
+        for (const hash of prev.messageHashes) {
+          seenMessageHashes.delete(hash);
+        }
+      }
+    }
+    const startOffset = readPlan.startOffset;
+    const bucketContributions =
+      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      readPlan.mode === "append"
+        ? contributionMapFromCursor(prev?.projectBucketContributions)
+        : new Map();
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -492,6 +757,8 @@ async function parseClaudeIncremental({
       projectKey,
       seenMessageHashes,
       rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
@@ -500,6 +767,7 @@ async function parseClaudeIncremental({
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -510,15 +778,29 @@ async function parseClaudeIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
-    cursors.files[key] = {
-      inode,
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
       offset: result.endOffset,
+      source: fileSource,
+    });
+    cursors.files[key] = {
+      ...sourceWatermark,
+      offset: result.endOffset,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+      messageHashes:
+        readPlan.mode === "append"
+          ? [...(Array.isArray(prev?.messageHashes) ? prev.messageHashes : []), ...result.messageHashes]
+          : result.messageHashes,
       updatedAt: new Date().toISOString(),
     };
 
@@ -1048,6 +1330,8 @@ async function parseRolloutFile({
   publicRepoCache,
   publicRepoResolver,
   rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
@@ -1177,7 +1461,9 @@ async function parseRolloutFile({
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (currentProjectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1187,7 +1473,9 @@ async function parseRolloutFile({
         currentProjectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(currentProjectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1233,6 +1521,8 @@ async function parseClaudeFile({
   projectKey,
   seenMessageHashes,
   rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
@@ -1253,6 +1543,7 @@ async function parseClaudeFile({
   let sessionCwd = decodeClaudeProjectPathFromSessionFile(filePath);
   const providerBranchState = createProviderBranchState();
   const isMainSession = !filePath.includes("/subagents/");
+  const messageHashes = [];
   for await (const line of rl) {
     if (!line) continue;
     if (!sessionCwd) {
@@ -1289,8 +1580,11 @@ async function parseClaudeFile({
           if (userBucketStart) {
             const userModel = DEFAULT_MODEL;
             const userBucket = getHourlyBucket(hourlyState, source, userModel, userBucketStart);
-            userBucket.totals.conversation_count += 1;
-            touchedBuckets.add(bucketKey(source, userModel, userBucketStart));
+            const delta = { conversation_count: 1 };
+            addTotals(userBucket.totals, delta);
+            const userBucketKey = bucketKey(source, userModel, userBucketStart);
+            touchedBuckets.add(userBucketKey);
+            recordContribution(bucketContributions, userBucketKey, delta);
           }
         }
       }
@@ -1315,6 +1609,7 @@ async function parseClaudeFile({
         const hash = `${msgId}:${reqId}`;
         if (seenMessageHashes.has(hash)) continue;
         seenMessageHashes.add(hash);
+        messageHashes.push(hash);
       }
     }
 
@@ -1353,7 +1648,9 @@ async function parseClaudeFile({
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (projectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1363,7 +1660,9 @@ async function parseClaudeFile({
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(projectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1389,7 +1688,7 @@ async function parseClaudeFile({
       onSessionEvent,
     );
   }
-  return { endOffset, eventsAggregated };
+  return { endOffset, eventsAggregated, messageHashes };
 }
 
 async function parseGeminiFile({

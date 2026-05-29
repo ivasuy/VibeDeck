@@ -281,20 +281,33 @@ function normalizeProjectionShardProvider(provider) {
   return null;
 }
 
+function normalizeProjectionSourceGroup(sourceGroup, provider) {
+  const raw = typeof sourceGroup === "string" ? sourceGroup.trim().toLowerCase() : "";
+  if (/^[a-z0-9._-]+$/.test(raw)) return raw;
+  const normalizedProvider = normalizeProjectionShardProvider(provider);
+  return normalizedProvider ? `${normalizedProvider}-jsonl` : null;
+}
+
 function createRebuildProjectionShardRecorder() {
   const shards = new Map();
   return {
     recordProviderFile(meta = {}) {
       const provider = normalizeProjectionShardProvider(meta.provider);
       if (!provider) return;
+      const sourceGroup = normalizeProjectionSourceGroup(meta.sourceGroup, meta.provider);
       const scope = normalizeRebuildProfileLane(meta.lane);
       const shardKey = `${provider}:${scope}`;
       const shard = shards.get(shardKey) || {
         provider,
         scope,
+        source_groups: [],
         file_count: 0,
         event_count: 0,
       };
+      if (sourceGroup && !shard.source_groups.includes(sourceGroup)) {
+        shard.source_groups.push(sourceGroup);
+        shard.source_groups.sort((a, b) => a.localeCompare(b));
+      }
       shard.file_count += 1;
       shard.event_count += Number(meta.eventsAggregated) || 0;
       shards.set(shardKey, shard);
@@ -352,12 +365,20 @@ async function recordRebuildProjectionShardMetadata({ dbPath, shards = [] } = {}
         const provider = normalizeProjectionShardProvider(shard?.provider);
         const scope = normalizeRebuildProfileLane(shard?.scope);
         if (!provider) continue;
+        const sourceGroups = Array.isArray(shard.source_groups)
+          ? shard.source_groups
+              .map((group) => normalizeProjectionSourceGroup(group, provider))
+              .filter(Boolean)
+              .filter((group, index, all) => all.indexOf(group) === index)
+              .sort((a, b) => a.localeCompare(b))
+          : [normalizeProjectionSourceGroup(shard.source_group, provider) || `${provider}-jsonl`];
+        const sourceGroup = sourceGroups.length === 1 ? sourceGroups[0] : `${provider}-jsonl`;
         insert.run({
           shard_key: `${provider}:${scope}`,
           provider,
-          source_group: `${provider}-jsonl`,
+          source_group: sourceGroup,
           scope,
-          watermark_json: JSON.stringify({ rebuilt_at: now }),
+          watermark_json: JSON.stringify({ rebuilt_at: now, source_groups: sourceGroups }),
           file_count: Math.max(0, Math.floor(Number(shard.file_count) || 0)),
           event_count: Math.max(0, Math.floor(Number(shard.event_count) || 0)),
           session_count: Math.max(0, Math.floor(Number(shard.session_count) || 0)),

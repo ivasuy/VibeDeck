@@ -1156,14 +1156,14 @@ test('sync rebuild records projection shard metadata for recent and historical l
       const rows = db
         .prepare(
           `
-          SELECT shard_key, provider, source_group, scope, status, file_count, event_count
+          SELECT shard_key, provider, source_group, scope, status, watermark_json, file_count, event_count
           FROM vibedeck_projection_shards
           WHERE shard_key IN ('codex:recent', 'codex:historical')
           ORDER BY shard_key
           `,
         )
         .all();
-      assert.deepEqual(rows.map((row) => ({ ...row })), [
+      assert.deepEqual(rows.map(({ watermark_json, ...row }) => ({ ...row })), [
         {
           shard_key: 'codex:historical',
           provider: 'codex',
@@ -1183,6 +1183,11 @@ test('sync rebuild records projection shard metadata for recent and historical l
           event_count: 1,
         },
       ]);
+      for (const row of rows) {
+        const watermark = JSON.parse(row.watermark_json);
+        assert.equal(typeof watermark.rebuilt_at, 'string');
+        assert.deepEqual(watermark.source_groups, ['codex-jsonl']);
+      }
     } finally {
       db.close();
     }

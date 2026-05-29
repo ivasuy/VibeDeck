@@ -88,7 +88,7 @@ describe("PlanPage", () => {
       usage_percent: "41.39",
       inferred: true,
       label: "Plan usage",
-      label_detail: "Plan usage — detected from your Claude activity.",
+      label_detail: "Plan usage, detected from your Claude activity.",
     });
 
     render(<PlanPage />);

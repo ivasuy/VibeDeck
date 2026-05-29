@@ -121,7 +121,7 @@ export function PlanPage() {
 
       {!loading && !error && isUnknown ? (
         <p className="mb-4 text-sm text-oai-gray-600 dark:text-oai-gray-300">
-          No recent activity yet — once you use Claude or Codex, VibeDeck will pick a plan automatically.
+          No recent activity yet. Once you use Claude or Codex, VibeDeck will pick a plan automatically.
         </p>
       ) : null}
 

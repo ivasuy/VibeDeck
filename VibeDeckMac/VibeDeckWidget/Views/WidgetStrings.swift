@@ -7,23 +7,23 @@ enum WidgetStrings {
     static var sevenDays: String { "7 DAYS" }
     static var thirtyDays: String { "30 DAYS" }
     static var vsYesterday: String { "vs. yesterday" }
-    static var noUsageData: String { "No usage yet" }
+    static var noUsageData: String { "Nothing tracked yet" }
 
     static var heatmapName: String { "VibeDeck Heatmap" }
     static var heatmapDescription: String { "GitHub-style daily activity calendar." }
-    static var noActivityData: String { "No activity yet" }
+    static var noActivityData: String { "No daily activity yet" }
     static func streak(_ days: Int) -> String { "\(days)d streak" }
     static func tokensActiveDays(activeDays: Int) -> String {
-        "tokens - \(activeDays) active days"
+        "tokens · \(activeDays) active days"
     }
 
     static var limitsName: String { "VibeDeck Limits" }
     static var limitsDescription: String { "Rate limits for Claude, Codex, Cursor, Gemini, and more." }
-    static var noConfiguredProviders: String { "No configured providers" }
+    static var noConfiguredProviders: String { "No limits configured" }
 
     static var topModelsName: String { "VibeDeck Top Models" }
     static var topModelsDescription: String { "Models with the highest token usage." }
-    static var noModelUsage: String { "No model usage yet" }
+    static var noModelUsage: String { "No model activity yet" }
 
     static func updated(_ relative: String) -> String {
         "Updated \(relative)"

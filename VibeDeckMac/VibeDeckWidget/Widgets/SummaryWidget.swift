@@ -194,7 +194,7 @@ private struct SummaryTitleRow: View {
     let updated: Date
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .lastTextBaseline) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
@@ -202,10 +202,10 @@ private struct SummaryTitleRow: View {
             Spacer(minLength: 0)
             Text(WidgetFormat.relativeUpdated(updated))
                 .font(.system(size: 9))
-                .foregroundColor(.secondary)
+                .foregroundColor(.secondary.opacity(0.75))
                 .monospacedDigit()
         }
-        .frame(height: 16, alignment: .top)
+        .frame(height: 16)
     }
 }
 

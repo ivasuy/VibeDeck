@@ -30,7 +30,7 @@ struct WidgetHeader: View {
     var icon: String = "bolt.circle.fill"
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .lastTextBaseline, spacing: 6) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
@@ -41,12 +41,12 @@ struct WidgetHeader: View {
             if let subtitle {
                 Text(subtitle)
                     .font(.system(size: 9))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(.secondary.opacity(0.75))
                     .lineLimit(1)
                     .monospacedDigit()
             }
         }
-        .frame(height: 16, alignment: .top)
+        .frame(height: 16)
     }
 }
 

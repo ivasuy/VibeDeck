@@ -28,17 +28,17 @@ const PLAN_DEFAULTS = {
   'claude-monthly': {
     monthly_usd: 0,
     label: 'Plan usage',
-    label_detail: 'Plan usage — detected from your Claude activity.',
+    label_detail: 'Plan usage, detected from your Claude activity.',
   },
   'codex-monthly': {
     monthly_usd: 0,
     label: 'Plan usage',
-    label_detail: 'Plan usage — detected from your Codex activity.',
+    label_detail: 'Plan usage, detected from your Codex activity.',
   },
   'mixed-monthly': {
     monthly_usd: 0,
     label: 'Plan usage',
-    label_detail: 'Plan usage — detected across your active providers.',
+    label_detail: 'Plan usage, detected across your active providers.',
   },
   custom: {
     monthly_usd: 0,

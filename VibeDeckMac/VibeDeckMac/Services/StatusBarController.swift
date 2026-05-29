@@ -843,21 +843,26 @@ private struct MenuBarPopoverView: View {
     }
 
     private var todaySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             sectionLabel("TODAY")
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(viewModel.todayCost)
                     .id("today-cost-\(viewModel.todayCost)")
-                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .transition(.opacity)
-                Spacer()
-                Text(TokenFormatter.formatCompact(viewModel.todayTokens))
-                    .id("today-tokens-\(viewModel.todayTokens)")
-                    .font(.system(.callout, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
+                Spacer(minLength: 8)
+                HStack(alignment: .lastTextBaseline, spacing: 4) {
+                    Text(TokenFormatter.formatCompact(viewModel.todayTokens))
+                        .id("today-tokens-\(viewModel.todayTokens)")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                    Text("tokens")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                }
             }
             .animation(NativeMotion.Ease.short(reduceMotion: reduceMotion), value: viewModel.todayCost)
             .animation(NativeMotion.Ease.short(reduceMotion: reduceMotion), value: viewModel.todayTokens)
@@ -870,42 +875,58 @@ private struct MenuBarPopoverView: View {
                         .animation(NativeMotion.Ease.short(reduceMotion: reduceMotion), value: todayFillFraction)
                 }
             }
-            .frame(height: 8)
-            HStack(spacing: 8) {
-                ForEach(viewModel.fleetData.prefix(4)) { source in
-                    HStack(spacing: 4) {
-                        ProviderLogoView(provider: source.label, size: 12)
-                        Text(source.label.capitalized)
-                        Text("\(source.totalPercent)%")
-                            .monospacedDigit()
+            .frame(height: 6)
+            todayProviderBreakdown
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+    }
+
+    private var todayProviderBreakdown: some View {
+        let sources = viewModel.fleetData.prefix(4)
+        return Group {
+            if sources.isEmpty {
+                EmptyView()
+            } else {
+                HStack(alignment: .center, spacing: 14) {
+                    ForEach(sources) { source in
+                        HStack(spacing: 5) {
+                            ProviderLogoView(provider: source.label, size: 12)
+                            Text(source.label.capitalized)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("\(source.totalPercent)%")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(.primary.opacity(0.78))
+                        }
                     }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
                 }
             }
         }
-        .padding(16)
     }
 
     private var activeSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             sectionLabel("ACTIVE NOW")
             if activeSessions.isEmpty {
-                Text("Nothing running. Clawd is napping.")
+                Text("Nothing running right now.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 4)
             } else {
                 ForEach(Array(activeSessions.enumerated()), id: \.element.id) { index, session in
                     Button {
                         activeFocusIndex = index
                         onOpenSession(session)
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(alignment: .center, spacing: 10) {
                             MenuBarLiveDot()
                             ProviderLogoView(provider: session.provider ?? "", size: 14)
-                            VStack(alignment: .leading, spacing: 1) {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(session.displayProvider)
                                     .font(.caption)
                                     .modifier(FontWeightModifier(weight: .medium))
@@ -913,21 +934,27 @@ private struct MenuBarPopoverView: View {
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
+                                    .truncationMode(.middle)
                             }
-                            Spacer()
-                            Text(session.displayCost)
-                                .font(.caption)
-                                .monospacedDigit()
+                            Spacer(minLength: 8)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(session.displayCost)
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .monospacedDigit()
+                                Text("session total")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary.opacity(0.75))
+                            }
                         }
                         .contentShape(Rectangle())
-                        .frame(height: 32)
-                        .padding(.horizontal, 6)
+                        .frame(height: 38)
+                        .padding(.horizontal, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .fill(index == activeFocusIndex ? Color.brand.opacity(0.10) : Color.clear)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
                                 .stroke(index == activeFocusIndex ? Color.brand.opacity(0.35) : Color.clear, lineWidth: 0.5)
                         )
                     }
@@ -942,22 +969,47 @@ private struct MenuBarPopoverView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var limitsSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             sectionLabel("LIMITS")
             if limitRows.isEmpty {
-                Text("No configured provider limits yet.")
+                Text("No limits configured yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 4)
             } else if limitRows.allSatisfy({ $0.fraction < 0.5 }) {
-                Text("All providers under 50%.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 6)
+                HStack(alignment: .center, spacing: 10) {
+                    Text("Plenty of headroom")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    HStack(spacing: 8) {
+                        ForEach(limitRows) { row in
+                            HStack(spacing: 5) {
+                                ProviderLogoView(provider: row.provider, size: 11)
+                                Capsule()
+                                    .fill(Color.limitTrack)
+                                    .frame(width: 28, height: 4)
+                                    .overlay(
+                                        GeometryReader { proxy in
+                                            Capsule()
+                                                .fill(Color.limitBar(fraction: row.fraction))
+                                                .frame(width: max(2, proxy.size.width * row.fraction))
+                                        }
+                                    )
+                                Text("\(Int((row.fraction * 100).rounded()))%")
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
             } else {
                 ForEach(limitRows) { row in
                     VStack(alignment: .leading, spacing: 4) {
@@ -968,7 +1020,7 @@ private struct MenuBarPopoverView: View {
                                 .modifier(FontWeightModifier(weight: .medium))
                             Spacer()
                             Text("\(Int((row.fraction * 100).rounded()))%")
-                                .font(.caption)
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .monospacedDigit()
                         }
                         GeometryReader { proxy in
@@ -991,7 +1043,8 @@ private struct MenuBarPopoverView: View {
                 }
             }
         }
-        .padding(16)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var offlineBody: some View {

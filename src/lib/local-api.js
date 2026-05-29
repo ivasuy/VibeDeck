@@ -47,6 +47,10 @@ const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
 const { readStartupSnapshot } = require("./startup-snapshot");
+const {
+  emptyProjectionFreshness,
+  readProjectionFreshnessPayload,
+} = require("./projection-freshness");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -569,6 +573,7 @@ function readLiveSessionsSnapshot(queuePath) {
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
+    freshness: readProjectionFreshnessPayload({ dbPath }),
     generated_at: generatedAt,
     last_sync_at: lastSyncAt || null,
   };
@@ -1695,6 +1700,7 @@ function scopedQueueRows(queuePath, url) {
     excludedSources: listExcludedSources(allRows, scope),
     canonical,
     canonical_incomplete: !canonical.complete,
+    freshness: readProjectionFreshnessPayload({ dbPath }),
   };
 }
 
@@ -2019,6 +2025,14 @@ function json(res, data, status) {
 
 function codeburnDbPath(queuePath) {
   return path.join(path.dirname(queuePath), "vibedeck.sqlite3");
+}
+
+function projectionFreshnessForQueue(queuePath, { missingDbMode = "empty" } = {}) {
+  const dbPath = codeburnDbPath(queuePath);
+  if (!fs.existsSync(dbPath) && missingDbMode === "snapshot") {
+    return emptyProjectionFreshness("snapshot");
+  }
+  return readProjectionFreshnessPayload({ dbPath });
 }
 
 function codeburnFiltersFromUrl(url) {
@@ -2366,7 +2380,10 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "Method Not Allowed" }, 405);
         return true;
       }
-      json(res, readStartupSnapshot({ trackerDir: path.dirname(qp) }));
+      json(res, {
+        ...readStartupSnapshot({ trackerDir: path.dirname(qp) }),
+        freshness: projectionFreshnessForQueue(qp, { missingDbMode: "snapshot" }),
+      });
       return true;
     }
 
@@ -2551,7 +2568,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext).filter((d) => d.day >= from && d.day <= to);
       const totals = daily.reduce(
         (acc, r) => {
@@ -2606,6 +2623,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         from, to, days: daily.length, scope, excluded_sources: excludedSources,
         canonical,
         canonical_incomplete,
+        freshness,
         totals: { ...totals, total_cost_usd: totalCost.toFixed(6) },
         rolling: {
           last_7d: { from: l7fromStr, to: todayStr, active_days: l7.length, totals: l7t },
@@ -2620,9 +2638,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext).filter((d) => d.day >= from && d.day <= to);
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data: daily });
+      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data: daily });
       return true;
     }
 
@@ -2630,7 +2648,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     if (isRouteMatch(p, ROUTES.usageHeatmap)) {
       const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext);
       const todayParts = getZonedParts(new Date(), timeZoneContext);
       const todayStr = formatPartsDayKey(todayParts) || new Date().toISOString().slice(0, 10);
@@ -2673,7 +2691,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       for (let i = 0; i < cells.length; i += 7) {
         weeksArr.push(cells.slice(i, i + 7));
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, week_starts_on: "sun", active_days: cells.filter((c) => c.billable_total_tokens > 0).length, streak_days: 0, weeks: weeksArr });
+      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, week_starts_on: "sun", active_days: cells.filter((c) => c.billable_total_tokens > 0).length, streak_days: 0, weeks: weeksArr });
       return true;
     }
 
@@ -2682,7 +2700,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows: scopedRows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows: scopedRows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const rows = scopedRows.filter((r) => {
         if (!r.hour_start) return false;
         const d = rowDayKey(r, timeZoneContext);
@@ -2755,7 +2773,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       });
 
       json(res, {
-        from, to, days: 0, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, sources,
+        from, to, days: 0, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, sources,
         pricing: { model: "per-model", pricing_mode: "per_token_type", source: "litellm", effective_from: new Date().toISOString().slice(0, 10) },
       });
       return true;
@@ -3440,9 +3458,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     if (isRouteMatch(p, ROUTES.usageHourly)) {
       const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const data = aggregateHourlyByDay(rows, day, timeZoneContext);
-      json(res, { day, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data });
+      json(res, { day, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data });
       return true;
     }
 
@@ -3451,7 +3469,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const byMonth = new Map();
       for (const row of rows) {
         if (!row.hour_start) continue;
@@ -3470,7 +3488,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         a.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         a.conversation_count += row.conversation_count || 0;
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data: Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month)) });
+      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data: Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month)) });
       return true;
     }
 

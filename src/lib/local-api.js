@@ -573,7 +573,7 @@ function readLiveSessionsSnapshot(queuePath) {
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
-    freshness: readProjectionFreshnessPayload({ dbPath }),
+    freshness: readLocalProjectionFreshness({ dbPath }),
     generated_at: generatedAt,
     last_sync_at: lastSyncAt || null,
   };
@@ -1700,7 +1700,7 @@ function scopedQueueRows(queuePath, url) {
     excludedSources: listExcludedSources(allRows, scope),
     canonical,
     canonical_incomplete: !canonical.complete,
-    freshness: readProjectionFreshnessPayload({ dbPath }),
+    freshness: readLocalProjectionFreshness({ dbPath }),
   };
 }
 
@@ -2029,14 +2029,34 @@ function codeburnDbPath(queuePath) {
 
 function projectionFreshnessForQueue(queuePath, { missingDbMode = "empty" } = {}) {
   const dbPath = codeburnDbPath(queuePath);
+  if (!isProjectionFreshnessEnabled()) return emptyProjectionFreshness("disabled");
   if (!fs.existsSync(dbPath) && missingDbMode === "snapshot") {
     return emptyProjectionFreshness("snapshot");
   }
   return readProjectionFreshnessPayload({ dbPath });
 }
 
+function readLocalProjectionFreshness({ dbPath } = {}) {
+  if (!isProjectionFreshnessEnabled()) return emptyProjectionFreshness("disabled");
+  return readProjectionFreshnessPayload({ dbPath });
+}
+
 function isStartupSnapshotEnabled() {
   const raw = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isProjectionFreshnessEnabled() {
+  const raw = process.env.VIBEDECK_PROJECTION_FRESHNESS;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isRebuildProfileDiagnosticsEnabled() {
+  const raw = process.env.VIBEDECK_REBUILD_PROFILE;
   if (raw === undefined || raw === null || raw === "") return true;
   const value = String(raw).trim().toLowerCase();
   return !["0", "false", "off", "no"].includes(value);
@@ -2049,6 +2069,7 @@ function finiteNonNegative(value) {
 
 function readStartupDiagnostics(trackerDir) {
   const diagnostics = { rebuild: null };
+  if (!isRebuildProfileDiagnosticsEnabled()) return diagnostics;
   try {
     const payload = JSON.parse(fs.readFileSync(path.join(trackerDir, "rebuild_profile.json"), "utf8"));
     const defaults = payload?.defaults && typeof payload.defaults === "object" ? payload.defaults : {};
@@ -2074,6 +2095,10 @@ function readStartupDiagnostics(trackerDir) {
         VIBEDECK_REBUILD_RECENT_FASTPATH:
           typeof rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH === "string"
             ? rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH
+            : null,
+        VIBEDECK_PROJECTION_FRESHNESS:
+          typeof rollbackEnvFlags.VIBEDECK_PROJECTION_FRESHNESS === "string"
+            ? rollbackEnvFlags.VIBEDECK_PROJECTION_FRESHNESS
             : null,
         VIBEDECK_REBUILD_PROFILE:
           typeof rollbackEnvFlags.VIBEDECK_REBUILD_PROFILE === "string"

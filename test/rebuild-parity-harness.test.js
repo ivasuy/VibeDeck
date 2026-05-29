@@ -154,6 +154,7 @@ async function runRebuild({
     OPENCODE_HOME: process.env.OPENCODE_HOME,
     VIBEDECK_REBUILD_PROFILE: process.env.VIBEDECK_REBUILD_PROFILE,
     VIBEDECK_REBUILD_RECENT_FASTPATH: process.env.VIBEDECK_REBUILD_RECENT_FASTPATH,
+    VIBEDECK_PROJECTION_FRESHNESS: process.env.VIBEDECK_PROJECTION_FRESHNESS,
     VIBEDECK_REBUILD_DIRTY_POST_DRAIN: process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
     VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS: process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS,
     VIBEDECK_REBUILD_SESSION_BATCH_EVENTS: process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS,
@@ -537,6 +538,10 @@ test('rebuild rollout defaults enable recent-first profile diagnostics with docu
   assert.match(
     rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_RECENT_FASTPATH,
     /0 disables recent-first/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_PROJECTION_FRESHNESS,
+    /0 disables projection freshness/,
   );
   assert.match(
     rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_PROFILE,

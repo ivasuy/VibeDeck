@@ -104,6 +104,7 @@ const DEFAULT_REBUILD_SESSION_BATCH_EVENTS = 1000;
 const ROLLBACK_ENV_FLAGS = {
   VIBEDECK_STARTUP_SNAPSHOT: "0 disables startup snapshot read/write",
   VIBEDECK_REBUILD_RECENT_FASTPATH: "0 disables recent-first rebuild",
+  VIBEDECK_PROJECTION_FRESHNESS: "0 disables projection freshness reporting",
   VIBEDECK_REBUILD_PROFILE: "0 disables rebuild profile diagnostics",
 };
 let autoBranchFactsRebuilt = false;
@@ -167,6 +168,13 @@ function isStartupSnapshotEnabled() {
 function isRebuildProfileEnabled({ rebuildVibedeckDb = false } = {}) {
   if (!rebuildVibedeckDb) return false;
   const raw = process.env.VIBEDECK_REBUILD_PROFILE;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isProjectionFreshnessEnabled() {
+  const raw = process.env.VIBEDECK_PROJECTION_FRESHNESS;
   if (raw === undefined || raw === null || raw === "") return true;
   const value = String(raw).trim().toLowerCase();
   return !["0", "false", "off", "no"].includes(value);
@@ -575,13 +583,14 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const snapshotEnabled = isStartupSnapshotEnabled();
+    const projectionFreshnessEnabled = isProjectionFreshnessEnabled();
     const rebuildProfile = isRebuildProfileEnabled({ rebuildVibedeckDb: opts.rebuildVibedeckDb })
       ? createRebuildProfile({
           trackerDir,
           defaults: {
             snapshot_write: snapshotEnabled,
             recent_first_rebuild: recentFastPathEnabled,
-            freshness_reporting: true,
+            freshness_reporting: projectionFreshnessEnabled,
           },
         })
       : null;

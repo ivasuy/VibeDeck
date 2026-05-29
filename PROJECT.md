@@ -1051,7 +1051,9 @@ Next real startup-speed direction: start the dashboard immediately from the last
 - `/functions/vibedeck-startup-snapshot` now includes rebuild readiness diagnostics additively next to projection freshness.
 - Startup snapshot reads and writes remain enabled by default and can be rolled back with `VIBEDECK_STARTUP_SNAPSHOT=0`.
 - Recent-first rebuild remains enabled by default and can be rolled back with `VIBEDECK_REBUILD_RECENT_FASTPATH=0`.
+- Projection freshness reporting remains enabled by default and can be rolled back with `VIBEDECK_PROJECTION_FRESHNESS=0`.
 - Rebuild profile diagnostics can be rolled back with `VIBEDECK_REBUILD_PROFILE=0`.
+  When disabled, the startup snapshot endpoint does not return stale `rebuild_profile.json` diagnostics.
 
 #### Smoke results
 

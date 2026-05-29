@@ -258,6 +258,7 @@ test('local startup snapshot exposes rebuild readiness diagnostics additively', 
         rollback_env_flags: {
           VIBEDECK_STARTUP_SNAPSHOT: '0 disables startup snapshot read/write',
           VIBEDECK_REBUILD_RECENT_FASTPATH: '0 disables recent-first rebuild',
+          VIBEDECK_PROJECTION_FRESHNESS: '0 disables projection freshness reporting',
           VIBEDECK_REBUILD_PROFILE: '0 disables rebuild profile diagnostics',
         },
       }),
@@ -276,7 +277,73 @@ test('local startup snapshot exposes rebuild readiness diagnostics additively', 
       payload.diagnostics.rebuild.rollback_env_flags.VIBEDECK_REBUILD_RECENT_FASTPATH,
       /0 disables recent-first/,
     );
+    assert.match(
+      payload.diagnostics.rebuild.rollback_env_flags.VIBEDECK_PROJECTION_FRESHNESS,
+      /0 disables projection freshness/,
+    );
   } finally {
+    f.cleanup();
+  }
+});
+
+test('local startup snapshot hides stale rebuild diagnostics when rebuild profile is disabled', async () => {
+  const f = makeFixture();
+  const previous = process.env.VIBEDECK_REBUILD_PROFILE;
+  try {
+    fs.writeFileSync(
+      path.join(f.dir, 'rebuild_profile.json'),
+      JSON.stringify({
+        generated_at: '2026-05-29T04:00:00.000Z',
+        milestones: {
+          first_paint_ready_ms: 125,
+          historical_completion_ms: 250,
+        },
+      }),
+      'utf8',
+    );
+    process.env.VIBEDECK_REBUILD_PROFILE = '0';
+
+    const payload = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-startup-snapshot',
+    )).body);
+
+    assert.equal(payload.diagnostics.rebuild, null);
+  } finally {
+    if (previous === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = previous;
+    f.cleanup();
+  }
+});
+
+test('local API freshness metadata can be rolled back with env flag', async () => {
+  const f = makeFixture();
+  const previous = process.env.VIBEDECK_PROJECTION_FRESHNESS;
+  try {
+    insertShard(f.dbPath, {
+      shard_key: 'codex:recent',
+      scope: 'recent',
+      status: 'ready',
+      finished_at: '2026-05-29T02:00:00.000Z',
+    });
+    process.env.VIBEDECK_PROJECTION_FRESHNESS = '0';
+
+    const usage = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-usage-summary?from=2026-05-29&to=2026-05-29&tz=UTC',
+    )).body);
+    const snapshot = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-startup-snapshot',
+    )).body);
+
+    assert.equal(usage.freshness.mode, 'disabled');
+    assert.equal(usage.freshness.recent_ready, false);
+    assert.equal(snapshot.freshness.mode, 'disabled');
+    assert.equal(snapshot.freshness.recent_ready, false);
+  } finally {
+    if (previous === undefined) delete process.env.VIBEDECK_PROJECTION_FRESHNESS;
+    else process.env.VIBEDECK_PROJECTION_FRESHNESS = previous;
     f.cleanup();
   }
 });

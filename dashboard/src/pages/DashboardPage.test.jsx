@@ -153,7 +153,16 @@ describe("DashboardPage", () => {
 
     render(<DashboardPage signedIn auth="token" />);
 
-    expect(await screen.findByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeTruthy();
+    expect(await screen.findByText("Projected month spend is over your plan. Numbers shown are API-equivalent, not what you'll be billed.")).toBeTruthy();
+  });
+
+  it("uses softer copy when the plan is auto-detected", async () => {
+    api.getForecastView.mockResolvedValue({ ok: true, forecast_30d_usd: "320.00" });
+    api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 200, inferred: true, plan: "claude-monthly" });
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Projected month spend is over your detected plan. Set an exact budget in Settings to fine-tune.")).toBeTruthy();
   });
 
   it("hides forecast banner when forecast data is missing", async () => {
@@ -163,7 +172,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage signedIn auth="token" />);
 
     expect(await screen.findByText("Dashboard shell")).toBeTruthy();
-    expect(screen.queryByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeNull();
+    expect(screen.queryByText(/Projected month spend is over/)).toBeNull();
   });
 
   it("passes first-run dashboard state when no tracked usage exists", async () => {

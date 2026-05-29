@@ -958,9 +958,12 @@ export function DashboardPage({
 
   const attentionInsight = useMemo(() => {
     if (showForecastBanner) {
+      const inferred = planView?.inferred === true;
       return {
         title: "Plan pressure",
-        body: "Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.",
+        body: inferred
+          ? "Projected month spend is over your detected plan. Set an exact budget in Settings to fine-tune."
+          : "Projected month spend is over your plan. Numbers shown are API-equivalent, not what you'll be billed.",
       };
     }
     if (showReadingPatternHint) {

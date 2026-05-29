@@ -43,7 +43,7 @@ const {
   toCsv,
 } = require("./codeburn-parity");
 const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
-const { readPlanConfig } = require("./plan-config");
+const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
 
@@ -2057,7 +2057,7 @@ function sumFactCostUsd(rows) {
 }
 
 function buildPlanPayload(dbPath) {
-  const config = readPlanConfig();
+  const config = readEffectivePlanConfig({ dbPath });
   const range = currentMonthRange();
   const rows = readCodeburnFactRows(dbPath, range);
   const spend = sumFactCostUsd(rows);

@@ -445,6 +445,141 @@ test('branch fact rebuild uses shared provider branch helper cache for fallback 
   }
 });
 
+test('provider branch evidence cache reuses unambiguous strict reads for non-strict branch facts', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-provider-branch-cache-'));
+  const sessionFile = path.join(dir, 'codex-session.jsonl');
+  const originalOpenSync = fs.openSync;
+  let opens = 0;
+
+  try {
+    fs.writeFileSync(sessionFile, `${JSON.stringify({ payload: { git: { branch: 'feature/cache' } } })}\n`, 'utf8');
+    fs.openSync = (...args) => {
+      if (args[0] === sessionFile) opens += 1;
+      return originalOpenSync(...args);
+    };
+
+    const cache = providerBranch.createProviderBranchCache();
+    const strict = providerBranch.readProviderBranchFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+    const nonStrict = providerBranch.readProviderBranchEvidenceFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+
+    assert.equal(strict.branch, 'feature/cache');
+    assert.deepEqual(nonStrict, { branch: 'feature/cache', checked: true, ambiguous: false });
+    assert.equal(opens, 1);
+  } finally {
+    fs.openSync = originalOpenSync;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('provider branch evidence cache does not reuse ambiguous strict reads for non-strict recovery', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-provider-branch-cache-ambiguous-'));
+  const sessionFile = path.join(dir, 'codex-session.jsonl');
+  const originalOpenSync = fs.openSync;
+  let opens = 0;
+
+  try {
+    fs.writeFileSync(
+      sessionFile,
+      `{malformed-json}\n${JSON.stringify({ payload: { git: { branch: 'feature/recovered' } } })}\n`,
+      'utf8',
+    );
+    fs.openSync = (...args) => {
+      if (args[0] === sessionFile) opens += 1;
+      return originalOpenSync(...args);
+    };
+
+    const cache = providerBranch.createProviderBranchCache();
+    const strict = providerBranch.readProviderBranchFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+    const nonStrict = providerBranch.readProviderBranchEvidenceFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+
+    assert.equal(strict, null);
+    assert.deepEqual(nonStrict, { branch: 'feature/recovered', checked: true, ambiguous: false });
+    assert.equal(opens, 2);
+  } finally {
+    fs.openSync = originalOpenSync;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('branch fact rebuild caches repeated project attribution shapes', async () => {
+  const fixture = makeDb();
+  const originalStatSync = fs.statSync;
+  let repoStats = 0;
+
+  try {
+    const repoRoot = path.join(fixture.dir, 'repo');
+    initGitRepo(repoRoot);
+    const realRepoRoot = fs.realpathSync(repoRoot);
+
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'project-cache',
+        started_at: '2026-05-17T12:00:00.000Z',
+        ended_at: '2026-05-17T12:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'PROVIDER_LOG',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 15,
+        last_observed_at: '2026-05-17T12:05:00.000Z',
+      });
+      for (let index = 0; index < 5; index += 1) {
+        insertEvent(db, {
+          provider: 'codex',
+          session_id: 'project-cache',
+          event_key: `event-${index}`,
+          observed_at: `2026-05-17T12:0${index}:00.000Z`,
+          cwd: repoRoot,
+          repo_root: repoRoot,
+          branch: 'main',
+          branch_resolution_tier: 'PROVIDER_LOG',
+          confidence: 'medium',
+          model: 'gpt-5.4',
+          delta_tokens: 3,
+          input_tokens: 2,
+          output_tokens: 1,
+        });
+      }
+    } finally {
+      db.close();
+    }
+
+    fs.statSync = (...args) => {
+      if (args[0] === realRepoRoot) repoStats += 1;
+      return originalStatSync(...args);
+    };
+
+    const cache = {};
+    const rebuilt = await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    assert.equal(rebuilt, 1);
+    assert.equal(repoStats, 1);
+    assert.ok(cache.projectAttributionByShape instanceof Map);
+  } finally {
+    fs.statSync = originalStatSync;
+    fixture.cleanup();
+  }
+});
+
 test('branch facts prefer session branch when event/provider branch evidence is missing', async () => {
   const tmp = makeDb();
   try {

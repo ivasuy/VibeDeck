@@ -67,6 +67,40 @@ The previous fast-startup work moved rebuild time down sharply, but the latest l
 
 The default rebuild path now uses dirty post-drain materialization. On the latest local DB profile, `recent_lane_session_event_flush` dropped to `6,417.036ms`, `repair_pass` dropped to `95.639ms`, and `branch_fact_rebuild_pass` is now the main remaining stage at `8,100.361ms` for `126` dirty branch facts. The next performance phase should target faster dirty branch-fact materialization.
 
+### 1.0.4 Dirty Branch-Fact Materialization
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-9-dirty-branch-fact-materialization.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-9-report.md`
+
+#### Problem
+
+After dirty post-drain became the default rebuild path, `branch_fact_rebuild_pass` became the dominant remaining stage. The live profile showed about `8.1s` spent rebuilding `126` dirty branch facts.
+
+#### What changed
+
+- Reused unambiguous strict provider-branch evidence for later non-strict branch-fact evidence reads.
+- Kept ambiguous strict reads isolated so non-strict recovery can still ignore malformed lines and recover a valid provider branch.
+- Added a shared project-attribution cache for branch-fact materialization so repeated events with the same cwd/repo do not repeat filesystem `realpath` and `stat` work.
+- Preserved provider-log branch evidence, historical unknown, missing project, non-git project, and dirty post-drain parity behavior.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity/freshness suite | `83/83` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Live DB rebuild before this phase | `17.93s` |
+| Live DB rebuild after this phase | `10.81s` |
+| `branch_fact_rebuild_pass` before this phase | `8,100.361ms` |
+| `branch_fact_rebuild_pass` after this phase | `577.476ms` |
+
+#### Follow-up
+
+The main remaining stage is now grouped flush at about `6.54s`. The next rebuild phase should target grouped session flush itself: fewer per-session DB writes, less branch resolution during flush, or a bulk session-event materialization path that preserves live session rows and canonical parity.
+
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28

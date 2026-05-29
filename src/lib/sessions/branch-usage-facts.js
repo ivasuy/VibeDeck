@@ -175,8 +175,31 @@ function branchUsageDisplayBranch({ branch, project }) {
   };
 }
 
-function projectShape(row, provider, sessionId) {
-  return classifyProjectAttribution({
+function getProjectAttributionCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.projectAttributionByShape instanceof Map)) {
+    cache.projectAttributionByShape = new Map();
+  }
+  return cache.projectAttributionByShape;
+}
+
+function projectShapeCacheKey(row, provider, sessionId) {
+  return [
+    provider || '',
+    sessionId || '',
+    row?.cwd ?? '',
+    row?.repo_root ?? '',
+    row?.repo_common_dir ?? '',
+    row?.parent_repo ?? '',
+  ].join('\u0000');
+}
+
+function projectShape(row, provider, sessionId, cache = null) {
+  const projectCache = getProjectAttributionCache(cache);
+  const cacheKey = projectCache ? projectShapeCacheKey(row, provider, sessionId) : null;
+  if (projectCache && projectCache.has(cacheKey)) return projectCache.get(cacheKey);
+
+  const project = classifyProjectAttribution({
     provider,
     session_id: sessionId,
     cwd: row?.cwd ?? null,
@@ -184,6 +207,8 @@ function projectShape(row, provider, sessionId) {
     repo_common_dir: row?.repo_common_dir ?? null,
     parent_repo: row?.parent_repo ?? null,
   });
+  if (projectCache) projectCache.set(cacheKey, project);
+  return project;
 }
 
 function mergeProjectRow(event, session) {
@@ -380,7 +405,7 @@ function baseTimestamps(session) {
 }
 
 async function buildSyntheticGroup(session, { dbPath, provider, session_id, db = null, cache = null }) {
-  const project = projectShape(session, provider, session_id);
+  const project = projectShape(session, provider, session_id, cache);
   const when = session.last_observed_at || session.ended_at || session.started_at || null;
   const sessionBranch = knownBranchResult(session?.branch);
   const providerEvidenceMap = cache && cache.providerBranchEvidenceBySession instanceof Map
@@ -463,7 +488,7 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
     : { branch: null, checked: false, ambiguous: false };
 
   for (const event of events) {
-    const project = projectShape(mergeProjectRow(event, session), provider, session_id);
+    const project = projectShape(mergeProjectRow(event, session), provider, session_id, cache);
     const observedAt = isNonEmptyString(event.observed_at)
       ? event.observed_at
       : session.last_observed_at || session.ended_at || session.started_at;

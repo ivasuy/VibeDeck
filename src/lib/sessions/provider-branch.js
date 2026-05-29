@@ -180,6 +180,11 @@ function readProviderBranchEvidenceFromSessionFile({
     ? `${makeCacheKey(key, session_id)}\u0000strict-malformed`
     : makeCacheKey(key, session_id);
   if (map && map.has(cacheKey)) return map.get(cacheKey);
+  if (map && !strictMalformed) {
+    const strictCacheKey = `${makeCacheKey(key, session_id)}\u0000strict-malformed`;
+    const strictResult = map.get(strictCacheKey);
+    if (strictResult && strictResult.ambiguous !== true) return strictResult;
+  }
 
   let result = { branch: null, checked: true, ambiguous: false };
   try {

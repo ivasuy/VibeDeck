@@ -130,6 +130,32 @@ test('upsertProjectionShard inserts and updates shard metadata', () => {
   }
 });
 
+test('upsertProjectionShard rejects new shards without required metadata', () => {
+  const tmp = makeDb();
+  try {
+    assert.throws(
+      () => upsertProjectionShard({
+        dbPath: tmp.dbPath,
+        shard: {
+          shard_key: 'codex:recent',
+          status: 'pending',
+        },
+      }),
+      /provider must be a non-empty string/,
+    );
+
+    const db = openDb(tmp.dbPath, { readOnly: true });
+    try {
+      const count = db.prepare('SELECT COUNT(*) AS count FROM vibedeck_projection_shards').get().count;
+      assert.equal(count, 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('markProjectionShardReady records counts and clears failure state', () => {
   const tmp = makeDb();
   try {
@@ -186,6 +212,30 @@ test('markProjectionShardReady records counts and clears failure state', () => {
   }
 });
 
+test('markProjectionShardReady rejects missing shards instead of creating unknown metadata', () => {
+  const tmp = makeDb();
+  try {
+    assert.throws(
+      () => markProjectionShardReady({
+        dbPath: tmp.dbPath,
+        shardKey: 'typo:recent',
+        now: new Date('2026-05-29T02:00:00.000Z'),
+      }),
+      /projection shard not found: typo:recent/,
+    );
+
+    const db = openDb(tmp.dbPath, { readOnly: true });
+    try {
+      const count = db.prepare('SELECT COUNT(*) AS count FROM vibedeck_projection_shards').get().count;
+      assert.equal(count, 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
 test('markProjectionShardFailed records failure status and error text', () => {
   const tmp = makeDb();
   try {
@@ -223,6 +273,31 @@ test('markProjectionShardFailed records failure status and error text', () => {
         last_error: 'cursor source unavailable',
         updated_at: '2026-05-29T02:30:00.000Z',
       });
+    } finally {
+      db.close();
+    }
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('markProjectionShardFailed rejects missing shards instead of creating unknown metadata', () => {
+  const tmp = makeDb();
+  try {
+    assert.throws(
+      () => markProjectionShardFailed({
+        dbPath: tmp.dbPath,
+        shardKey: 'typo:recent',
+        error: 'no source',
+        now: new Date('2026-05-29T02:30:00.000Z'),
+      }),
+      /projection shard not found: typo:recent/,
+    );
+
+    const db = openDb(tmp.dbPath, { readOnly: true });
+    try {
+      const count = db.prepare('SELECT COUNT(*) AS count FROM vibedeck_projection_shards').get().count;
+      assert.equal(count, 0);
     } finally {
       db.close();
     }
@@ -273,6 +348,58 @@ test('readProjectionFreshness reports recent and historical readiness from shard
     assert.deepEqual(readProjectionFreshness({ dbPath: tmp.dbPath }), {
       recent_ready: true,
       historical_ready: true,
+    });
+  } finally {
+    tmp.cleanup();
+  }
+});
+
+test('readProjectionFreshness requires every shard in a scope to be ready', () => {
+  const tmp = makeDb();
+  try {
+    for (const shard of [
+      {
+        shard_key: 'codex:recent',
+        provider: 'codex',
+        source_group: 'codex-jsonl',
+        scope: 'recent',
+        status: 'ready',
+      },
+      {
+        shard_key: 'claude:recent',
+        provider: 'claude',
+        source_group: 'claude-jsonl',
+        scope: 'recent',
+        status: 'failed',
+      },
+      {
+        shard_key: 'codex:historical',
+        provider: 'codex',
+        source_group: 'codex-jsonl',
+        scope: 'historical',
+        status: 'ready',
+      },
+      {
+        shard_key: 'claude:historical',
+        provider: 'claude',
+        source_group: 'claude-jsonl',
+        scope: 'historical',
+        status: 'stale',
+      },
+    ]) {
+      upsertProjectionShard({
+        dbPath: tmp.dbPath,
+        shard: {
+          ...shard,
+          created_at: '2026-05-29T01:00:00.000Z',
+          updated_at: '2026-05-29T01:00:00.000Z',
+        },
+      });
+    }
+
+    assert.deepEqual(readProjectionFreshness({ dbPath: tmp.dbPath }), {
+      recent_ready: false,
+      historical_ready: false,
     });
   } finally {
     tmp.cleanup();

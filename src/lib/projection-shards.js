@@ -4,6 +4,9 @@ const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('./db');
 
+const VALID_SCOPES = new Set(['active', 'recent', 'historical']);
+const VALID_STATUSES = new Set(['pending', 'building', 'ready', 'stale', 'failed']);
+
 function isoFromDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
@@ -28,6 +31,27 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+function requiredString(value, field) {
+  if (!nonEmptyString(value)) {
+    throw new TypeError(`upsertProjectionShard: ${field} must be a non-empty string`);
+  }
+  return value.trim();
+}
+
+function valueOrExistingString(shard, existing, field) {
+  if (hasOwn(shard, field)) return requiredString(shard[field], field);
+  if (existing) return existing[field];
+  return requiredString(undefined, field);
+}
+
+function valueOrExistingEnum(shard, existing, field, validValues) {
+  const value = valueOrExistingString(shard, existing, field);
+  if (!validValues.has(value)) {
+    throw new RangeError(`upsertProjectionShard: ${field} must be one of ${Array.from(validValues).join(', ')}`);
+  }
+  return value;
+}
+
 function normalizeShardForUpsert(shard, existing = null) {
   if (!shard || typeof shard !== 'object' || Array.isArray(shard)) {
     throw new TypeError('upsertProjectionShard: shard must be an object');
@@ -40,12 +64,10 @@ function normalizeShardForUpsert(shard, existing = null) {
   const createdAt = existing?.created_at || (nonEmptyString(shard.created_at) ? shard.created_at : now);
   return {
     shard_key: shard.shard_key.trim(),
-    provider: nonEmptyString(shard.provider) ? shard.provider.trim() : existing?.provider || 'unknown',
-    source_group: nonEmptyString(shard.source_group)
-      ? shard.source_group.trim()
-      : existing?.source_group || 'unknown',
-    scope: nonEmptyString(shard.scope) ? shard.scope.trim() : existing?.scope || 'recent',
-    status: nonEmptyString(shard.status) ? shard.status.trim() : existing?.status || 'pending',
+    provider: valueOrExistingString(shard, existing, 'provider'),
+    source_group: valueOrExistingString(shard, existing, 'source_group'),
+    scope: valueOrExistingEnum(shard, existing, 'scope', VALID_SCOPES),
+    status: valueOrExistingEnum(shard, existing, 'status', VALID_STATUSES),
     watermark_json: hasOwn(shard, 'watermark_json')
       ? shard.watermark_json
       : existing?.watermark_json || null,
@@ -115,9 +137,22 @@ function assertShardKey(shardKey, caller) {
   }
 }
 
+function requireExistingShard(dbPath, shardKey, caller) {
+  ensureSchema(dbPath);
+  const key = shardKey.trim();
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const row = db.prepare('SELECT shard_key FROM vibedeck_projection_shards WHERE shard_key = ?').get(key);
+    if (!row) throw new Error(`${caller}: projection shard not found: ${key}`);
+  } finally {
+    db.close();
+  }
+}
+
 function markProjectionShardReady({ dbPath, shardKey, counts = {}, now = new Date() } = {}) {
   assertDbPath(dbPath, 'markProjectionShardReady');
   assertShardKey(shardKey, 'markProjectionShardReady');
+  requireExistingShard(dbPath, shardKey, 'markProjectionShardReady');
   const timestamp = isoFromDate(now);
   return upsertProjectionShard({
     dbPath,
@@ -144,6 +179,7 @@ function errorMessage(error) {
 function markProjectionShardFailed({ dbPath, shardKey, error, now = new Date() } = {}) {
   assertDbPath(dbPath, 'markProjectionShardFailed');
   assertShardKey(shardKey, 'markProjectionShardFailed');
+  requireExistingShard(dbPath, shardKey, 'markProjectionShardFailed');
   const timestamp = isoFromDate(now);
   return upsertProjectionShard({
     dbPath,
@@ -165,14 +201,19 @@ function readProjectionFreshness({ dbPath, now = new Date() } = {}) {
   try {
     const rows = db
       .prepare(`
-        SELECT scope, COUNT(*) AS ready_count
+        SELECT
+          scope,
+          COUNT(*) AS shard_count,
+          SUM(CASE WHEN status = 'ready' THEN 1 ELSE 0 END) AS ready_count
         FROM vibedeck_projection_shards
-        WHERE status = 'ready'
-          AND scope IN ('recent', 'historical')
+        WHERE scope IN ('recent', 'historical')
         GROUP BY scope
       `)
       .all();
-    const ready = new Map(rows.map((row) => [row.scope, row.ready_count > 0]));
+    const ready = new Map(rows.map((row) => [
+      row.scope,
+      row.shard_count > 0 && row.ready_count === row.shard_count,
+    ]));
     return {
       recent_ready: ready.get('recent') === true,
       historical_ready: ready.get('historical') === true,

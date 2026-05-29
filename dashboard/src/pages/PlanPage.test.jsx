@@ -71,7 +71,7 @@ describe("PlanPage", () => {
 
     expect(
       await screen.findByText(
-        "No recent activity yet — once you use Claude or Codex, VibeDeck will pick a plan automatically.",
+        "No recent activity yet. Once you use Claude or Codex, VibeDeck will pick a plan automatically.",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/Monthly plan not configured/i)).toBeNull();

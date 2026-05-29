@@ -167,10 +167,10 @@ export function LiveSessionList({
                     handleSelectWorkstream();
                   }}
                   className={cn(
-                    "grid min-h-[132px] w-full cursor-pointer gap-3 border-l-2 px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
+                    "grid min-h-[132px] w-full cursor-pointer gap-3 rounded-lg border px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
                     selected
-                      ? "border-oai-brand-500 bg-oai-brand-50/70 ring-1 ring-inset ring-oai-brand-500/20 dark:bg-oai-brand-500/10"
-                        : "border-transparent hover:border-oai-brand-300 hover:bg-oai-brand-50/60 dark:hover:border-oai-brand-500 dark:hover:bg-oai-brand-950/35",
+                      ? "border-oai-brand-500/35 bg-oai-brand-50/70 dark:bg-oai-brand-500/10"
+                        : "border-transparent hover:border-oai-brand-300/50 hover:bg-oai-brand-50/60 dark:hover:bg-oai-brand-950/35",
                   )}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -190,7 +190,7 @@ export function LiveSessionList({
                         className="mt-1 truncate text-sm text-oai-gray-600 dark:text-oai-gray-300"
                         title={repoRoot || undefined}
                       >
-                        Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || "—")}
+                        Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || copy("live.value.unknown_model"))}
                         {scopeLabel ? ` · ${scopeLabel}` : ""}
                       </div>
                     </div>

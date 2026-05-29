@@ -67,6 +67,7 @@ const {
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
+const { writeStartupSnapshot } = require("../lib/startup-snapshot");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
@@ -1350,6 +1351,15 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       } catch (_e) {
         // ignore
       }
+    }
+
+    try {
+      writeStartupSnapshot({ trackerDir, dbPath: liveDbPath });
+      lifecycle?.providerDone?.("Startup snapshot", "updated");
+    } catch (e) {
+      const message = e?.message || String(e);
+      if (!opts.auto) process.stderr.write(`Startup snapshot: warning: ${message}\n`);
+      lifecycle?.providerDone?.("Startup snapshot", `warning: ${message}`);
     }
 
     if (!opts.auto) {

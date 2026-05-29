@@ -46,6 +46,7 @@ const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
 const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
+const { readStartupSnapshot } = require("./startup-snapshot");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -2356,6 +2357,16 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
       const limit = Number(url.searchParams.get("limit") || 5);
       json(res, readRecentSessions(dbPath, { limit }));
+      return true;
+    }
+
+    // --- vibedeck-startup-snapshot (GET) ---
+    if (p === "/functions/vibedeck-startup-snapshot") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, readStartupSnapshot({ trackerDir: path.dirname(qp) }));
       return true;
     }
 

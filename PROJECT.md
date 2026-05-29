@@ -1035,3 +1035,32 @@ After the first DB and cursor state exist, later starts should usually be much f
 Product caveat: we should not market current `0.1.3` as instant first-run startup for heavy users. H.6 fixed a real repair resolver bottleneck and kept `/usage`, `/dashboard`, `/branches`, Unknown branch, and Historical unknown data intact, but it did not land the architectural fast-serve behavior.
 
 Next real startup-speed direction: start the dashboard immediately from the last-good DB, show an honest `as of` timestamp / refresh status, and run sync/index refresh in the background. That is the change that would make repeat starts feel instant without sacrificing data richness or correctness.
+
+### Phase 7 - Hardening Default Rollout: Defaults, Observability, And Release Notes
+
+**Date:** 2026-05-29 IST
+**Branch:** `agent/fast-startup-rebuild`
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-7-hardening-default-rollout.md`
+**Task:** `P7-T1 Defaults, Observability, And Release Notes`
+**Status:** implemented locally, pending phase audit/merge.
+
+#### What changed
+
+- `vibedeck serve` now reports first-paint readiness time and schedules the initial provider-log sync in the background after the dashboard is listening, so the UI can open from the current snapshot/empty shell instead of waiting for a full historical scan first.
+- Rebuild profile diagnostics are on by default for `sync --rebuild-vibedeck-db` and record conservative rollout defaults, first-paint readiness, historical completion, and rollback flags.
+- `/functions/vibedeck-startup-snapshot` now includes rebuild readiness diagnostics additively next to projection freshness.
+- Startup snapshot reads and writes remain enabled by default and can be rolled back with `VIBEDECK_STARTUP_SNAPSHOT=0`.
+- Recent-first rebuild remains enabled by default and can be rolled back with `VIBEDECK_REBUILD_RECENT_FASTPATH=0`.
+- Rebuild profile diagnostics can be rolled back with `VIBEDECK_REBUILD_PROFILE=0`.
+
+#### Smoke results
+
+| Check | Result |
+|---|---:|
+| Startup snapshot + projection freshness suite | Passed (`22/22`) |
+| Rebuild DB + parity harness | Passed (`29/29`) |
+| Serve lifecycle/default rollout tests | Passed (`4/4`) |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| `git diff --check` | Passed |
+
+The rebuild parity harness still verifies final canonical parity for sessions, session events, branch facts, branch windows, totals, and Unknown/Historical buckets between baseline and recent-first rebuild paths.

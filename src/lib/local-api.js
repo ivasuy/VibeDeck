@@ -46,7 +46,7 @@ const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
 const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
-const { readStartupSnapshot } = require("./startup-snapshot");
+const { emptyStartupSnapshot, readStartupSnapshot } = require("./startup-snapshot");
 const {
   emptyProjectionFreshness,
   readProjectionFreshnessPayload,
@@ -2035,6 +2035,56 @@ function projectionFreshnessForQueue(queuePath, { missingDbMode = "empty" } = {}
   return readProjectionFreshnessPayload({ dbPath });
 }
 
+function isStartupSnapshotEnabled() {
+  const raw = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function finiteNonNegative(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function readStartupDiagnostics(trackerDir) {
+  const diagnostics = { rebuild: null };
+  try {
+    const payload = JSON.parse(fs.readFileSync(path.join(trackerDir, "rebuild_profile.json"), "utf8"));
+    const defaults = payload?.defaults && typeof payload.defaults === "object" ? payload.defaults : {};
+    const milestones = payload?.milestones && typeof payload.milestones === "object" ? payload.milestones : {};
+    const rollbackEnvFlags =
+      payload?.rollback_env_flags && typeof payload.rollback_env_flags === "object"
+        ? payload.rollback_env_flags
+        : {};
+    diagnostics.rebuild = {
+      generated_at: typeof payload?.generated_at === "string" ? payload.generated_at : null,
+      first_paint_ready_ms: finiteNonNegative(milestones.first_paint_ready_ms),
+      historical_completion_ms: finiteNonNegative(milestones.historical_completion_ms),
+      defaults: {
+        snapshot_write: defaults.snapshot_write === true,
+        recent_first_rebuild: defaults.recent_first_rebuild === true,
+        freshness_reporting: defaults.freshness_reporting === true,
+      },
+      rollback_env_flags: {
+        VIBEDECK_STARTUP_SNAPSHOT:
+          typeof rollbackEnvFlags.VIBEDECK_STARTUP_SNAPSHOT === "string"
+            ? rollbackEnvFlags.VIBEDECK_STARTUP_SNAPSHOT
+            : null,
+        VIBEDECK_REBUILD_RECENT_FASTPATH:
+          typeof rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH === "string"
+            ? rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH
+            : null,
+        VIBEDECK_REBUILD_PROFILE:
+          typeof rollbackEnvFlags.VIBEDECK_REBUILD_PROFILE === "string"
+            ? rollbackEnvFlags.VIBEDECK_REBUILD_PROFILE
+            : null,
+      },
+    };
+  } catch {}
+  return diagnostics;
+}
+
 function codeburnFiltersFromUrl(url) {
   return {
     from: url.searchParams.get("from"),
@@ -2380,9 +2430,14 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         json(res, { error: "Method Not Allowed" }, 405);
         return true;
       }
+      const trackerDir = path.dirname(qp);
+      const snapshot = isStartupSnapshotEnabled()
+        ? readStartupSnapshot({ trackerDir })
+        : emptyStartupSnapshot({ reason: "disabled" });
       json(res, {
-        ...readStartupSnapshot({ trackerDir: path.dirname(qp) }),
+        ...snapshot,
         freshness: projectionFreshnessForQueue(qp, { missingDbMode: "snapshot" }),
+        diagnostics: readStartupDiagnostics(trackerDir),
       });
       return true;
     }

@@ -37,6 +37,60 @@ test('serve startup lifecycle reporter prints visible startup phases', () => {
   assert.match(logs, /Dashboard ready: http:\/\/127\.0\.0\.1:7690/);
 });
 
+test('serve startup lifecycle reporter prints first-paint readiness timing', () => {
+  const { createServeLifecycleReporter } = require('../src/commands/serve');
+  let logs = '';
+  const reporter = createServeLifecycleReporter({
+    stdout: {
+      write(chunk) {
+        logs += chunk;
+      },
+    },
+  });
+
+  reporter.ready('http://127.0.0.1:7690', { startedAtMs: 1_000, nowMs: 1_375 });
+
+  assert.match(logs, /Dashboard ready: http:\/\/127\.0\.0\.1:7690/);
+  assert.match(logs, /First paint ready: 375ms/);
+});
+
+test('serve schedules initial sync in the background so first paint is not blocked', async () => {
+  const { startServeSyncInBackground } = require('../src/commands/serve');
+  let logs = '';
+  let syncStarted = false;
+  let releaseSync;
+  const syncReleased = new Promise((resolve) => {
+    releaseSync = resolve;
+  });
+
+  const scheduled = startServeSyncInBackground({
+    syncEnabled: true,
+    lifecycle: {
+      phase(message) {
+        logs += `${message}\n`;
+      },
+    },
+    cmdSyncFn: async () => {
+      syncStarted = true;
+      await syncReleased;
+    },
+    stdout: {
+      write(chunk) {
+        logs += chunk;
+      },
+    },
+  });
+
+  assert.equal(syncStarted, false);
+  assert.equal(typeof scheduled?.then, 'function');
+  assert.match(logs, /Syncing provider logs in background/);
+
+  await Promise.resolve();
+  assert.equal(syncStarted, true);
+  releaseSync();
+  await scheduled;
+});
+
 test('serve startup lifecycle reporter prints real provider progress with current file proof', () => {
   const { createServeLifecycleReporter } = require('../src/commands/serve');
   let logs = '';

@@ -239,6 +239,80 @@ test('local startup snapshot exposes projection freshness metadata additively', 
   }
 });
 
+test('local startup snapshot exposes rebuild readiness diagnostics additively', async () => {
+  const f = makeFixture();
+  try {
+    fs.writeFileSync(
+      path.join(f.dir, 'rebuild_profile.json'),
+      JSON.stringify({
+        generated_at: '2026-05-29T04:00:00.000Z',
+        defaults: {
+          snapshot_write: true,
+          recent_first_rebuild: true,
+          freshness_reporting: true,
+        },
+        milestones: {
+          first_paint_ready_ms: 125,
+          historical_completion_ms: 250,
+        },
+        rollback_env_flags: {
+          VIBEDECK_STARTUP_SNAPSHOT: '0 disables startup snapshot read/write',
+          VIBEDECK_REBUILD_RECENT_FASTPATH: '0 disables recent-first rebuild',
+          VIBEDECK_REBUILD_PROFILE: '0 disables rebuild profile diagnostics',
+        },
+      }),
+      'utf8',
+    );
+
+    const payload = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-startup-snapshot',
+    )).body);
+
+    assert.equal(payload.diagnostics.rebuild.first_paint_ready_ms, 125);
+    assert.equal(payload.diagnostics.rebuild.historical_completion_ms, 250);
+    assert.equal(payload.diagnostics.rebuild.defaults.recent_first_rebuild, true);
+    assert.match(
+      payload.diagnostics.rebuild.rollback_env_flags.VIBEDECK_REBUILD_RECENT_FASTPATH,
+      /0 disables recent-first/,
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('local startup snapshot can roll back persisted snapshot reads with env flag', async () => {
+  const f = makeFixture();
+  const previous = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  try {
+    fs.writeFileSync(
+      path.join(f.dir, 'startup-snapshot.json'),
+      JSON.stringify({
+        ok: true,
+        source: 'snapshot',
+        generated_at: '2026-05-29T04:00:00.000Z',
+        totals: { today_cost_usd: 10, week_cost_usd: 10, today_tokens: 100, week_tokens: 100 },
+        active_sessions: [{ session_id: 'should-not-read' }],
+      }),
+      'utf8',
+    );
+    process.env.VIBEDECK_STARTUP_SNAPSHOT = '0';
+
+    const payload = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-startup-snapshot',
+    )).body);
+
+    assert.equal(payload.reason, 'disabled');
+    assert.equal(payload.totals.today_tokens, 0);
+    assert.deepEqual(payload.active_sessions, []);
+  } finally {
+    if (previous === undefined) delete process.env.VIBEDECK_STARTUP_SNAPSHOT;
+    else process.env.VIBEDECK_STARTUP_SNAPSHOT = previous;
+    f.cleanup();
+  }
+});
+
 test('local startup snapshot preserves snapshot freshness mode when projection DB is missing', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-projection-freshness-no-db-'));
   try {

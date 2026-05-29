@@ -101,6 +101,11 @@ const REBUILD_PROFILE_STAGE_NAMES = [
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_REBUILD_FLUSH_SLICE_EVENTS = 2000;
 const DEFAULT_REBUILD_SESSION_BATCH_EVENTS = 1000;
+const ROLLBACK_ENV_FLAGS = {
+  VIBEDECK_STARTUP_SNAPSHOT: "0 disables startup snapshot read/write",
+  VIBEDECK_REBUILD_RECENT_FASTPATH: "0 disables recent-first rebuild",
+  VIBEDECK_REBUILD_PROFILE: "0 disables rebuild profile diagnostics",
+};
 let autoBranchFactsRebuilt = false;
 
 function roundedProfileMs(value) {
@@ -152,6 +157,21 @@ function isRebuildRecentFastPathEnabled({ rebuildVibedeckDb = false } = {}) {
   return !["0", "false", "off", "no"].includes(value);
 }
 
+function isStartupSnapshotEnabled() {
+  const raw = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isRebuildProfileEnabled({ rebuildVibedeckDb = false } = {}) {
+  if (!rebuildVibedeckDb) return false;
+  const raw = process.env.VIBEDECK_REBUILD_PROFILE;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
 function isRebuildDirtyPostDrainEnabled({ rebuildVibedeckDb = false } = {}) {
   return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN === "1";
 }
@@ -174,8 +194,13 @@ function getRebuildSessionBatchEvents({ rebuildVibedeckDb = false } = {}) {
   return parsed;
 }
 
-function createRebuildProfile({ trackerDir } = {}) {
+function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
   if (!trackerDir) return null;
+  const startedAt = process.hrtime.bigint();
+  const milestones = {
+    first_paint_ready_ms: null,
+    historical_completion_ms: null,
+  };
   const stages = new Map(
     REBUILD_PROFILE_STAGE_NAMES.map((name) => [
       name,
@@ -200,6 +225,15 @@ function createRebuildProfile({ trackerDir } = {}) {
     const stage = stages.get(name);
     stage.duration_ms = roundedProfileMs(stage.duration_ms + roundedProfileMs(durationMs));
     mergeProfileCounters(stage.counters, stageCounters);
+  }
+
+  function elapsedMs() {
+    return roundedProfileMs(Number(process.hrtime.bigint() - startedAt) / 1_000_000);
+  }
+
+  function markMilestone(name) {
+    if (!Object.hasOwn(milestones, name) || milestones[name] !== null) return;
+    milestones[name] = elapsedMs();
   }
 
   return {
@@ -259,9 +293,23 @@ function createRebuildProfile({ trackerDir } = {}) {
         addStageDuration(name, Number(process.hrtime.bigint() - startedAt) / 1_000_000);
       }
     },
+    markFirstPaintReady() {
+      markMilestone("first_paint_ready_ms");
+    },
+    markHistoricalComplete() {
+      markMilestone("first_paint_ready_ms");
+      markMilestone("historical_completion_ms");
+    },
     async write() {
       const payload = {
         generated_at: new Date().toISOString(),
+        defaults: {
+          snapshot_write: defaults.snapshot_write === true,
+          recent_first_rebuild: defaults.recent_first_rebuild === true,
+          freshness_reporting: defaults.freshness_reporting !== false,
+        },
+        milestones,
+        rollback_env_flags: ROLLBACK_ENV_FLAGS,
         stages: REBUILD_PROFILE_STAGE_NAMES.map((name) => stages.get(name)),
         counters,
       };
@@ -493,11 +541,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     let queueStatePath = liveQueueStatePath;
     let projectQueuePath = liveProjectQueuePath;
     let projectQueueStatePath = liveProjectQueueStatePath;
-    const rebuildProfile =
-      opts.rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_PROFILE === "1"
-        ? createRebuildProfile({ trackerDir })
-        : null;
-
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
@@ -531,6 +574,17 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const recentFastPathEnabled = isRebuildRecentFastPathEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
+    const snapshotEnabled = isStartupSnapshotEnabled();
+    const rebuildProfile = isRebuildProfileEnabled({ rebuildVibedeckDb: opts.rebuildVibedeckDb })
+      ? createRebuildProfile({
+          trackerDir,
+          defaults: {
+            snapshot_write: snapshotEnabled,
+            recent_first_rebuild: recentFastPathEnabled,
+            freshness_reporting: true,
+          },
+        })
+      : null;
     const rebuildShardRecorder = opts.rebuildVibedeckDb
       ? createRebuildProjectionShardRecorder()
       : null;
@@ -786,6 +840,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       await parseRolloutFiles(rolloutLanes.recent);
       await parseClaudeFiles(claudeLanes.recent);
       await onRecentLaneComplete?.();
+      rebuildProfile?.markFirstPaintReady();
       await parseRolloutFiles(rolloutLanes.historical);
       await parseOpenclawInputs();
       await parseClaudeFiles(claudeLanes.historical);
@@ -1563,6 +1618,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     }
 
     if (rebuildProfile) {
+      rebuildProfile.markHistoricalComplete();
       await rebuildProfile.write();
     }
 
@@ -1586,13 +1642,17 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       }
     }
 
-    try {
-      writeStartupSnapshot({ trackerDir, dbPath: liveDbPath });
-      lifecycle?.providerDone?.("Startup snapshot", "updated");
-    } catch (e) {
-      const message = e?.message || String(e);
-      if (!opts.auto) process.stderr.write(`Startup snapshot: warning: ${message}\n`);
-      lifecycle?.providerDone?.("Startup snapshot", `warning: ${message}`);
+    if (snapshotEnabled) {
+      try {
+        writeStartupSnapshot({ trackerDir, dbPath: liveDbPath });
+        lifecycle?.providerDone?.("Startup snapshot", "updated");
+      } catch (e) {
+        const message = e?.message || String(e);
+        if (!opts.auto) process.stderr.write(`Startup snapshot: warning: ${message}\n`);
+        lifecycle?.providerDone?.("Startup snapshot", `warning: ${message}`);
+      }
+    } else {
+      lifecycle?.providerDone?.("Startup snapshot", "disabled by VIBEDECK_STARTUP_SNAPSHOT=0");
     }
 
     if (!opts.auto) {

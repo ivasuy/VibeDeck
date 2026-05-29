@@ -13,6 +13,14 @@ vi.mock("../lib/api", () => ({
   getModelsView: api.getModelsView,
 }));
 
+vi.mock("../lib/vibedeck-api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getModelsView: api.getModelsView,
+  };
+});
+
 beforeEach(() => {
   api.getModelsView.mockReset();
 });
@@ -53,5 +61,27 @@ describe("ModelsPage", () => {
     expect(await screen.findByText("claude-sonnet-4")).toBeTruthy();
     expect(screen.getByText("claude, codex")).toBeTruthy();
     expect(screen.getByText("Coding")).toBeTruthy();
+  });
+
+  it("distinguishes historical indexing from no model data yet", async () => {
+    api.getModelsView.mockResolvedValue({
+      ok: true,
+      models: [],
+      totals: { total_tokens: 0, total_cost_usd: "0.0000", session_count: 0 },
+      freshness: {
+        mode: "partial",
+        recent_ready: true,
+        historical_ready: false,
+        active_rebuild: true,
+        complete_through: null,
+        indexing_providers: ["codex"],
+        failed_shards: [],
+      },
+    });
+
+    render(<ModelsPage />);
+
+    expect((await screen.findAllByText("Indexing historical data")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("No data for this window yet.")).toBeNull();
   });
 });

@@ -4,6 +4,22 @@ import { copy } from "./copy";
 type AnyRecord = Record<string, any>;
 type FetchImpl = typeof fetch;
 
+export type ProjectionFreshness = {
+  mode: "complete" | "partial" | "snapshot" | "empty";
+  recent_ready: boolean;
+  historical_ready: boolean;
+  active_rebuild: boolean;
+  complete_through: string | null;
+  indexing_providers: string[];
+  failed_shards: AnyRecord[];
+};
+
+export type ProjectionReadinessState = {
+  kind: "empty" | "indexing" | "snapshot";
+  label: "No data yet" | "Indexing historical data" | "Indexing recent data" | "Snapshot data";
+  tone: "muted" | "indexing";
+};
+
 function normalizeApiErrorCode(payload: AnyRecord | null) {
   const raw = payload?.error ?? payload?.code ?? payload?.reason;
   return typeof raw === "string" ? raw.trim() : "";
@@ -28,6 +44,54 @@ function knownApiErrorMessage(code: string) {
   // if (code === "unknown_command") return copy("vibedeck.api.error.unknown_command");
   if (code === "session_not_found") return copy("vibedeck.api.error.session_not_found");
   return "";
+}
+
+function isRecord(value: unknown): value is AnyRecord {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+    : [];
+}
+
+export function normalizeProjectionFreshness(value: unknown): ProjectionFreshness | null {
+  if (!isRecord(value)) return null;
+  const mode = typeof value.mode === "string" ? value.mode.trim() : "";
+  if (mode !== "complete" && mode !== "partial" && mode !== "snapshot" && mode !== "empty") {
+    return null;
+  }
+  const completeThrough = typeof value.complete_through === "string" && value.complete_through.trim()
+    ? value.complete_through.trim()
+    : null;
+  return {
+    mode,
+    recent_ready: value.recent_ready === true,
+    historical_ready: value.historical_ready === true,
+    active_rebuild: value.active_rebuild === true,
+    complete_through: completeThrough,
+    indexing_providers: normalizeStringArray(value.indexing_providers),
+    failed_shards: Array.isArray(value.failed_shards) ? value.failed_shards.filter(isRecord) : [],
+  };
+}
+
+export function resolveProjectionReadinessState(value: unknown): ProjectionReadinessState | null {
+  const freshness = normalizeProjectionFreshness(value);
+  if (!freshness || freshness.mode === "complete") return null;
+  if (freshness.mode === "empty") {
+    return { kind: "empty", label: "No data yet", tone: "muted" };
+  }
+  if (freshness.mode === "snapshot") {
+    return { kind: "snapshot", label: "Snapshot data", tone: "muted" };
+  }
+  if (!freshness.historical_ready) {
+    return { kind: "indexing", label: "Indexing historical data", tone: "indexing" };
+  }
+  if (!freshness.recent_ready) {
+    return { kind: "indexing", label: "Indexing recent data", tone: "indexing" };
+  }
+  return null;
 }
 
 function resolveApiErrorMessage(payload: AnyRecord | null, status: number) {
@@ -106,6 +170,14 @@ export function getRecentSessions(params: { limit?: number } = {}, fetchImpl: Fe
 
 export function getSyncStatus(fetchImpl: FetchImpl = fetch) {
   return fetchImpl("/functions/vibedeck-sync-status", readOptions).then(jsonOrThrow<SyncStatus>);
+}
+
+export function getStartupSnapshot(fetchImpl: FetchImpl = fetch) {
+  return fetchImpl("/functions/vibedeck-startup-snapshot", readOptions).then(jsonOrThrow);
+}
+
+export function getLiveSessionsSnapshot(fetchImpl: FetchImpl = fetch) {
+  return fetchImpl("/functions/vibedeck-sessions-live-snapshot", readOptions).then(jsonOrThrow);
 }
 
 export function getBranchUsage(params: BranchUsageParams = {}, fetchImpl: FetchImpl = fetch) {

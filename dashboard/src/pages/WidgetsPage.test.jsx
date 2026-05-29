@@ -1,8 +1,20 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { copy } from "../lib/copy";
 import { WidgetsPage } from "./WidgetsPage.jsx";
+
+const api = vi.hoisted(() => ({
+  getStartupSnapshot: vi.fn(),
+}));
+
+vi.mock("../lib/vibedeck-api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getStartupSnapshot: api.getStartupSnapshot,
+  };
+});
 
 function installNativeBridge(settings) {
   const messages = [];
@@ -33,6 +45,21 @@ afterEach(() => {
   delete window.webkit;
 });
 
+beforeEach(() => {
+  api.getStartupSnapshot.mockReset();
+  api.getStartupSnapshot.mockResolvedValue({
+    freshness: {
+      mode: "complete",
+      recent_ready: true,
+      historical_ready: true,
+      active_rebuild: false,
+      complete_through: "2026-05-29T03:00:00.000Z",
+      indexing_providers: [],
+      failed_shards: [],
+    },
+  });
+});
+
 describe("WidgetsPage menu bar configurator", () => {
   it("renders concrete widget gallery labels instead of unresolved copy keys", () => {
     render(<WidgetsPage />);
@@ -45,6 +72,25 @@ describe("WidgetsPage menu bar configurator", () => {
     expect(screen.queryByText("widgets.heatmap.name")).toBeNull();
     expect(screen.queryByText("widgets.topModels.name")).toBeNull();
     expect(screen.queryByText("widgets.limits.name")).toBeNull();
+  });
+
+  it("shows historical indexing readiness without blocking widget previews", async () => {
+    api.getStartupSnapshot.mockResolvedValue({
+      freshness: {
+        mode: "partial",
+        recent_ready: true,
+        historical_ready: false,
+        active_rebuild: true,
+        complete_through: null,
+        indexing_providers: ["codex"],
+        failed_shards: [],
+      },
+    });
+
+    render(<WidgetsPage />);
+
+    expect(await screen.findByText("Indexing historical data")).toBeTruthy();
+    expect(screen.getAllByText("Summary").length).toBeGreaterThan(0);
   });
 
   it("renders provider logos inside the desktop widget previews", () => {

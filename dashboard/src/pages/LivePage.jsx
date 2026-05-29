@@ -1,7 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { copy } from "../lib/copy";
-import { getAttributionStats, getSyncStatus } from "../lib/vibedeck-api";
+import {
+  getAttributionStats,
+  getLiveSessionsSnapshot,
+  getSyncStatus,
+  resolveProjectionReadinessState,
+} from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { useVibeDeckLiveSessions } from "../hooks/use-vibedeck-live-sessions";
 import { useUsageLimits } from "../hooks/use-usage-limits";
@@ -49,6 +54,18 @@ function rowCost(row) {
   if (!Number.isFinite(n)) return "-";
   if (n === 0) return "$0";
   return formatUsdCurrency(n.toFixed(2), { decimals: 2 });
+}
+
+function ReadinessBadge({ state }) {
+  if (!state?.label) return null;
+  const toneClass = state.tone === "indexing"
+    ? "border-amber-300/60 bg-amber-50/60 text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200"
+    : "border-[var(--vd-border)] bg-[var(--vd-tint)] text-oai-gray-600 dark:text-oai-gray-300";
+  return (
+    <span className={`inline-flex h-8 items-center rounded-md border px-3 text-caption font-semibold uppercase ${toneClass}`}>
+      {state.label}
+    </span>
+  );
 }
 
 /*
@@ -242,6 +259,7 @@ export function LivePage() {
   const [attributionLoading, setAttributionLoading] = useState(false);
   const [attributionError, setAttributionError] = useState("");
   const [overrideSession, setOverrideSession] = useState(null);
+  const [readinessState, setReadinessState] = useState(null);
   /*
   const [entireStatus, setEntireStatus] = useState(null);
   const [entireLoading, setEntireLoading] = useState(false);
@@ -264,6 +282,20 @@ export function LivePage() {
   useEffect(() => {
     refreshAttributionStats();
   }, [refreshAttributionStats]);
+
+  useEffect(() => {
+    let active = true;
+    getLiveSessionsSnapshot()
+      .then((payload) => {
+        if (active) setReadinessState(resolveProjectionReadinessState(payload?.freshness));
+      })
+      .catch(() => {
+        if (active) setReadinessState(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -346,10 +378,13 @@ export function LivePage() {
       title="Live"
       subtitle="Active sessions, branch confidence, and correction controls."
       actions={
-        <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--vd-border)] px-3 text-caption font-semibold uppercase text-oai-gray-700 dark:text-oai-gray-200">
-          <span className={`h-2 w-2 rounded-full ${activeCount > 0 ? "bg-[var(--brand-500)]" : "bg-oai-gray-300 dark:bg-oai-gray-700"}`} />
-          {activeCount} active
-        </span>
+        <>
+          <ReadinessBadge state={readinessState} />
+          <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-[var(--vd-border)] px-3 text-caption font-semibold uppercase text-oai-gray-700 dark:text-oai-gray-200">
+            <span className={`h-2 w-2 rounded-full ${activeCount > 0 ? "bg-[var(--brand-500)]" : "bg-oai-gray-300 dark:bg-oai-gray-700"}`} />
+            {activeCount} active
+          </span>
+        </>
       }
     >
       {syncWarning ? (

@@ -338,6 +338,7 @@ export function DashboardView(props) {
     showAuthGate,
     identityDisplayName,
     hasDashboardUsage = true,
+    readinessState = null,
     syncFreshnessWarning,
     syncFreshnessSource,
     activeLiveSessions = 0,
@@ -423,6 +424,15 @@ export function DashboardView(props) {
               </p>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              {readinessState?.label ? (
+                <span className={`inline-flex h-8 items-center rounded-md border px-3 text-caption font-semibold uppercase ${
+                  readinessState.tone === "indexing"
+                    ? "border-amber-300/60 bg-amber-50/60 text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200"
+                    : "border-[var(--vd-border)] bg-[var(--vd-tint)] text-oai-gray-600 dark:text-oai-gray-300"
+                }`}>
+                  {readinessState.label}
+                </span>
+              ) : null}
               <PeriodPicker
                 period={period}
                 periods={periodsForDisplay}

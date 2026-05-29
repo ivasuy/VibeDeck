@@ -1396,6 +1396,10 @@ test('grouped rebuild processor flushes historical subset of mixed-lane session 
       flush_count: 1,
       slice_threshold_flush_count: 0,
       historical_slice_threshold_flush_count: 0,
+      events_processed: 1,
+      groups_processed: 1,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
     },
   ]);
 
@@ -1411,6 +1415,10 @@ test('grouped rebuild processor flushes historical subset of mixed-lane session 
       flush_count: 1,
       slice_threshold_flush_count: 0,
       historical_slice_threshold_flush_count: 0,
+      events_processed: 1,
+      groups_processed: 1,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
     },
     {
       recent: 1,
@@ -1418,8 +1426,51 @@ test('grouped rebuild processor flushes historical subset of mixed-lane session 
       flush_count: 1,
       slice_threshold_flush_count: 0,
       historical_slice_threshold_flush_count: 0,
+      events_processed: 1,
+      groups_processed: 1,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
     },
   ]);
+});
+
+test('grouped rebuild processor aggregates flush counters returned by batch processor chunks', async () => {
+  const { createGroupedSessionEventProcessor } = require('../src/commands/sync');
+  const flushSummaries = [];
+  const processor = createGroupedSessionEventProcessor(
+    async (events) => ({
+      events_processed: events.length,
+      groups_processed: 1,
+      branch_resolution_count: events.some((event) => event.branch) ? 1 : 0,
+      existing_repo_reused_count: events.some((event) => event.reused_repo) ? 1 : 0,
+    }),
+    {
+      sessionBatchEvents: 2,
+      onFlushComplete: (summary) => {
+        flushSummaries.push(summary);
+      },
+    },
+  );
+
+  for (let i = 0; i < 3; i += 1) {
+    await processor.onSessionEvent({
+      provider: 'codex',
+      session_id: 'summary-session',
+      kind: 'update',
+      observed_at: new Date().toISOString(),
+      branch: i === 0 ? 'main' : null,
+      reused_repo: i === 2,
+    });
+  }
+
+  await processor.flush();
+
+  assert.equal(flushSummaries.length, 1);
+  assert.equal(flushSummaries[0].recent, 3);
+  assert.equal(flushSummaries[0].events_processed, 3);
+  assert.equal(flushSummaries[0].groups_processed, 2);
+  assert.equal(flushSummaries[0].branch_resolution_count, 1);
+  assert.equal(flushSummaries[0].existing_repo_reused_count, 1);
 });
 
 test('grouped rebuild processor chunks lane subset flushes before processor writes', async () => {

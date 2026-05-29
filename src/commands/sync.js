@@ -224,6 +224,10 @@ function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
     historical_session_events_flushed: 0,
     slice_threshold_flush_count: 0,
     historical_slice_threshold_flush_count: 0,
+    events_processed: 0,
+    groups_processed: 0,
+    branch_resolution_count: 0,
+    existing_repo_reused_count: 0,
     repair_candidates_attempted: 0,
     branch_facts_rebuilt_by_scope: {},
   };
@@ -260,12 +264,20 @@ function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
       flush_count = 0,
       slice_threshold_flush_count = 0,
       historical_slice_threshold_flush_count = 0,
+      events_processed = 0,
+      groups_processed = 0,
+      branch_resolution_count = 0,
+      existing_repo_reused_count = 0,
     } = {}) {
       counters.recent_session_events_flushed += Number(recent) || 0;
       counters.historical_session_events_flushed += Number(historical) || 0;
       counters.slice_threshold_flush_count += Number(slice_threshold_flush_count) || 0;
       counters.historical_slice_threshold_flush_count +=
         Number(historical_slice_threshold_flush_count) || 0;
+      counters.events_processed += Number(events_processed) || 0;
+      counters.groups_processed += Number(groups_processed) || 0;
+      counters.branch_resolution_count += Number(branch_resolution_count) || 0;
+      counters.existing_repo_reused_count += Number(existing_repo_reused_count) || 0;
       const flushCount = Number(flush_count) || 0;
       mergeProfileCounters(stages.get("recent_lane_session_event_flush")?.counters, {
         recent_session_events_flushed: Number(recent) || 0,
@@ -273,6 +285,10 @@ function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
         flush_count: flushCount,
         slice_threshold_flush_count: Number(slice_threshold_flush_count) || 0,
         historical_slice_threshold_flush_count: Number(historical_slice_threshold_flush_count) || 0,
+        events_processed: Number(events_processed) || 0,
+        groups_processed: Number(groups_processed) || 0,
+        branch_resolution_count: Number(branch_resolution_count) || 0,
+        existing_repo_reused_count: Number(existing_repo_reused_count) || 0,
       });
     },
     recordRepairCandidates(count, scope = "full") {
@@ -2096,6 +2112,17 @@ function createGroupedSessionEventProcessor(
     return pending;
   };
 
+  const mergeProcessorSummary = (target, summary, fallbackEventCount) => {
+    const eventCount = Number(summary?.events_processed);
+    const groupCount = Number(summary?.groups_processed);
+    target.events_processed += Number.isFinite(eventCount) ? eventCount : fallbackEventCount;
+    target.groups_processed += Number.isFinite(groupCount) ? groupCount : 1;
+    for (const key of ["branch_resolution_count", "existing_repo_reused_count"]) {
+      const value = Number(summary?.[key]);
+      if (Number.isFinite(value)) target[key] += value;
+    }
+  };
+
   const flush = async ({ onProgress, lane = "all", reason = "manual" } = {}) => {
     const progressCallback = typeof onProgress === "function" ? onProgress : null;
     if (progressCallback) {
@@ -2113,14 +2140,23 @@ function createGroupedSessionEventProcessor(
 
     let recentFlushed = 0;
     let historicalFlushed = 0;
+    const processorCounters = {
+      events_processed: 0,
+      groups_processed: 0,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
+    };
 
     for (const events of pendingGroups) {
       try {
         if (batchEvents === null || events.length <= batchEvents) {
-          await processor(events);
+          const summary = await processor(events);
+          mergeProcessorSummary(processorCounters, summary, events.length);
         } else {
           for (let offset = 0; offset < events.length; offset += batchEvents) {
-            await processor(events.slice(offset, offset + batchEvents));
+            const chunk = events.slice(offset, offset + batchEvents);
+            const summary = await processor(chunk);
+            mergeProcessorSummary(processorCounters, summary, chunk.length);
           }
         }
       } catch (err) {
@@ -2148,6 +2184,7 @@ function createGroupedSessionEventProcessor(
         slice_threshold_flush_count: thresholdFlush,
         historical_slice_threshold_flush_count:
           thresholdFlush && normalizedLane === "historical" ? 1 : 0,
+        ...processorCounters,
       });
     }
 

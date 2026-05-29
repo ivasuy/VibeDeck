@@ -495,7 +495,12 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
     for (const event of enrichedEvents) {
       await module.exports.processSessionEvent(dbPath, event, { deferBranchFactRebuild });
     }
-    return;
+    return {
+      events_processed: enrichedEvents.length,
+      groups_processed: 1,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
+    };
   }
 
   const first = enrichedEvents[0];
@@ -533,7 +538,15 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
     }
   }
 
+  const summary = {
+    events_processed: enrichedEvents.length,
+    groups_processed: 1,
+    branch_resolution_count: 0,
+    existing_repo_reused_count: existingRepoStillApplies ? 1 : 0,
+  };
+
   const db = new DatabaseSync(dbPath);
+  let latestForEmit = null;
   try {
     db.exec('BEGIN');
     try {
@@ -597,6 +610,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
             provider_branch: resolvedProviderBranch,
           })
         : null;
+      summary.branch_resolution_count = branchRes ? 1 : 0;
 
       if (branchRes) {
         updateBranchResolution(db, {
@@ -633,14 +647,14 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
       }
 
       recomputeSessionLedger(db, session);
-      const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
-      if (latest && !deferBranchFactRebuild) {
+      latestForEmit = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      if (latestForEmit && !deferBranchFactRebuild) {
         await rebuildBranchUsageFactsForSession(db, {
           dbPath,
-          provider: latest.provider,
-          session_id: latest.session_id,
+          provider: latestForEmit.provider,
+          session_id: latestForEmit.session_id,
         });
-        persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
+        persistBranchWindows(db, { provider: latestForEmit.provider, session_id: latestForEmit.session_id, windows: [] });
       }
 
       db.exec('COMMIT');
@@ -651,12 +665,12 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
       throw err;
     }
 
-    const latest = loadSession(db, { provider: first.provider, session_id: first.session_id });
     for (const event of enrichedEvents) {
       const shouldSkipEmit = preserveExistingTerminalEnd && event === last;
       if (shouldSkipEmit) continue;
-      emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession });
+      emitSessionEvent({ event, latest: latestForEmit, keepOpenForCheckpoint, reopenOrphanedSession });
     }
+    return summary;
   } finally {
     db.close();
   }

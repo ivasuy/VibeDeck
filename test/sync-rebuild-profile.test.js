@@ -139,8 +139,14 @@ test('rebuild profile records hard counters for flushed events and post-drain sc
   assert.equal(typeof profile.counters.historical_session_events_flushed, 'number');
   assert.equal(typeof profile.counters.slice_threshold_flush_count, 'number');
   assert.equal(typeof profile.counters.historical_slice_threshold_flush_count, 'number');
+  assert.equal(typeof profile.counters.events_processed, 'number');
+  assert.equal(typeof profile.counters.groups_processed, 'number');
+  assert.equal(typeof profile.counters.branch_resolution_count, 'number');
+  assert.equal(typeof profile.counters.existing_repo_reused_count, 'number');
   assert.ok(profile.counters.recent_session_events_flushed > 0);
   assert.ok(profile.counters.historical_session_events_flushed > 0);
+  assert.ok(profile.counters.events_processed > 0);
+  assert.ok(profile.counters.groups_processed > 0);
   assert.equal(typeof profile.counters.repair_candidates_attempted, 'number');
   assert.equal(typeof profile.counters.branch_facts_rebuilt_by_scope, 'object');
   assert.ok(
@@ -148,6 +154,14 @@ test('rebuild profile records hard counters for flushed events and post-drain sc
       (value) => typeof value === 'number' && value >= 0,
     ),
   );
+
+  const recentFlush = profile.stages.find((stage) => stage.name === 'recent_lane_session_event_flush');
+  assert.equal(typeof recentFlush.counters.events_processed, 'number');
+  assert.equal(typeof recentFlush.counters.groups_processed, 'number');
+  assert.equal(typeof recentFlush.counters.branch_resolution_count, 'number');
+  assert.equal(typeof recentFlush.counters.existing_repo_reused_count, 'number');
+  assert.ok(recentFlush.counters.events_processed > 0);
+  assert.ok(recentFlush.counters.groups_processed > 0);
 });
 
 test('phase h smoke harness writes compact summary and copied profile artifact', async () => {

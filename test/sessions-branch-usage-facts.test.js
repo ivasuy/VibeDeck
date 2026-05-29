@@ -312,6 +312,96 @@ test('repairMissingProjectAttribution reuses cwd repo-resolution results includi
   }
 });
 
+test('repairMissingProjectAttribution rebuilds missing facts for existing repo metadata without repo resolution', async () => {
+  const fixture = makeDb();
+  const Module = require('node:module');
+  const originalLoad = Module._load;
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const repoResolverPath = require.resolve('../src/lib/sessions/repo-resolver');
+  const repoRoot = path.join(fixture.dir, 'repo-with-metadata');
+  const calls = [];
+
+  try {
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'fact-only',
+        started_at: '2026-05-17T12:20:00.000Z',
+        ended_at: '2026-05-17T12:25:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.4',
+        total_tokens: 25,
+        total_cost_usd: 0.25,
+        last_observed_at: '2026-05-17T12:25:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    Module._load = function loadWithFailingRepoResolver(request, parent, isMain) {
+      if (parent?.filename === branchFactsPath && request === './repo-resolver') {
+        return {
+          resolveRepo(cwd) {
+            calls.push(cwd);
+            throw new Error(`resolveRepo should not be called for ${cwd}`);
+          },
+        };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const freshBranchFacts = require(branchFactsPath);
+    const repaired = await freshBranchFacts.repairMissingProjectAttribution(fixture.dbPath, {
+      rebuildFacts: true,
+    });
+
+    assert.equal(repaired, 1);
+    assert.deepEqual(calls, []);
+
+    const readDb = new DatabaseSync(fixture.dbPath, { readOnly: true });
+    try {
+      const rows = readDb
+        .prepare(
+          `
+          SELECT provider, session_id, repo_root, total_tokens, total_cost_usd
+          FROM vibedeck_branch_usage_facts
+          WHERE provider = 'codex' AND session_id = 'fact-only'
+          `,
+        )
+        .all()
+        .map((row) => ({
+          provider: row.provider,
+          session_id: row.session_id,
+          repo_root: row.repo_root,
+          total_tokens: row.total_tokens,
+          total_cost_usd: row.total_cost_usd,
+        }));
+      assert.deepEqual(rows, [
+        {
+          provider: 'codex',
+          session_id: 'fact-only',
+          repo_root: repoRoot,
+          total_tokens: 25,
+          total_cost_usd: 0.25,
+        },
+      ]);
+    } finally {
+      readDb.close();
+    }
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    fixture.cleanup();
+  }
+});
+
 test('branch fact rebuild uses shared provider branch helper cache for fallback evidence', async () => {
   const fixture = makeDb();
   const originalRead = providerBranch.readProviderBranchEvidenceFromSessionFile;

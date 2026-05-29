@@ -885,7 +885,13 @@ async function repairMissingProjectAttribution(
         ? db
             .prepare(
               `
-              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              SELECT
+                s.provider,
+                s.session_id,
+                s.cwd,
+                s.repo_root,
+                CASE WHEN TRIM(COALESCE(s.repo_root, '')) = '' THEN 1 ELSE 0 END AS needs_repo_repair,
+                CASE WHEN COUNT(f.provider) = 0 THEN 1 ELSE 0 END AS needs_fact_rebuild
               FROM vibedeck_sessions s
               INNER JOIN temp_vibedeck_dirty_session_scope scope
                 ON scope.provider = s.provider AND scope.session_id = s.session_id
@@ -902,7 +908,13 @@ async function repairMissingProjectAttribution(
         : db
           .prepare(
             `
-            SELECT s.provider, s.session_id, s.cwd, s.repo_root
+            SELECT
+              s.provider,
+              s.session_id,
+              s.cwd,
+              s.repo_root,
+              CASE WHEN TRIM(COALESCE(s.repo_root, '')) = '' THEN 1 ELSE 0 END AS needs_repo_repair,
+              CASE WHEN COUNT(f.provider) = 0 THEN 1 ELSE 0 END AS needs_fact_rebuild
             FROM vibedeck_sessions s
             LEFT JOIN vibedeck_branch_usage_facts f
               ON f.provider = s.provider AND f.session_id = s.session_id
@@ -918,7 +930,13 @@ async function repairMissingProjectAttribution(
         ? db
             .prepare(
               `
-              SELECT s.provider, s.session_id, s.cwd, s.repo_root
+              SELECT
+                s.provider,
+                s.session_id,
+                s.cwd,
+                s.repo_root,
+                CASE WHEN TRIM(COALESCE(s.repo_root, '')) = '' THEN 1 ELSE 0 END AS needs_repo_repair,
+                CASE WHEN COUNT(f.provider) = 0 THEN 1 ELSE 0 END AS needs_fact_rebuild
               FROM vibedeck_sessions s
               INNER JOIN temp_vibedeck_dirty_session_scope scope
                 ON scope.provider = s.provider AND scope.session_id = s.session_id
@@ -934,7 +952,13 @@ async function repairMissingProjectAttribution(
         : db
           .prepare(
             `
-            SELECT s.provider, s.session_id, s.cwd, s.repo_root
+            SELECT
+              s.provider,
+              s.session_id,
+              s.cwd,
+              s.repo_root,
+              CASE WHEN TRIM(COALESCE(s.repo_root, '')) = '' THEN 1 ELSE 0 END AS needs_repo_repair,
+              CASE WHEN COUNT(f.provider) = 0 THEN 1 ELSE 0 END AS needs_fact_rebuild
             FROM vibedeck_sessions s
             LEFT JOIN vibedeck_branch_usage_facts f
               ON f.provider = s.provider AND f.session_id = s.session_id
@@ -951,7 +975,7 @@ async function repairMissingProjectAttribution(
       const resolveCache = new Map();
       for (let index = 0; index < rows.length; index++) {
         const row = rows[index];
-        if (isNonEmptyString(row.cwd)) {
+        if (Number(row.needs_repo_repair) === 1 && isNonEmptyString(row.cwd)) {
           const repo = repairResolveRepo(resolveCache, row.cwd);
           if (repo && isNonEmptyString(repo.repo_root)) {
             persistSessionRepoMetadata(db, {
@@ -962,7 +986,7 @@ async function repairMissingProjectAttribution(
           }
         }
 
-        if (rebuildFacts) {
+        if (rebuildFacts && (Number(row.needs_fact_rebuild) === 1 || Number(row.needs_repo_repair) === 1)) {
           await rebuildBranchUsageFactsForSession(db, {
             dbPath,
             provider: row.provider,

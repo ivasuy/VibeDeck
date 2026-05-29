@@ -292,6 +292,89 @@ test("parseRolloutIncremental reparses rewritten source files without keeping st
   }
 });
 
+test("parseRolloutIncremental migrates legacy cursors before rewritten source reparse", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-legacy-rewrite-"));
+  try {
+    const rolloutPath = path.join(tmp, "rollout-test.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const first = {
+      input_tokens: 7,
+      cached_input_tokens: 0,
+      output_tokens: 3,
+      reasoning_output_tokens: 0,
+      total_tokens: 10,
+    };
+    const replacement = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 4,
+    };
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({ ts: "2026-05-29T00:10:00.000Z", last: first, total: first })}\n`,
+      "utf8",
+    );
+    const st = await fs.stat(rolloutPath);
+    const bucketKey = "codex|unknown|2026-05-29T00:00:00.000Z";
+    const cursors = {
+      version: 1,
+      files: {
+        [rolloutPath]: {
+          inode: st.ino,
+          offset: st.size,
+          lastTotal: first,
+          lastModel: null,
+          updatedAt: "2026-05-29T00:20:00.000Z",
+        },
+      },
+      hourly: {
+        version: 2,
+        buckets: {
+          [bucketKey]: {
+            totals: {
+              input_tokens: first.input_tokens,
+              cached_input_tokens: first.cached_input_tokens,
+              cache_creation_input_tokens: 0,
+              output_tokens: first.output_tokens,
+              reasoning_output_tokens: first.reasoning_output_tokens,
+              total_tokens: first.total_tokens,
+              billable_total_tokens: first.total_tokens,
+              conversation_count: 1,
+            },
+            queuedKey: null,
+          },
+        },
+        updatedAt: "2026-05-29T00:20:00.000Z",
+      },
+      updatedAt: null,
+    };
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+    assert.equal(cursors.files[rolloutPath].bucketContributions[bucketKey].total_tokens, first.total_tokens);
+
+    await fs.writeFile(
+      rolloutPath,
+      `${buildTokenCountLine({
+        ts: "2026-05-29T00:10:00.000Z",
+        last: replacement,
+        total: replacement,
+      })}\n`,
+      "utf8",
+    );
+
+    await parseRolloutIncremental({ rolloutFiles: [rolloutPath], cursors, queuePath });
+
+    const totals = cursors.hourly.buckets[bucketKey].totals;
+    assert.equal(totals.total_tokens, replacement.total_tokens);
+    assert.equal(totals.input_tokens, replacement.input_tokens);
+    assert.equal(totals.output_tokens, replacement.output_tokens);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test("parseRolloutIncremental prefers cumulative total_token_usage delta over larger last_token_usage", async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-rollout-"));
   try {
@@ -2489,6 +2572,65 @@ test("parseClaudeIncremental aggregates usage into half-hour buckets", async () 
       queuePath,
     });
     assert.equal(resAgain.bucketsQueued, 0);
+  } finally {
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test("parseClaudeIncremental migrates unchanged legacy cursor without crashing", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibescore-claude-legacy-"));
+  try {
+    const claudePath = path.join(tmp, "agent-claude.jsonl");
+    const queuePath = path.join(tmp, "queue.jsonl");
+    const model = "claude-sonnet-4";
+    await fs.writeFile(
+      claudePath,
+      `${buildClaudeUsageLine({ ts: "2026-05-29T01:05:00.000Z", input: 100, output: 50, model })}\n`,
+      "utf8",
+    );
+    const st = await fs.stat(claudePath);
+    const cursors = {
+      version: 1,
+      files: {
+        [claudePath]: {
+          inode: st.ino,
+          offset: st.size,
+          updatedAt: "2026-05-29T01:10:00.000Z",
+        },
+      },
+      hourly: {
+        version: 2,
+        buckets: {
+          [`claude|${model}|2026-05-29T01:00:00.000Z`]: {
+            totals: {
+              input_tokens: 100,
+              cached_input_tokens: 0,
+              cache_creation_input_tokens: 0,
+              output_tokens: 50,
+              reasoning_output_tokens: 0,
+              total_tokens: 150,
+              billable_total_tokens: 150,
+              conversation_count: 0,
+            },
+            queuedKey: null,
+          },
+        },
+        updatedAt: "2026-05-29T01:10:00.000Z",
+      },
+      claudeHashes: [],
+      updatedAt: null,
+    };
+
+    const result = await parseClaudeIncremental({
+      projectFiles: [{ path: claudePath, source: "claude" }],
+      cursors,
+      queuePath,
+    });
+
+    assert.equal(result.filesProcessed, 0);
+    assert.equal(result.eventsAggregated, 0);
+    assert.equal(cursors.files[claudePath].sourcePath, claudePath);
+    assert.deepEqual(await readJsonLines(queuePath), []);
   } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }

@@ -162,6 +162,17 @@ async function classifySourceFileRead({ filePath, stat, prev }) {
   return { mode: "full", startOffset: 0, previousSize: prevSize };
 }
 
+function needsLegacySourceCursorMigration({ filePath, stat, prev }) {
+  if (!prev || typeof prev !== "object") return false;
+  if (typeof prev.contentHash === "string" && prev.contentHash) return false;
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) return false;
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  if (prevInode !== statSourceInode(stat)) return false;
+  const offset = normalizeCursorOffset(prev);
+  return offset > 0 && offset <= statSourceSize(stat);
+}
+
 function cloneContributionTotals(value) {
   const out = initTotals();
   if (!value || typeof value !== "object") return out;
@@ -491,42 +502,6 @@ async function parseRolloutIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
-    if (readPlan.mode === "skip") {
-      if (projectEnabled) {
-        await resolveProjectContextForFile({
-          filePath,
-          projectMetaCache,
-          publicRepoCache,
-          publicRepoResolver,
-          projectState,
-        });
-      }
-      continue;
-    }
-    if (readPlan.mode === "full") {
-      subtractStoredSourceContributions({
-        hourlyState,
-        projectState,
-        prev,
-        touchedBuckets,
-        projectTouchedBuckets,
-      });
-    }
-    const startOffset = readPlan.startOffset;
-    const canReuseCursor = readPlan.mode === "append";
-    const lastTotal = canReuseCursor ? prev?.lastTotal || null : null;
-    const lastModel = canReuseCursor ? prev?.lastModel || null : null;
-    const pendingCodexTools =
-      fileSource === "codex" && canReuseCursor
-        ? normalizePendingCodexTools(prev.pendingCodexTools)
-        : [];
-    const bucketContributions =
-      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
-    const projectBucketContributions =
-      readPlan.mode === "append"
-        ? contributionMapFromCursor(prev?.projectBucketContributions)
-        : new Map();
-
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
@@ -538,6 +513,81 @@ async function parseRolloutIncremental({
       : null;
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    let canReuseCursor = readPlan.mode === "append";
+    let lastTotal = canReuseCursor ? prev?.lastTotal || null : null;
+    let lastModel = canReuseCursor ? prev?.lastModel || null : null;
+    let pendingCodexTools =
+      fileSource === "codex" && canReuseCursor
+        ? normalizePendingCodexTools(prev.pendingCodexTools)
+        : [];
+    const bucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.projectBucketContributions) : new Map();
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillHourlyState = normalizeHourlyState(null);
+      const backfillProjectState = projectEnabled ? normalizeProjectState(null) : null;
+      const backfillResult = await parseRolloutFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        lastTotal: null,
+        lastModel: null,
+        pendingCodexTools: [],
+        hourlyState: backfillHourlyState,
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: backfillProjectState,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        projectMetaCache,
+        publicRepoCache,
+        publicRepoResolver,
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      startOffset = accountedOffset;
+      canReuseCursor = true;
+      lastTotal = backfillResult.lastTotal || null;
+      lastModel = backfillResult.lastModel || null;
+      pendingCodexTools =
+        fileSource === "codex" ? normalizePendingCodexTools(backfillResult.pendingCodexTools) : [];
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          lastTotal,
+          lastModel,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          ...(fileSource === "codex" ? { pendingCodexTools } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
+      continue;
+    } else if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+    }
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseRolloutFile({
@@ -698,19 +748,72 @@ async function parseClaudeIncremental({
     const key = filePath;
     const prev = cursors.files[key] || null;
     const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
-    if (readPlan.mode === "skip") {
-      if (projectEnabled) {
-        await resolveProjectContextForFile({
+    const projectContext = projectEnabled
+      ? await resolveProjectContextForFile({
           filePath,
           projectMetaCache,
           publicRepoCache,
           publicRepoResolver,
           projectState,
-        });
+        })
+      : null;
+    const projectRef = projectContext?.projectRef || null;
+    const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    const bucketContributions =
+      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      readPlan.mode === "append"
+        ? contributionMapFromCursor(prev?.projectBucketContributions)
+        : new Map();
+    let migratedMessageHashes = [];
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillResult = await parseClaudeFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        hourlyState: normalizeHourlyState(null),
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: projectEnabled ? normalizeProjectState(null) : null,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        seenMessageHashes: new Set(),
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      migratedMessageHashes = Array.isArray(backfillResult.messageHashes)
+        ? backfillResult.messageHashes
+        : [];
+      for (const hash of migratedMessageHashes) {
+        seenMessageHashes.add(hash);
       }
+      startOffset = accountedOffset;
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          messageHashes: migratedMessageHashes,
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
       continue;
-    }
-    if (readPlan.mode === "full") {
+    } else if (readPlan.mode === "full") {
       subtractStoredSourceContributions({
         hourlyState,
         projectState,
@@ -724,25 +827,6 @@ async function parseClaudeIncremental({
         }
       }
     }
-    const startOffset = readPlan.startOffset;
-    const bucketContributions =
-      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
-    const projectBucketContributions =
-      readPlan.mode === "append"
-        ? contributionMapFromCursor(prev?.projectBucketContributions)
-        : new Map();
-
-    const projectContext = projectEnabled
-      ? await resolveProjectContextForFile({
-          filePath,
-          projectMetaCache,
-          publicRepoCache,
-          publicRepoResolver,
-          projectState,
-        })
-      : null;
-    const projectRef = projectContext?.projectRef || null;
-    const projectKey = projectContext?.projectKey || null;
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseClaudeFile({
@@ -798,9 +882,18 @@ async function parseClaudeIncremental({
       bucketContributions: contributionMapToCursor(bucketContributions),
       projectBucketContributions: contributionMapToCursor(projectBucketContributions),
       messageHashes:
-        readPlan.mode === "append"
-          ? [...(Array.isArray(prev?.messageHashes) ? prev.messageHashes : []), ...result.messageHashes]
-          : result.messageHashes,
+        readPlan.mode === "append" || legacyMigrationNeeded
+          ? [
+              ...(legacyMigrationNeeded
+                ? migratedMessageHashes
+                : Array.isArray(prev?.messageHashes)
+                  ? prev.messageHashes
+                  : []),
+              ...(Array.isArray(result.messageHashes) ? result.messageHashes : []),
+            ]
+          : Array.isArray(result.messageHashes)
+            ? result.messageHashes
+            : [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -1316,6 +1409,7 @@ async function parseOpenclawSessionFile({
 async function parseRolloutFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   lastTotal,
   lastModel,
   pendingCodexTools: initialPendingCodexTools,
@@ -1335,13 +1429,17 @@ async function parseRolloutFile({
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
-  const endOffset = st.size;
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
   const pendingCodexTools = source === "codex" ? normalizePendingCodexTools(initialPendingCodexTools) : [];
   if (startOffset >= endOffset) {
     return { endOffset, lastTotal, lastModel, pendingCodexTools, eventsAggregated: 0 };
   }
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let model = typeof lastModel === "string" ? lastModel : null;
@@ -1512,6 +1610,7 @@ async function parseRolloutFile({
 async function parseClaudeFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   hourlyState,
   touchedBuckets,
   source,
@@ -1526,12 +1625,16 @@ async function parseClaudeFile({
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
-  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
+  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const endOffset = st.size;
-  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
+  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;

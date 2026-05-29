@@ -15,6 +15,8 @@ const {
 const { loadLitellmData } = require("./litellm-fetcher");
 
 const ZERO_PRICING = { input: 0, output: 0, cache_read: 0, cache_write: 0 };
+const WEB_SEARCH_COST_USD = 0.01;
+const ONE_HOUR_CACHE_WRITE_MULTIPLIER = 1.6;
 const SEED_SNAPSHOT_PATH = path.resolve(__dirname, "seed-snapshot.json");
 
 // Sync seed load. Done at require-time so callers that haven't awaited
@@ -121,6 +123,46 @@ function computeRowCost(row) {
   );
 }
 
+function nonNegativeNumber(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function nonNegativeNumericField(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function hasExplicitCacheSplit(row) {
+  return (
+    nonNegativeNumber(row.cache_creation_5m_input_tokens) > 0 ||
+    nonNegativeNumber(row.cache_creation_1h_input_tokens) > 0
+  );
+}
+
+function computeEnhancedRowCost(row) {
+  const pricing = getModelPricing(row.model);
+  const reasoningIncludedInOutput = row.source === "codex" || row.source === "every-code";
+  const reasoningCost = reasoningIncludedInOutput
+    ? 0
+    : nonNegativeNumber(row.reasoning_output_tokens) * (pricing.output || 0);
+  const cacheWriteCost = hasExplicitCacheSplit(row)
+    ? nonNegativeNumber(row.cache_creation_5m_input_tokens) * (pricing.cache_write || 0) +
+      nonNegativeNumber(row.cache_creation_1h_input_tokens) *
+        (pricing.cache_write || 0) *
+        ONE_HOUR_CACHE_WRITE_MULTIPLIER
+    : nonNegativeNumber(row.cache_creation_input_tokens) * (pricing.cache_write || 0);
+
+  return (
+    (nonNegativeNumber(row.input_tokens) * (pricing.input || 0) +
+      nonNegativeNumber(row.output_tokens) * (pricing.output || 0) +
+      nonNegativeNumber(row.cached_input_tokens) * (pricing.cache_read || 0) +
+      cacheWriteCost +
+      reasoningCost) /
+      1_000_000 +
+    nonNegativeNumericField(row.web_search_requests) * WEB_SEARCH_COST_USD
+  );
+}
+
 // Backwards-compatible MODEL_PRICING export. Test at
 // test/model-breakdown.test.js:236 reads `localApi.MODEL_PRICING["kiro-agent"]`
 // and expects { input, output, cache_read, cache_write } shape. We expose the
@@ -134,6 +176,7 @@ module.exports = {
   lookupModelPricing,
   getModelPricing,
   computeRowCost,
+  computeEnhancedRowCost,
   resetPricingForTests,
   MODEL_PRICING,
   ZERO_PRICING,

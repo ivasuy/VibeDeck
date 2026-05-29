@@ -6,6 +6,13 @@ const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
 const { readLiveAuditRollups } = require("./sessions/live-rollups");
+const {
+  groupingVisible,
+  readSessionGroupingMode,
+  readGroupEdges,
+  buildSessionGroupsForRows,
+  readSessionGroupDiagnostics,
+} = require("./sessions/session-groups");
 const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
 const { requireWriteAuth /*, issueConfirmToken, consumeConfirmToken */ } = require("./local-auth");
 const {
@@ -25,6 +32,20 @@ const {
   isValidCheckpointPath,
 } = require("./entire-checkpoint-paths");
 */
+const {
+  readCodeburnFactRows,
+  buildComparePayload,
+  buildModelsPayload,
+  buildStatusPayload,
+  buildExportPayload,
+  buildYieldPayload,
+  detectInstalledProviders,
+  toCsv,
+} = require("./codeburn-parity");
+const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
+const { readPlanConfig } = require("./plan-config");
+const { readCurrencyRates } = require("./currency-rates");
+const { buildForecastPayload } = require("./forecast-read-model");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -101,6 +122,50 @@ const ROUTES = {
   skills: {
     primary: "/functions/vibedeck-skills",
     legacy: withLegacyRoute("/functions/vibedeck-skills"),
+  },
+  compare: {
+    primary: "/functions/vibedeck-compare",
+    legacy: withLegacyRoute("/functions/vibedeck-compare"),
+  },
+  models: {
+    primary: "/functions/vibedeck-models",
+    legacy: withLegacyRoute("/functions/vibedeck-models"),
+  },
+  status: {
+    primary: "/functions/vibedeck-status",
+    legacy: withLegacyRoute("/functions/vibedeck-status"),
+  },
+  codeburnExport: {
+    primary: "/functions/vibedeck-export",
+    legacy: withLegacyRoute("/functions/vibedeck-export"),
+  },
+  yield: {
+    primary: "/functions/vibedeck-yield",
+    legacy: withLegacyRoute("/functions/vibedeck-yield"),
+  },
+  autoDetect: {
+    primary: "/functions/vibedeck-optimize/auto-detect",
+    legacy: "",
+  },
+  optimizeFindings: {
+    primary: "/functions/vibedeck-optimize/findings",
+    legacy: "",
+  },
+  optimizeScan: {
+    primary: "/functions/vibedeck-optimize/scan",
+    legacy: "",
+  },
+  plan: {
+    primary: "/functions/vibedeck-plan",
+    legacy: "",
+  },
+  currencyRates: {
+    primary: "/functions/vibedeck-currency-rates",
+    legacy: "",
+  },
+  forecast: {
+    primary: "/functions/vibedeck-forecast",
+    legacy: "",
   },
 };
 
@@ -209,9 +274,26 @@ function liveBucketTotal(row) {
     "input_tokens",
     "cached_input_tokens",
     "cache_creation_input_tokens",
+    "cache_creation_5m_input_tokens",
+    "cache_creation_1h_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
   ].reduce((sum, key) => sum + (Number(row?.[key] || 0) || 0), 0);
+}
+
+function hasLiveBillableEnrichment(row) {
+  const split5m = Number(row?.cache_creation_5m_input_tokens || 0) || 0;
+  const split1h = Number(row?.cache_creation_1h_input_tokens || 0) || 0;
+  const webSearch = typeof row?.web_search_requests === "number" && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return split5m > 0 || split1h > 0 || webSearch > 0;
+}
+
+function liveCostTotalTokens(row) {
+  const total = Number(row?.total_tokens);
+  if (Number.isFinite(total) && total === 0 && hasLiveBillableEnrichment(row)) return null;
+  return row?.total_tokens;
 }
 
 function normalizeCodexUsage(u) {
@@ -326,12 +408,15 @@ function enrichLiveSessionCost(row) {
     stored_cost_usd: active ? null : row?.total_cost_usd,
     source: row?.provider,
     model: row?.model,
-    total_tokens: row?.total_tokens,
+    total_tokens: liveCostTotalTokens(row),
     input_tokens: row?.input_tokens,
     cached_input_tokens: row?.cached_input_tokens,
     cache_creation_input_tokens: row?.cache_creation_input_tokens,
+    cache_creation_5m_input_tokens: row?.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: row?.cache_creation_1h_input_tokens,
     output_tokens: row?.output_tokens,
     reasoning_output_tokens: row?.reasoning_output_tokens,
+    web_search_requests: row?.web_search_requests,
   });
 
   return {
@@ -348,6 +433,29 @@ function sanitizeLiveSessionRow(row) {
   delete next.override_user;
   delete next.tools_sequence_json;
   return next;
+}
+
+function sanitizeLiveSessionGroup(group) {
+  if (!group || typeof group !== "object" || Array.isArray(group)) return group;
+  return {
+    ...group,
+    members: Array.isArray(group.members)
+      ? group.members.map(sanitizeLiveSessionRow)
+      : group.members,
+  };
+}
+
+function sanitizeLiveWorkstream(workstream) {
+  if (!workstream || typeof workstream !== "object" || Array.isArray(workstream)) return workstream;
+  return {
+    ...workstream,
+    sessions: Array.isArray(workstream.sessions)
+      ? workstream.sessions.map(sanitizeLiveSessionRow)
+      : workstream.sessions,
+    session_groups: Array.isArray(workstream.session_groups)
+      ? workstream.session_groups.map(sanitizeLiveSessionGroup)
+      : workstream.session_groups,
+  };
 }
 
 function readRecentSessions(dbPath, { limit = 5 } = {}) {
@@ -421,8 +529,21 @@ function readLiveSessionsSnapshot(queuePath) {
     idleTimeoutMin: getIdleTimeoutMin(),
     recentEndedMs: LIVE_RECENT_ENDED_MS,
   });
+  const groupingMode = readSessionGroupingMode(process.env);
+  const groupEdges = groupingVisible(groupingMode) ? readGroupEdges(dbPath) : [];
+  const rawSessions = Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [];
+  const groupPayload = groupingVisible(groupingMode)
+    ? buildSessionGroupsForRows(rawSessions, groupEdges)
+    : { sessions: rawSessions, session_groups: undefined };
+  const groupedWorkstreams = Array.isArray(rollups.workstreams)
+    ? rollups.workstreams.map((workstream) => {
+      if (!groupingVisible(groupingMode)) return workstream;
+      const grouped = buildSessionGroupsForRows(workstream.sessions || [], groupEdges);
+      return { ...workstream, sessions: grouped.sessions, session_groups: grouped.session_groups };
+    })
+    : [];
   const liveIdentities = Array.from(new Map(
-    (Array.isArray(rollups?.workstreams) ? rollups.workstreams : [])
+    groupedWorkstreams
       .flatMap((workstream) => Array.isArray(workstream?.sessions) ? workstream.sessions : [])
       .map((row) => {
         const provider = typeof row?.provider === "string" ? row.provider.trim() : "";
@@ -436,7 +557,14 @@ function readLiveSessionsSnapshot(queuePath) {
   const liveCanonical = summarizeCanonicalCompletenessForSessions(dbPath, liveIdentities);
   return {
     ...rollups,
-    sessions: Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [],
+    sessions: Array.isArray(groupPayload.sessions)
+      ? groupPayload.sessions.map(sanitizeLiveSessionRow)
+      : groupPayload.sessions,
+    session_groups: Array.isArray(groupPayload.session_groups)
+      ? groupPayload.session_groups.map(sanitizeLiveSessionGroup)
+      : groupPayload.session_groups,
+    session_group_diagnostics: groupingMode === "off" ? undefined : readSessionGroupDiagnostics(dbPath),
+    workstreams: groupedWorkstreams.map(sanitizeLiveWorkstream),
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
@@ -1888,6 +2016,67 @@ function json(res, data, status) {
   res.end(JSON.stringify(data));
 }
 
+function codeburnDbPath(queuePath) {
+  return path.join(path.dirname(queuePath), "vibedeck.sqlite3");
+}
+
+function codeburnFiltersFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    source: url.searchParams.get("source") || url.searchParams.get("provider"),
+    model: url.searchParams.get("model"),
+    branch: url.searchParams.get("branch"),
+  };
+}
+
+function codeburnRangeFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    tz: url.searchParams.get("tz") || "UTC",
+  };
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return {
+    from: `${year}-${month}-01`,
+    to: `${year}-${month}-${day}`,
+  };
+}
+
+function sumFactCostUsd(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const n = Number(row?.total_cost_usd || 0);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+function buildPlanPayload(dbPath) {
+  const config = readPlanConfig();
+  const range = currentMonthRange();
+  const rows = readCodeburnFactRows(dbPath, range);
+  const spend = sumFactCostUsd(rows);
+  const monthly = Number(config.monthly_usd || 0);
+  return {
+    ok: true,
+    ...config,
+    month_to_date_api_equivalent_usd: spend.toFixed(4),
+    monthly_plan_usd: monthly.toFixed(2),
+    usage_percent: monthly > 0 ? ((spend / monthly) * 100).toFixed(2) : null,
+    range,
+  };
+}
+
+function currencySymbolsFromUrl(url) {
+  const raw = url.searchParams.get("symbols") || url.searchParams.get("to") || url.searchParams.get("currency") || "EUR";
+  return raw.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
 function resolveRepoFromQuery(url) {
   const raw = String(url.searchParams.get("repo") || "").trim();
   if (!raw) return null;
@@ -2089,7 +2278,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const bus = getLiveBus();
       client.onStart = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:start", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
       client.onUpdate = (event) => {
@@ -2101,14 +2290,14 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         enqueue({
           type: "session:update",
           dropped: client.dropped,
-          ...enrichLiveSessionCost(event),
+          ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)),
           ...extra,
         });
         enqueueRollupUpdate();
       };
       client.onEnd = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:end", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
 
@@ -2214,6 +2403,135 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       json(res, readSyncStatus({ queuePath: qp, syncEnabled }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.compare)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildComparePayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.models)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildModelsPayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.status)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildStatusPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.codeburnExport)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      const payload = buildExportPayload(rows, codeburnRangeFromUrl(url));
+      if (String(url.searchParams.get("format") || "json").toLowerCase() === "csv") {
+        res.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="vibedeck-export.csv"',
+        });
+        res.end(toCsv(payload.rows));
+        return true;
+      }
+      json(res, payload);
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.yield)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildYieldPayload(rows, { ...codeburnRangeFromUrl(url), execFileSync }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.autoDetect)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, { ok: true, providers: detectInstalledProviders({ env: process.env }) });
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeFindings)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const status = url.searchParams.get("status") || "open";
+      const limit = url.searchParams.get("limit") || 100;
+      json(res, readOptimizeFindings({ dbPath: codeburnDbPath(qp), status, limit }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeScan)) {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        json(res, { ok: true, ...runOptimizeScan({ dbPath: codeburnDbPath(qp) }) });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || String(e) }, 500);
+      }
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.plan)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildPlanPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.currencyRates)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const base = url.searchParams.get("base") || "USD";
+      json(res, await readCurrencyRates({ base, symbols: currencySymbolsFromUrl(url) }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.forecast)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildForecastPayload(rows, codeburnRangeFromUrl(url)));
       return true;
     }
 

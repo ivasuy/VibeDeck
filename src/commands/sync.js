@@ -104,6 +104,7 @@ const DEFAULT_REBUILD_SESSION_BATCH_EVENTS = 1000;
 const ROLLBACK_ENV_FLAGS = {
   VIBEDECK_STARTUP_SNAPSHOT: "0 disables startup snapshot read/write",
   VIBEDECK_REBUILD_RECENT_FASTPATH: "0 disables recent-first rebuild",
+  VIBEDECK_REBUILD_DIRTY_POST_DRAIN: "0 restores inline branch-fact rebuilds during grouped flush",
   VIBEDECK_PROJECTION_FRESHNESS: "0 disables projection freshness reporting",
   VIBEDECK_REBUILD_PROFILE: "0 disables rebuild profile diagnostics",
 };
@@ -181,7 +182,11 @@ function isProjectionFreshnessEnabled() {
 }
 
 function isRebuildDirtyPostDrainEnabled({ rebuildVibedeckDb = false } = {}) {
-  return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN === "1";
+  if (!rebuildVibedeckDb) return false;
+  const raw = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
 }
 
 function getRebuildFlushSliceEvents({ rebuildVibedeckDb = false } = {}) {
@@ -330,6 +335,7 @@ function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
         defaults: {
           snapshot_write: defaults.snapshot_write === true,
           recent_first_rebuild: defaults.recent_first_rebuild === true,
+          dirty_post_drain: defaults.dirty_post_drain === true,
           freshness_reporting: defaults.freshness_reporting !== false,
         },
         milestones,
@@ -600,12 +606,16 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     });
     const snapshotEnabled = isStartupSnapshotEnabled();
     const projectionFreshnessEnabled = isProjectionFreshnessEnabled();
+    const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
     const rebuildProfile = isRebuildProfileEnabled({ rebuildVibedeckDb: opts.rebuildVibedeckDb })
       ? createRebuildProfile({
           trackerDir,
           defaults: {
             snapshot_write: snapshotEnabled,
             recent_first_rebuild: recentFastPathEnabled,
+            dirty_post_drain: dirtyPostDrainEnabled,
             freshness_reporting: projectionFreshnessEnabled,
           },
         })
@@ -617,9 +627,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const rebuildSessionBatchEvents = getRebuildSessionBatchEvents({
-      rebuildVibedeckDb: opts.rebuildVibedeckDb,
-    });
-    const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const sessionEventProcessor = opts.rebuildVibedeckDb

@@ -177,8 +177,8 @@ async function runRebuild({
     else process.env.VIBEDECK_REBUILD_PROFILE = String(profileEnv);
     if (recentFastPathEnv == null) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
     else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = String(recentFastPathEnv);
-    if (dirtyPostDrain) process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
-    else delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    if (dirtyPostDrain == null) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = dirtyPostDrain ? '1' : '0';
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = String(flushSliceEvents);
     if (sessionBatchEvents == null) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
@@ -518,12 +518,14 @@ test('recent-first rebuild preserves canonical parity while materializing recent
 test('rebuild rollout defaults enable recent-first profile diagnostics with documented rollback flags', async () => {
   const rollout = await runRebuild({
     fastPath: true,
+    dirtyPostDrain: null,
     recentFastPathEnv: null,
     profileEnv: null,
   });
 
   assert.equal(rollout.profile.defaults.snapshot_write, true);
   assert.equal(rollout.profile.defaults.recent_first_rebuild, true);
+  assert.equal(rollout.profile.defaults.dirty_post_drain, true);
   assert.equal(rollout.profile.defaults.freshness_reporting, true);
   assert.ok(Number.isFinite(rollout.profile.milestones.first_paint_ready_ms));
   assert.ok(Number.isFinite(rollout.profile.milestones.historical_completion_ms));
@@ -538,6 +540,10 @@ test('rebuild rollout defaults enable recent-first profile diagnostics with docu
   assert.match(
     rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_RECENT_FASTPATH,
     /0 disables recent-first/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
+    /0 restores inline branch-fact rebuilds/,
   );
   assert.match(
     rollout.profile.rollback_env_flags.VIBEDECK_PROJECTION_FRESHNESS,

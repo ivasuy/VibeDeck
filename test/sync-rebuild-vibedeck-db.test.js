@@ -61,6 +61,7 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
   const prevCodeHome = process.env.CODE_HOME;
   const prevGeminiHome = process.env.GEMINI_HOME;
   const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
 
   try {
     process.env.HOME = tmp;
@@ -68,6 +69,8 @@ test('sync --rebuild-vibedeck-db clears stale canonical state and reparses provi
     process.env.CODE_HOME = path.join(tmp, '.code');
     process.env.GEMINI_HOME = path.join(tmp, '.gemini');
     process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '0';
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '0';
 
     const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '11');
     await fs.mkdir(rolloutDir, { recursive: true });
@@ -229,6 +232,7 @@ test('rebuild failure leaves live canonical DB untouched', async () => {
   const prevCodeHome = process.env.CODE_HOME;
   const prevGeminiHome = process.env.GEMINI_HOME;
   const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
 
   const rolloutPath = require.resolve('../src/lib/rollout');
   const syncPath = require.resolve('../src/commands/sync');
@@ -328,6 +332,8 @@ test('rebuild failure leaves live canonical DB untouched', async () => {
     else process.env.GEMINI_HOME = prevGeminiHome;
     if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
     else process.env.OPENCODE_HOME = prevOpencodeHome;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
@@ -647,6 +653,7 @@ test('sync --rebuild-vibedeck-db skips global branch-fact rebuild when grouped s
   const prevCodeHome = process.env.CODE_HOME;
   const prevGeminiHome = process.env.GEMINI_HOME;
   const prevOpencodeHome = process.env.OPENCODE_HOME;
+  const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
 
   const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
   const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
@@ -665,6 +672,7 @@ test('sync --rebuild-vibedeck-db skips global branch-fact rebuild when grouped s
     process.env.CODE_HOME = path.join(tmp, '.code');
     process.env.GEMINI_HOME = path.join(tmp, '.gemini');
     process.env.OPENCODE_HOME = path.join(tmp, '.opencode');
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '0';
 
     const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '11');
     await fs.mkdir(rolloutDir, { recursive: true });
@@ -711,6 +719,8 @@ test('sync --rebuild-vibedeck-db skips global branch-fact rebuild when grouped s
     else process.env.GEMINI_HOME = prevGeminiHome;
     if (prevOpencodeHome === undefined) delete process.env.OPENCODE_HOME;
     else process.env.OPENCODE_HOME = prevOpencodeHome;
+    if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
@@ -768,6 +778,85 @@ test('sync rebuild passes one shared branch evidence cache to grouped batches', 
     else process.env.CODEX_HOME = prevCodexHome;
     await fs.rm(tmp, { recursive: true, force: true });
   }
+});
+
+test('sync rebuild enables dirty post-drain by default and keeps env rollback for inline facts', async () => {
+  async function runCase({ envValue }) {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-dirty-default-'));
+    const prevHome = process.env.HOME;
+    const prevVibedeckHome = process.env.VIBEDECK_HOME;
+    const prevCodexHome = process.env.CODEX_HOME;
+    const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+    const prevDirtyPostDrain = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    const syncPath = require.resolve('../src/commands/sync');
+    const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+    const pipeline = require(pipelinePath);
+    const originalBatch = pipeline.processSessionEventBatch;
+    const batchOptions = [];
+
+    try {
+      process.env.HOME = tmp;
+      process.env.VIBEDECK_HOME = tmp;
+      process.env.CODEX_HOME = path.join(tmp, '.codex');
+      process.env.VIBEDECK_REBUILD_PROFILE = '1';
+      if (envValue == null) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+      else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = envValue;
+
+      const rolloutDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+      await fs.mkdir(rolloutDir, { recursive: true });
+      const rolloutPath = path.join(rolloutDir, 'rollout-dirty-default.jsonl');
+      const usage = {
+        input_tokens: 4,
+        cached_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        output_tokens: 2,
+        reasoning_output_tokens: 0,
+        total_tokens: 6,
+      };
+      await fs.writeFile(
+        rolloutPath,
+        `${JSON.stringify({ type: 'session_meta', payload: { cwd: tmp, model: 'gpt-5.4', git: { branch: 'main' } } })}\n${buildTokenCountLine({ ts: new Date().toISOString(), last: usage, total: usage })}\n`,
+        'utf8',
+      );
+
+      pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+        batchOptions.push({ deferBranchFactRebuild: options.deferBranchFactRebuild === true });
+        return originalBatch(dbPath, events, options);
+      };
+
+      delete require.cache[syncPath];
+      const { cmdSync: rebuildSync } = require(syncPath);
+      await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+      const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
+      const profile = await readJsonFile(path.join(trackerDir, 'rebuild_profile.json'));
+      return { batchOptions, profile };
+    } finally {
+      pipeline.processSessionEventBatch = originalBatch;
+      delete require.cache[syncPath];
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+      else process.env.VIBEDECK_HOME = prevVibedeckHome;
+      if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = prevCodexHome;
+      if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+      else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+      if (prevDirtyPostDrain === undefined) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+      else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = prevDirtyPostDrain;
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const defaultRun = await runCase({ envValue: null });
+  assert.ok(defaultRun.batchOptions.length > 0);
+  assert.ok(defaultRun.batchOptions.every((options) => options.deferBranchFactRebuild));
+  assert.equal(defaultRun.profile.counters.branch_facts_rebuilt_by_scope.dirty, 1);
+
+  const rollbackRun = await runCase({ envValue: '0' });
+  assert.ok(rollbackRun.batchOptions.length > 0);
+  assert.ok(rollbackRun.batchOptions.every((options) => !options.deferBranchFactRebuild));
+  assert.equal(rollbackRun.profile.counters.branch_facts_rebuilt_by_scope.skipped, 0);
 });
 
 test('sync rebuild recent fast path materializes recent files in one flush boundary', async () => {

@@ -249,6 +249,7 @@ test('local startup snapshot exposes rebuild readiness diagnostics additively', 
         defaults: {
           snapshot_write: true,
           recent_first_rebuild: true,
+          dirty_post_drain: true,
           freshness_reporting: true,
         },
         milestones: {
@@ -258,6 +259,7 @@ test('local startup snapshot exposes rebuild readiness diagnostics additively', 
         rollback_env_flags: {
           VIBEDECK_STARTUP_SNAPSHOT: '0 disables startup snapshot read/write',
           VIBEDECK_REBUILD_RECENT_FASTPATH: '0 disables recent-first rebuild',
+          VIBEDECK_REBUILD_DIRTY_POST_DRAIN: '0 restores inline branch-fact rebuilds during grouped flush',
           VIBEDECK_PROJECTION_FRESHNESS: '0 disables projection freshness reporting',
           VIBEDECK_REBUILD_PROFILE: '0 disables rebuild profile diagnostics',
         },

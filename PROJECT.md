@@ -49,21 +49,23 @@ The previous fast-startup work moved rebuild time down sharply, but the latest l
 - Skipped filesystem repo resolution for sessions that already have repo metadata and only need missing branch facts rebuilt.
 - Reused the already-loaded post-ledger session row for batch live-event emission instead of reloading the same row after commit.
 - Added rebuild profile counters for grouped flush events, groups, branch resolutions, and existing repo metadata reuse.
+- Promoted dirty post-drain branch-fact rebuilding to the default rebuild path, with `VIBEDECK_REBUILD_DIRTY_POST_DRAIN=0` as the rollback to inline branch-fact rebuilds during grouped flush.
 
 #### Evidence
 
 | Check | Result |
 |---|---:|
-| Consolidated backend/parity suite | `68/68` passed |
+| Consolidated backend/parity/freshness suite | `80/80` passed |
 | Syntax checks | Passed |
 | Whitespace diff check | Passed |
 | Current live DB rebuild on previous branch | `24.51s` |
-| Current live DB rebuild on this branch | `25.03s` |
+| This branch before default dirty post-drain | `25.03s` |
+| This branch after default dirty post-drain | `17.93s` |
 | Earlier this-branch live DB rebuild | `24.34s` |
 
 #### Follow-up
 
-Wall-clock is effectively flat within local run variance. The new counters show the next rebuild bottleneck clearly: `recent_lane_session_event_flush` processed `8,355` events across `128` groups with `127` branch resolutions, while `repair_pass` still scanned `52` candidates. The next performance phase should target branch-resolution deferral, caching, or bulk processing during rebuild.
+The default rebuild path now uses dirty post-drain materialization. On the latest local DB profile, `recent_lane_session_event_flush` dropped to `6,417.036ms`, `repair_pass` dropped to `95.639ms`, and `branch_fact_rebuild_pass` is now the main remaining stage at `8,100.361ms` for `126` dirty branch facts. The next performance phase should target faster dirty branch-fact materialization.
 
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 

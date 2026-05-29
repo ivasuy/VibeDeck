@@ -108,6 +108,9 @@ struct PlanViewResponse: Decodable, Equatable {
     let usagePercent: Double?
     let displayCurrency: String?
     let range: PlanRange?
+    /// nil = explicit user config; true = auto-detected from observed activity;
+    /// false explicitly when the server inferred nothing usable yet.
+    let inferred: Bool?
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -124,6 +127,7 @@ struct PlanViewResponse: Decodable, Equatable {
         usagePercent = try container.decodeFlexibleDouble(forKey: .usagePercent)
         displayCurrency = try container.decodeIfPresent(String.self, forKey: .displayCurrency)
         range = try container.decodeIfPresent(PlanRange.self, forKey: .range)
+        inferred = try container.decodeIfPresent(Bool.self, forKey: .inferred)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -138,6 +142,7 @@ struct PlanViewResponse: Decodable, Equatable {
         case usagePercent = "usage_percent"
         case displayCurrency = "display_currency"
         case range
+        case inferred
     }
 }
 

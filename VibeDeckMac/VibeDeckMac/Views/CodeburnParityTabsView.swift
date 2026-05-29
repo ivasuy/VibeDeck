@@ -270,10 +270,17 @@ struct CodeburnParityTabsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: "Codeburn Parity") {
-                if viewModel.parityError != nil {
-                    Text("Partial data")
+                if let parityError = viewModel.parityError, !parityError.isEmpty {
+                    let failedTabs = parityError
+                        .split(separator: "\n")
+                        .compactMap { line -> String? in
+                            let name = line.split(separator: ":").first.map(String.init) ?? ""
+                            return name.isEmpty ? nil : name
+                        }
+                    Text(failedTabs.isEmpty ? "Partial data" : "Couldn't load: \(failedTabs.joined(separator: ", "))")
                         .font(.caption2)
                         .foregroundStyle(Color.statusWarning)
+                        .help(parityError)
                 }
             }
 

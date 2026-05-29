@@ -1059,7 +1059,7 @@ Next real startup-speed direction: start the dashboard immediately from the last
 
 | Check | Result |
 |---|---:|
-| Startup snapshot + projection freshness suite | Passed (`22/22`) |
+| Startup snapshot + projection freshness suite | Passed (`24/24`) |
 | Rebuild DB + parity harness | Passed (`29/29`) |
 | Serve lifecycle/default rollout tests | Passed (`4/4`) |
 | Dashboard production build | Passed, existing large-chunk warning only |

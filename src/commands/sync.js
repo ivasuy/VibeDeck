@@ -415,6 +415,27 @@ function providerDoneSummary({ action = "read", count = 0, unit = "items", event
   return `${action} ${formatNumber(count)} ${unit} · ${formatNumber(events)} events · ${formatNumber(buckets)} buckets`;
 }
 
+function splitScheduledProviderFilesByLane(files) {
+  const recent = [];
+  const historical = [];
+  for (const entry of Array.isArray(files) ? files : []) {
+    if (entry && typeof entry === "object" && entry.rebuildLane === "recent") {
+      recent.push(entry);
+    } else {
+      historical.push(entry);
+    }
+  }
+  return { recent, historical };
+}
+
+function addProviderParseResult(target, result = {}) {
+  if (!target || !result) return target;
+  for (const key of ["filesProcessed", "eventsAggregated", "bucketsQueued", "projectBucketsQueued"]) {
+    target[key] = (Number(target[key]) || 0) + (Number(result[key]) || 0);
+  }
+  return target;
+}
+
 async function cmdSync(argv, { lifecycle = null } = {}) {
   const opts = parseArgs(argv);
   const home = process.env.VIBEDECK_HOME || os.homedir();
@@ -622,34 +643,137 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       process.stderr.write("Rebuild phase: parsing provider logs\n");
     }
 
-    if (progress?.enabled) {
-      progress.start(
-        `Parsing ${renderBar(0)} 0/${formatNumber(rolloutFiles.length)} files | buckets 0`,
+    lifecycle?.provider?.("Claude", "discovering project transcripts");
+    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
+    lifecycle?.provider?.("Claude", `found ${formatNumber(claudeFiles.length)} project file${claudeFiles.length === 1 ? "" : "s"}`);
+    await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
+    const scheduledClaudeFiles =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? await orderRebuildProviderFilesRecentFirst(claudeFiles)
+        : claudeFiles;
+
+    const parseResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, projectBucketsQueued: 0 };
+    const claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, projectBucketsQueued: 0 };
+    const rolloutLanes =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? splitScheduledProviderFilesByLane(scheduledRolloutFiles)
+        : { recent: [], historical: scheduledRolloutFiles };
+    const claudeLanes =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? splitScheduledProviderFilesByLane(scheduledClaudeFiles)
+        : { recent: [], historical: scheduledClaudeFiles };
+
+    const parseRolloutFiles = async (files) => {
+      const rolloutSlice = Array.isArray(files) ? files : [];
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing ${renderBar(0)} 0/${formatNumber(rolloutSlice.length)} files | buckets 0`,
+        );
+      }
+      addProviderParseResult(
+        parseResult,
+        await parseRolloutIncremental({
+          rolloutFiles: rolloutSlice,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          onSessionEvent,
+          onFileComplete: onProviderFileComplete,
+          onFileProfile: onRebuildProviderFileProfile,
+          onLaneComplete: onRecentLaneComplete,
+          onProgress: createSyncLifecycleProgressCallback({
+            provider: "Codex",
+            unit: "files",
+            lifecycle,
+            progress,
+            renderProgress: (p) => {
+              const pct = p.total > 0 ? p.index / p.total : 1;
+              return `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`;
+            },
+          }),
+        }),
       );
+    };
+
+    const parseClaudeFiles = async (files) => {
+      if (!Array.isArray(files) || files.length === 0) return;
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing Claude ${renderBar(0)} 0/${formatNumber(files.length)} files | buckets 0`,
+        );
+      }
+      addProviderParseResult(
+        claudeResult,
+        await parseClaudeIncremental({
+          projectFiles: files,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          onSessionEvent,
+          onFileComplete: onProviderFileComplete,
+          onFileProfile: onRebuildProviderFileProfile,
+          onLaneComplete: onRecentLaneComplete,
+          onProgress: createSyncLifecycleProgressCallback({
+            provider: "Claude",
+            unit: "files",
+            lifecycle,
+            progress,
+            renderProgress: (p) => {
+              const pct = p.total > 0 ? p.index / p.total : 1;
+              return `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`;
+            },
+          }),
+          source: "claude",
+        }),
+      );
+    };
+
+    let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    let openclawParsed = false;
+    const parseOpenclawInputs = async () => {
+      if (openclawParsed) return;
+      openclawParsed = true;
+      if (openclawFiles.length > 0) {
+        // Only runs when explicitly triggered by OpenClaw hooks.
+        openclawResult = await parseOpenclawIncremental({
+          sessionFiles: openclawFiles,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          source: "openclaw",
+          onSessionEvent,
+        });
+      }
+
+      const openclawFallback = await applyOpenclawTotalsFallback({
+        trackerDir,
+        signal: openclawSignal,
+        cursors,
+        queuePath,
+        projectQueuePath,
+      });
+      openclawResult.filesProcessed += openclawFallback.filesProcessed;
+      openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
+      openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
+    };
+
+    if (opts.rebuildVibedeckDb && recentFastPathEnabled) {
+      await parseRolloutFiles(rolloutLanes.recent);
+      await parseClaudeFiles(claudeLanes.recent);
+      await onRecentLaneComplete?.();
+      await parseRolloutFiles(rolloutLanes.historical);
+      await parseOpenclawInputs();
+      await parseClaudeFiles(claudeLanes.historical);
+    } else {
+      await parseRolloutFiles(rolloutLanes.historical);
+      await parseOpenclawInputs();
+      await parseClaudeFiles(claudeLanes.historical);
     }
 
-    const parseResult = await parseRolloutIncremental({
-      rolloutFiles: scheduledRolloutFiles,
-      cursors,
-      queuePath,
-      projectQueuePath,
-      onSessionEvent,
-      onFileComplete: onProviderFileComplete,
-      onFileProfile: onRebuildProviderFileProfile,
-      onLaneComplete: onRecentLaneComplete,
-      onProgress: createSyncLifecycleProgressCallback({
-        provider: "Codex",
-        unit: "files",
-        lifecycle,
-        progress,
-        renderProgress: (p) => {
-          const pct = p.total > 0 ? p.index / p.total : 1;
-          return `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-            p.bucketsQueued,
-          )}`;
-        },
-      }),
-    });
     lifecycle?.providerDone?.(
       "Codex",
       providerDoneSummary({
@@ -661,69 +785,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       }),
     );
 
-    let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    if (openclawFiles.length > 0) {
-      // Only runs when explicitly triggered by OpenClaw hooks.
-      openclawResult = await parseOpenclawIncremental({
-        sessionFiles: openclawFiles,
-        cursors,
-        queuePath,
-        projectQueuePath,
-        source: "openclaw",
-        onSessionEvent,
-      });
-    }
-
-    const openclawFallback = await applyOpenclawTotalsFallback({
-      trackerDir,
-      signal: openclawSignal,
-      cursors,
-      queuePath,
-      projectQueuePath,
-    });
-    openclawResult.filesProcessed += openclawFallback.filesProcessed;
-    openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
-    openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
-
-    lifecycle?.provider?.("Claude", "discovering project transcripts");
-    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
-    lifecycle?.provider?.("Claude", `found ${formatNumber(claudeFiles.length)} project file${claudeFiles.length === 1 ? "" : "s"}`);
-    await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
-    const scheduledClaudeFiles =
-      opts.rebuildVibedeckDb && recentFastPathEnabled
-        ? await orderRebuildProviderFilesRecentFirst(claudeFiles)
-        : claudeFiles;
-    let claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    if (claudeFiles.length > 0) {
-      if (progress?.enabled) {
-        progress.start(
-          `Parsing Claude ${renderBar(0)} 0/${formatNumber(claudeFiles.length)} files | buckets 0`,
-        );
-      }
-      claudeResult = await parseClaudeIncremental({
-        projectFiles: scheduledClaudeFiles,
-        cursors,
-        queuePath,
-        projectQueuePath,
-        onSessionEvent,
-        onFileComplete: onProviderFileComplete,
-        onFileProfile: onRebuildProviderFileProfile,
-        onLaneComplete: onRecentLaneComplete,
-        onProgress: createSyncLifecycleProgressCallback({
-          provider: "Claude",
-          unit: "files",
-          lifecycle,
-          progress,
-          renderProgress: (p) => {
-            const pct = p.total > 0 ? p.index / p.total : 1;
-            return `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-              p.bucketsQueued,
-            )}`;
-          },
-        }),
-        source: "claude",
-      });
-    }
     lifecycle?.providerDone?.(
       "Claude",
       providerDoneSummary({

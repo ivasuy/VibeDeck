@@ -70,7 +70,7 @@ async function orderRebuildProviderFilesRecentFirst(files, { now = Date.now() } 
     return a.index - b.index;
   });
   return rows.map(({ entry, lane }) => {
-    if (typeof entry === "string") return entry;
+    if (typeof entry === "string") return { path: entry, rebuildLane: lane };
     if (!entry || typeof entry !== "object") return entry;
     return { ...entry, rebuildLane: lane };
   });

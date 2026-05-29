@@ -26,6 +26,20 @@ function buildTokenCountLine({ ts, last, total }) {
   });
 }
 
+function buildClaudeUsageLine({ ts, inputTokens, outputTokens }) {
+  return JSON.stringify({
+    type: 'assistant',
+    timestamp: ts,
+    message: {
+      model: 'claude-sonnet-4',
+      usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+      },
+    },
+  });
+}
+
 async function readJsonl(filePath) {
   const raw = await fs.readFile(filePath, 'utf8').catch(() => '');
   return raw
@@ -995,6 +1009,87 @@ test('sync rebuild materializes recent sessions before historical work by defaul
     await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
 
     assert.deepEqual(flushedOrder, ['rollout-recent.jsonl', 'rollout-historical.jsonl']);
+  } finally {
+    pipeline.processSessionEventBatch = originalBatch;
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevFastPath === undefined) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = prevFastPath;
+    if (prevFlushSliceEvents === undefined) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
+    else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = prevFlushSliceEvents;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync rebuild flushes cross-provider recent files before historical provider files', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-cross-provider-recent-first-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevFastPath = process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+  const prevFlushSliceEvents = process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const syncPath = require.resolve('../src/commands/sync');
+  const pipeline = require(pipelinePath);
+  const originalBatch = pipeline.processSessionEventBatch;
+  const flushedOrder = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = '3';
+
+    const codexDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    const claudeDir = path.join(tmp, '.claude', 'projects', '-tmp-cross-provider');
+    await fs.mkdir(codexDir, { recursive: true });
+    await fs.mkdir(claudeDir, { recursive: true });
+
+    const codexPath = path.join(codexDir, 'rollout-codex-recent.jsonl');
+    const claudePath = path.join(claudeDir, 'claude-historical.jsonl');
+    const codexUsage = {
+      input_tokens: 10,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 5,
+      reasoning_output_tokens: 0,
+      total_tokens: 15,
+    };
+    await fs.writeFile(
+      codexPath,
+      `${buildTokenCountLine({ ts: new Date().toISOString(), last: codexUsage, total: codexUsage })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(
+      claudePath,
+      `${buildClaudeUsageLine({ ts: '2024-01-01T00:00:00.000Z', inputTokens: 4, outputTokens: 2 })}\n`,
+      'utf8',
+    );
+    const oldDate = new Date('2024-01-01T00:00:00.000Z');
+    await fs.utimes(claudePath, oldDate, oldDate);
+
+    pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+      flushedOrder.push(`${events[0].provider}:${path.basename(events[0].session_id)}`);
+      return originalBatch(dbPath, events, options);
+    };
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(flushedOrder, [
+      'codex:rollout-codex-recent.jsonl',
+      'claude:claude-historical.jsonl',
+    ]);
   } finally {
     pipeline.processSessionEventBatch = originalBatch;
     delete require.cache[syncPath];

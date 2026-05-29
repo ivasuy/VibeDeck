@@ -32,6 +32,39 @@ VibeDeck should stay true to five promises:
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
 
+### 1.0.4 Rebuild Flush And Repair Audit
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Plan:** `docs/superpowers/plans/2026-05-29-rebuild-flush-repair-optimization.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-8-report.md`
+
+#### Problem
+
+The previous fast-startup work moved rebuild time down sharply, but the latest live DB profile showed the remaining DB build cost concentrated in post-parse work: grouped session-event flush and the repair pass.
+
+#### What changed
+
+- Split repair candidates into repo-metadata repair vs branch-fact rebuild work.
+- Skipped filesystem repo resolution for sessions that already have repo metadata and only need missing branch facts rebuilt.
+- Reused the already-loaded post-ledger session row for batch live-event emission instead of reloading the same row after commit.
+- Added rebuild profile counters for grouped flush events, groups, branch resolutions, and existing repo metadata reuse.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity suite | `68/68` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Current live DB rebuild on previous branch | `24.51s` |
+| Current live DB rebuild on this branch | `25.03s` |
+| Earlier this-branch live DB rebuild | `24.34s` |
+
+#### Follow-up
+
+Wall-clock is effectively flat within local run variance. The new counters show the next rebuild bottleneck clearly: `recent_lane_session_event_flush` processed `8,355` events across `128` groups with `127` branch resolutions, while `repair_pass` still scanned `52` candidates. The next performance phase should target branch-resolution deferral, caching, or bulk processing during rebuild.
+
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28

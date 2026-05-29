@@ -172,7 +172,7 @@ async function runRebuild({
     process.env.OPENCODE_HOME = path.join(root, '.opencode');
     process.env.VIBEDECK_REBUILD_PROFILE = '1';
     if (fastPath) process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
-    else delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '0';
     if (dirtyPostDrain) process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
     else delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
@@ -444,7 +444,7 @@ test('phase h3 smoke summary fails branch-fact gate when branch rebuild stage is
   }
 });
 
-test('recent fast path preserves rebuild canonical parity while reducing flush boundaries', async () => {
+test('recent-first rebuild preserves canonical parity while materializing recent before historical', async () => {
   const baseline = await runRebuild({ fastPath: false });
   const fastPath = await runRebuild({ fastPath: true });
   const dirtyDeferred = await runRebuild({
@@ -499,9 +499,7 @@ test('recent fast path preserves rebuild canonical parity while reducing flush b
   );
   assert.ok(sliceBatch.recentFlush.slice_threshold_flush_count > 0);
   assert.ok(laneSplitChunked.recentFlush.historical_slice_threshold_flush_count > 0);
-  assert.equal(fastPath.recentFlush.flush_count, 1);
-  assert.ok(
-    !Number.isFinite(baseline.recentFlush.flush_count) ||
-      fastPath.recentFlush.flush_count <= baseline.recentFlush.flush_count,
-  );
+  assert.equal(fastPath.recentFlush.flush_count, 2);
+  assert.ok(fastPath.recentFlush.recent_session_events_flushed > 0);
+  assert.ok(fastPath.recentFlush.historical_session_events_flushed > 0);
 });

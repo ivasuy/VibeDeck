@@ -6,7 +6,10 @@ const { execFileSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const { test } = require('node:test');
 
-const { cmdSync } = require('../src/commands/sync');
+const {
+  cmdSync,
+  recordRebuildProjectionShardMetadata,
+} = require('../src/commands/sync');
 const { ensureSchema } = require('../src/lib/db');
 const { recordTransition } = require('../src/lib/sessions/head-history');
 
@@ -826,7 +829,7 @@ test('sync rebuild recent fast path materializes recent files in one flush bound
   }
 });
 
-test('sync rebuild fast path keeps recent groups pending when a historical file completes next', async () => {
+test('sync rebuild fast path flushes recent groups before historical file drain', async () => {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-lane-aware-flush-'));
   const prevHome = process.env.HOME;
   const prevVibedeckHome = process.env.VIBEDECK_HOME;
@@ -892,7 +895,7 @@ test('sync rebuild fast path keeps recent groups pending when a historical file 
     const { cmdSync: rebuildSync } = require(syncPath);
     await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
 
-    assert.deepEqual(flushedOrder, ['rollout-z-historical.jsonl', 'rollout-a-recent.jsonl']);
+    assert.deepEqual(flushedOrder, ['rollout-a-recent.jsonl', 'rollout-z-historical.jsonl']);
 
     const trackerDir = path.join(tmp, '.vibedeck', 'tracker');
     const db = new DatabaseSync(path.join(trackerDir, 'vibedeck.sqlite3'), { readOnly: true });
@@ -921,6 +924,211 @@ test('sync rebuild fast path keeps recent groups pending when a historical file 
     else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = prevFastPath;
     if (prevFlushSliceEvents === undefined) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = prevFlushSliceEvents;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync rebuild materializes recent sessions before historical work by default', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-default-recent-first-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+  const prevProfile = process.env.VIBEDECK_REBUILD_PROFILE;
+  const prevFastPath = process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+  const prevFlushSliceEvents = process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const syncPath = require.resolve('../src/commands/sync');
+  const pipeline = require(pipelinePath);
+  const originalBatch = pipeline.processSessionEventBatch;
+  const flushedOrder = [];
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+    process.env.VIBEDECK_REBUILD_PROFILE = '1';
+    delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = '3';
+
+    const recentDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    const historicalDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '04', '20');
+    await fs.mkdir(recentDir, { recursive: true });
+    await fs.mkdir(historicalDir, { recursive: true });
+    const recentPath = path.join(recentDir, 'rollout-recent.jsonl');
+    const historicalPath = path.join(historicalDir, 'rollout-historical.jsonl');
+    const recentUsage = {
+      input_tokens: 10,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 5,
+      reasoning_output_tokens: 0,
+      total_tokens: 15,
+    };
+    const historicalUsage = {
+      input_tokens: 4,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 2,
+      reasoning_output_tokens: 0,
+      total_tokens: 6,
+    };
+
+    await fs.writeFile(
+      recentPath,
+      `${buildTokenCountLine({ ts: new Date().toISOString(), last: recentUsage, total: recentUsage })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(
+      historicalPath,
+      `${buildTokenCountLine({ ts: '2024-01-01T00:00:00.000Z', last: historicalUsage, total: historicalUsage })}\n`,
+      'utf8',
+    );
+    const oldDate = new Date('2024-01-01T00:00:00.000Z');
+    await fs.utimes(historicalPath, oldDate, oldDate);
+
+    pipeline.processSessionEventBatch = async (dbPath, events, options = {}) => {
+      flushedOrder.push(path.basename(events[0].session_id));
+      return originalBatch(dbPath, events, options);
+    };
+    delete require.cache[syncPath];
+    const { cmdSync: rebuildSync } = require(syncPath);
+    await rebuildSync(['--auto', '--rebuild-vibedeck-db']);
+
+    assert.deepEqual(flushedOrder, ['rollout-recent.jsonl', 'rollout-historical.jsonl']);
+  } finally {
+    pipeline.processSessionEventBatch = originalBatch;
+    delete require.cache[syncPath];
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    if (prevProfile === undefined) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = prevProfile;
+    if (prevFastPath === undefined) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = prevFastPath;
+    if (prevFlushSliceEvents === undefined) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
+    else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = prevFlushSliceEvents;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('sync rebuild records projection shard metadata for recent and historical lanes', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-shard-metadata-'));
+  const prevHome = process.env.HOME;
+  const prevVibedeckHome = process.env.VIBEDECK_HOME;
+  const prevCodexHome = process.env.CODEX_HOME;
+
+  try {
+    process.env.HOME = tmp;
+    process.env.VIBEDECK_HOME = tmp;
+    process.env.CODEX_HOME = path.join(tmp, '.codex');
+
+    const recentDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '05', '20');
+    const historicalDir = path.join(process.env.CODEX_HOME, 'sessions', '2026', '04', '20');
+    await fs.mkdir(recentDir, { recursive: true });
+    await fs.mkdir(historicalDir, { recursive: true });
+    const usage = {
+      input_tokens: 2,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 1,
+      reasoning_output_tokens: 0,
+      total_tokens: 3,
+    };
+    const recentPath = path.join(recentDir, 'rollout-recent.jsonl');
+    const historicalPath = path.join(historicalDir, 'rollout-historical.jsonl');
+    await fs.writeFile(
+      recentPath,
+      `${buildTokenCountLine({ ts: new Date().toISOString(), last: usage, total: usage })}\n`,
+      'utf8',
+    );
+    await fs.writeFile(
+      historicalPath,
+      `${buildTokenCountLine({ ts: '2024-01-01T00:00:00.000Z', last: usage, total: usage })}\n`,
+      'utf8',
+    );
+    const oldDate = new Date('2024-01-01T00:00:00.000Z');
+    await fs.utimes(historicalPath, oldDate, oldDate);
+
+    await cmdSync(['--auto', '--rebuild-vibedeck-db']);
+
+    const db = new DatabaseSync(path.join(tmp, '.vibedeck', 'tracker', 'vibedeck.sqlite3'), {
+      readOnly: true,
+    });
+    try {
+      const rows = db
+        .prepare(
+          `
+          SELECT shard_key, provider, source_group, scope, status, file_count, event_count
+          FROM vibedeck_projection_shards
+          WHERE shard_key IN ('codex:recent', 'codex:historical')
+          ORDER BY shard_key
+          `,
+        )
+        .all();
+      assert.deepEqual(rows.map((row) => ({ ...row })), [
+        {
+          shard_key: 'codex:historical',
+          provider: 'codex',
+          source_group: 'codex-jsonl',
+          scope: 'historical',
+          status: 'ready',
+          file_count: 1,
+          event_count: 1,
+        },
+        {
+          shard_key: 'codex:recent',
+          provider: 'codex',
+          source_group: 'codex-jsonl',
+          scope: 'recent',
+          status: 'ready',
+          file_count: 1,
+          event_count: 1,
+        },
+      ]);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    if (prevVibedeckHome === undefined) delete process.env.VIBEDECK_HOME;
+    else process.env.VIBEDECK_HOME = prevVibedeckHome;
+    if (prevCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = prevCodexHome;
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('projection shard metadata recording no-ops when shard table is unavailable', async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-sync-rebuild-shard-noop-'));
+  try {
+    const dbPath = path.join(tmp, 'vibedeck.sqlite3');
+    const recorded = await recordRebuildProjectionShardMetadata({
+      dbPath,
+      shards: [
+        {
+          provider: 'codex',
+          scope: 'recent',
+          file_count: 1,
+          event_count: 3,
+        },
+      ],
+    });
+    assert.equal(recorded, 0);
+
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const table = db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'vibedeck_projection_shards'")
+        .get();
+      assert.equal(table, undefined);
+    } finally {
+      db.close();
+    }
+  } finally {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
@@ -985,7 +1193,7 @@ test('sync rebuild flush slice events batches historical file completions by thr
     const profile = await readJsonFile(path.join(trackerDir, 'rebuild_profile.json'));
     const recentFlush = profile.stages.find((stage) => stage.name === 'recent_lane_session_event_flush');
     assert.ok(recentFlush);
-    assert.equal(recentFlush.counters.flush_count, 2);
+    assert.equal(recentFlush.counters.flush_count, 3);
     assert.equal(recentFlush.counters.slice_threshold_flush_count, 1);
     assert.equal(recentFlush.counters.historical_slice_threshold_flush_count, 1);
     assert.equal(recentFlush.counters.historical_session_events_flushed, 9);

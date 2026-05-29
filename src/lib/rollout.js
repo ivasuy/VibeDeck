@@ -55,12 +55,40 @@ function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   return mtimeMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS ? "recent" : "historical";
 }
 
+async function orderRebuildProviderFilesRecentFirst(files, { now = Date.now() } = {}) {
+  if (!Array.isArray(files) || files.length === 0) return [];
+  const rows = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const entry = files[index];
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const st = filePath ? await fs.stat(filePath).catch(() => null) : null;
+    const lane = st && st.isFile() ? rebuildProfileLaneForStat(st, { now }) : "historical";
+    rows.push({ entry, index, lane });
+  }
+  rows.sort((a, b) => {
+    if (a.lane !== b.lane) return a.lane === "recent" ? -1 : 1;
+    return a.index - b.index;
+  });
+  return rows.map(({ entry, lane }) => {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return entry;
+    return { ...entry, rebuildLane: lane };
+  });
+}
+
 function emitSessionEvents(extractFn, batch, onSessionEvent) {
   if (typeof onSessionEvent !== "function") return;
   if (typeof extractFn !== "function") return;
   const events = extractFn(batch);
   if (!Array.isArray(events) || events.length === 0) return;
-  for (const e of events) onSessionEvent(e);
+  const rebuildLane =
+    batch?.rebuild_lane === "recent" || batch?.rebuild_lane === "historical"
+      ? batch.rebuild_lane
+      : null;
+  for (const e of events) {
+    if (rebuildLane) e.rebuild_lane = rebuildLane;
+    onSessionEvent(e);
+  }
 }
 
 function extractClaudeCwdFromLine(line) {
@@ -219,6 +247,7 @@ async function parseRolloutIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -236,6 +265,9 @@ async function parseRolloutIncremental({
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -251,6 +283,18 @@ async function parseRolloutIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
@@ -292,11 +336,11 @@ async function parseRolloutIncremental({
       projectMetaCache,
       publicRepoCache,
       publicRepoResolver,
+      rebuildLane: profileLane,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
@@ -364,6 +408,7 @@ async function parseClaudeIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -386,6 +431,9 @@ async function parseClaudeIncremental({
   const prevHashes = Array.isArray(cursors.claudeHashes) ? cursors.claudeHashes : [];
   const seenMessageHashes = new Set(prevHashes);
   const defaultSource = normalizeSourceInput(source) || "claude";
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -401,6 +449,18 @@ async function parseClaudeIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
@@ -431,11 +491,11 @@ async function parseClaudeIncremental({
       projectRef,
       projectKey,
       seenMessageHashes,
+      rebuildLane: profileLane,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
@@ -987,6 +1047,7 @@ async function parseRolloutFile({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
+  rebuildLane,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
@@ -1143,6 +1204,7 @@ async function parseRolloutFile({
       extractFn,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -1170,6 +1232,7 @@ async function parseClaudeFile({
   projectRef,
   projectKey,
   seenMessageHashes,
+  rebuildLane,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
@@ -1313,6 +1376,7 @@ async function parseClaudeFile({
       extractClaudeCodeSessionEvents,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -7736,6 +7800,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
 
 module.exports = {
   listRolloutFiles,
+  orderRebuildProviderFilesRecentFirst,
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,

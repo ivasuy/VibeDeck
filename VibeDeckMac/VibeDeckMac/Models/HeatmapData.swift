@@ -7,11 +7,12 @@ struct HeatmapResponse: Codable, Equatable {
     var activeDays: Int
     var streakDays: Int
     var weeks: [[HeatmapCell?]]
+    var freshness: ProjectionFreshness?
 
     init(from: String = "", to: String = "", weekStartsOn: String = "sun",
-         activeDays: Int = 0, streakDays: Int = 0, weeks: [[HeatmapCell?]] = []) {
+         activeDays: Int = 0, streakDays: Int = 0, weeks: [[HeatmapCell?]] = [], freshness: ProjectionFreshness? = nil) {
         self.from = from; self.to = to; self.weekStartsOn = weekStartsOn
-        self.activeDays = activeDays; self.streakDays = streakDays; self.weeks = weeks
+        self.activeDays = activeDays; self.streakDays = streakDays; self.weeks = weeks; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -22,10 +23,11 @@ struct HeatmapResponse: Codable, Equatable {
         activeDays = try c.decodeIfPresent(Int.self, forKey: .activeDays) ?? 0
         streakDays = try c.decodeIfPresent(Int.self, forKey: .streakDays) ?? 0
         weeks = try c.decodeIfPresent([[HeatmapCell?]].self, forKey: .weeks) ?? []
+        freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case from, to, weeks
+        case from, to, weeks, freshness
         case weekStartsOn = "week_starts_on"
         case activeDays = "active_days"
         case streakDays = "streak_days"

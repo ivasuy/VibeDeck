@@ -14,11 +14,11 @@ struct DashboardView: View {
             case .idle, .starting:
                 ServerStartingView()
             case .running:
-                if viewModel.isSyncing {
+                if viewModel.isSyncing && !viewModel.hasRenderableUsageSurface {
                     syncingView
-                } else if viewModel.isLoading && viewModel.summary == nil {
+                } else if viewModel.isLoading && !viewModel.hasRenderableUsageSurface {
                     loadingView
-                } else if !viewModel.hasTrackedUsage {
+                } else if !viewModel.hasRenderableUsageSurface {
                     DashboardFirstRunView(
                         isSyncing: viewModel.isSyncing,
                         onDetect: {
@@ -36,6 +36,12 @@ struct DashboardView: View {
                                     onRetry: {
                                         Task { await viewModel.loadAll() }
                                     }
+                                )
+                            }
+                            if let readinessState = viewModel.readinessState {
+                                DashboardReadinessBanner(
+                                    state: readinessState,
+                                    isRefreshing: viewModel.isSyncing || viewModel.isLoading
                                 )
                             }
                             SummaryCardsView(
@@ -110,6 +116,60 @@ struct DashboardView: View {
     private func openSetupGuide() {
         if let url = URL(string: "https://github.com/ivasuy/VibeDeck#quick-start") {
             NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private struct DashboardReadinessBanner: View {
+    let state: ProjectionReadinessState
+    let isRefreshing: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: state.tone == "indexing" ? "clock.arrow.circlepath" : "tray.full")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(state.tone == "indexing" ? Color.statusWarning : Color.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(state.label)
+                    .font(.caption)
+                    .modifier(FontWeightModifier(weight: .semibold))
+                Text(detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.panelBorder, lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detailText: String {
+        if isRefreshing { return "Refreshing local server data." }
+        switch state.kind {
+        case "indexing":
+            return "Historical views will fill in as indexing completes."
+        case "snapshot":
+            return "Showing local startup snapshot while refresh continues."
+        default:
+            return "Waiting for local usage data."
         }
     }
 }

@@ -82,6 +82,10 @@ actor APIClient {
         try await fetch("/functions/vibedeck-sessions-live-snapshot")
     }
 
+    func fetchStartupSnapshot() async throws -> StartupSnapshotResponse {
+        try await fetch("/functions/vibedeck-startup-snapshot")
+    }
+
     func fetchCompareMetrics() async throws -> CompareMetricsResponse {
         try await fetch("/functions/vibedeck-compare")
     }

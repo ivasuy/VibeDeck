@@ -780,6 +780,14 @@ private struct MenuBarPopoverView: View {
                 activeSection
                 Divider()
                 limitsSection
+                if !topModelRows.isEmpty {
+                    Divider()
+                    topModelsSection
+                }
+                if optimizeSummary != nil {
+                    Divider()
+                    optimizeSection
+                }
             }
             Divider()
             footer
@@ -829,13 +837,28 @@ private struct MenuBarPopoverView: View {
                     .modifier(FontWeightModifier(weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            Button(action: onOpenSettings) {
+            Menu {
+                Button {
+                    onOpenSettings()
+                } label: {
+                    Label(Strings.menuSettings, systemImage: "gearshape")
+                }
+                Divider()
+                Button {
+                    NSApp.terminate(nil)
+                } label: {
+                    Label("Quit VibeDeck", systemImage: "power")
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                     .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 22, height: 22)
             .accessibilityLabel(Strings.menuSettings)
         }
         .frame(height: 44)
@@ -1045,6 +1068,115 @@ private struct MenuBarPopoverView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private var topModelRows: [TopModel] {
+        Array(viewModel.topModels.prefix(3))
+    }
+
+    private var topModelsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionLabel("TOP MODELS")
+            ForEach(topModelRows) { model in
+                HStack(spacing: 8) {
+                    ProviderLogoView(provider: model.source, size: 12)
+                    Text(model.name)
+                        .font(.caption)
+                        .modifier(FontWeightModifier(weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    Text("\(model.percent)%")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .frame(height: 18)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(model.name), \(model.percent) percent of tokens")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
+    private struct OptimizeSummary {
+        let findingCount: Int
+        let monthlySavingsUsd: Double
+        let healthGrade: String?
+    }
+
+    private var optimizeSummary: OptimizeSummary? {
+        guard let response = viewModel.optimizeFindings else { return nil }
+        let findings = response.findings
+        let savings = findings.reduce(0.0) { $0 + max(0, $1.estimatedCostWasteUsd) }
+        // Hide the section when there's nothing yet — scan hasn't run, no findings, no savings.
+        if findings.isEmpty && (response.health?.healthGrade ?? "-") == "-" {
+            return nil
+        }
+        return OptimizeSummary(
+            findingCount: findings.count,
+            monthlySavingsUsd: savings,
+            healthGrade: response.health?.healthGrade
+        )
+    }
+
+    private var optimizeSection: some View {
+        guard let summary = optimizeSummary else {
+            return AnyView(EmptyView())
+        }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 8) {
+                sectionLabel("OPTIMIZE")
+                HStack(alignment: .center, spacing: 10) {
+                    if summary.findingCount == 0 {
+                        Text("No findings open")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(summary.findingCount) \(summary.findingCount == 1 ? "finding" : "findings")")
+                            .font(.caption)
+                            .modifier(FontWeightModifier(weight: .medium))
+                    }
+                    Spacer(minLength: 8)
+                    if summary.monthlySavingsUsd > 0 {
+                        Text(savingsLabel(summary.monthlySavingsUsd))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.brand)
+                    } else if let grade = summary.healthGrade, grade != "-" {
+                        Text("Grade \(grade)")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(height: 22)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(optimizeAccessibilityLabel(summary))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        )
+    }
+
+    private func savingsLabel(_ usd: Double) -> String {
+        if usd >= 100 {
+            return String(format: "$%.0f / mo potential", usd)
+        }
+        return String(format: "$%.2f / mo potential", usd)
+    }
+
+    private func optimizeAccessibilityLabel(_ summary: OptimizeSummary) -> String {
+        var parts: [String] = []
+        if summary.findingCount > 0 {
+            parts.append("\(summary.findingCount) optimize \(summary.findingCount == 1 ? "finding" : "findings")")
+        } else {
+            parts.append("No optimize findings open")
+        }
+        if summary.monthlySavingsUsd > 0 {
+            parts.append("estimated \(savingsLabel(summary.monthlySavingsUsd))")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var offlineBody: some View {

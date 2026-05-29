@@ -484,6 +484,30 @@ function assertBatchEvents(batch) {
   }
 }
 
+function getRepoResolutionCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.repoResolutionByCwd instanceof Map)) {
+    cache.repoResolutionByCwd = new Map();
+  }
+  return cache.repoResolutionByCwd;
+}
+
+function resolveRepoCached(cwd, { cache = null } = {}) {
+  const key = isNonEmptyString(cwd) ? cwd.trim() : null;
+  if (!key) return null;
+  const repoCache = getRepoResolutionCache(cache);
+  if (repoCache && repoCache.has(key)) return repoCache.get(key);
+
+  let repo = null;
+  try {
+    repo = resolveRepo(key);
+  } catch {
+    repo = null;
+  }
+  if (repoCache) repoCache.set(key, repo);
+  return repo;
+}
+
 async function processSessionEventBatch(dbPath, events, { cache = null, deferBranchFactRebuild = false } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
   assertBatchEvents(events);
@@ -530,11 +554,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
   if (!existingRepoStillApplies) {
     const repoEvent = [...enrichedEvents].reverse().find((event) => isNonEmptyString(event.cwd));
     if (repoEvent && isNonEmptyString(repoEvent.cwd)) {
-      try {
-        repo = resolveRepo(repoEvent.cwd);
-      } catch {
-        repo = null;
-      }
+      repo = resolveRepoCached(repoEvent.cwd, { cache });
     }
   }
 

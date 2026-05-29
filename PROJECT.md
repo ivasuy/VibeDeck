@@ -101,6 +101,40 @@ After dirty post-drain became the default rebuild path, `branch_fact_rebuild_pas
 
 The main remaining stage is now grouped flush at about `6.54s`. The next rebuild phase should target grouped session flush itself: fewer per-session DB writes, less branch resolution during flush, or a bulk session-event materialization path that preserves live session rows and canonical parity.
 
+### 1.0.4 Grouped Flush Repo Cache
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-10-grouped-flush-repo-cache.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-10-report.md`
+
+#### Problem
+
+After branch-fact materialization was reduced, grouped session flush became the remaining rebuild bottleneck. Instrumentation showed `resolveRepo` ran `159` times and consumed about `5.65s`, while branch resolution itself consumed only about `0.45s`.
+
+#### What changed
+
+- Added a shared `repoResolutionByCwd` cache to the rebuild batch cache.
+- Reused cwd -> repo resolution results across grouped session batches.
+- Cached both successful repo lookups and null results, preserving the previous catch-and-null behavior.
+- Left `existingRepoStillApplies` skips unchanged.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity/freshness suite | `84/84` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Live DB rebuild before this phase | `10.81s` |
+| Live DB rebuild after this phase | `6.53s` |
+| `recent_lane_session_event_flush` before this phase | `6,538.046ms` |
+| `recent_lane_session_event_flush` after this phase | `2,280.066ms` |
+
+#### Follow-up
+
+The latest profile is balanced: grouped flush is about `2.28s`, branch facts about `0.56s`, repair about `0.08s`, and total rebuild about `6.53s`. Further gains likely require reducing per-group DB writes or avoiding per-session branch resolution work, but the largest filesystem hotspot has been removed.
+
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28

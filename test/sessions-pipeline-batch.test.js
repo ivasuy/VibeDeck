@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs/promises');
+const Module = require('node:module');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
@@ -329,6 +330,77 @@ test('processSessionEventBatch counts existing repo metadata reuse when cwd is u
     assert.equal(summary.events_processed, 1);
     assert.equal(summary.groups_processed, 1);
   } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('processSessionEventBatch reuses repo resolution cache across grouped batches', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-session-batch-repo-cache-'));
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const repoResolverPath = require.resolve('../src/lib/sessions/repo-resolver');
+  const originalLoad = Module._load;
+  const calls = [];
+  delete require.cache[pipelinePath];
+  delete require.cache[repoResolverPath];
+
+  try {
+    const repo = path.join(root, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    Module._load = function loadWithRepoCacheProbe(request, parent, isMain) {
+      if (parent?.filename === pipelinePath && request === './repo-resolver') {
+        return {
+          resolveRepo(cwd) {
+            calls.push(cwd);
+            return {
+              repo_root: repo,
+              repo_common_dir: path.join(repo, '.git'),
+              parent_repo: null,
+              status: 'ok',
+            };
+          },
+        };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const { processSessionEventBatch: freshBatch } = require(pipelinePath);
+    const cache = {};
+    for (const sessionId of ['repo-cache-a', 'repo-cache-b']) {
+      await freshBatch(dbPath, [
+        {
+          kind: 'start',
+          provider: 'codex',
+          session_id: sessionId,
+          started_at: '2026-05-10T00:00:00.000Z',
+          cwd: repo,
+          model: 'gpt-5.4',
+          branch: 'main',
+        },
+        {
+          kind: 'update',
+          provider: 'codex',
+          session_id: sessionId,
+          observed_at: '2026-05-10T00:01:00.000Z',
+          cwd: repo,
+          model: 'gpt-5.4',
+          branch: 'main',
+          delta_tokens: 1,
+          input_tokens: 1,
+          output_tokens: 0,
+        },
+      ], { cache, deferBranchFactRebuild: true });
+    }
+
+    assert.deepEqual(calls, [repo]);
+    assert.ok(cache.repoResolutionByCwd instanceof Map);
+    assert.equal(cache.repoResolutionByCwd.get(repo).repo_root, repo);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[pipelinePath];
+    delete require.cache[repoResolverPath];
     await fs.rm(root, { recursive: true, force: true });
   }
 });

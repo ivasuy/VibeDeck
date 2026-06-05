@@ -80,8 +80,68 @@ function toInteger(value) {
   return n == null ? 0 : Math.trunc(n);
 }
 
+function safeJsonParse(str) {
+  if (typeof str !== 'string' || str.trim() === '') return null;
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
+function stableStringify(obj) {
+  if (obj == null) return null;
+  const keys = Object.keys(obj).sort();
+  const out = {};
+  for (const k of keys) out[k] = obj[k];
+  return JSON.stringify(out);
+}
+
+function parseCounterJson(str) {
+  const parsed = safeJsonParse(str);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+
+  const out = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(value) || value < 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  if (!counter || Object.keys(counter).length === 0) return null;
+  return stableStringify(counter);
+}
+
+function sumCounterJson(base, values) {
+  const sums = parseCounterJson(base);
+  for (const value of values) {
+    const parsed = parseCounterJson(value);
+    for (const [key, count] of Object.entries(parsed)) {
+      sums[key] = (sums[key] || 0) + count;
+    }
+  }
+  return stableCounterJson(sums);
+}
+
 function roundCost(value) {
   return Math.round(Number(value || 0) * 10000) / 10000;
+}
+
+function costTotalTokens(row) {
+  const totalTokens = toInteger(row?.total_tokens);
+  if (totalTokens !== 0) return totalTokens;
+  const webSearchRequests = typeof row?.web_search_requests === 'number' && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return webSearchRequests > 0 ? webSearchRequests : totalTokens;
+}
+
+function eventBillableTokenTotal(event) {
+  if (event?.billable_total_tokens != null) return toInteger(event.billable_total_tokens);
+  return eventTokenTotal(event);
 }
 
 function branchUsageDisplayBranch({ branch, project }) {
@@ -292,10 +352,15 @@ async function factBranch({
 function eventTokenTotal(event) {
   const explicit = toFiniteNumber(event?.delta_tokens);
   if (explicit != null) return Math.trunc(explicit);
+  const cacheCreation5m = toInteger(event?.cache_creation_5m_input_tokens);
+  const cacheCreation1h = toInteger(event?.cache_creation_1h_input_tokens);
+  const cacheCreationTotal = cacheCreation5m > 0 || cacheCreation1h > 0
+    ? cacheCreation5m + cacheCreation1h
+    : toInteger(event?.cache_creation_input_tokens);
   return (
     toInteger(event?.input_tokens) +
     toInteger(event?.cached_input_tokens) +
-    toInteger(event?.cache_creation_input_tokens) +
+    cacheCreationTotal +
     toInteger(event?.output_tokens) +
     toInteger(event?.reasoning_output_tokens)
   );
@@ -365,11 +430,21 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, db =
     last_observed_at: times.last,
     event_count: 0,
     total_tokens: toInteger(session.total_tokens),
+    billable_total_tokens: toInteger(session.total_tokens),
     input_tokens: toInteger(session.input_tokens),
     cached_input_tokens: toInteger(session.cached_input_tokens),
     cache_creation_input_tokens: toInteger(session.cache_creation_input_tokens),
+    cache_creation_5m_input_tokens: toInteger(session.cache_creation_5m_input_tokens),
+    cache_creation_1h_input_tokens: toInteger(session.cache_creation_1h_input_tokens),
     output_tokens: toInteger(session.output_tokens),
     reasoning_output_tokens: toInteger(session.reasoning_output_tokens),
+    web_search_requests: toInteger(session.web_search_requests),
+    tool_call_count: toInteger(session.tool_call_count),
+    tools_json: stableCounterJson(parseCounterJson(session.tools_json)),
+    activity_json: stableCounterJson(parseCounterJson(session.activity_json)),
+    task_category: stableCounterJson(parseCounterJson(session.task_category)),
+    skills_json: stableCounterJson(parseCounterJson(session.skills_json)),
+    fast_mode: toInteger(session.fast_mode),
     conversation_count: 0,
     total_cost_usd: null,
     cost_estimated: 1,
@@ -437,11 +512,22 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
         last_observed_at: observedAt,
         event_count: 0,
         total_tokens: 0,
+        billable_total_tokens: 0,
+        billable_tokens_explicit: false,
         input_tokens: 0,
         cached_input_tokens: 0,
         cache_creation_input_tokens: 0,
+        cache_creation_5m_input_tokens: 0,
+        cache_creation_1h_input_tokens: 0,
         output_tokens: 0,
         reasoning_output_tokens: 0,
+        web_search_requests: 0,
+        tool_call_count: 0,
+        tools_json: null,
+        activity_json: null,
+        task_category: null,
+        skills_json: null,
+        fast_mode: 0,
         conversation_count: 0,
         total_cost_usd: null,
         cost_estimated: 1,
@@ -456,11 +542,22 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
     group.last_observed_at = maxIso(group.last_observed_at, observedAt);
     group.event_count += 1;
     group.total_tokens += eventTokenTotal(event);
+    group.billable_total_tokens += eventBillableTokenTotal(event);
+    if (event.billable_total_tokens != null) group.billable_tokens_explicit = true;
     group.input_tokens += toInteger(event.input_tokens);
     group.cached_input_tokens += toInteger(event.cached_input_tokens);
     group.cache_creation_input_tokens += toInteger(event.cache_creation_input_tokens);
+    group.cache_creation_5m_input_tokens += toInteger(event.cache_creation_5m_input_tokens);
+    group.cache_creation_1h_input_tokens += toInteger(event.cache_creation_1h_input_tokens);
     group.output_tokens += toInteger(event.output_tokens);
     group.reasoning_output_tokens += toInteger(event.reasoning_output_tokens);
+    group.web_search_requests += toInteger(event.web_search_requests);
+    group.tool_call_count += toInteger(event.tool_call_count);
+    group.tools_json = sumCounterJson(group.tools_json, [event.tools_json]);
+    group.activity_json = sumCounterJson(group.activity_json, [event.activity_json]);
+    group.task_category = sumCounterJson(group.task_category, [event.task_category]);
+    group.skills_json = sumCounterJson(group.skills_json, [event.skills_json]);
+    group.fast_mode += toInteger(event.fast_mode);
     group.conversation_count += toInteger(event.conversation_count);
   }
 
@@ -491,6 +588,9 @@ function reconcileGroupTokens(groups, session) {
     const target = maxTokenGroupIndex(groups);
     if (target < 0) return;
     groups[target].total_tokens += delta;
+    if (!groups[target].billable_tokens_explicit) {
+      groups[target].billable_total_tokens += delta;
+    }
     groups[target].token_reconciled = 1;
     return;
   }
@@ -507,6 +607,9 @@ function reconcileGroupTokens(groups, session) {
     if (available === 0) continue;
     const take = Math.min(available, remaining);
     groups[index].total_tokens = available - take;
+    if (!groups[index].billable_tokens_explicit) {
+      groups[index].billable_total_tokens = Math.max(0, toInteger(groups[index].billable_total_tokens) - take);
+    }
     groups[index].token_reconciled = 1;
     remaining -= take;
   }
@@ -515,6 +618,9 @@ function reconcileGroupTokens(groups, session) {
     if (group.total_tokens < 0) {
       group.total_tokens = 0;
       group.token_reconciled = 1;
+    }
+    if (group.billable_total_tokens < 0) {
+      group.billable_total_tokens = 0;
     }
   }
 }
@@ -552,12 +658,15 @@ function estimateGroupCosts(groups, session) {
     const resolved = resolveUsageCost({
       source: session.provider,
       model: group.model,
-      total_tokens: group.total_tokens,
+      total_tokens: costTotalTokens(group),
       input_tokens: group.input_tokens,
       cached_input_tokens: group.cached_input_tokens,
       cache_creation_input_tokens: group.cache_creation_input_tokens,
+      cache_creation_5m_input_tokens: group.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: group.cache_creation_1h_input_tokens,
       output_tokens: group.output_tokens,
       reasoning_output_tokens: group.reasoning_output_tokens,
+      web_search_requests: group.web_search_requests,
       stored_cost_usd: null,
       stored_cost_is_authoritative: false,
     });
@@ -631,8 +740,13 @@ function insertFacts(db, session, groups) {
       branch_resolution_tier, confidence, model,
       first_observed_at, last_observed_at,
       event_count, total_tokens,
+      billable_total_tokens,
       input_tokens, cached_input_tokens, cache_creation_input_tokens,
-      output_tokens, reasoning_output_tokens, conversation_count,
+      cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
+      output_tokens, reasoning_output_tokens,
+      web_search_requests, tool_call_count, tools_json, activity_json,
+      task_category, skills_json, fast_mode,
+      conversation_count,
       total_cost_usd, cost_estimated, cost_quality,
       token_reconciled, cost_reconciled,
       created_at, updated_at
@@ -644,8 +758,13 @@ function insertFacts(db, session, groups) {
       @branch_resolution_tier, @confidence, @model,
       @first_observed_at, @last_observed_at,
       @event_count, @total_tokens,
+      @billable_total_tokens,
       @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
-      @output_tokens, @reasoning_output_tokens, @conversation_count,
+      @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
+      @output_tokens, @reasoning_output_tokens,
+      @web_search_requests, @tool_call_count, @tools_json, @activity_json,
+      @task_category, @skills_json, @fast_mode,
+      @conversation_count,
       @total_cost_usd, @cost_estimated, @cost_quality,
       @token_reconciled, @cost_reconciled,
       @created_at, @updated_at
@@ -654,10 +773,11 @@ function insertFacts(db, session, groups) {
   );
 
   for (const group of groups) {
+    const { billable_tokens_explicit: _billableTokensExplicit, ...storedGroup } = group;
     stmt.run({
       provider: session.provider,
       session_id: session.session_id,
-      ...group,
+      ...storedGroup,
       created_at: now,
       updated_at: now,
     });

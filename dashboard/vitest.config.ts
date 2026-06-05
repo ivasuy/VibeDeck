@@ -7,6 +7,12 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setupTests.ts"],
     include: ["src/**/*.test.{js,jsx,ts,tsx}"],
+    exclude: [
+      "node_modules/**",
+      "dist/**",
+      "src/components/entire/**/*.test.{js,jsx,ts,tsx}",
+      "src/pages/EntirePage*.test.{js,jsx,ts,tsx}",
+    ],
     globals: true,
   },
 });

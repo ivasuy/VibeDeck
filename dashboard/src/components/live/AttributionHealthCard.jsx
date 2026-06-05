@@ -2,6 +2,7 @@ import React from "react";
 import { HeartPulse } from "lucide-react";
 import { copy } from "../../lib/copy";
 import { ConfidenceBadge } from "./ConfidenceBadge";
+import { FreshnessBadge } from "../RevampSurfaces.jsx";
 
 function toCount(value) {
   const n = Number(value ?? 0);
@@ -28,24 +29,27 @@ function activeStatsFromSessions(sessions) {
   return out;
 }
 
-export function AttributionHealthCard({ stats, sessions = [], loading = false, error = null, className = "" }) {
+export function AttributionHealthCard({ stats, sessions = [], loading = false, error = null, freshnessTimestamp = null, stale = false, className = "" }) {
   const liveStats = activeStatsFromSessions(sessions);
   const displayStats = liveStats.total > 0 ? liveStats : stats;
   const total = toCount(displayStats?.total);
 
   return (
     <section
-      className={`vd-card h-fit self-start rounded-xl border border-oai-gray-200 bg-white p-5 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
+      className={`vd-card h-fit self-start rounded-xl border border-[var(--vd-border)] p-5 transition-colors duration-200 ${className}`}
       style={{ blockSize: "fit-content" }}
     >
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.attribution.title")}</h2>
-        <span
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 dark:text-indigo-300"
-          aria-hidden
-        >
-          <HeartPulse className="h-4 w-4 animate-pulse" />
-        </span>
+        <div className="flex items-center gap-2">
+          <FreshnessBadge timestamp={freshnessTimestamp} live={liveStats.total > 0 && !stale} stale={stale || Boolean(error)} />
+          <span
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 dark:text-indigo-300"
+            aria-hidden
+          >
+            <HeartPulse className="h-4 w-4 motion-safe:animate-pulse" />
+          </span>
+        </div>
       </div>
 
       {loading && liveStats.total === 0 ? (

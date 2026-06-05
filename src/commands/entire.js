@@ -1,8 +1,9 @@
 'use strict';
 
-const { runEntireLogin } = require("../lib/bootstrap/ensure-entire");
+// const { runEntireLogin } = require("../lib/bootstrap/ensure-entire");
 
 async function run(argv = []) {
+  /*
   const [subcommand] = argv;
   if (subcommand !== "login") {
     process.stderr.write("Usage: vibedeck entire login\n");
@@ -17,6 +18,10 @@ async function run(argv = []) {
     process.stderr.write(`Entire login failed: ${msg}\n`);
     return 1;
   }
+  */
+  void argv;
+  process.stderr.write("This command is currently unavailable.\n");
+  return 1;
 }
 
 module.exports = { run };

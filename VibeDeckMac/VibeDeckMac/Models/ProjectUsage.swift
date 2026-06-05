@@ -3,20 +3,23 @@ import Foundation
 struct ProjectUsageResponse: Codable, Equatable {
     var generatedAt: String
     var entries: [ProjectEntry]
+    var freshness: ProjectionFreshness?
 
-    init(generatedAt: String = "", entries: [ProjectEntry] = []) {
-        self.generatedAt = generatedAt; self.entries = entries
+    init(generatedAt: String = "", entries: [ProjectEntry] = [], freshness: ProjectionFreshness? = nil) {
+        self.generatedAt = generatedAt; self.entries = entries; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         generatedAt = try c.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
         entries = try c.decodeIfPresent([ProjectEntry].self, forKey: .entries) ?? []
+        freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
     private enum CodingKeys: String, CodingKey {
         case generatedAt = "generated_at"
         case entries
+        case freshness
     }
 }
 

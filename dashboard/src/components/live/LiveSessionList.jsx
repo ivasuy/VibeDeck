@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, AlertTriangle, CircleDollarSign, CirclePlay, GitBranch, Layers3, PauseCircle, Radio } from "lucide-react";
+import { Activity, AlertTriangle, CircleDollarSign, CirclePlay, GitBranch, Layers3, PauseCircle, PencilLine, Radio } from "lucide-react";
 import { Card } from "../../ui/openai/components";
 import { StaggerContainer, StaggerItem } from "../../ui/foundation/FadeIn.jsx";
 import { ProviderIcon } from "../../ui/matrix-a/components/ProviderIcon.jsx";
@@ -83,6 +83,7 @@ export function LiveSessionList({
   totals = null,
   selectedKey = null,
   onSelectSession,
+  onOpenBranchOverride,
   streamStatus = "idle",
   streamError = null,
   initialLoading = false,
@@ -166,10 +167,10 @@ export function LiveSessionList({
                     handleSelectWorkstream();
                   }}
                   className={cn(
-                    "grid min-h-[132px] w-full cursor-pointer gap-3 border-l-2 px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
+                    "grid min-h-[132px] w-full cursor-pointer gap-3 rounded-lg border px-5 py-4 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 focus-visible:ring-inset",
                     selected
-                      ? "border-oai-brand-500 bg-oai-brand-50/70 ring-1 ring-inset ring-oai-brand-500/20 dark:bg-oai-brand-500/10"
-                        : "border-transparent hover:border-oai-brand-300 hover:bg-oai-brand-50/60 dark:hover:border-oai-brand-500 dark:hover:bg-oai-brand-950/35",
+                      ? "border-oai-brand-500/35 bg-oai-brand-50/70 dark:bg-oai-brand-500/10"
+                        : "border-transparent hover:border-oai-brand-300/50 hover:bg-oai-brand-50/60 dark:hover:bg-oai-brand-950/35",
                   )}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
@@ -189,7 +190,7 @@ export function LiveSessionList({
                         className="mt-1 truncate text-sm text-oai-gray-600 dark:text-oai-gray-300"
                         title={repoRoot || undefined}
                       >
-                        Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || "—")}
+                        Primary session · {String(primary?.provider || copy("live.value.unknown_provider"))} · {String(primary?.model || copy("live.value.unknown_model"))}
                         {scopeLabel ? ` · ${scopeLabel}` : ""}
                       </div>
                     </div>
@@ -215,11 +216,25 @@ export function LiveSessionList({
                         event.stopPropagation();
                         setOpenWorkstreamId(workstream.id);
                       }}
-                      className="vd-control inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-oai-gray-200 bg-white px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-brand-300 hover:text-oai-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:border-oai-gray-800 dark:bg-oai-gray-950/40 dark:text-oai-gray-200 dark:hover:border-oai-brand-500 dark:hover:text-oai-brand-300"
+                      className="vd-control inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-[var(--vd-border-strong)] px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-brand-300 hover:text-oai-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:text-oai-gray-200 dark:hover:border-oai-brand-500 dark:hover:text-oai-brand-300"
                       aria-label={`View breakdown for ${repoName}`}
                     >
                       <Activity className="h-3.5 w-3.5" aria-hidden />
                       View breakdown
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (typeof onOpenBranchOverride === "function") {
+                          onOpenBranchOverride(primary);
+                        }
+                      }}
+                      className="vd-control inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-[var(--vd-border-strong)] px-2.5 text-xs font-medium text-oai-gray-700 transition-colors hover:border-oai-brand-300 hover:text-oai-brand focus:outline-none focus-visible:ring-2 focus-visible:ring-oai-brand-500/60 dark:text-oai-gray-200 dark:hover:border-oai-brand-500 dark:hover:text-oai-brand-300"
+                      aria-label={`Correct branch for ${repoName}`}
+                    >
+                      <PencilLine className="h-3.5 w-3.5" aria-hidden />
+                      Correct branch
                     </button>
                   </div>
                 </div>
@@ -263,7 +278,7 @@ function LiveSessionListSkeleton() {
         {[0, 1, 2].map((index) => (
           <div
             key={index}
-            className="grid min-h-[132px] gap-3 rounded-md border border-oai-gray-200 bg-white px-5 py-4 dark:border-oai-gray-800 dark:bg-oai-gray-950/40"
+            className="vd-card-solid grid min-h-[132px] gap-3 rounded-md border border-[var(--vd-border)] px-5 py-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-2">

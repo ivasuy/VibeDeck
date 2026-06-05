@@ -11,6 +11,7 @@ import {
   discoverSkills,
   getInstalledSkills,
   getSkillRepos,
+  getSkillUsage,
   importLocalSkill,
   installSkill,
   removeSkillRepo,
@@ -27,6 +28,7 @@ vi.mock("../lib/skills-api", () => ({
   discoverSkills: vi.fn(),
   getInstalledSkills: vi.fn(),
   getSkillRepos: vi.fn(),
+  getSkillUsage: vi.fn(),
   importLocalSkill: vi.fn(),
   installSkill: vi.fn(),
   removeSkillRepo: vi.fn(),
@@ -47,6 +49,7 @@ beforeEach(() => {
         name: "Sample Skill",
         directory: "sample-skill",
         description: "Keeps the installed list visible.",
+        readmeUrl: "https://example.test/sample-skill",
         targets: ["claude"],
         managed: true,
       },
@@ -57,6 +60,11 @@ beforeEach(() => {
     installedKeys: ["local/local:sample-skill", "dir:sample-skill"],
   });
   vi.mocked(getSkillRepos).mockResolvedValue({ repos: [] });
+  vi.mocked(getSkillUsage).mockResolvedValue({
+    skills: [],
+    totalInvocationCount: 0,
+    totalCostUsd: "0.000000",
+  });
   vi.mocked(discoverSkills).mockResolvedValue({ skills: [] });
   vi.mocked(searchSkills).mockResolvedValue({ skills: [] });
   vi.mocked(installSkill).mockResolvedValue({ ok: true });
@@ -93,6 +101,28 @@ describe("SkillsPage", () => {
     await waitFor(() => {
       expect(screen.queryByText(copy("skills.empty.my"))).toBeNull();
     });
+  });
+
+  it("renders backend skill usage attribution when provenance exists", async () => {
+    vi.mocked(getSkillUsage).mockResolvedValueOnce({
+      totalInvocationCount: 3,
+      totalCostUsd: "0.300000",
+      skills: [
+        { name: "review", invocation_count: 2, cost_usd: "0.200000" },
+        { name: "sample-skill", invocation_count: 1, cost_usd: "0.100000" },
+      ],
+    });
+
+    render(<SkillsPage />);
+
+    expect(await screen.findByText("review")).toBeTruthy();
+    expect(screen.getByText("2 calls")).toBeTruthy();
+    expect(screen.getByText("$0.20")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /sample-skill/i })).toHaveAttribute(
+      "href",
+      "https://example.test/sample-skill",
+    );
+    expect(getSkillUsage).toHaveBeenCalledWith({ limit: 8 });
   });
 
   it("paginates installed skills locally after loading them once", async () => {

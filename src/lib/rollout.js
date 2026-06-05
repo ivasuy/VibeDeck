@@ -25,16 +25,40 @@ const {
   extractCopilotSessionEvents,
   extractKimiSessionEvents,
   extractOmpSessionEvents,
+  extractPiSessionEvents,
+  extractGooseSessionEvents,
+  extractCrushSessionEvents,
   extractCodebuddySessionEvents,
+  extractDroidSessionEvents,
+  extractQwenSessionEvents,
+  extractClineFamilySessionEvents,
+  extractCursorAgentSessionEvents,
+  extractAntigravitySessionEvents,
 } = require("./sessions/extractors");
 
 const DEFAULT_SOURCE = "codex";
 const DEFAULT_MODEL = "unknown";
 const BUCKET_SEPARATOR = "|";
+const CLINE_FAMILY_EXTENSIONS = Object.freeze([
+  { provider: "ibm-bob", extensionIds: ["ibm.bob-code", "ibm.bob-ide"] },
+  { provider: "roo", extensionIds: ["rooveterinaryinc.roo-cline"] },
+  { provider: "kilocode", extensionIds: ["kilocode.kilo-code", "kilo-code.kilo-code"] },
+]);
 const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.vibedeck/claude-mem/observer-sessions";
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SOURCE_HASH_ALGORITHM = "sha256";
+const TOTAL_FIELD_NAMES = Object.freeze([
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+  "conversation_count",
+]);
 
 function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   const mtimeMs = Number(stat?.mtimeMs);
@@ -42,12 +66,232 @@ function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   return mtimeMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS ? "recent" : "historical";
 }
 
+function sourceGroupForProvider(source) {
+  const normalized = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  return `${normalized}-jsonl`;
+}
+
+function statSourceSize(stat) {
+  const size = Number(stat?.size);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function statSourceMtimeMs(stat) {
+  const mtimeMs = Number(stat?.mtimeMs);
+  return Number.isFinite(mtimeMs) && mtimeMs >= 0 ? mtimeMs : 0;
+}
+
+function statSourceInode(stat) {
+  const inode = Number(stat?.ino);
+  return Number.isFinite(inode) && inode >= 0 ? inode : 0;
+}
+
+function hashFileRange(filePath, byteLength) {
+  const length = Math.max(0, Math.floor(Number(byteLength) || 0));
+  const hash = crypto.createHash(SOURCE_HASH_ALGORITHM);
+  if (length === 0) return Promise.resolve(hash.digest("hex"));
+
+  return new Promise((resolve, reject) => {
+    const stream = fssync.createReadStream(filePath, {
+      start: 0,
+      end: length - 1,
+    });
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+function normalizeCursorOffset(prev) {
+  const offset = Number(prev?.offset ?? prev?.size);
+  return Number.isFinite(offset) && offset >= 0 ? offset : 0;
+}
+
+function normalizeCursorSize(prev) {
+  const size = Number(prev?.size ?? prev?.offset);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+async function classifySourceFileRead({ filePath, stat, prev }) {
+  const size = statSourceSize(stat);
+  const inode = statSourceInode(stat);
+  if (!prev || typeof prev !== "object") {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  const sameInode = prevInode === inode;
+  if (!sameInode) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevSize = normalizeCursorSize(prev);
+  const prevOffset = normalizeCursorOffset(prev);
+  if (prevSize > size || prevOffset > size) {
+    return { mode: "full", startOffset: 0, previousSize: prevSize };
+  }
+
+  if (typeof prev.contentHash === "string" && prev.contentHash) {
+    const prefixHash = await hashFileRange(filePath, prevSize);
+    if (prefixHash !== prev.contentHash) {
+      return { mode: "full", startOffset: 0, previousSize: prevSize };
+    }
+    if (size === prevSize && prevOffset >= size) {
+      return { mode: "skip", startOffset: size, previousSize: prevSize, contentHash: prefixHash };
+    }
+    return {
+      mode: "append",
+      startOffset: Math.min(prevOffset, size),
+      previousSize: prevSize,
+      contentHash: prefixHash,
+    };
+  }
+
+  const prevMtimeMs = Number(prev.mtimeMs);
+  if (size === prevSize && prevOffset >= size && prevMtimeMs === statSourceMtimeMs(stat)) {
+    return { mode: "skip", startOffset: size, previousSize: prevSize };
+  }
+  if (size >= prevOffset && prevOffset > 0) {
+    return { mode: "append", startOffset: prevOffset, previousSize: prevSize };
+  }
+  return { mode: "full", startOffset: 0, previousSize: prevSize };
+}
+
+function needsLegacySourceCursorMigration({ filePath, stat, prev }) {
+  if (!prev || typeof prev !== "object") return false;
+  if (typeof prev.contentHash === "string" && prev.contentHash) return false;
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) return false;
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  if (prevInode !== statSourceInode(stat)) return false;
+  const offset = normalizeCursorOffset(prev);
+  return offset > 0 && offset <= statSourceSize(stat);
+}
+
+function cloneContributionTotals(value) {
+  const out = initTotals();
+  if (!value || typeof value !== "object") return out;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const n = Number(value[key]);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+
+function contributionMapFromCursor(value) {
+  const map = new Map();
+  if (!value || typeof value !== "object") return map;
+  for (const [key, totals] of Object.entries(value)) {
+    if (!key) continue;
+    map.set(key, cloneContributionTotals(totals));
+  }
+  return map;
+}
+
+function contributionMapToCursor(map) {
+  const out = {};
+  if (!(map instanceof Map)) return out;
+  for (const [key, totals] of map.entries()) {
+    if (!key) continue;
+    out[key] = cloneContributionTotals(totals);
+  }
+  return out;
+}
+
+function recordContribution(map, key, delta) {
+  if (!(map instanceof Map) || !key || !delta) return;
+  const totals = map.get(key) || initTotals();
+  addTotals(totals, delta);
+  map.set(key, totals);
+}
+
+function subtractContributionTotals(target, delta) {
+  if (!target || !delta) return;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const current = Number(target[key]) || 0;
+    const next = current - (Number(delta[key]) || 0);
+    target[key] = next > 0 ? next : 0;
+  }
+}
+
+function subtractStoredSourceContributions({
+  hourlyState,
+  projectState,
+  prev,
+  touchedBuckets,
+  projectTouchedBuckets,
+}) {
+  const bucketContributions = prev?.bucketContributions;
+  if (bucketContributions && typeof bucketContributions === "object") {
+    for (const [key, delta] of Object.entries(bucketContributions)) {
+      const bucket = hourlyState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      touchedBuckets?.add(key);
+    }
+  }
+
+  const projectContributions = prev?.projectBucketContributions;
+  if (projectContributions && typeof projectContributions === "object") {
+    for (const [key, delta] of Object.entries(projectContributions)) {
+      const bucket = projectState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      projectTouchedBuckets?.add(key);
+    }
+  }
+}
+
+async function buildSourceWatermark({ filePath, stat, offset, contentHash, source }) {
+  const size = statSourceSize(stat);
+  return {
+    sourcePath: filePath,
+    sourceGroup: sourceGroupForProvider(source),
+    inode: statSourceInode(stat),
+    offset: Math.max(0, Math.floor(Number(offset) || 0)),
+    size,
+    mtimeMs: statSourceMtimeMs(stat),
+    contentHash: contentHash || (await hashFileRange(filePath, size)),
+  };
+}
+
+async function orderRebuildProviderFilesRecentFirst(files, { now = Date.now() } = {}) {
+  if (!Array.isArray(files) || files.length === 0) return [];
+  const rows = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const entry = files[index];
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const st = filePath ? await fs.stat(filePath).catch(() => null) : null;
+    const lane = st && st.isFile() ? rebuildProfileLaneForStat(st, { now }) : "historical";
+    rows.push({ entry, index, lane });
+  }
+  rows.sort((a, b) => {
+    if (a.lane !== b.lane) return a.lane === "recent" ? -1 : 1;
+    return a.index - b.index;
+  });
+  return rows.map(({ entry, lane }) => {
+    if (typeof entry === "string") return { path: entry, rebuildLane: lane };
+    if (!entry || typeof entry !== "object") return entry;
+    return { ...entry, rebuildLane: lane };
+  });
+}
+
 function emitSessionEvents(extractFn, batch, onSessionEvent) {
   if (typeof onSessionEvent !== "function") return;
   if (typeof extractFn !== "function") return;
   const events = extractFn(batch);
   if (!Array.isArray(events) || events.length === 0) return;
-  for (const e of events) onSessionEvent(e);
+  const rebuildLane =
+    batch?.rebuild_lane === "recent" || batch?.rebuild_lane === "historical"
+      ? batch.rebuild_lane
+      : null;
+  for (const e of events) {
+    if (rebuildLane) e.rebuild_lane = rebuildLane;
+    onSessionEvent(e);
+  }
 }
 
 function extractClaudeCwdFromLine(line) {
@@ -69,6 +313,56 @@ function extractClaudeCwdFromLine(line) {
     const parsed = JSON.parse(line);
     if (typeof parsed?.cwd === "string" && parsed.cwd.trim()) return parsed.cwd.trim();
   } catch {}
+  return null;
+}
+
+function cleanAbsoluteCwd(value) {
+  if (typeof value !== "string") return null;
+  let text = value.trim();
+  if (!text) return null;
+  if (text.startsWith("file://")) {
+    try {
+      text = decodeURIComponent(new URL(text).pathname);
+    } catch (_e) {
+      return null;
+    }
+  }
+  if (text.startsWith("/") || /^[A-Za-z]:[\\/]/.test(text)) return text;
+  return null;
+}
+
+function cleanIsoTimestamp(value) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const ms = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return new Date(ms).toISOString();
+}
+
+function readPiOmpHeaderCwd(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.type !== "session") return null;
+  return cleanAbsoluteCwd(entry.cwd || entry.working_dir || entry.workingDir || entry.path);
+}
+
+function pickCopilotWorkspaceCwd(record) {
+  const attrs = record?.attributes && typeof record.attributes === "object" ? record.attributes : {};
+  const resourceAttrs =
+    record?.resource?.attributes && typeof record.resource.attributes === "object"
+      ? record.resource.attributes
+      : {};
+  for (const key of [
+    "process.cwd",
+    "cwd",
+    "workspace.folder",
+    "workspace.path",
+    "vscode.workspace.folder",
+    "vscode.workspace.path",
+    "github.copilot.workspace.folder",
+    "github.copilot.workspace.path",
+  ]) {
+    const value = cleanAbsoluteCwd(attrs[key]) || cleanAbsoluteCwd(resourceAttrs[key]);
+    if (value) return value;
+  }
   return null;
 }
 
@@ -124,6 +418,21 @@ async function listGeminiSessionFiles(tmpDir) {
   return out;
 }
 
+function resolveGeminiProjectRootForSessionFile(filePath) {
+  if (typeof filePath !== "string" || !filePath) return null;
+  const chatsDir = path.basename(path.dirname(filePath)) === "chats" ? path.dirname(filePath) : null;
+  if (!chatsDir) return null;
+  const projectDir = path.dirname(chatsDir);
+  const proofPath = path.join(projectDir, ".project_root");
+  let raw;
+  try {
+    raw = fssync.readFileSync(proofPath, "utf8");
+  } catch (_e) {
+    return null;
+  }
+  return cleanAbsoluteCwd(String(raw || "").trim());
+}
+
 async function listOpencodeMessageFiles(storageDir) {
   const out = [];
   const messageDir = path.join(storageDir, "message");
@@ -141,6 +450,7 @@ async function parseRolloutIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -158,6 +468,9 @@ async function parseRolloutIncremental({
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -173,14 +486,22 @@ async function parseRolloutIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-    const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
-    const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
-
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
@@ -192,6 +513,81 @@ async function parseRolloutIncremental({
       : null;
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    let canReuseCursor = readPlan.mode === "append";
+    let lastTotal = canReuseCursor ? prev?.lastTotal || null : null;
+    let lastModel = canReuseCursor ? prev?.lastModel || null : null;
+    let pendingCodexTools =
+      fileSource === "codex" && canReuseCursor
+        ? normalizePendingCodexTools(prev.pendingCodexTools)
+        : [];
+    const bucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.projectBucketContributions) : new Map();
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillHourlyState = normalizeHourlyState(null);
+      const backfillProjectState = projectEnabled ? normalizeProjectState(null) : null;
+      const backfillResult = await parseRolloutFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        lastTotal: null,
+        lastModel: null,
+        pendingCodexTools: [],
+        hourlyState: backfillHourlyState,
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: backfillProjectState,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        projectMetaCache,
+        publicRepoCache,
+        publicRepoResolver,
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      startOffset = accountedOffset;
+      canReuseCursor = true;
+      lastTotal = backfillResult.lastTotal || null;
+      lastModel = backfillResult.lastModel || null;
+      pendingCodexTools =
+        fileSource === "codex" ? normalizePendingCodexTools(backfillResult.pendingCodexTools) : [];
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          lastTotal,
+          lastModel,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          ...(fileSource === "codex" ? { pendingCodexTools } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
+      continue;
+    } else if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+    }
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseRolloutFile({
@@ -199,6 +595,7 @@ async function parseRolloutIncremental({
       startOffset,
       lastTotal,
       lastModel,
+      pendingCodexTools,
       hourlyState,
       touchedBuckets,
       source: fileSource,
@@ -209,15 +606,18 @@ async function parseRolloutIncremental({
       projectMetaCache,
       publicRepoCache,
       publicRepoResolver,
+      rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -228,17 +628,28 @@ async function parseRolloutIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
+      offset: result.endOffset,
+      source: fileSource,
+    });
     cursors.files[key] = {
-      inode,
+      ...sourceWatermark,
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+      ...(fileSource === "codex" ? { pendingCodexTools: result.pendingCodexTools } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -280,6 +691,7 @@ async function parseClaudeIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -302,6 +714,9 @@ async function parseClaudeIncremental({
   const prevHashes = Array.isArray(cursors.claudeHashes) ? cursors.claudeHashes : [];
   const seenMessageHashes = new Set(prevHashes);
   const defaultSource = normalizeSourceInput(source) || "claude";
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -317,12 +732,22 @@ async function parseClaudeIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
@@ -334,6 +759,74 @@ async function parseClaudeIncremental({
       : null;
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    const bucketContributions =
+      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      readPlan.mode === "append"
+        ? contributionMapFromCursor(prev?.projectBucketContributions)
+        : new Map();
+    let migratedMessageHashes = [];
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillResult = await parseClaudeFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        hourlyState: normalizeHourlyState(null),
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: projectEnabled ? normalizeProjectState(null) : null,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        seenMessageHashes: new Set(),
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      migratedMessageHashes = Array.isArray(backfillResult.messageHashes)
+        ? backfillResult.messageHashes
+        : [];
+      for (const hash of migratedMessageHashes) {
+        seenMessageHashes.add(hash);
+      }
+      startOffset = accountedOffset;
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          messageHashes: migratedMessageHashes,
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
+      continue;
+    } else if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+      if (seenMessageHashes && Array.isArray(prev?.messageHashes)) {
+        for (const hash of prev.messageHashes) {
+          seenMessageHashes.delete(hash);
+        }
+      }
+    }
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseClaudeFile({
@@ -347,15 +840,18 @@ async function parseClaudeIncremental({
       projectRef,
       projectKey,
       seenMessageHashes,
+      rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -366,15 +862,38 @@ async function parseClaudeIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
-    cursors.files[key] = {
-      inode,
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
       offset: result.endOffset,
+      source: fileSource,
+    });
+    cursors.files[key] = {
+      ...sourceWatermark,
+      offset: result.endOffset,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+      messageHashes:
+        readPlan.mode === "append" || legacyMigrationNeeded
+          ? [
+              ...(legacyMigrationNeeded
+                ? migratedMessageHashes
+                : Array.isArray(prev?.messageHashes)
+                  ? prev.messageHashes
+                  : []),
+              ...(Array.isArray(result.messageHashes) ? result.messageHashes : []),
+            ]
+          : Array.isArray(result.messageHashes)
+            ? result.messageHashes
+            : [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -436,6 +955,13 @@ async function parseGeminiIncremental({
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || "gemini";
+  const geminiState = cursors.gemini && typeof cursors.gemini === "object" ? cursors.gemini : {};
+  let projectRootProofs = Number.isFinite(geminiState.projectRootProofs)
+    ? geminiState.projectRootProofs
+    : 0;
+  let providerOnlyFiles = Number.isFinite(geminiState.providerOnlyFiles)
+    ? geminiState.providerOnlyFiles
+    : 0;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -458,6 +984,7 @@ async function parseGeminiIncremental({
     let startIndex = prev && prev.inode === inode ? Number(prev.lastIndex || -1) : -1;
     let lastTotals = prev && prev.inode === inode ? prev.lastTotals || null : null;
     let lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
+    const sessionCwd = resolveGeminiProjectRootForSessionFile(filePath);
 
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
@@ -483,6 +1010,7 @@ async function parseGeminiIncremental({
       projectTouchedBuckets,
       projectRef,
       projectKey,
+      sessionCwd,
       onSessionEvent,
     });
 
@@ -491,6 +1019,14 @@ async function parseGeminiIncremental({
       lastIndex: result.lastIndex,
       lastTotals: result.lastTotals,
       lastModel: result.lastModel,
+      updatedAt: new Date().toISOString(),
+    };
+    projectRootProofs += sessionCwd ? 1 : 0;
+    providerOnlyFiles += sessionCwd ? 0 : 1;
+    cursors.gemini = {
+      ...geminiState,
+      projectRootProofs,
+      providerOnlyFiles,
       updatedAt: new Date().toISOString(),
     };
 
@@ -873,8 +1409,10 @@ async function parseOpenclawSessionFile({
 async function parseRolloutFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   lastTotal,
   lastModel,
+  pendingCodexTools: initialPendingCodexTools,
   hourlyState,
   touchedBuckets,
   source,
@@ -885,15 +1423,23 @@ async function parseRolloutFile({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
+  rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
-  const endOffset = st.size;
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
+  const pendingCodexTools = source === "codex" ? normalizePendingCodexTools(initialPendingCodexTools) : [];
   if (startOffset >= endOffset) {
-    return { endOffset, lastTotal, lastModel, eventsAggregated: 0 };
+    return { endOffset, lastTotal, lastModel, pendingCodexTools, eventsAggregated: 0 };
   }
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let model = typeof lastModel === "string" ? lastModel : null;
@@ -919,7 +1465,12 @@ async function parseRolloutFile({
       (line.includes('"model"') || line.includes('"cwd"'));
     const maybeProviderBranch =
       !maybeTokenCount && !maybeTurnContext && line.includes('"git"') && line.includes('"branch"');
-    if (!maybeTokenCount && !maybeTurnContext && !maybeProviderBranch) continue;
+    const maybeCodexTool =
+      source === "codex" &&
+      !maybeTokenCount &&
+      ((line.includes('"response_item"') && line.includes('"function_call"')) ||
+        line.includes('"patch_apply_end"'));
+    if (!maybeTokenCount && !maybeTurnContext && !maybeProviderBranch && !maybeCodexTool) continue;
 
     let obj;
     try {
@@ -928,6 +1479,11 @@ async function parseRolloutFile({
       continue;
     }
     collectProviderBranchFromObject(source, obj, providerBranchState);
+
+    if (source === "codex") {
+      const toolName = extractCodexPendingToolName(obj);
+      if (toolName) pendingCodexTools.push(toolName);
+    }
 
     if (
       (obj?.type === "turn_context" || obj?.type === "session_meta") &&
@@ -983,7 +1539,8 @@ async function parseRolloutFile({
     sessionEndedAt = tokenTimestamp;
     sessionCwd = currentCwd || sessionCwd;
     sessionTotalTokens += Number(delta.total_tokens || 0);
-    sessionUpdates.push({
+    const codexTools = source === "codex" ? pendingCodexTools.splice(0) : [];
+    const sessionUpdate = {
       observed_at: tokenTimestamp,
       delta_tokens: Number(delta.total_tokens || 0),
       input_tokens: delta.input_tokens,
@@ -991,11 +1548,20 @@ async function parseRolloutFile({
       cache_creation_input_tokens: delta.cache_creation_input_tokens,
       output_tokens: delta.output_tokens,
       reasoning_output_tokens: delta.reasoning_output_tokens,
-    });
+    };
+    if (source === "codex") {
+      sessionUpdate.web_search_requests = 0;
+      sessionUpdate.tool_call_count = codexTools.length;
+      sessionUpdate.tools_json = stableCounterJson(countNames(codexTools));
+      sessionUpdate.activity_json = stableCounterJson(activityCounterFromTools(codexTools));
+    }
+    sessionUpdates.push(sessionUpdate);
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (currentProjectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1005,7 +1571,9 @@ async function parseRolloutFile({
         currentProjectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(currentProjectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1022,6 +1590,7 @@ async function parseRolloutFile({
       extractFn,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -1035,12 +1604,13 @@ async function parseRolloutFile({
     );
   }
 
-  return { endOffset, lastTotal: totals, lastModel: model, eventsAggregated };
+  return { endOffset, lastTotal: totals, lastModel: model, pendingCodexTools, eventsAggregated };
 }
 
 async function parseClaudeFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   hourlyState,
   touchedBuckets,
   source,
@@ -1049,15 +1619,22 @@ async function parseClaudeFile({
   projectRef,
   projectKey,
   seenMessageHashes,
+  rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
-  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
+  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const endOffset = st.size;
-  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
+  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
@@ -1069,6 +1646,7 @@ async function parseClaudeFile({
   let sessionCwd = decodeClaudeProjectPathFromSessionFile(filePath);
   const providerBranchState = createProviderBranchState();
   const isMainSession = !filePath.includes("/subagents/");
+  const messageHashes = [];
   for await (const line of rl) {
     if (!line) continue;
     if (!sessionCwd) {
@@ -1105,8 +1683,11 @@ async function parseClaudeFile({
           if (userBucketStart) {
             const userModel = DEFAULT_MODEL;
             const userBucket = getHourlyBucket(hourlyState, source, userModel, userBucketStart);
-            userBucket.totals.conversation_count += 1;
-            touchedBuckets.add(bucketKey(source, userModel, userBucketStart));
+            const delta = { conversation_count: 1 };
+            addTotals(userBucket.totals, delta);
+            const userBucketKey = bucketKey(source, userModel, userBucketStart);
+            touchedBuckets.add(userBucketKey);
+            recordContribution(bucketContributions, userBucketKey, delta);
           }
         }
       }
@@ -1131,6 +1712,7 @@ async function parseClaudeFile({
         const hash = `${msgId}:${reqId}`;
         if (seenMessageHashes.has(hash)) continue;
         seenMessageHashes.add(hash);
+        messageHashes.push(hash);
       }
     }
 
@@ -1141,6 +1723,7 @@ async function parseClaudeFile({
     const delta = normalizeClaudeUsage(usage);
     if (!delta || isAllZeroUsage(delta)) continue;
     delta.conversation_count = 0;
+    const claudeTools = extractClaudeTools(obj?.message?.content);
 
     sessionModel = model;
     if (!sessionStartedAt) sessionStartedAt = tokenTimestamp;
@@ -1152,8 +1735,14 @@ async function parseClaudeFile({
       input_tokens: delta.input_tokens,
       cached_input_tokens: delta.cached_input_tokens,
       cache_creation_input_tokens: delta.cache_creation_input_tokens,
+      cache_creation_5m_input_tokens: delta.cache_creation_5m_input_tokens,
+      cache_creation_1h_input_tokens: delta.cache_creation_1h_input_tokens,
       output_tokens: delta.output_tokens,
       reasoning_output_tokens: delta.reasoning_output_tokens,
+      web_search_requests: delta.web_search_requests,
+      tool_call_count: claudeTools.length,
+      tools_json: stableCounterJson(countNames(claudeTools)),
+      activity_json: stableCounterJson(activityCounterFromTools(claudeTools)),
       conversation_count: delta.conversation_count,
     });
 
@@ -1162,7 +1751,9 @@ async function parseClaudeFile({
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (projectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1172,7 +1763,9 @@ async function parseClaudeFile({
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(projectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1185,6 +1778,7 @@ async function parseClaudeFile({
       extractClaudeCodeSessionEvents,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -1197,7 +1791,7 @@ async function parseClaudeFile({
       onSessionEvent,
     );
   }
-  return { endOffset, eventsAggregated };
+  return { endOffset, eventsAggregated, messageHashes };
 }
 
 async function parseGeminiFile({
@@ -1212,6 +1806,7 @@ async function parseGeminiFile({
   projectTouchedBuckets,
   projectRef,
   projectKey,
+  sessionCwd,
   onSessionEvent,
 }) {
   const raw = await fs.readFile(filePath, "utf8").catch(() => "");
@@ -1302,7 +1897,7 @@ async function parseGeminiFile({
         started_at: sessionStart || sessionStartedAt,
         ended_at: sessionUpdated || sessionEndedAt,
         end_reason: "log_complete",
-        cwd: null,
+        cwd: sessionCwd,
         model,
         updates: sessionUpdates,
         total_tokens: sessionTotalTokens,
@@ -1426,7 +2021,7 @@ async function parseOpencodeMessageFile({
       started_at: tsIso,
       ended_at: tsIso,
       end_reason: "log_complete",
-      cwd: null,
+      cwd: cleanAbsoluteCwd(msg?.path?.cwd),
       model,
       updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
       total_tokens: Number(delta.total_tokens || 0),
@@ -1604,6 +2199,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
             total_tokens: totals.total_tokens,
             billable_total_tokens: totals.billable_total_tokens ?? totals.total_tokens,
             conversation_count: totals.conversation_count,
+            ...(bucket.activity_json ? { activity_json: bucket.activity_json } : {}),
           }),
         );
         bucket.queuedKey = key;
@@ -1676,6 +2272,7 @@ async function enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets })
         total_tokens: unknownBucket.totals.total_tokens,
         billable_total_tokens: unknownBucket.totals.billable_total_tokens ?? unknownBucket.totals.total_tokens,
         conversation_count: unknownBucket.totals.conversation_count,
+        ...(unknownBucket.activity_json ? { activity_json: unknownBucket.activity_json } : {}),
       }),
     );
     unknownBucket.queuedKey = outputKey;
@@ -2494,6 +3091,28 @@ function extractTokenCount(obj) {
   return null;
 }
 
+function extractCodexPendingToolName(obj) {
+  const payload = obj?.payload;
+  if (!payload || typeof payload !== "object") return null;
+  if (
+    obj?.type === "response_item" &&
+    payload.type === "function_call" &&
+    typeof payload.name === "string" &&
+    payload.name.trim()
+  ) {
+    return payload.name.trim();
+  }
+  if (obj?.type === "event_msg" && payload.type === "patch_apply_end") {
+    return "Edit";
+  }
+  return null;
+}
+
+function normalizePendingCodexTools(tools) {
+  if (!Array.isArray(tools)) return [];
+  return tools.filter((tool) => typeof tool === "string" && tool.trim()).map((tool) => tool.trim());
+}
+
 function pickDelta(lastUsage, totalUsage, prevTotals) {
   const hasLast = isNonEmptyObject(lastUsage);
   const hasTotal = isNonEmptyObject(totalUsage);
@@ -2569,15 +3188,77 @@ function normalizeClaudeUsage(u) {
   const inputTokens = toNonNegativeInt(u?.input_tokens);
   const outputTokens = toNonNegativeInt(u?.output_tokens);
   const cacheCreation = toNonNegativeInt(u?.cache_creation_input_tokens);
+  const cacheSplit = extractClaudeCacheSplit(u);
   const cacheRead = toNonNegativeInt(u?.cache_read_input_tokens);
+  const webSearchRequests = toNonNegativeInt(u?.server_tool_use?.web_search_requests);
   const totalTokens = inputTokens + outputTokens + cacheCreation + cacheRead;
   return {
     input_tokens: inputTokens,
     cached_input_tokens: cacheRead,
     cache_creation_input_tokens: cacheCreation,
+    cache_creation_5m_input_tokens: cacheSplit.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: cacheSplit.cache_creation_1h_input_tokens,
     output_tokens: outputTokens,
     reasoning_output_tokens: 0,
+    web_search_requests: webSearchRequests,
     total_tokens: totalTokens,
+  };
+}
+
+function stableCounterJson(counter) {
+  const entries = Object.entries(counter || {}).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify(Object.fromEntries(entries));
+}
+
+function countNames(names) {
+  const counts = {};
+  for (const name of Array.isArray(names) ? names : []) {
+    if (typeof name !== "string" || !name.trim()) continue;
+    const key = name.trim();
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function activityForTool(name) {
+  if (typeof name !== "string") return "tooling";
+  const normalized = name.trim().toLowerCase();
+  if (["websearch", "web_search", "search"].includes(normalized)) return "research";
+  if (["bash", "exec", "exec_command", "shell", "terminal"].includes(normalized)) return "shell";
+  if (["edit", "write", "patch", "apply"].includes(normalized)) return "editing";
+  if (["read", "grep", "glob", "ls"].includes(normalized)) return "reading";
+  if (["task", "agent"].includes(normalized)) return "orchestration";
+  return "tooling";
+}
+
+function activityCounterFromTools(tools) {
+  const counts = {};
+  for (const tool of Array.isArray(tools) ? tools : []) {
+    const activity = activityForTool(tool);
+    counts[activity] = (counts[activity] || 0) + 1;
+  }
+  return counts;
+}
+
+function extractClaudeTools(content) {
+  if (!Array.isArray(content)) return [];
+  const tools = [];
+  for (const item of content) {
+    if (item?.type !== "tool_use") continue;
+    if (typeof item.name !== "string" || !item.name.trim()) continue;
+    tools.push(item.name.trim());
+  }
+  return tools;
+}
+
+function extractClaudeCacheSplit(usage) {
+  return {
+    cache_creation_5m_input_tokens: toNonNegativeInt(
+      usage?.cache_creation?.ephemeral_5m_input_tokens,
+    ),
+    cache_creation_1h_input_tokens: toNonNegativeInt(
+      usage?.cache_creation?.ephemeral_1h_input_tokens,
+    ),
   };
 }
 
@@ -2715,6 +3396,7 @@ async function parseOpencodeDbIncremental({
   queuePath,
   projectQueuePath,
   onProgress,
+  onSessionEvent,
   source,
   publicRepoResolver,
 }) {
@@ -2829,6 +3511,21 @@ async function parseOpencodeDbIncremental({
       lastTotals: currentTotals,
       updatedAt: new Date().toISOString(),
     };
+    emitSessionEvents(
+      extractOpenCodeSessionEvents,
+      {
+        session_id:
+          typeof msg?.sessionID === "string" ? msg.sessionID : (entry.sessionID || entry.id),
+        started_at: tsIso,
+        ended_at: tsIso,
+        end_reason: "log_complete",
+        cwd: cleanAbsoluteCwd(msg?.path?.cwd),
+        model,
+        updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+        total_tokens: Number(delta.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
     messagesProcessed += 1;
     eventsAggregated += 1;
 
@@ -3537,6 +4234,73 @@ function resolveKimiDefaultModel(env = process.env) {
 
 const KIRO_CLI_CHARS_PER_TOKEN = 4;
 
+function addKiroCliSessionEventBatch(
+  batches,
+  {
+    sessionId,
+    cwd,
+    model,
+    observedAt,
+    startedAt,
+    endedAt,
+    inputTokens,
+    cachedInputTokens = 0,
+    cacheCreationInputTokens = 0,
+    outputTokens,
+    reasoningOutputTokens = 0,
+  },
+) {
+  if (!(batches instanceof Map)) return;
+  if (typeof sessionId !== "string" || !sessionId) return;
+  if (typeof observedAt !== "string" || !observedAt) return;
+  const safeCwd = cwd || null;
+  const key = `${sessionId}\n${safeCwd || ""}\n${model || ""}`;
+  let batch = batches.get(key);
+  if (!batch) {
+    batch = {
+      session_id: sessionId,
+      started_at: startedAt || observedAt,
+      ended_at: endedAt || observedAt,
+      end_reason: "log_complete",
+      cwd: safeCwd,
+      model: model || null,
+      updates: [],
+      total_tokens: 0,
+    };
+    batches.set(key, batch);
+  }
+  if (startedAt && Date.parse(startedAt) < Date.parse(batch.started_at)) {
+    batch.started_at = startedAt;
+  }
+  if (endedAt && Date.parse(endedAt) > Date.parse(batch.ended_at)) {
+    batch.ended_at = endedAt;
+  }
+  const deltaTokens =
+    inputTokens +
+    cachedInputTokens +
+    cacheCreationInputTokens +
+    outputTokens +
+    reasoningOutputTokens;
+  batch.updates.push({
+    observed_at: observedAt,
+    delta_tokens: deltaTokens,
+    input_tokens: inputTokens,
+    cached_input_tokens: cachedInputTokens,
+    cache_creation_input_tokens: cacheCreationInputTokens,
+    output_tokens: outputTokens,
+    reasoning_output_tokens: reasoningOutputTokens,
+    conversation_count: 1,
+  });
+  batch.total_tokens += deltaTokens;
+}
+
+function emitKiroCliSessionEventBatches(batches, onSessionEvent) {
+  if (!(batches instanceof Map)) return;
+  for (const batch of batches.values()) {
+    emitSessionEvents(extractKiroSessionEvents, batch, onSessionEvent);
+  }
+}
+
 function resolveKiroCliDbPath(env = process.env) {
   if (env.KIRO_CLI_DB_PATH) return env.KIRO_CLI_DB_PATH;
   const home = env.HOME || require("node:os").homedir();
@@ -3692,6 +4456,9 @@ async function readKiroCliSessionTurns(jsonPath) {
     (modelInfo && (modelInfo.model_id || modelInfo.model_name)) || null;
   const sessionId =
     typeof parsed.session_id === "string" ? parsed.session_id : path.basename(jsonPath, ".json");
+  const sessionCwd = cleanAbsoluteCwd(parsed.cwd);
+  const sessionStartedAt = cleanIsoTimestamp(parsed.created_at);
+  const sessionUpdatedAt = cleanIsoTimestamp(parsed.updated_at);
 
   // Build turn_index -> Set(message_id) so the jsonl walker can attribute
   // orphaned Prompt events (not referenced by turn.message_ids) to the
@@ -3776,6 +4543,9 @@ async function readKiroCliSessionTurns(jsonPath) {
       all_message_ids: messageIds.slice(),
       model_id: turn.model_id || sessionModelId,
       request_start_timestamp_ms: tsMs,
+      cwd: sessionCwd,
+      session_started_at: sessionStartedAt,
+      session_updated_at: sessionUpdatedAt,
       // D-1 / Bug-2: tag with session_id so the retraction pass can match
       // session-origin entries even when the requestId format has no
       // colon (no-loop_id fallback uses a bare message_id UUID that would
@@ -3900,7 +4670,14 @@ function readKiroCliRequests(dbPath, env = process.env) {
   return flat;
 }
 
-async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onProgress, env } = {}) {
+async function parseKiroCliIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
   await ensureDir(path.dirname(queuePath));
   const kiroCliState =
     cursors.kiroCli && typeof cursors.kiroCli === "object" ? cursors.kiroCli : {};
@@ -3915,6 +4692,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       cursors,
       queuePath,
       onProgress,
+      onSessionEvent,
       env,
       kiroCliState,
       seenIds,
@@ -4095,6 +4873,7 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   const cb = typeof onProgress === "function" ? onProgress : null;
   let recordsProcessed = 0;
   let eventsAggregated = 0;
+  const sessionEventBatches = new Map();
 
   for (let i = 0; i < flat.length; i++) {
     const r = flat[i];
@@ -4153,6 +4932,16 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
       });
       touchedBuckets.add(bucketKey("kiro", model, bucketStart));
       eventsAggregated++;
+      addKiroCliSessionEventBatch(sessionEventBatches, {
+        sessionId: r.session_id || r.conversation_id || r.continuation_id || requestId,
+        cwd: cleanAbsoluteCwd(r.cwd),
+        model,
+        observedAt: new Date(tsMs).toISOString(),
+        startedAt: r.session_started_at || null,
+        endedAt: r.session_updated_at || null,
+        inputTokens: approxInput,
+        outputTokens: approxOutput,
+      });
     }
 
     // Always record the cursor entry (even for zero-token requests) so we
@@ -4192,6 +4981,8 @@ async function parseKiroCliIncremental({ sessionFiles, cursors, queuePath, onPro
   hourlyState.updatedAt = updatedAt;
   cursors.hourly = hourlyState;
   cursors.kiroCli = { ...kiroCliState, requests: cappedState, updatedAt };
+
+  emitKiroCliSessionEventBatches(sessionEventBatches, onSessionEvent);
 
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
@@ -4242,6 +5033,7 @@ async function parseKiroCliFromSessionFiles({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   kiroCliState,
   seenIds,
@@ -4296,12 +5088,16 @@ async function parseKiroCliFromSessionFiles({
       ? parsed.session_state.conversation_metadata.user_turn_metadatas
       : [];
     const sessionId = typeof parsed.session_id === "string" ? parsed.session_id : filePath;
+    const sessionCwd = cleanAbsoluteCwd(parsed.cwd);
+    const sessionStartedAt = cleanIsoTimestamp(parsed.created_at);
+    const sessionUpdatedAt = cleanIsoTimestamp(parsed.updated_at);
     const sessionModelId =
       (parsed?.session_state?.rts_model_state?.model_info &&
         (parsed.session_state.rts_model_state.model_info.model_id ||
           parsed.session_state.rts_model_state.model_info.modelId)) ||
       null;
 
+    const sessionEventBatches = new Map();
     let maxIndex = prevLastIndex;
     for (let i = 0; i < turns.length; i++) {
       if (i <= prevLastIndex) continue;
@@ -4327,6 +5123,8 @@ async function parseKiroCliFromSessionFiles({
       if (!ts) continue;
       const bucketStart = toUtcHalfHourStart(ts);
       if (!bucketStart) continue;
+      const observedAt = cleanIsoTimestamp(ts);
+      if (!observedAt) continue;
 
       const turnMessageId =
         typeof turn.message_id === "string" && turn.message_id ? turn.message_id : null;
@@ -4357,6 +5155,19 @@ async function parseKiroCliFromSessionFiles({
       const bucket = getHourlyBucket(hourlyState, "kiro", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("kiro", model, bucketStart));
+      addKiroCliSessionEventBatch(sessionEventBatches, {
+        sessionId,
+        cwd: sessionCwd,
+        model,
+        observedAt,
+        startedAt: sessionStartedAt,
+        endedAt: sessionUpdatedAt,
+        inputTokens: input,
+        cachedInputTokens: cacheRead,
+        cacheCreationInputTokens: cacheCreation,
+        outputTokens: output,
+        reasoningOutputTokens: reasoning,
+      });
       if (dedupKey) seenIds.add(dedupKey);
       maxIndex = i;
       eventsAggregated++;
@@ -4377,6 +5188,7 @@ async function parseKiroCliFromSessionFiles({
       size: stat.size,
       lastIndex: maxIndex,
     };
+    emitKiroCliSessionEventBatches(sessionEventBatches, onSessionEvent);
   }
 
   const seenArr = Array.from(seenIds);
@@ -4842,6 +5654,1099 @@ async function parseCodebuddyIncremental({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Droid / Factory — passive ~/.factory/sessions/**/*.jsonl reader
+// Qwen — passive ~/.qwen/projects/*/chats/*.jsonl reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function walkJsonlFilesSync(rootDir, out = []) {
+  if (!rootDir || !fssync.existsSync(rootDir)) return out;
+  let entries;
+  try {
+    entries = fssync.readdirSync(rootDir, { withFileTypes: true });
+  } catch (_e) {
+    return out;
+  }
+  for (const entry of entries) {
+    const full = path.join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      walkJsonlFilesSync(full, out);
+    } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function resolveDroidSessionFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const factoryDir = env.FACTORY_DIR || path.join(home, ".factory");
+  const sessionsDir = path.join(factoryDir, "sessions");
+  return walkJsonlFilesSync(sessionsDir, []).sort((a, b) => a.localeCompare(b));
+}
+
+function resolveQwenChatFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const qwenDir = env.QWEN_DATA_DIR || path.join(home, ".qwen");
+  const projectsDir = path.join(qwenDir, "projects");
+  return walkJsonlFilesSync(projectsDir, [])
+    .filter((file) => {
+      const segments = path.relative(projectsDir, file).split(path.sep);
+      return segments.length === 3 && segments[1] === "chats" && segments[2].endsWith(".jsonl");
+    })
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function providerFileOffsetStart(fileOffsets, filePath, stat) {
+  const prev = fileOffsets[filePath] || {};
+  const prevOffset = Number(prev.offset ?? prev.size) || 0;
+  const prevInode = prev.ino ?? prev.inode;
+  const inodeChanged = typeof prevInode === "number" && prevInode !== stat.ino;
+  if (inodeChanged || stat.size < prevOffset) return 0;
+  return prevOffset;
+}
+
+function normalizeProviderUsage(usage) {
+  if (!usage || typeof usage !== "object") return null;
+  const input = toNonNegativeInt(
+    usage.input_tokens ?? usage.inputTokens ?? usage.prompt_tokens ?? usage.promptTokens,
+  );
+  const output = toNonNegativeInt(
+    usage.output_tokens ?? usage.outputTokens ?? usage.completion_tokens ?? usage.completionTokens,
+  );
+  const cacheRead = toNonNegativeInt(
+    usage.cached_tokens ?? usage.cache_read_input_tokens ?? usage.cacheReadTokens,
+  );
+  const cacheWrite = toNonNegativeInt(
+    usage.cache_write_input_tokens ?? usage.cache_creation_input_tokens ?? usage.cacheCreationTokens,
+  );
+  const reasoning = toNonNegativeInt(
+    usage.reasoning_output_tokens ?? usage.reasoning_tokens ?? usage.reasoningTokens,
+  );
+  const total = input + output + cacheRead + cacheWrite + reasoning;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function providerToolNames(entry) {
+  const out = [];
+  if (typeof entry?.tool === "string" && entry.tool.trim()) out.push(entry.tool.trim());
+  if (typeof entry?.toolName === "string" && entry.toolName.trim()) out.push(entry.toolName.trim());
+  if (Array.isArray(entry?.tools)) {
+    for (const tool of entry.tools) {
+      const name =
+        typeof tool === "string"
+          ? tool
+          : typeof tool?.name === "string"
+            ? tool.name
+            : typeof tool?.tool === "string"
+              ? tool.tool
+              : null;
+      if (name && name.trim()) out.push(name.trim());
+    }
+  }
+  return out;
+}
+
+function droidActivityJson(tools) {
+  return stableCounterJson({
+    ...activityCounterFromTools(tools),
+    estimated_split: 1,
+  });
+}
+
+function qwenActivityJson(tools) {
+  return tools.length > 0 ? stableCounterJson(activityCounterFromTools(tools)) : null;
+}
+
+function appendProviderSessionUpdate(batches, sessionId, update) {
+  let batch = batches.get(sessionId);
+  if (!batch) {
+    batch = {
+      session_id: sessionId,
+      started_at: update.observed_at,
+      ended_at: update.observed_at,
+      end_reason: "log_complete",
+      cwd: update.cwd ?? null,
+      model: update.model ?? null,
+      updates: [],
+      total_tokens: 0,
+    };
+    batches.set(sessionId, batch);
+  }
+  if (!batch.started_at || update.observed_at < batch.started_at) batch.started_at = update.observed_at;
+  if (!batch.ended_at || update.observed_at > batch.ended_at) batch.ended_at = update.observed_at;
+  if (!batch.cwd && update.cwd) batch.cwd = update.cwd;
+  if (!batch.model && update.model) batch.model = update.model;
+  batch.total_tokens += Number(update.delta_tokens || 0);
+  batch.updates.push(update);
+  return batch;
+}
+
+async function parseDroidIncremental({
+  sessionFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const droidState = cursors.droid && typeof cursors.droid === "object" ? cursors.droid : {};
+  const fileOffsets =
+    droidState.fileOffsets && typeof droidState.fileOffsets === "object"
+      ? { ...droidState.fileOffsets }
+      : {};
+  const sessionMeta =
+    droidState.sessionMeta && typeof droidState.sessionMeta === "object"
+      ? { ...droidState.sessionMeta }
+      : {};
+  const files = Array.isArray(sessionFiles)
+    ? sessionFiles
+    : resolveDroidSessionFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const batches = new Map();
+    const priorMeta = sessionMeta[filePath] && typeof sessionMeta[filePath] === "object"
+      ? sessionMeta[filePath]
+      : {};
+    let currentSession = {
+      session_id: typeof priorMeta.session_id === "string" ? priorMeta.session_id : filePath,
+      cwd: cleanAbsoluteCwd(priorMeta.cwd),
+      model: normalizeModelInput(priorMeta.model) || null,
+      started_at: typeof priorMeta.started_at === "string" ? priorMeta.started_at : null,
+    };
+
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+
+      if (entry?.type === "session_start") {
+        const startedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+        currentSession = {
+          session_id:
+            typeof entry.session_id === "string" && entry.session_id.trim()
+              ? entry.session_id.trim()
+              : currentSession.session_id,
+          cwd: cleanAbsoluteCwd(entry.cwd || entry.working_dir || entry.workingDir),
+          model: normalizeModelInput(entry.model) || currentSession.model,
+          started_at: startedAt || currentSession.started_at,
+        };
+        continue;
+      }
+
+      const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const model = normalizeModelInput(entry.model) || currentSession.model || "droid-unknown";
+      const sessionId =
+        typeof entry.session_id === "string" && entry.session_id.trim()
+          ? entry.session_id.trim()
+          : currentSession.session_id || filePath;
+      const tools = providerToolNames(entry);
+      const activity_json = droidActivityJson(tools);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+
+      const bucket = getHourlyBucket(hourlyState, "droid", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      bucket.activity_json = activity_json;
+      touchedBuckets.add(bucketKey("droid", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd: currentSession.cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(
+        extractDroidSessionEvents,
+        {
+          ...batch,
+          started_at: currentSession.started_at || batch.started_at,
+        },
+        onSessionEvent,
+      );
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    sessionMeta[filePath] = {
+      session_id: currentSession.session_id,
+      cwd: currentSession.cwd,
+      model: currentSession.model,
+      started_at: currentSession.started_at,
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.droid = { ...droidState, fileOffsets, sessionMeta, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+async function parseQwenIncremental({
+  chatFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const qwenState = cursors.qwen && typeof cursors.qwen === "object" ? cursors.qwen : {};
+  const fileOffsets =
+    qwenState.fileOffsets && typeof qwenState.fileOffsets === "object"
+      ? { ...qwenState.fileOffsets }
+      : {};
+  const files = Array.isArray(chatFiles) ? chatFiles : resolveQwenChatFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const batches = new Map();
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+      const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const model = normalizeModelInput(entry.model) || "qwen-unknown";
+      const sessionId =
+        typeof entry.sessionId === "string" && entry.sessionId.trim()
+          ? entry.sessionId.trim()
+          : typeof entry.session_id === "string" && entry.session_id.trim()
+            ? entry.session_id.trim()
+            : filePath;
+      const cwd = cleanAbsoluteCwd(entry.cwd);
+      const tools = providerToolNames(entry);
+      const activity_json = qwenActivityJson(tools);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+
+      const bucket = getHourlyBucket(hourlyState, "qwen", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      touchedBuckets.add(bucketKey("qwen", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(extractQwenSessionEvents, batch, onSessionEvent);
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.qwen = { ...qwenState, fileOffsets, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+function resolveClineFamilyTaskDirs(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const storageRoots = [
+    path.join(home, "Library", "Application Support", "Code", "User", "globalStorage"),
+    path.join(home, ".config", "Code", "User", "globalStorage"),
+    path.join(home, "globalStorage"),
+  ];
+  const out = [];
+  for (const { provider, extensionIds } of CLINE_FAMILY_EXTENSIONS) {
+    for (const extensionId of extensionIds) {
+      for (const storageRoot of storageRoots) {
+        const tasksRoot = path.join(storageRoot, extensionId, "tasks");
+        if (!fssync.existsSync(tasksRoot)) continue;
+        let entries;
+        try {
+          entries = fssync.readdirSync(tasksRoot, { withFileTypes: true });
+        } catch (_e) {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          out.push({ provider, taskDir: path.join(tasksRoot, entry.name) });
+        }
+      }
+    }
+  }
+  out.sort((a, b) => `${a.provider}:${a.taskDir}`.localeCompare(`${b.provider}:${b.taskDir}`));
+  return out;
+}
+
+function readClineWorkspaceProof(taskDir) {
+  if (typeof taskDir !== "string" || !taskDir) return null;
+  let raw;
+  try {
+    raw = fssync.readFileSync(path.join(taskDir, "api_conversation_history.json"), "utf8");
+  } catch (_e) {
+    return null;
+  }
+  const match = String(raw).match(/Current Workspace Directory\s*\(([^)]+)\)/i);
+  return match ? cleanAbsoluteCwd(match[1]) : null;
+}
+
+function normalizeClineFamilyUsage(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  const input = toNonNegativeInt(
+    entry.tokensIn ?? entry.input_tokens ?? entry.inputTokens ?? entry.prompt_tokens,
+  );
+  const output = toNonNegativeInt(
+    entry.tokensOut ?? entry.output_tokens ?? entry.outputTokens ?? entry.completion_tokens,
+  );
+  const cacheRead = toNonNegativeInt(entry.cached_tokens ?? entry.cache_read_input_tokens);
+  const cacheWrite = toNonNegativeInt(
+    entry.cache_write_input_tokens ?? entry.cache_creation_input_tokens,
+  );
+  const total = input + output + cacheRead + cacheWrite;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    cache_creation_input_tokens: cacheWrite,
+    output_tokens: output,
+    reasoning_output_tokens: 0,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function clineFamilyToolNames(entry) {
+  const out = [];
+  for (const key of ["tool", "toolName", "name", "type"]) {
+    if (typeof entry?.[key] === "string" && entry[key].trim()) out.push(entry[key].trim());
+  }
+  return out;
+}
+
+function addUsageTotals(target, usage) {
+  target.input_tokens += Number(usage.input_tokens || 0);
+  target.cached_input_tokens += Number(usage.cached_input_tokens || 0);
+  target.cache_creation_input_tokens += Number(usage.cache_creation_input_tokens || 0);
+  target.output_tokens += Number(usage.output_tokens || 0);
+  target.reasoning_output_tokens += Number(usage.reasoning_output_tokens || 0);
+  target.total_tokens += Number(usage.total_tokens || 0);
+  target.conversation_count += Number(usage.conversation_count || 0);
+}
+
+function subtractUsageTotals(current, previous) {
+  return {
+    input_tokens: Math.max(0, Number(current.input_tokens || 0) - Number(previous?.input_tokens || 0)),
+    cached_input_tokens: Math.max(
+      0,
+      Number(current.cached_input_tokens || 0) - Number(previous?.cached_input_tokens || 0),
+    ),
+    cache_creation_input_tokens: Math.max(
+      0,
+      Number(current.cache_creation_input_tokens || 0) -
+        Number(previous?.cache_creation_input_tokens || 0),
+    ),
+    output_tokens: Math.max(0, Number(current.output_tokens || 0) - Number(previous?.output_tokens || 0)),
+    reasoning_output_tokens: Math.max(
+      0,
+      Number(current.reasoning_output_tokens || 0) - Number(previous?.reasoning_output_tokens || 0),
+    ),
+    total_tokens: Math.max(0, Number(current.total_tokens || 0) - Number(previous?.total_tokens || 0)),
+    conversation_count: Math.max(
+      0,
+      Number(current.conversation_count || 0) - Number(previous?.conversation_count || 0),
+    ),
+  };
+}
+
+async function parseClineFamilyIncremental({
+  taskDirs,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const clineState = cursors.clineFamily && typeof cursors.clineFamily === "object"
+    ? cursors.clineFamily
+    : {};
+  const snapshots = clineState.snapshots && typeof clineState.snapshots === "object"
+    ? { ...clineState.snapshots }
+    : {};
+  const dirs = Array.isArray(taskDirs) ? taskDirs : resolveClineFamilyTaskDirs(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let taskDirsProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let idx = 0; idx < dirs.length; idx++) {
+    const item = dirs[idx];
+    const provider = normalizeSourceInput(item?.provider);
+    const taskDir = typeof item?.taskDir === "string" ? item.taskDir : null;
+    if (!provider || !taskDir) continue;
+    const uiPath = path.join(taskDir, "ui_messages.json");
+    let stat;
+    try {
+      stat = fssync.statSync(uiPath);
+    } catch (_e) {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+
+    let rows;
+    try {
+      rows = JSON.parse(await fs.readFile(uiPath, "utf8"));
+    } catch (_e) {
+      continue;
+    }
+    if (!Array.isArray(rows)) continue;
+
+    const totals = initTotals();
+    const tools = [];
+    let startedAt = null;
+    let endedAt = null;
+    let model = null;
+    for (const row of rows) {
+      const usage = normalizeClineFamilyUsage(row);
+      if (!usage) continue;
+      const observedAt = cleanIsoTimestamp(
+        row.ts || row.timestamp || row.created_at || row.createdAt || row.time,
+      );
+      if (!observedAt) continue;
+      addUsageTotals(totals, usage);
+      recordsProcessed++;
+      if (!startedAt || observedAt < startedAt) startedAt = observedAt;
+      if (!endedAt || observedAt > endedAt) endedAt = observedAt;
+      if (!model) model = normalizeModelInput(row.model);
+      tools.push(...clineFamilyToolNames(row));
+    }
+    if (totals.total_tokens === 0 || !endedAt) continue;
+
+    const sessionKey = `${provider}:${taskDir}`;
+    const fingerprint = [
+      stat.size,
+      Math.round(Number(stat.mtimeMs) || 0),
+      totals.input_tokens,
+      totals.cached_input_tokens,
+      totals.cache_creation_input_tokens,
+      totals.output_tokens,
+      totals.total_tokens,
+    ].join(":");
+    const previous = snapshots[sessionKey] && typeof snapshots[sessionKey] === "object"
+      ? snapshots[sessionKey]
+      : null;
+    if (previous?.fingerprint === fingerprint) {
+      taskDirsProcessed++;
+      continue;
+    }
+
+    const delta = subtractUsageTotals(totals, previous?.totals);
+    snapshots[sessionKey] = {
+      fingerprint,
+      totals,
+      updatedAt: new Date().toISOString(),
+    };
+    if (delta.total_tokens === 0) {
+      taskDirsProcessed++;
+      continue;
+    }
+
+    const bucketStart = toUtcHalfHourStart(endedAt);
+    if (!bucketStart) continue;
+    const resolvedModel = model || "cline-family-unknown";
+    const bucket = getHourlyBucket(hourlyState, provider, resolvedModel, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey(provider, resolvedModel, bucketStart));
+
+    const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+    emitSessionEvents(
+      extractClineFamilySessionEvents,
+      {
+        provider,
+        session_id: sessionKey,
+        started_at: startedAt,
+        ended_at: endedAt,
+        end_reason: "log_complete",
+        cwd: readClineWorkspaceProof(taskDir),
+        model: resolvedModel,
+        updates: [
+          {
+            observed_at: endedAt,
+            delta_tokens: Number(delta.total_tokens || 0),
+            input_tokens: delta.input_tokens,
+            cached_input_tokens: delta.cached_input_tokens,
+            cache_creation_input_tokens: delta.cache_creation_input_tokens,
+            output_tokens: delta.output_tokens,
+            reasoning_output_tokens: delta.reasoning_output_tokens,
+            conversation_count: delta.conversation_count,
+            tool_call_count: tools.length,
+            tools_json,
+          },
+        ],
+        total_tokens: Number(delta.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+    taskDirsProcessed++;
+
+    if (cb) {
+      cb({
+        index: idx + 1,
+        total: dirs.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.clineFamily = { ...clineState, snapshots, updatedAt };
+  return { taskDirsProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+function resolveCursorAgentTranscriptFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const cursorHome = env.CURSOR_HOME || path.join(home, ".cursor");
+  const projectsDir = path.join(cursorHome, "projects");
+  return walkJsonlFilesSync(projectsDir, [])
+    .filter((file) => file.includes(`${path.sep}agent-transcripts${path.sep}`))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function resolveCursorAgentSidecarCwd(filePath) {
+  if (typeof filePath !== "string" || !filePath.endsWith(".jsonl")) return null;
+  const sidecarPath = filePath.slice(0, -".jsonl".length) + ".json";
+  let raw;
+  try {
+    raw = fssync.readFileSync(sidecarPath, "utf8");
+  } catch (_e) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_e) {
+    return null;
+  }
+  return cleanAbsoluteCwd(
+    parsed?.cwd || parsed?.workspaceFolder || parsed?.workspace_folder || parsed?.workspace?.folder,
+  );
+}
+
+function cursorAgentTextLength(entry) {
+  const fields = [
+    entry?.text,
+    entry?.content,
+    entry?.message,
+    entry?.response,
+    entry?.prompt,
+    entry?.completion,
+  ];
+  let chars = 0;
+  for (const field of fields) {
+    if (typeof field === "string") chars += field.length;
+    else if (Array.isArray(field)) chars += JSON.stringify(field).length;
+    else if (field && typeof field === "object") chars += JSON.stringify(field).length;
+  }
+  return chars;
+}
+
+function normalizeCursorAgentUsage(entry) {
+  const usage = normalizeProviderUsage(entry?.usage || entry?.tokenUsage || entry);
+  if (usage) return { usage, estimated: false };
+  const estimatedTokens = Math.floor(cursorAgentTextLength(entry) / 4);
+  if (estimatedTokens <= 0) return null;
+  return {
+    usage: {
+      input_tokens: estimatedTokens,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+      total_tokens: estimatedTokens,
+      conversation_count: 1,
+    },
+    estimated: true,
+  };
+}
+
+function cursorAgentActivityJson(tools, estimated) {
+  const counts = tools.length > 0 ? activityCounterFromTools(tools) : {};
+  if (estimated) counts.estimated_tokens = 1;
+  return Object.keys(counts).length > 0 ? stableCounterJson(counts) : null;
+}
+
+async function parseCursorAgentIncremental({
+  transcriptFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const cursorAgentState = cursors.cursorAgent && typeof cursors.cursorAgent === "object"
+    ? cursors.cursorAgent
+    : {};
+  const fileOffsets = cursorAgentState.fileOffsets && typeof cursorAgentState.fileOffsets === "object"
+    ? { ...cursorAgentState.fileOffsets }
+    : {};
+  const files = Array.isArray(transcriptFiles)
+    ? transcriptFiles
+    : resolveCursorAgentTranscriptFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let filesProcessed = 0;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let fileIdx = 0; fileIdx < files.length; fileIdx++) {
+    const filePath = files[fileIdx];
+    let stat;
+    try {
+      stat = fssync.statSync(filePath);
+    } catch (_e) {
+      continue;
+    }
+    const startOffset = providerFileOffsetStart(fileOffsets, filePath, stat);
+    if (stat.size <= startOffset) continue;
+
+    const sidecarCwd = resolveCursorAgentSidecarCwd(filePath);
+    const batches = new Map();
+    let stream;
+    try {
+      stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+    } catch (_e) {
+      continue;
+    }
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
+      if (!line || !line.trim()) continue;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch (_e) {
+        continue;
+      }
+      const normalized = normalizeCursorAgentUsage(entry);
+      if (!normalized) continue;
+      const observedAt = cleanIsoTimestamp(entry.timestamp || entry.created_at || entry.createdAt || entry.time);
+      if (!observedAt) continue;
+      const bucketStart = toUtcHalfHourStart(observedAt);
+      if (!bucketStart) continue;
+
+      const usage = normalized.usage;
+      const model = normalizeModelInput(entry.model) || "cursor-agent-unknown";
+      const sessionId =
+        typeof entry.sessionId === "string" && entry.sessionId.trim()
+          ? entry.sessionId.trim()
+          : typeof entry.session_id === "string" && entry.session_id.trim()
+            ? entry.session_id.trim()
+            : filePath;
+      const cwd =
+        cleanAbsoluteCwd(
+          entry.cwd || entry.workspaceFolder || entry.workspace_folder || entry.workspace?.folder,
+        ) || sidecarCwd;
+      const tools = providerToolNames(entry);
+      const tools_json = tools.length > 0 ? stableCounterJson(countNames(tools)) : null;
+      const activity_json = cursorAgentActivityJson(tools, normalized.estimated);
+
+      const bucket = getHourlyBucket(hourlyState, "cursor-agent", model, bucketStart);
+      addTotals(bucket.totals, usage);
+      if (activity_json) bucket.activity_json = activity_json;
+      touchedBuckets.add(bucketKey("cursor-agent", model, bucketStart));
+
+      appendProviderSessionUpdate(batches, sessionId, {
+        observed_at: observedAt,
+        delta_tokens: Number(usage.total_tokens || 0),
+        input_tokens: usage.input_tokens,
+        cached_input_tokens: usage.cached_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        output_tokens: usage.output_tokens,
+        reasoning_output_tokens: usage.reasoning_output_tokens,
+        conversation_count: usage.conversation_count,
+        tool_call_count: tools.length,
+        tools_json,
+        activity_json,
+        cwd,
+        model,
+      });
+      recordsProcessed++;
+      eventsAggregated++;
+
+      if (cb) {
+        cb({
+          index: fileIdx + 1,
+          total: files.length,
+          recordsProcessed,
+          eventsAggregated,
+          bucketsQueued: touchedBuckets.size,
+        });
+      }
+    }
+
+    rl.close();
+    try {
+      stream.destroy();
+    } catch (_e) {}
+    for (const batch of batches.values()) {
+      emitSessionEvents(extractCursorAgentSessionEvents, batch, onSessionEvent);
+    }
+
+    let postStat = stat;
+    try {
+      postStat = fssync.statSync(filePath);
+    } catch (_e) {}
+    fileOffsets[filePath] = {
+      inode: postStat.ino,
+      offset: postStat.size,
+      updatedAt: new Date().toISOString(),
+    };
+    filesProcessed++;
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.cursorAgent = { ...cursorAgentState, fileOffsets, updatedAt };
+  return { filesProcessed, recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+function resolveAntigravityCachePath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  return env.ANTIGRAVITY_CACHE_PATH || path.join(home, ".cache", "codeburn", "antigravity-results.json");
+}
+
+function resolveAntigravityPbFiles(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  const dir = env.ANTIGRAVITY_HOME || path.join(home, ".gemini", "antigravity", "conversations");
+  if (!fssync.existsSync(dir)) return [];
+  let entries;
+  try {
+    entries = fssync.readdirSync(dir, { withFileTypes: true });
+  } catch (_e) {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".pb"))
+    .map((entry) => path.join(dir, entry.name))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeAntigravityUsage(row) {
+  if (!row || typeof row !== "object") return null;
+  const input = toNonNegativeInt(row.input_tokens ?? row.inputTokens ?? row.prompt_tokens);
+  const output = toNonNegativeInt(row.output_tokens ?? row.outputTokens ?? row.completion_tokens);
+  const reasoning = toNonNegativeInt(row.thinking_tokens ?? row.reasoning_output_tokens);
+  const total = input + output + reasoning;
+  if (total === 0) return null;
+  return {
+    input_tokens: input,
+    cached_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+    conversation_count: 1,
+  };
+}
+
+function antigravityRowsFromJson(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.rows)) return value.rows;
+  if (Array.isArray(value?.results)) return value.results;
+  if (Array.isArray(value?.items)) return value.items;
+  return [];
+}
+
+function antigravityRowKey(row, index) {
+  const id =
+    typeof row?.id === "string" && row.id.trim()
+      ? row.id.trim()
+      : typeof row?.sessionId === "string" && row.sessionId.trim()
+        ? row.sessionId.trim()
+        : typeof row?.session_id === "string" && row.session_id.trim()
+          ? row.session_id.trim()
+          : null;
+  const timestamp = cleanIsoTimestamp(row?.timestamp || row?.created_at || row?.createdAt || row?.time) || "";
+  if (id) return `${id}|${timestamp}`;
+  return `${index}|${timestamp}|${JSON.stringify(row)}`;
+}
+
+async function parseAntigravityIncremental({
+  cachePath,
+  pbFiles,
+  cursors,
+  queuePath,
+  onProgress,
+  onSessionEvent,
+  env,
+} = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const antigravityState = cursors.antigravity && typeof cursors.antigravity === "object"
+    ? cursors.antigravity
+    : {};
+  const seenRows = new Set(Array.isArray(antigravityState.seenRows) ? antigravityState.seenRows : []);
+  const resolvedCachePath = typeof cachePath === "string" ? cachePath : resolveAntigravityCachePath(env || process.env);
+  const resolvedPbFiles = Array.isArray(pbFiles) ? pbFiles : resolveAntigravityPbFiles(env || process.env);
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  let rows = [];
+  let cacheExists = false;
+  try {
+    const raw = await fs.readFile(resolvedCachePath, "utf8");
+    cacheExists = true;
+    rows = antigravityRowsFromJson(JSON.parse(raw));
+  } catch (_e) {
+    rows = [];
+  }
+
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    if (!row || typeof row !== "object") continue;
+    const usage = normalizeAntigravityUsage(row);
+    if (!usage) continue;
+    const observedAt = cleanIsoTimestamp(row.timestamp || row.created_at || row.createdAt || row.time);
+    if (!observedAt) continue;
+    const rowKey = antigravityRowKey(row, idx);
+    if (seenRows.has(rowKey)) continue;
+    const bucketStart = toUtcHalfHourStart(observedAt);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(row.model) || "antigravity-unknown";
+    const sessionId =
+      typeof row.id === "string" && row.id.trim()
+        ? row.id.trim()
+        : typeof row.sessionId === "string" && row.sessionId.trim()
+          ? row.sessionId.trim()
+          : typeof row.session_id === "string" && row.session_id.trim()
+            ? row.session_id.trim()
+            : `${resolvedCachePath}:${idx}`;
+
+    const bucket = getHourlyBucket(hourlyState, "antigravity", model, bucketStart);
+    addTotals(bucket.totals, usage);
+    touchedBuckets.add(bucketKey("antigravity", model, bucketStart));
+    emitSessionEvents(
+      extractAntigravitySessionEvents,
+      {
+        session_id: sessionId,
+        started_at: observedAt,
+        ended_at: observedAt,
+        end_reason: "log_complete",
+        cwd: null,
+        model,
+        updates: [
+          {
+            observed_at: observedAt,
+            delta_tokens: Number(usage.total_tokens || 0),
+            input_tokens: usage.input_tokens,
+            cached_input_tokens: usage.cached_input_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
+            output_tokens: usage.output_tokens,
+            reasoning_output_tokens: usage.reasoning_output_tokens,
+            conversation_count: usage.conversation_count,
+          },
+        ],
+        total_tokens: Number(usage.total_tokens || 0),
+      },
+      onSessionEvent,
+    );
+    seenRows.add(rowKey);
+    recordsProcessed++;
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: idx + 1,
+        total: rows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  const seenRowsArr = Array.from(seenRows);
+  const cappedSeenRows =
+    seenRowsArr.length > 10_000 ? seenRowsArr.slice(seenRowsArr.length - 10_000) : seenRowsArr;
+  cursors.antigravity = {
+    ...antigravityState,
+    seenRows: cappedSeenRows,
+    lastPbSeen: resolvedPbFiles.length > 0 ? resolvedPbFiles[resolvedPbFiles.length - 1] : antigravityState.lastPbSeen,
+    cachePath: cacheExists ? resolvedCachePath : antigravityState.cachePath,
+    updatedAt,
+  };
+  return {
+    recordsProcessed,
+    eventsAggregated,
+    bucketsQueued,
+    pbFilesSeen: resolvedPbFiles.length,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // oh-my-pi (omp) — passive JSONL reader (~/.omp/agent/sessions/**/*.jsonl)
 //
 // oh-my-pi writes one append-only JSONL per session:
@@ -4997,6 +6902,7 @@ async function parseOmpIncremental({
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
     const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
+    let sessionCwd = cleanAbsoluteCwd(prevEntry.cwd);
 
     let stream;
     try {
@@ -5011,6 +6917,11 @@ async function parseOmpIncremental({
       if (!line || !line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
+
+      if (entry?.type === "session") {
+        sessionCwd = readPiOmpHeaderCwd(entry) || sessionCwd;
+        continue;
+      }
 
       // First line of each file is type:"session" (header) — skip all
       // non-message records.
@@ -5088,7 +6999,7 @@ async function parseOmpIncremental({
           started_at: tsIso,
           ended_at: tsIso,
           end_reason: "log_complete",
-          cwd: null,
+          cwd: sessionCwd,
           model,
           updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
           total_tokens: Number(delta.total_tokens || 0),
@@ -5115,6 +7026,7 @@ async function parseOmpIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      cwd: sessionCwd,
     };
   }
 
@@ -5215,6 +7127,7 @@ async function parsePiIncremental({
   cursors,
   queuePath,
   onProgress,
+  onSessionEvent,
   env,
   defaultModel,
 } = {}) {
@@ -5258,6 +7171,7 @@ async function parsePiIncremental({
     const inodeChanged = typeof prevIno === "number" && prevIno !== stat.ino;
     const startOffset = stat.size < prevSize || inodeChanged ? 0 : prevSize;
     if (stat.size <= startOffset) continue;
+    let sessionCwd = cleanAbsoluteCwd(prevEntry.cwd);
 
     let stream;
     try {
@@ -5272,6 +7186,11 @@ async function parsePiIncremental({
       if (!line || !line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
+
+      if (entry?.type === "session") {
+        sessionCwd = readPiOmpHeaderCwd(entry) || sessionCwd;
+        continue;
+      }
 
       if (!entry || entry.type !== "message") continue;
 
@@ -5334,6 +7253,20 @@ async function parsePiIncremental({
       const bucket = getHourlyBucket(hourlyState, "pi", model, bucketStart);
       addTotals(bucket.totals, delta);
       touchedBuckets.add(bucketKey("pi", model, bucketStart));
+      emitSessionEvents(
+        extractPiSessionEvents,
+        {
+          session_id: filePath,
+          started_at: tsIso,
+          ended_at: tsIso,
+          end_reason: "log_complete",
+          cwd: sessionCwd,
+          model,
+          updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
+          total_tokens: Number(delta.total_tokens || 0),
+        },
+        onSessionEvent,
+      );
       seenIds.add(entryId);
       eventsAggregated++;
 
@@ -5354,6 +7287,7 @@ async function parsePiIncremental({
       size: postStat.size,
       mtimeMs: postStat.mtimeMs,
       ino: postStat.ino,
+      cwd: sessionCwd,
     };
   }
 
@@ -5376,6 +7310,357 @@ async function parsePiIncremental({
     updatedAt,
   };
 
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Goose — SQLite sessions reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveGooseDbPath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  if (env.GOOSE_PATH_ROOT) {
+    return path.join(expandHomePath(env.GOOSE_PATH_ROOT, env), "data", "sessions", "sessions.db");
+  }
+  const candidates = [
+    path.join(home, ".local", "share", "goose", "sessions", "sessions.db"),
+    path.join(home, "Library", "Application Support", "goose", "sessions", "sessions.db"),
+    path.join(home, ".local", "share", "Block", "goose", "sessions", "sessions.db"),
+  ];
+  return candidates.find((candidate) => fssync.existsSync(candidate)) || candidates[0];
+}
+
+function pickGooseModel(row) {
+  if (typeof row?.model === "string" && row.model.trim()) return row.model.trim();
+  if (typeof row?.model_name === "string" && row.model_name.trim()) return row.model_name.trim();
+  if (typeof row?.model_config_json === "string" && row.model_config_json.trim()) {
+    try {
+      const parsed = JSON.parse(row.model_config_json);
+      return parsed.model_name || parsed.model || parsed.id || null;
+    } catch (_e) {}
+  }
+  return "goose-unknown";
+}
+
+function readGooseSessions(dbPath) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const sql = "SELECT * FROM sessions ORDER BY COALESCE(updated_at, created_at) ASC";
+  let raw;
+  try {
+    raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 30_000,
+    });
+  } catch (_e) {
+    return [];
+  }
+  if (!raw || !raw.trim()) return [];
+  try {
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+function parseGooseObservedIso(row) {
+  const observed = row.updated_at || row.last_updated_at || row.created_at || new Date().toISOString();
+  const ms = Date.parse(observed);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+async function parseGooseIncremental({ dbPath, cursors, queuePath, onProgress, onSessionEvent, env } = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const resolvedDbPath = dbPath || resolveGooseDbPath(env || process.env);
+  const rows = readGooseSessions(resolvedDbPath);
+  const gooseState = cursors.goose && typeof cursors.goose === "object" ? cursors.goose : {};
+  const snapshots =
+    gooseState.snapshots && typeof gooseState.snapshots === "object"
+      ? { ...gooseState.snapshots }
+      : {};
+  if (rows.length === 0) {
+    cursors.goose = { ...gooseState, snapshots, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    recordsProcessed++;
+    const sessionId = String(row.id || row.session_id || "").trim();
+    if (!sessionId) continue;
+
+    const totalInput = toNonNegativeInt(row.accumulated_input_tokens ?? row.input_tokens);
+    const totalOutput = toNonNegativeInt(row.accumulated_output_tokens ?? row.output_tokens);
+    const totalReported = toNonNegativeInt(
+      row.accumulated_total_tokens ?? row.total_tokens ?? totalInput + totalOutput,
+    );
+    const prev = snapshots[sessionId] || { input: 0, output: 0, total: 0 };
+    const dInput = Math.max(0, totalInput - toNonNegativeInt(prev.input));
+    const dOutput = Math.max(0, totalOutput - toNonNegativeInt(prev.output));
+    const dTotal = Math.max(0, totalReported - toNonNegativeInt(prev.total));
+    snapshots[sessionId] = { input: totalInput, output: totalOutput, total: totalReported };
+    if (dInput === 0 && dOutput === 0 && dTotal === 0) continue;
+
+    const observedIso = parseGooseObservedIso(row);
+    if (!observedIso) continue;
+    const bucketStart = toUtcHalfHourStart(observedIso);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(pickGooseModel(row)) || "goose-unknown";
+    const totalTokens = dTotal > 0 ? dTotal : dInput + dOutput;
+    const reasoning = Math.max(0, totalTokens - dInput - dOutput);
+    const delta = {
+      input_tokens: dInput,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: dOutput,
+      reasoning_output_tokens: reasoning,
+      total_tokens: totalTokens,
+      conversation_count: 1,
+    };
+
+    const bucket = getHourlyBucket(hourlyState, "goose", model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey("goose", model, bucketStart));
+    emitSessionEvents(
+      extractGooseSessionEvents,
+      {
+        session_id: sessionId,
+        started_at: row.created_at || observedIso,
+        ended_at: observedIso,
+        end_reason: "log_complete",
+        cwd: cleanAbsoluteCwd(row.working_dir),
+        model,
+        updates: [
+          {
+            observed_at: observedIso,
+            delta_tokens: totalTokens,
+            input_tokens: dInput,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            output_tokens: dOutput,
+            reasoning_output_tokens: reasoning,
+            conversation_count: 1,
+          },
+        ],
+        total_tokens: totalTokens,
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: i + 1,
+        total: rows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.goose = { ...gooseState, snapshots, updatedAt };
+  return { recordsProcessed, eventsAggregated, bucketsQueued };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Crush — projects registry + per-project SQLite sessions reader
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveCrushProjectsPath(env = process.env) {
+  const home = env.HOME || require("node:os").homedir();
+  if (env.CRUSH_GLOBAL_DATA) return path.join(expandHomePath(env.CRUSH_GLOBAL_DATA, env), "projects.json");
+  return path.join(home, ".local", "share", "crush", "projects.json");
+}
+
+function readCrushProjects(projectsPath) {
+  if (!projectsPath || !fssync.existsSync(projectsPath)) return [];
+  try {
+    const parsed = JSON.parse(fssync.readFileSync(projectsPath, "utf8"));
+    const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.projects) ? parsed.projects : [];
+    return list
+      .map((entry) => cleanAbsoluteCwd(entry?.path || entry?.projectPath || entry?.root || entry?.cwd))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+  } catch (_e) {
+    return [];
+  }
+}
+
+function quoteSqliteIdentifier(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+function readSqliteTableColumns(dbPath, tableName) {
+  try {
+    const raw = cp.execFileSync("sqlite3", ["-json", dbPath, `PRAGMA table_info(${quoteSqliteIdentifier(tableName)})`], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      timeout: 30_000,
+    });
+    if (!raw.trim()) return [];
+    const rows = JSON.parse(raw);
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => row.name).filter((name) => typeof name === "string" && name.trim());
+  } catch (_e) {
+    return [];
+  }
+}
+
+function readCrushSessions(dbPath) {
+  if (!dbPath || !fssync.existsSync(dbPath)) return [];
+  const columns = readSqliteTableColumns(dbPath, "sessions");
+  if (columns.length === 0) return [];
+  const columnSet = new Set(columns);
+  const selectList = columns.map(quoteSqliteIdentifier).join(", ");
+  const orderColumns = ["updated_at", "ended_at", "created_at", "started_at"].filter((name) => columnSet.has(name));
+  let orderSql = "";
+  if (orderColumns.length === 1) {
+    orderSql = ` ORDER BY ${quoteSqliteIdentifier(orderColumns[0])} ASC`;
+  } else if (orderColumns.length > 1) {
+    orderSql = ` ORDER BY COALESCE(${orderColumns.map(quoteSqliteIdentifier).join(", ")}) ASC`;
+  }
+  const sql = `SELECT ${selectList} FROM sessions${orderSql}`;
+  try {
+    const raw = cp.execFileSync("sqlite3", ["-json", dbPath, sql], {
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+      timeout: 30_000,
+    });
+    if (!raw.trim()) return [];
+    const rows = JSON.parse(raw);
+    return Array.isArray(rows) ? rows : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+function parseCrushObservedIso(row) {
+  const observed = row.updated_at || row.ended_at || row.created_at || row.started_at || new Date().toISOString();
+  const ms = Date.parse(observed);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
+async function parseCrushIncremental({ projectsPath, cursors, queuePath, onProgress, onSessionEvent, env } = {}) {
+  await ensureDir(path.dirname(queuePath));
+  const resolvedProjectsPath = projectsPath || resolveCrushProjectsPath(env || process.env);
+  const projects = readCrushProjects(resolvedProjectsPath);
+  const crushState = cursors.crush && typeof cursors.crush === "object" ? cursors.crush : {};
+  const snapshots =
+    crushState.snapshots && typeof crushState.snapshots === "object"
+      ? { ...crushState.snapshots }
+      : {};
+  const sessionRows = [];
+  for (const projectRoot of projects) {
+    const dbPath = path.join(projectRoot, ".crush", "crush.db");
+    for (const row of readCrushSessions(dbPath)) {
+      sessionRows.push({ projectRoot, row });
+    }
+  }
+  if (sessionRows.length === 0) {
+    cursors.crush = { ...crushState, snapshots, updatedAt: new Date().toISOString() };
+    return { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+  }
+
+  const hourlyState = normalizeHourlyState(cursors?.hourly);
+  const touchedBuckets = new Set();
+  const cb = typeof onProgress === "function" ? onProgress : null;
+  let recordsProcessed = 0;
+  let eventsAggregated = 0;
+
+  for (let i = 0; i < sessionRows.length; i++) {
+    const { projectRoot, row } = sessionRows[i];
+    recordsProcessed++;
+    const sessionId = String(row.id || row.session_id || "").trim();
+    if (!sessionId) continue;
+
+    const totalInput = toNonNegativeInt(row.prompt_tokens ?? row.input_tokens);
+    const totalOutput = toNonNegativeInt(row.completion_tokens ?? row.output_tokens);
+    const totalReported = toNonNegativeInt(row.total_tokens ?? (totalInput + totalOutput));
+    const sessionKey = `${projectRoot}:${sessionId}`;
+    const prev = snapshots[sessionKey] || { input: 0, output: 0, total: 0 };
+    const dInput = Math.max(0, totalInput - toNonNegativeInt(prev.input));
+    const dOutput = Math.max(0, totalOutput - toNonNegativeInt(prev.output));
+    const dTotal = Math.max(0, totalReported - toNonNegativeInt(prev.total));
+    snapshots[sessionKey] = { input: totalInput, output: totalOutput, total: totalReported };
+    if (dInput === 0 && dOutput === 0 && dTotal === 0) continue;
+
+    const observedIso = parseCrushObservedIso(row);
+    if (!observedIso) continue;
+    const bucketStart = toUtcHalfHourStart(observedIso);
+    if (!bucketStart) continue;
+
+    const model = normalizeModelInput(row.model || row.model_id || row.model_name) || "crush-unknown";
+    const totalTokens = dTotal > 0 ? dTotal : dInput + dOutput;
+    const reasoning = Math.max(0, totalTokens - dInput - dOutput);
+    const delta = {
+      input_tokens: dInput,
+      cached_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: dOutput,
+      reasoning_output_tokens: reasoning,
+      total_tokens: totalTokens,
+      conversation_count: 1,
+    };
+
+    const bucket = getHourlyBucket(hourlyState, "crush", model, bucketStart);
+    addTotals(bucket.totals, delta);
+    touchedBuckets.add(bucketKey("crush", model, bucketStart));
+    emitSessionEvents(
+      extractCrushSessionEvents,
+      {
+        session_id: sessionId,
+        started_at: row.created_at || row.started_at || observedIso,
+        ended_at: observedIso,
+        end_reason: "log_complete",
+        cwd: projectRoot,
+        model,
+        updates: [
+          {
+            observed_at: observedIso,
+            delta_tokens: totalTokens,
+            input_tokens: dInput,
+            cached_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            output_tokens: dOutput,
+            reasoning_output_tokens: reasoning,
+            conversation_count: 1,
+          },
+        ],
+        total_tokens: totalTokens,
+      },
+      onSessionEvent,
+    );
+    eventsAggregated++;
+
+    if (cb) {
+      cb({
+        index: i + 1,
+        total: sessionRows.length,
+        recordsProcessed,
+        eventsAggregated,
+        bucketsQueued: touchedBuckets.size,
+      });
+    }
+  }
+
+  const bucketsQueued = await enqueueTouchedBuckets({ queuePath, hourlyState, touchedBuckets });
+  const updatedAt = new Date().toISOString();
+  hourlyState.updatedAt = updatedAt;
+  cursors.hourly = hourlyState;
+  cursors.crush = { ...crushState, snapshots, updatedAt };
   return { recordsProcessed, eventsAggregated, bucketsQueued };
 }
 
@@ -5829,6 +8114,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
       if (dedupKey && seenIds.has(dedupKey)) continue;
 
       const attrs = record.attributes || {};
+      const sessionCwd = pickCopilotWorkspaceCwd(record);
       const inputRaw = toNonNegativeInt(attrs["gen_ai.usage.input_tokens"]);
       const output = toNonNegativeInt(attrs["gen_ai.usage.output_tokens"]);
       const cacheRead = toNonNegativeInt(attrs["gen_ai.usage.cache_read.input_tokens"]);
@@ -5869,7 +8155,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
           started_at: tsIso,
           ended_at: tsIso,
           end_reason: "log_complete",
-          cwd: null,
+          cwd: sessionCwd,
           model,
           updates: [{ observed_at: tsIso, delta_tokens: Number(delta.total_tokens || 0) }],
           total_tokens: Number(delta.total_tokens || 0),
@@ -5916,6 +8202,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
 
 module.exports = {
   listRolloutFiles,
+  orderRebuildProviderFilesRecentFirst,
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,
@@ -5955,11 +8242,29 @@ module.exports = {
   resolvePiDefaultModel,
   parsePiIncremental,
   piAgentDirCollidesWithOmp,
+  resolveGooseDbPath,
+  readGooseSessions,
+  parseGooseIncremental,
+  resolveCrushProjectsPath,
+  readCrushProjects,
+  readCrushSessions,
+  parseCrushIncremental,
   resolveCraftConfigDir,
   resolveCraftWorkspaceRoots,
   resolveCraftSessionFiles,
   resolveCraftDefaultModel,
   parseCraftIncremental,
+  resolveDroidSessionFiles,
+  parseDroidIncremental,
+  resolveQwenChatFiles,
+  parseQwenIncremental,
+  resolveClineFamilyTaskDirs,
+  parseClineFamilyIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseCursorAgentIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
+  parseAntigravityIncremental,
   // Exposed for regression tests covering cache-token accounting.
   normalizeGeminiTokens,
   normalizeOpencodeTokens,

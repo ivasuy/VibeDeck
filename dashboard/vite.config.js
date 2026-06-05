@@ -22,6 +22,15 @@ const LOCAL_API_ROUTES = {
   projectUsageSummary: "/functions/vibedeck-project-usage-summary",
   usageLimits: "/functions/vibedeck-usage-limits",
   userStatus: "/functions/vibedeck-user-status",
+  syncStatus: "/functions/vibedeck-sync-status",
+  liveSessionsSnapshot: "/functions/vibedeck-sessions-live-snapshot",
+  liveSessionsStream: "/functions/vibedeck-sessions-live",
+  attributionStats: "/functions/vibedeck-attribution-stats",
+  recentSessions: "/functions/vibedeck-recent-sessions",
+  optimizeFindings: "/functions/vibedeck-optimize/findings",
+  optimizeScan: "/functions/vibedeck-optimize/scan",
+  plan: "/functions/vibedeck-plan",
+  forecast: "/functions/vibedeck-forecast",
 };
 
 function legacyRoute(primaryRoute) {
@@ -201,7 +210,7 @@ async function handleLocalApi(req, res, url) {
       }
       const agg = byDay.get(day);
       agg.total_tokens += row.total_tokens || 0;
-      agg.billable_total_tokens += row.total_tokens || 0;
+      agg.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       agg.total_cost_usd += computeRowCost(row);
       agg.input_tokens += row.input_tokens || 0;
       agg.output_tokens += row.output_tokens || 0;
@@ -213,7 +222,156 @@ async function handleLocalApi(req, res, url) {
     return Array.from(byDay.values()).sort((a, b) => a.day.localeCompare(b.day));
   }
 
+  function calculateCurrentStreakDays(byDay, todayStr) {
+    if (!(byDay instanceof Map) || !todayStr) return 0;
+    let streak = 0;
+    const cursor = new Date(`${todayStr}T00:00:00Z`);
+    while (!Number.isNaN(cursor.getTime())) {
+      const day = cursor.toISOString().slice(0, 10);
+      const data = byDay.get(day);
+      if (!data || Number(data.billable_total_tokens || 0) <= 0) break;
+      streak += 1;
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+    return streak;
+  }
+
   const pathname = url.pathname;
+
+  function writeJson(payload, statusCode = 200) {
+    res.statusCode = statusCode;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify(payload));
+  }
+
+  function activeDayCount(rows) {
+    return aggregateByDay(rows).filter((row) => Number(row.billable_total_tokens || 0) > 0).length;
+  }
+
+  function latestQueueTimestamp(rows) {
+    const stamps = rows
+      .map((row) => String(row.hour_start || row.updated_at || row.created_at || ""))
+      .filter(Boolean)
+      .sort();
+    return stamps.length > 0 ? stamps[stamps.length - 1] : null;
+  }
+
+  function monthToDateRows(rows) {
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7);
+    return rows.filter((row) => String(row.hour_start || "").startsWith(month));
+  }
+
+  function rowsCost(rows) {
+    return rows.reduce((sum, row) => sum + computeRowCost(row), 0);
+  }
+
+  function emptyLiveSnapshot(rows = readQueueData()) {
+    const lastSyncAt = latestQueueTimestamp(rows);
+    return {
+      ok: true,
+      sessions: [],
+      active_sessions: [],
+      workstreams: [],
+      totals: {
+        active_session_count: 0,
+        total_sessions: 0,
+        total_tokens: 0,
+        total_cost_usd: "0.000000",
+      },
+      generated_at: new Date().toISOString(),
+      last_sync_at: lastSyncAt,
+      canonical_incomplete: false,
+      live_canonical: null,
+    };
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.syncStatus)) {
+    const rows = readQueueData();
+    const lastSyncAt = latestQueueTimestamp(rows);
+    writeJson({
+      ok: true,
+      last_parse_at: lastSyncAt,
+      queue_updated_at: lastSyncAt,
+      project_queue_updated_at: null,
+      session_count: 0,
+      open_session_count: 0,
+      sync_enabled: false,
+      canonical_db_updated_at: lastSyncAt,
+      canonical_event_count: rows.length,
+      canonical_bucket_count: rows.length,
+      session_rows_missing_cost: 0,
+      unattributed_session_count: 0,
+    });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.liveSessionsSnapshot)) {
+    writeJson(emptyLiveSnapshot());
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.liveSessionsStream)) {
+    const snapshot = emptyLiveSnapshot();
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.write(`data: ${JSON.stringify({ type: "snapshot", ...snapshot })}\n\n`);
+    res.write(": keep-alive\n\n");
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.attributionStats)) {
+    writeJson({ ok: true, high: 0, medium: 0, low: 0, unattributed: 0, total: 0 });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.recentSessions)) {
+    writeJson({ ok: true, sessions: [], generated_at: new Date().toISOString() });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.optimizeFindings)) {
+    writeJson({ ok: true, findings: [], health: null, latest_run: null });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.optimizeScan)) {
+    writeJson({ ok: true, inserted: 0, health_grade: null });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.plan)) {
+    const rows = readQueueData();
+    const monthRows = monthToDateRows(rows);
+    writeJson({
+      ok: true,
+      plan: "custom",
+      monthly_plan_usd: 0,
+      monthly_usd: 0,
+      month_to_date_api_equivalent_usd: Number(rowsCost(monthRows).toFixed(6)),
+      usage_percent: 0,
+      active_days: activeDayCount(rows),
+      label: "API-equivalent cost",
+      label_detail: "API-equivalent cost from local usage. Configure a monthly plan to calculate subscription efficiency.",
+      generated_at: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.forecast)) {
+    const rows = readQueueData();
+    writeJson({
+      ok: true,
+      forecast_30d_usd: 0,
+      forecast_60d_usd: 0,
+      forecast_90d_usd: 0,
+      active_days: activeDayCount(rows),
+      generated_at: new Date().toISOString(),
+    });
+    return true;
+  }
 
   if (isLocalApiRoute(pathname, LOCAL_API_ROUTES.localSync)) {
     if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -362,6 +520,7 @@ async function handleLocalApi(req, res, url) {
     const daily = aggregateByDay(rows);
     const today = new Date();
     const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const todayStr = end.toISOString().slice(0, 10);
     const start = new Date(end);
     start.setUTCDate(start.getUTCDate() - weeks * 7 + 1);
     const from = start.toISOString().slice(0, 10);
@@ -393,6 +552,7 @@ async function handleLocalApi(req, res, url) {
         day,
         total_tokens: data?.total_tokens || 0,
         billable_total_tokens: billable,
+        total_cost_usd: Number(data?.total_cost_usd || 0),
         level: calcLevel(billable),
       });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -404,7 +564,7 @@ async function handleLocalApi(req, res, url) {
       weeksArr.push(cells.slice(i, i + 7));
     }
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: 0, weeks: weeksArr }));
+    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: calculateCurrentStreakDays(byDay, todayStr), weeks: weeksArr }));
     return true;
   }
 
@@ -439,7 +599,7 @@ async function handleLocalApi(req, res, url) {
 
 
       sourceAgg.totals.total_tokens += row.total_tokens || 0;
-      sourceAgg.totals.billable_total_tokens += row.total_tokens || 0;
+      sourceAgg.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       sourceAgg.totals.input_tokens += row.input_tokens || 0;
       sourceAgg.totals.output_tokens += row.output_tokens || 0;
       sourceAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
@@ -456,7 +616,7 @@ async function handleLocalApi(req, res, url) {
       }
       const modelAgg = sourceAgg.models.get(modelName);
       modelAgg.totals.total_tokens += row.total_tokens || 0;
-      modelAgg.totals.billable_total_tokens += row.total_tokens || 0;
+      modelAgg.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       modelAgg.totals.input_tokens += row.input_tokens || 0;
       modelAgg.totals.output_tokens += row.output_tokens || 0;
       modelAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
@@ -518,7 +678,7 @@ async function handleLocalApi(req, res, url) {
         }
         const agg = byProject.get(key);
         agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number(row.total_tokens || 0);
+        agg.billable_total_tokens += Number((row.billable_total_tokens ?? row.total_tokens) || 0);
         if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
       }
       if (byProject.size > 0) {
@@ -677,9 +837,9 @@ async function handleLocalApi(req, res, url) {
           });
         }
         bySource.get(source).total_tokens += row.total_tokens || 0;
-        bySource.get(source).billable_total_tokens += row.total_tokens || 0;
+        bySource.get(source).billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       }
-      entries.push(...Array.from(bySource.values()).sort((a, b) => b.billable_total_tokens - a.total_tokens).map(e => ({
+      entries.push(...Array.from(bySource.values()).sort((a, b) => b.billable_total_tokens - a.billable_total_tokens).map(e => ({
         ...e,
         total_tokens: String(e.total_tokens),
         billable_total_tokens: String(e.billable_total_tokens)
@@ -800,6 +960,15 @@ function localDataApiPlugin() {
   };
 }
 
+function getNodeModulePackageName(id) {
+  const marker = "node_modules/";
+  const index = id.lastIndexOf(marker);
+  if (index === -1) return null;
+  const parts = id.slice(index + marker.length).split("/");
+  if (parts[0]?.startsWith("@")) return `${parts[0]}/${parts[1] || ""}`;
+  return parts[0] || null;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ROOT_DIR, "VITE_");
   const fallbackVersion = loadAppVersion();
@@ -816,6 +985,20 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           main: path.resolve(ROOT_DIR, "index.html"),
+        },
+        output: {
+          manualChunks(id) {
+            const packageName = getNodeModulePackageName(id);
+            if (!packageName) return undefined;
+            if (["react", "react-dom", "scheduler"].includes(packageName)) {
+              return "react-vendor";
+            }
+            if (["react-router", "react-router-dom"].includes(packageName)) return "router-vendor";
+            if (packageName === "motion") return "motion-vendor";
+            if (packageName === "lucide-react") return "icons-vendor";
+            if (["date-fns", "react-day-picker"].includes(packageName)) return "date-vendor";
+            return undefined;
+          },
         },
       },
     },

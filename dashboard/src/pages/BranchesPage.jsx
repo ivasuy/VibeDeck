@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, CircleDollarSign, Cpu, MessagesSquare } from "lucide-react";
 import { Card, Input } from "../ui/openai/components";
 import { copy } from "../lib/copy";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
-import { getBranchUsage } from "../lib/vibedeck-api";
+import { getBranchUsage, getYieldView } from "../lib/vibedeck-api";
 import { readLastGood, writeLastGood } from "../lib/last-good-cache";
 import { BranchUsageTable } from "../components/branches/BranchUsageTable";
 import { BranchSessionDrawer } from "../components/branches/BranchSessionDrawer";
-import { PageFrame } from "../components/PageFrame.jsx";
+import { PageShell, SectionHeader, Surface } from "../components/RevampSurfaces.jsx";
 
 const BRANCHES_PAGE_SIZE = 10;
 const BRANCH_SUMMARY_CACHE_KEY = "branches.summary.default";
+const YIELD_STATES = new Set(["productive", "reverted", "abandoned", "unknown"]);
 
 function toCount(value) {
   const n = Number(value ?? 0);
@@ -187,6 +189,60 @@ function trackedBranchName(row) {
   return branchName || String(row?.branch || "").trim();
 }
 
+function buildYieldStateByBranch(payload) {
+  const rows = Array.isArray(payload?.branches) ? payload.branches : [];
+  const byBranch = new Map();
+  for (const row of rows) {
+    const branch = String(row?.branch || "").trim();
+    const state = String(row?.yield_state || "").trim().toLowerCase();
+    if (!branch || !YIELD_STATES.has(state)) continue;
+    byBranch.set(branch, state);
+  }
+  return byBranch;
+}
+
+function yieldStateForRow(row, byBranch) {
+  return byBranch.get(String(row?.branch || "").trim())
+    || byBranch.get(trackedBranchName(row))
+    || "";
+}
+
+function BranchYieldBadgePortals({ containerRef, rows, yieldStateByBranch }) {
+  const [targets, setTargets] = useState([]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root || !rows.length || yieldStateByBranch.size === 0) {
+      setTargets([]);
+      return;
+    }
+    const tableRows = Array.from(root.querySelectorAll("tbody tr"));
+    const nextTargets = rows
+      .map((row, index) => {
+        const state = yieldStateForRow(row, yieldStateByBranch);
+        const target = tableRows[index]?.querySelector("td:first-child");
+        if (!state || !target) return null;
+        return {
+          key: `${String(row?.repo_root || "")}:${String(row?.branch || "")}:${state}`,
+          state,
+          target,
+        };
+      })
+      .filter(Boolean);
+    setTargets(nextTargets);
+  }, [containerRef, rows, yieldStateByBranch]);
+
+  return targets.map(({ key, state, target }) =>
+    createPortal(
+      <span className="vd-chip ml-2 inline-flex items-center rounded-md border border-[var(--glass-border)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-oai-gray-600 dark:text-oai-gray-300">
+        {state}
+      </span>,
+      target,
+      key,
+    ),
+  );
+}
+
 function trackedBranchOptions(rows) {
   const options = [];
   const seen = new Set();
@@ -262,7 +318,9 @@ export function BranchesPage() {
   const [sessionDetailsLoading, setSessionDetailsLoading] = useState(false);
   const [sessionDetailsError, setSessionDetailsError] = useState("");
   const [branchPage, setBranchPage] = useState(0);
+  const [yieldStateByBranch, setYieldStateByBranch] = useState(() => new Map());
   const sessionDetailsRequestRef = useRef(0);
+  const branchTableRef = useRef(null);
   const payloadRef = useRef(payload);
 
   useEffect(() => {
@@ -293,6 +351,20 @@ export function BranchesPage() {
           setLoading(false);
           setRefreshing(false);
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getYieldView({})
+      .then((result) => {
+        if (!cancelled) setYieldStateByBranch(buildYieldStateByBranch(result));
+      })
+      .catch(() => {
+        if (!cancelled) setYieldStateByBranch(new Map());
       });
     return () => {
       cancelled = true;
@@ -449,9 +521,21 @@ export function BranchesPage() {
       : copy("branches.empty");
 
   return (
-    <PageFrame maxWidth="max-w-[1760px]" hideHeader>
+    <PageShell
+      title="Branches"
+      subtitle="Review attribution by branch and drill into sessions where routing looks wrong."
+      maxWidth="max-w-[1760px]"
+    >
       <div className="grid min-h-0 gap-6">
-        <Card bodyClassName="p-6">
+        <Surface>
+          <SectionHeader
+            title="Branch attribution"
+            action={refreshing ? (
+              <span className="text-caption font-semibold uppercase text-oai-gray-500 dark:text-oai-gray-400">
+                Refreshing
+              </span>
+            ) : null}
+          />
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <div className="w-full">
               <label
@@ -466,7 +550,7 @@ export function BranchesPage() {
                   value={effectiveSelectedRepo}
                   onChange={(event) => setSelectedRepo(event.target.value)}
                   disabled={repos.length === 0}
-                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] disabled:cursor-not-allowed disabled:opacity-55 dark:text-oai-white"
                   aria-label={copy("branches.project.select_label")}
                 >
                   {repos.map((repoEntry) => {
@@ -505,7 +589,7 @@ export function BranchesPage() {
                   value={effectiveSelectedBranch}
                   onChange={(event) => setSelectedBranch(event.target.value)}
                   disabled={trackedBranches.length <= 1}
-                  className="vd-control h-10 w-full appearance-none rounded-md border border-oai-gray-300 bg-oai-white px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:border-oai-brand focus:outline-none focus:ring-2 focus:ring-oai-brand/20 disabled:cursor-not-allowed disabled:bg-oai-gray-50 disabled:text-oai-gray-400 dark:border-oai-gray-700 dark:bg-oai-gray-900 dark:text-oai-white dark:focus:border-oai-brand dark:disabled:bg-oai-gray-800 dark:disabled:text-oai-gray-400"
+                  className="vd-control h-10 w-full appearance-none rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 pr-10 text-sm text-oai-black transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] disabled:cursor-not-allowed disabled:opacity-55 dark:text-oai-white"
                   aria-label={copy("branches.branch.select_label")}
                 >
                   {trackedBranches.map((branchName) => (
@@ -560,7 +644,7 @@ export function BranchesPage() {
               </>
             )}
           </div>
-        </Card>
+        </Surface>
 
         {error ? (
           <Card>
@@ -569,17 +653,24 @@ export function BranchesPage() {
         ) : loading && !payload ? (
           <BranchTableSkeleton />
         ) : (
-          <BranchUsageTable
-            className="max-h-[calc(100dvh-300px)]"
-            rows={pagedRows}
-            onOpenSessions={openSessionDrawer}
-            emptyMessage={emptyMessage}
-            page={boundedPage}
-            pageCount={pageCount}
-            pageSize={BRANCHES_PAGE_SIZE}
-            totalRows={appliedCount}
-            onPageChange={setBranchPage}
-          />
+          <div ref={branchTableRef}>
+            <BranchUsageTable
+              className="max-h-[calc(100dvh-300px)]"
+              rows={pagedRows}
+              onOpenSessions={openSessionDrawer}
+              emptyMessage={emptyMessage}
+              page={boundedPage}
+              pageCount={pageCount}
+              pageSize={BRANCHES_PAGE_SIZE}
+              totalRows={appliedCount}
+              onPageChange={setBranchPage}
+            />
+            <BranchYieldBadgePortals
+              containerRef={branchTableRef}
+              rows={pagedRows}
+              yieldStateByBranch={yieldStateByBranch}
+            />
+          </div>
         )}
       </div>
 
@@ -590,6 +681,6 @@ export function BranchesPage() {
         onSelectDate={(sessionDate) => selectedRow && loadSessionDetails(selectedRow, sessionDate)}
         onClose={closeSessionDrawer}
       />
-    </PageFrame>
+    </PageShell>
   );
 }

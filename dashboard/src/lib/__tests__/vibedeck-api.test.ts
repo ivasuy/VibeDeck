@@ -1,16 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearLocalApiAuthToken } from "../local-api-auth";
 import {
-  confirmDestructive,
+  // confirmDestructive,
   getAttributionStats,
   getBranchUsage,
-  getCheckpoint,
-  getCheckpoints,
-  getEntireStatus,
+  // getCheckpoint,
+  // getCheckpoints,
+  // getEntireStatus,
+  getCurrencyRates,
+  getForecastView,
   getKnownRepos,
+  getOptimizeFindings,
+  getPlanView,
   getSyncStatus,
   postAttribute,
-  postEntireCommand,
+  // postEntireCommand,
 } from "../vibedeck-api";
 
 describe("vibedeck-api", () => {
@@ -59,6 +63,23 @@ describe("vibedeck-api", () => {
     expect(fetchMock.mock.calls[0][0]).toContain("limit=20");
   });
 
+  it("fetches Phase 5 optimize plan currency and forecast endpoints", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+
+    await getOptimizeFindings({}, fetchMock as any);
+    await getPlanView({}, fetchMock as any);
+    await getCurrencyRates({ currency: "EUR" }, fetchMock as any);
+    await getForecastView({}, fetchMock as any);
+
+    expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual(expect.arrayContaining([
+      expect.stringContaining("/functions/vibedeck-optimize/findings"),
+      expect.stringContaining("/functions/vibedeck-plan"),
+      expect.stringContaining("/functions/vibedeck-currency-rates"),
+      expect.stringContaining("/functions/vibedeck-forecast"),
+    ]));
+  });
+
+  /*
   it("fetches Entire status and checkpoints with repo parameters", async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
 
@@ -73,35 +94,41 @@ describe("vibedeck-api", () => {
     expect(fetchMock.mock.calls[2][0]).toContain("/functions/vibedeck-checkpoint");
     expect(fetchMock.mock.calls[2][0]).toContain("path=checkpoint.json");
   });
+  */
 
-  it("posts attribution and Entire commands with local auth headers", async () => {
+  it("posts attribution with local auth headers", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "abc" }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ exitCode: 0 }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true }) });
 
     await postAttribute({ provider: "codex", session_id: "s1", branch: "main" }, fetchMock as any);
+    /*
     await postEntireCommand("status", { repo: "/repo" }, fetchMock as any);
+    */
 
     expect(fetchMock.mock.calls[1][0]).toBe("/functions/vibedeck-attribute");
     expect(fetchMock.mock.calls[1][1].method).toBe("POST");
     expect(fetchMock.mock.calls[1][1].headers["x-vibedeck-local-auth"]).toBe("abc");
+    /*
     expect(fetchMock.mock.calls[2][0]).toBe("/functions/vibedeck-entire/status");
     expect(fetchMock.mock.calls[2][1].method).toBe("POST");
     expect(fetchMock.mock.calls[2][1].headers["x-vibedeck-local-auth"]).toBe("abc");
+    */
   });
 
+  /*
   it("issues destructive confirm tokens", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "abc" }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "confirm", op: "cleanEntire" }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ token: "confirm", op: "resetUsageData" }) });
 
-    const out = await confirmDestructive("cleanEntire", fetchMock as any);
+    const out = await confirmDestructive("resetUsageData", fetchMock as any);
 
     expect(out.token).toBe("confirm");
     expect(fetchMock.mock.calls[1][0]).toBe("/functions/vibedeck-confirm-destructive");
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ op: "cleanEntire" });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ op: "resetUsageData" });
   });
+  */
 });

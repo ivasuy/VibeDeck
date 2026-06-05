@@ -3,6 +3,9 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { before, describe, it } = require("node:test");
+const { DatabaseSync } = require("node:sqlite");
+
+const { ensureSchema } = require("../src/lib/db");
 
 const THEME_ROUTE = "/functions/vibedeck-skills";
 const LEGACY_ROUTE = THEME_ROUTE.replace("vibedeck", ["token", "tracker"].join(""));
@@ -18,6 +21,8 @@ const { createLocalApiHandler } = require("../src/lib/local-api");
 
 const queuePath = path.join(sandboxHome, "queue.jsonl");
 fs.writeFileSync(queuePath, "");
+const dbPath = path.join(sandboxHome, "vibedeck.sqlite3");
+ensureSchema(dbPath);
 const handler = createLocalApiHandler({ queuePath });
 
 function makeReq({ method = "GET", pathname = THEME_ROUTE, search = "", headers = {}, body }) {
@@ -139,6 +144,40 @@ describe("/functions/vibedeck-skills auth + input", () => {
     assert.equal(status, 200);
     assert.ok(Array.isArray(body.targets));
     assert.ok(Array.isArray(body.skills));
+  });
+
+  it("GET mode=usage returns skill invocation counts and apportioned cost", async () => {
+    const now = "2026-05-23T00:00:00.000Z";
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec("DELETE FROM vibedeck_sessions");
+      db.prepare(`
+        INSERT INTO vibedeck_sessions (
+          provider, session_id, started_at, ended_at, end_reason,
+          cwd, repo_root, repo_common_dir, parent_repo,
+          branch, branch_resolution_tier, confidence, override_user,
+          model, total_tokens, total_cost_usd, skills_json,
+          created_at, updated_at
+        ) VALUES (
+          'codex', 'skills-usage-1', ?, ?, NULL,
+          '/tmp', '/tmp/repo', NULL, NULL,
+          'main', 'A', 'high', NULL,
+          'gpt-5.5', 1000, 0.30, ?,
+          ?, ?
+        )
+      `).run(now, now, JSON.stringify({ review: 2, implement: 1 }), now, now);
+    } finally {
+      db.close();
+    }
+
+    const { status, body } = await call({ method: "GET", search: "?mode=usage&limit=2" });
+    assert.equal(status, 200);
+    assert.equal(body.totalInvocationCount, 3);
+    assert.equal(body.totalCostUsd, "0.300000");
+    assert.deepEqual(body.skills, [
+      { name: "review", invocation_count: 2, cost_usd: "0.200000" },
+      { name: "implement", invocation_count: 1, cost_usd: "0.100000" },
+    ]);
   });
 
   it("surfaces addRepo validation error via 500 with message", async () => {

@@ -112,23 +112,47 @@ vi.mock("../hooks/use-usage-limits", () => ({
   }),
 }));
 
-vi.mock("../lib/vibedeck-api", () => ({
-  getAttributionStats: () =>
-    Promise.resolve({ high: 1, medium: 0, low: 0, unattributed: 0, total: 1 }),
-  getSyncStatus: () =>
-    Promise.resolve({
-      last_parse_at: "2026-05-10T09:30:00.000Z",
-      queue_updated_at: "2026-05-10T09:30:00.000Z",
-      project_queue_updated_at: "2026-05-10T09:30:00.000Z",
-      session_count: 1,
-      open_session_count: 1,
-      sync_enabled: false,
-    }),
-  getEntireStatus: () => Promise.resolve({ state: "active", version: "1.0.0" }),
-}));
+vi.mock("../lib/vibedeck-api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getAttributionStats: () =>
+      Promise.resolve({ high: 1, medium: 0, low: 0, unattributed: 0, total: 1 }),
+    getLiveSessionsSnapshot: () =>
+      Promise.resolve({
+        freshness: {
+          mode: "partial",
+          recent_ready: true,
+          historical_ready: false,
+          active_rebuild: true,
+          complete_through: null,
+          indexing_providers: ["codex"],
+          failed_shards: [],
+        },
+      }),
+    getSyncStatus: () =>
+      Promise.resolve({
+        last_parse_at: "2026-05-10T09:30:00.000Z",
+        queue_updated_at: "2026-05-10T09:30:00.000Z",
+        project_queue_updated_at: "2026-05-10T09:30:00.000Z",
+        session_count: 1,
+        open_session_count: 1,
+        sync_enabled: false,
+      }),
+  };
+});
 
 describe("LivePage", () => {
+  it("selects the session passed by native menubar deep link", async () => {
+    window.history.pushState({}, "", "/live?session=gemini%3As4");
+    render(<LivePage />);
+
+    const zeroWorkstream = await screen.findByRole("button", { name: /select zero workstream/i });
+    expect(zeroWorkstream.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("renders active sessions and attribution confidence", async () => {
+    window.history.pushState({}, "", "/live");
     render(<LivePage />);
 
     expect(await screen.findByText("Live control center")).toBeTruthy();
@@ -160,5 +184,6 @@ describe("LivePage", () => {
     expect(screen.queryByText("Gemini")).toBeNull();
     expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
     expect(screen.getByText("Local sync is disabled. Live data may be stale.")).toBeTruthy();
+    expect(await screen.findByText("Indexing historical data")).toBeTruthy();
   });
 });

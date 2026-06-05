@@ -10,8 +10,8 @@ const { rebuildBranchUsageFactsForSession } = require('./branch-usage-facts');
 const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
-const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
-const { upsertEntireLink } = require('./entire-links');
+const { upsertBucketFact, recomputeSessionLedger, rebuildBucketFactsForSession } = require('./bucket-facts');
+// const { upsertEntireLink } = require('./entire-links');
 const providerBranch = require('./provider-branch');
 const { cleanProviderBranch } = providerBranch;
 
@@ -410,6 +410,7 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
             tier: branchRes.tier,
             confidence: branchRes.confidence,
           });
+          /*
           if (isNonEmptyString(branchRes.entire_link)) {
             upsertEntireLink(db, {
               provider: session.provider,
@@ -419,11 +420,12 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
               match_confidence: branchRes.confidence,
             });
           }
+          */
         }
 
         let latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         if (latest) {
-          const inserted = insertSessionEvent(db, event, {
+          const ledgerWrite = insertSessionEvent(db, event, {
             repo_root: latest.repo_root,
             repo_common_dir: latest.repo_common_dir,
             parent_repo: latest.parent_repo,
@@ -431,8 +433,10 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
             branch_resolution_tier: latest.branch_resolution_tier,
             confidence: latest.confidence,
           });
-          if (inserted) {
+          if (ledgerWrite.inserted) {
             upsertBucketFact(db, latest, event);
+          } else if (ledgerWrite.updated) {
+            rebuildBucketFactsForSession(db, latest);
           }
           recomputeSessionLedger(db, latest);
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
@@ -482,6 +486,30 @@ function assertBatchEvents(batch) {
   }
 }
 
+function getRepoResolutionCache(cache) {
+  if (!cache || typeof cache !== 'object') return null;
+  if (!(cache.repoResolutionByCwd instanceof Map)) {
+    cache.repoResolutionByCwd = new Map();
+  }
+  return cache.repoResolutionByCwd;
+}
+
+function resolveRepoCached(cwd, { cache = null } = {}) {
+  const key = isNonEmptyString(cwd) ? cwd.trim() : null;
+  if (!key) return null;
+  const repoCache = getRepoResolutionCache(cache);
+  if (repoCache && repoCache.has(key)) return repoCache.get(key);
+
+  let repo = null;
+  try {
+    repo = resolveRepo(key);
+  } catch {
+    repo = null;
+  }
+  if (repoCache) repoCache.set(key, repo);
+  return repo;
+}
+
 async function processSessionEventBatch(dbPath, events, { cache = null, deferBranchFactRebuild = false } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('processSessionEventBatch: dbPath must be a non-empty string');
   assertBatchEvents(events);
@@ -493,7 +521,12 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
     for (const event of enrichedEvents) {
       await module.exports.processSessionEvent(dbPath, event, { deferBranchFactRebuild });
     }
-    return;
+    return {
+      events_processed: enrichedEvents.length,
+      groups_processed: 1,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
+    };
   }
 
   const first = enrichedEvents[0];
@@ -523,15 +556,19 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
   if (!existingRepoStillApplies) {
     const repoEvent = [...enrichedEvents].reverse().find((event) => isNonEmptyString(event.cwd));
     if (repoEvent && isNonEmptyString(repoEvent.cwd)) {
-      try {
-        repo = resolveRepo(repoEvent.cwd);
-      } catch {
-        repo = null;
-      }
+      repo = resolveRepoCached(repoEvent.cwd, { cache });
     }
   }
 
+  const summary = {
+    events_processed: enrichedEvents.length,
+    groups_processed: 1,
+    branch_resolution_count: 0,
+    existing_repo_reused_count: existingRepoStillApplies ? 1 : 0,
+  };
+
   const db = new DatabaseSync(dbPath);
+  let latestForEmit = null;
   try {
     db.exec('BEGIN');
     try {
@@ -595,6 +632,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
             provider_branch: resolvedProviderBranch,
           })
         : null;
+      summary.branch_resolution_count = branchRes ? 1 : 0;
 
       if (branchRes) {
         updateBranchResolution(db, {
@@ -604,6 +642,7 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
           tier: branchRes.tier,
           confidence: branchRes.confidence,
         });
+        /*
         if (isNonEmptyString(branchRes.entire_link)) {
           upsertEntireLink(db, {
             provider: session.provider,
@@ -613,11 +652,13 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
             match_confidence: branchRes.confidence,
           });
         }
+        */
         session = loadSession(db, { provider: session.provider, session_id: session.session_id });
       }
 
+      let needsBucketRebuild = false;
       for (const event of enrichedEvents) {
-        const inserted = insertSessionEvent(db, event, {
+        const ledgerWrite = insertSessionEvent(db, event, {
           repo_root: session.repo_root,
           repo_common_dir: session.repo_common_dir,
           parent_repo: session.parent_repo,
@@ -625,18 +666,23 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
           branch_resolution_tier: session.branch_resolution_tier,
           confidence: session.confidence,
         });
-        if (inserted) upsertBucketFact(db, session, event);
+        if (ledgerWrite.inserted) upsertBucketFact(db, session, event);
+        if (ledgerWrite.updated) needsBucketRebuild = true;
       }
 
-      recomputeSessionLedger(db, session);
-      const latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
-      if (latest && !deferBranchFactRebuild) {
+      if (needsBucketRebuild) {
+        rebuildBucketFactsForSession(db, session);
+      } else {
+        recomputeSessionLedger(db, session);
+      }
+      latestForEmit = loadSession(db, { provider: session.provider, session_id: session.session_id });
+      if (latestForEmit && !deferBranchFactRebuild) {
         await rebuildBranchUsageFactsForSession(db, {
           dbPath,
-          provider: latest.provider,
-          session_id: latest.session_id,
+          provider: latestForEmit.provider,
+          session_id: latestForEmit.session_id,
         });
-        persistBranchWindows(db, { provider: latest.provider, session_id: latest.session_id, windows: [] });
+        persistBranchWindows(db, { provider: latestForEmit.provider, session_id: latestForEmit.session_id, windows: [] });
       }
 
       db.exec('COMMIT');
@@ -647,12 +693,12 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
       throw err;
     }
 
-    const latest = loadSession(db, { provider: first.provider, session_id: first.session_id });
     for (const event of enrichedEvents) {
       const shouldSkipEmit = preserveExistingTerminalEnd && event === last;
       if (shouldSkipEmit) continue;
-      emitSessionEvent({ event, latest, keepOpenForCheckpoint, reopenOrphanedSession });
+      emitSessionEvent({ event, latest: latestForEmit, keepOpenForCheckpoint, reopenOrphanedSession });
     }
+    return summary;
   } finally {
     db.close();
   }

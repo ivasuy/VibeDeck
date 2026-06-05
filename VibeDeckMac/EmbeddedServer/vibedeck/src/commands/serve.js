@@ -13,6 +13,7 @@ const { serveStaticFile } = require("../lib/static-server");
 const { openInBrowser } = require("../lib/browser-auth");
 const { startHeadWatcher, stopHeadWatcher } = require("../lib/sessions/head-watcher");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
+const { startOptimizeSchedule } = require("../lib/optimize-schedule");
 
 const DEFAULT_PORT = 7690;
 const NPM_PACKAGE_NAME = "vibedeck-cli";
@@ -414,6 +415,7 @@ async function cmdServe(argv) {
   server.listen(port, LOCAL_BIND_HOST, () => {
     const url = getLocalServerUrl(port);
     lifecycle.ready(url);
+    startOptimizeSchedule({ dbPath });
     process.stdout.write(
       [
         "",

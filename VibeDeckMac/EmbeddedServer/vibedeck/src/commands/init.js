@@ -64,8 +64,10 @@ const {
   createSpinner,
 } = require("../lib/cli-ui");
 const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
+/*
 const { detectEntire } = require("../lib/entire-bridge");
 const { runEntireLogin } = require("../lib/bootstrap/ensure-entire");
+*/
 
 const ASCII_LOGO = [
   "  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░",
@@ -191,7 +193,7 @@ async function cmdInit(argv) {
 
   renderLocalReport({ summary: setup.summary, isDryRun: false });
 
-  await maybeOfferEntireLogin({ opts });
+  // await maybeOfferEntireLogin({ opts });
 
   renderLocalSuccess();
 
@@ -203,6 +205,7 @@ async function cmdInit(argv) {
   }
 }
 
+/*
 async function maybeOfferEntireLogin({ opts }) {
   const detection = await detectEntire();
   if (!detection?.present) return;
@@ -240,6 +243,7 @@ async function maybeOfferEntireLogin({ opts }) {
     );
   }
 }
+*/
 
 function renderWelcome() {
   process.stdout.write(
@@ -781,7 +785,7 @@ function parseArgs(argv) {
     noOpen: false,
     yes: false,
     dryRun: false,
-    skipEntireLogin: false,
+    // skipEntireLogin: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -796,7 +800,7 @@ function parseArgs(argv) {
     else if (a === "--no-open") out.noOpen = true;
     else if (a === "--yes") out.yes = true;
     else if (a === "--dry-run") out.dryRun = true;
-    else if (a === "--skip-entire-login") out.skipEntireLogin = true;
+    // else if (a === "--skip-entire-login") out.skipEntireLogin = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;

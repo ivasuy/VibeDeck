@@ -3,18 +3,20 @@ import Foundation
 struct HourlyUsageResponse: Codable, Equatable {
     var day: String
     var data: [HourlyEntry]
+    var freshness: ProjectionFreshness?
 
-    init(day: String = "", data: [HourlyEntry] = []) {
-        self.day = day; self.data = data
+    init(day: String = "", data: [HourlyEntry] = [], freshness: ProjectionFreshness? = nil) {
+        self.day = day; self.data = data; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.day = try c.decodeIfPresent(String.self, forKey: .day) ?? ""
         self.data = try c.decodeIfPresent([HourlyEntry].self, forKey: .data) ?? []
+        self.freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
-    private enum CodingKeys: String, CodingKey { case day, data }
+    private enum CodingKeys: String, CodingKey { case day, data, freshness }
 }
 
 struct HourlyEntry: Codable, Equatable, Identifiable {

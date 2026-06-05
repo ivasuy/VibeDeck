@@ -7,7 +7,8 @@ import {
   syncNativeChromeAppearance,
 } from "../../lib/native-bridge.js";
 
-const THEME_STORAGE_KEY = "vibedeck-theme";
+const THEME_STORAGE_KEY = "vd-theme";
+const THEME_STORAGE_KEY_PREVIOUS = "vibedeck-theme";
 const THEME_STORAGE_KEY_LEGACY = "vibedeck-theme-legacy";
 
 /**
@@ -26,6 +27,7 @@ function getInitialTheme() {
   if (typeof window === "undefined") return "system";
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY)
+      || localStorage.getItem(THEME_STORAGE_KEY_PREVIOUS)
       || localStorage.getItem(THEME_STORAGE_KEY_LEGACY);
     if (stored === "light" || stored === "dark" || stored === "system") {
       return stored;
@@ -54,7 +56,9 @@ function applyThemeToDOM(resolvedTheme) {
   const root = document.documentElement;
   if (resolvedTheme === "dark") {
     root.classList.add("dark");
+    root.classList.remove("light");
   } else {
+    root.classList.add("light");
     root.classList.remove("dark");
   }
 }
@@ -120,6 +124,30 @@ export function ThemeProvider({ children }) {
 
 
   useEffect(() => {
+    if (typeof window === "undefined" || !isNativeEmbed()) return undefined;
+    const handleNativeThemePreference = (event) => {
+      const nextTheme = event?.detail?.theme;
+      if (nextTheme !== "light" && nextTheme !== "dark" && nextTheme !== "system") return;
+      setThemeState(nextTheme);
+      themeRef.current = nextTheme;
+      if (typeof event?.detail?.isDark === "boolean") {
+        setResolvedTheme(event.detail.isDark ? "dark" : "light");
+      } else if (nextTheme !== "system") {
+        setResolvedTheme(nextTheme);
+      }
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+        localStorage.removeItem(THEME_STORAGE_KEY_PREVIOUS);
+      } catch {
+        // Native theme sync is best effort.
+      }
+    };
+    window.addEventListener("native:themePreferenceChanged", handleNativeThemePreference);
+    return () => window.removeEventListener("native:themePreferenceChanged", handleNativeThemePreference);
+  }, []);
+
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (theme !== "system") return;
     if (isNativeEmbed()) return;
@@ -153,6 +181,7 @@ export function ThemeProvider({ children }) {
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+        localStorage.removeItem(THEME_STORAGE_KEY_PREVIOUS);
       } catch {
         // Ignore localStorage errors
       }
@@ -165,6 +194,7 @@ export function ThemeProvider({ children }) {
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem(THEME_STORAGE_KEY, next);
+          localStorage.removeItem(THEME_STORAGE_KEY_PREVIOUS);
         } catch {
           // Ignore localStorage errors
         }

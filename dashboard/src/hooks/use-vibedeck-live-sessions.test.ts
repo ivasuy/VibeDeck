@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LIVE_SESSIONS_CACHE_KEY,
@@ -123,17 +123,20 @@ describe("reduceLiveSessionEvent", () => {
 
 describe("useVibeDeckLiveSessions", () => {
   const originalEventSource = globalThis.EventSource;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     MockEventSource.instances = [];
     window.sessionStorage.clear();
     // @ts-expect-error test stub
     globalThis.EventSource = MockEventSource;
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, json: vi.fn() }) as any;
   });
 
   afterEach(() => {
     window.sessionStorage.clear();
     globalThis.EventSource = originalEventSource;
+    globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
@@ -180,6 +183,28 @@ describe("useVibeDeckLiveSessions", () => {
       }));
     });
     expect(result.current.sessions[0].total_tokens).toBe(2);
+  });
+
+  it("hydrates from the snapshot endpoint before the SSE snapshot arrives", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        sessions: [{ provider: "codex", session_id: "snapshot-first", total_tokens: 7 }],
+        workstreams: [{ id: "project:vibedeck", active_session_count: 1 }],
+        totals: { active_sessions: 1 },
+        generated_at: "2026-05-24T00:00:00.000Z",
+      }),
+    }) as any;
+
+    const { result } = renderHook(() => useVibeDeckLiveSessions());
+
+    await waitFor(() => expect(result.current.sessions[0]).toMatchObject({
+      provider: "codex",
+      session_id: "snapshot-first",
+      total_tokens: 7,
+    }));
+    expect(result.current.workstreams).toHaveLength(1);
+    expect(result.current.generatedAt).toBe("2026-05-24T00:00:00.000Z");
   });
 
   it("stores backend workstreams and totals from snapshot events", () => {

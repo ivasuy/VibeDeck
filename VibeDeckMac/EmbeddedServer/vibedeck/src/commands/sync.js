@@ -34,8 +34,23 @@ const {
   resolvePiSessionFiles,
   parsePiIncremental,
   piAgentDirCollidesWithOmp,
+  resolveGooseDbPath,
+  parseGooseIncremental,
+  resolveCrushProjectsPath,
+  parseCrushIncremental,
   resolveCraftSessionFiles,
   parseCraftIncremental,
+  resolveDroidSessionFiles,
+  parseDroidIncremental,
+  resolveQwenChatFiles,
+  parseQwenIncremental,
+  resolveClineFamilyTaskDirs,
+  parseClineFamilyIncremental,
+  resolveCursorAgentTranscriptFiles,
+  parseCursorAgentIncremental,
+  resolveAntigravityCachePath,
+  resolveAntigravityPbFiles,
+  parseAntigravityIncremental,
   resolveCodebuddyProjectFiles,
   parseCodebuddyIncremental,
   resolveKiroCliSessionFiles,
@@ -56,10 +71,17 @@ const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
 const { repairMissingProjectAttribution, rebuildAllBranchUsageFacts } = require("../lib/sessions/branch-usage-facts");
+const {
+  readSessionGroupingMode,
+  rebuildSessionGroupProjection,
+  readSessionGroupDiagnostics,
+} = require("../lib/sessions/session-groups");
 const { createProviderBranchCache } = require("../lib/sessions/provider-branch");
 const { reconcileCanonicalUsage } = require("../lib/sessions/reconciliation");
+/*
 const { backfillEntireCheckpointLinks } = require("../lib/sessions/entire-checkpoint-backfill");
 const { listCheckpointsCached, readCheckpoint } = require("../lib/entire-bridge");
+*/
 
 const CURSOR_UNKNOWN_MIGRATION_KEY = "cursorUnknownPurge_2026_04";
 const ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY = "rolloutCumulativeDeltaReparse_2026_05";
@@ -650,6 +672,52 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       opencodeResult.bucketsQueued += opencodeDbResult.bucketsQueued;
     }
 
+    // ── Goose (SQLite sessions.db) ──
+    let gooseResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const gooseDbPath = resolveGooseDbPath(process.env);
+    if (fssync.existsSync(gooseDbPath)) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Goose ${renderBar(0)} | buckets 0`);
+      }
+      gooseResult = await parseGooseIncremental({
+        dbPath: gooseDbPath,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Goose ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} sessions | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Crush (projects registry + per-project SQLite DBs) ──
+    let crushResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const crushProjectsPath = resolveCrushProjectsPath(process.env);
+    if (fssync.existsSync(crushProjectsPath)) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Crush ${renderBar(0)} | buckets 0`);
+      }
+      crushResult = await parseCrushIncremental({
+        projectsPath: crushProjectsPath,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Crush ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} sessions | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── Cursor (API-based) ──
     // One-time migration: earlier CLI versions mis-parsed the Cursor CSV after
     // Cursor inserted new "Cloud Agent ID"/"Automation ID" columns, writing
@@ -850,6 +918,52 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       });
     }
 
+    // ── Droid / Factory (passive ~/.factory/sessions/**/*.jsonl reader) ──
+    let droidResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const droidFiles = resolveDroidSessionFiles(process.env);
+    if (droidFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Droid ${renderBar(0)} | buckets 0`);
+      }
+      droidResult = await parseDroidIncremental({
+        sessionFiles: droidFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Droid ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Qwen (passive ~/.qwen/projects/*/chats/*.jsonl reader) ──
+    let qwenResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const qwenFiles = resolveQwenChatFiles(process.env);
+    if (qwenFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Qwen ${renderBar(0)} | buckets 0`);
+      }
+      qwenResult = await parseQwenIncremental({
+        chatFiles: qwenFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Qwen ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
     // ── oh-my-pi (passive ~/.omp/agent/sessions/**/*.jsonl reader) ──
     let ompResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
     const ompFiles = resolveOmpSessionFiles(process.env);
@@ -919,6 +1033,77 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
           const pct = p.total > 0 ? p.index / p.total : 1;
           progress.update(
             `Parsing Craft ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Cline-family VS Code extensions (IBM Bob, Roo Code, KiloCode) ──
+    let clineFamilyResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const clineFamilyTaskDirs = resolveClineFamilyTaskDirs(process.env);
+    if (clineFamilyTaskDirs.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Cline-family ${renderBar(0)} | buckets 0`);
+      }
+      clineFamilyResult = await parseClineFamilyIncremental({
+        taskDirs: clineFamilyTaskDirs,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Cline-family ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} tasks | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Cursor Agent (passive ~/.cursor/projects/**/agent-transcripts/*.jsonl reader) ──
+    let cursorAgentResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const cursorAgentFiles = resolveCursorAgentTranscriptFiles(process.env);
+    if (cursorAgentFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Cursor Agent ${renderBar(0)} | buckets 0`);
+      }
+      cursorAgentResult = await parseCursorAgentIncremental({
+        transcriptFiles: cursorAgentFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Cursor Agent ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(p.bucketsQueued)}`,
+          );
+        },
+      });
+    }
+
+    // ── Antigravity (JSON usage cache only; .pb files are status/debug only) ──
+    let antigravityResult = { recordsProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    const antigravityCachePath = resolveAntigravityCachePath(process.env);
+    const antigravityPbFiles = resolveAntigravityPbFiles(process.env);
+    if (fssync.existsSync(antigravityCachePath) || antigravityPbFiles.length > 0) {
+      if (progress?.enabled) {
+        progress.start(`Parsing Antigravity ${renderBar(0)} | buckets 0`);
+      }
+      antigravityResult = await parseAntigravityIncremental({
+        cachePath: antigravityCachePath,
+        pbFiles: antigravityPbFiles,
+        cursors,
+        queuePath,
+        env: process.env,
+        onSessionEvent,
+        onProgress: (p) => {
+          if (!progress?.enabled) return;
+          const pct = p.total > 0 ? p.index / p.total : 1;
+          progress.update(
+            `Parsing Antigravity ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} rows | buckets ${formatNumber(p.bucketsQueued)}`,
           );
         },
       });
@@ -1022,6 +1207,23 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         }`,
       );
     }
+    const sessionGroupingMode = readSessionGroupingMode(process.env);
+    let sessionGroupSummary = null;
+    if (sessionGroupingMode !== "off") {
+      lifecycle?.provider?.("Session groups", "building Claude/Codex group projection");
+      sessionGroupSummary = rebuildSessionGroupProjection(dbPath, { mode: sessionGroupingMode });
+      const diagnostics = readSessionGroupDiagnostics(dbPath);
+      await fs.mkdir(path.join(trackerDir, "diagnostics"), { recursive: true });
+      await fs.writeFile(
+        path.join(trackerDir, "diagnostics", "session-groups.json"),
+        JSON.stringify({ ...sessionGroupSummary, diagnostics }, null, 2),
+        "utf8",
+      );
+      lifecycle?.providerDone?.(
+        "Session groups",
+        `${sessionGroupSummary.edges_written} grouped, ${sessionGroupSummary.skips_written} skipped`,
+      );
+    }
     lifecycle?.phase?.("Rebuilding branch/project indexes...");
     lifecycle?.provider?.("Indexes", "recovering active session metadata");
     await recoverActiveSessionMetadata(dbPath);
@@ -1082,6 +1284,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildProfile?.recordBranchFacts("skipped", 0);
       lifecycle?.providerDone?.("Indexes", "branch usage facts already current");
     }
+    /*
     lifecycle?.provider?.("Indexes", "backfilling checkpoint links");
     await runEntireCheckpointBackfill({
       dbPath,
@@ -1091,6 +1294,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       auto: opts.auto,
     });
     lifecycle?.providerDone?.("Indexes", "checkpoint links backfilled");
+    */
     if (opts.rebuildVibedeckDb) {
       if (!opts.auto) process.stderr.write("Rebuild phase: closing historical idle sessions\n");
       const closure = reapOrphanedSessions(dbPath, {
@@ -1155,15 +1359,22 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         claudeResult.filesProcessed +
         geminiResult.filesProcessed +
         opencodeResult.filesProcessed +
+        gooseResult.recordsProcessed +
+        crushResult.recordsProcessed +
         cursorResult.recordsProcessed +
         kiroResult.recordsProcessed +
         kiroCliResult.recordsProcessed +
         hermesResult.recordsProcessed +
         kimiResult.recordsProcessed +
         codebuddyResult.recordsProcessed +
+        droidResult.recordsProcessed +
+        qwenResult.recordsProcessed +
         ompResult.recordsProcessed +
         piResult.recordsProcessed +
         craftResult.recordsProcessed +
+        clineFamilyResult.recordsProcessed +
+        cursorAgentResult.recordsProcessed +
+        antigravityResult.recordsProcessed +
         copilotResult.recordsProcessed;
       const totalBuckets =
         parseResult.bucketsQueued +
@@ -1171,15 +1382,22 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         claudeResult.bucketsQueued +
         geminiResult.bucketsQueued +
         opencodeResult.bucketsQueued +
+        gooseResult.bucketsQueued +
+        crushResult.bucketsQueued +
         cursorResult.bucketsQueued +
         kiroResult.bucketsQueued +
         kiroCliResult.bucketsQueued +
         hermesResult.bucketsQueued +
         kimiResult.bucketsQueued +
         codebuddyResult.bucketsQueued +
+        droidResult.bucketsQueued +
+        qwenResult.bucketsQueued +
         ompResult.bucketsQueued +
         piResult.bucketsQueued +
         craftResult.bucketsQueued +
+        clineFamilyResult.bucketsQueued +
+        cursorAgentResult.bucketsQueued +
+        antigravityResult.bucketsQueued +
         copilotResult.bucketsQueued;
       process.stdout.write(
         [
@@ -1390,8 +1608,6 @@ function clearCanonicalVibedeckTables(dbPath) {
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
         DELETE FROM vibedeck_sessions;
-        DELETE FROM vibedeck_entire_checkpoint_matches;
-        DELETE FROM vibedeck_session_entire_links;
       `);
       db.exec('COMMIT');
     } catch (err) {
@@ -1701,6 +1917,7 @@ async function readQueueRowsForAudit(queuePath) {
   return out;
 }
 
+/*
 function normalizeRepoRoot(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -1888,6 +2105,7 @@ async function runEntireCheckpointBackfill({
   }
   return { diagnosticsPath, repos, totals };
 }
+*/
 
 module.exports = {
   cmdSync,

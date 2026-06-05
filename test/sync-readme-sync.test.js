@@ -40,7 +40,24 @@ function stubModule(modulePath, exports) {
   return { path: modulePath, original };
 }
 
-function buildSyncModuleStubs({ trackerDir }) {
+function buildSyncModuleStubs({
+  trackerDir,
+  gooseDbPath = "",
+  crushProjectsPath = "",
+  droidFiles = [],
+  qwenFiles = [],
+  clineFamilyTaskDirs = [],
+  cursorAgentFiles = [],
+  antigravityCachePath = "",
+  antigravityPbFiles = [],
+  onGooseParse = async () => {},
+  onCrushParse = async () => {},
+  onDroidParse = async () => {},
+  onQwenParse = async () => {},
+  onClineFamilyParse = async () => {},
+  onCursorAgentParse = async () => {},
+  onAntigravityParse = async () => {},
+}) {
   const zeroResult = {
     filesProcessed: 0,
     eventsAggregated: 0,
@@ -71,7 +88,35 @@ function buildSyncModuleStubs({ trackerDir }) {
     parseKimiIncremental: async () => ({ ...zeroResult }),
     parseOmpIncremental: async () => ({ ...zeroResult }),
     parsePiIncremental: async () => ({ ...zeroResult }),
+    parseGooseIncremental: async (args) => {
+      await onGooseParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseCrushIncremental: async (args) => {
+      await onCrushParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCraftIncremental: async () => ({ ...zeroResult }),
+    parseDroidIncremental: async (args) => {
+      await onDroidParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseQwenIncremental: async (args) => {
+      await onQwenParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseClineFamilyIncremental: async (args) => {
+      await onClineFamilyParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseCursorAgentIncremental: async (args) => {
+      await onCursorAgentParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
+    parseAntigravityIncremental: async (args) => {
+      await onAntigravityParse(args);
+      return { recordsProcessed: 1, eventsAggregated: 1, bucketsQueued: 1 };
+    },
     parseCodebuddyIncremental: async () => ({ ...zeroResult }),
     parseKiroCliIncremental: async () => ({ ...zeroResult }),
     listRolloutFiles: async () => [],
@@ -87,7 +132,15 @@ function buildSyncModuleStubs({ trackerDir }) {
     resolveOmpSessionFiles: () => [],
     piAgentDirCollidesWithOmp: () => false,
     resolvePiSessionFiles: () => [],
+    resolveGooseDbPath: () => gooseDbPath,
+    resolveCrushProjectsPath: () => crushProjectsPath,
     resolveCraftSessionFiles: () => [],
+    resolveDroidSessionFiles: () => droidFiles,
+    resolveQwenChatFiles: () => qwenFiles,
+    resolveClineFamilyTaskDirs: () => clineFamilyTaskDirs,
+    resolveCursorAgentTranscriptFiles: () => cursorAgentFiles,
+    resolveAntigravityCachePath: () => antigravityCachePath,
+    resolveAntigravityPbFiles: () => antigravityPbFiles,
     resolveCodebuddyProjectFiles: () => [],
     resolveKiroCliSessionFiles: () => [],
     resolveKiroCliDbPath: () => "",
@@ -223,6 +276,287 @@ test("cmdSync does not import or invoke the readme-sync service", async () => {
     await fs.rm(tmp, { recursive: true, force: true });
   }
 
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Goose parser when resolved DB exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-goose-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const gooseDbPath = path.join(tmp, "sessions.db");
+  await fs.writeFile(gooseDbPath, "", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let gooseArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    gooseDbPath,
+    onGooseParse: async (args) => {
+      gooseArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.equal(gooseArgs?.dbPath, gooseDbPath);
+  assert.equal(typeof gooseArgs?.onSessionEvent, "function");
+  assert.equal(typeof gooseArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Crush parser when projects registry exists", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-crush-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const crushProjectsPath = path.join(tmp, "projects.json");
+  await fs.writeFile(crushProjectsPath, "[]", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let crushArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    crushProjectsPath,
+    onCrushParse: async (args) => {
+      crushArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.equal(crushArgs?.projectsPath, crushProjectsPath);
+  assert.equal(typeof crushArgs?.onSessionEvent, "function");
+  assert.equal(typeof crushArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Droid and Qwen parsers when passive files resolve", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-droid-qwen-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const droidFile = path.join(tmp, ".factory", "sessions", "a", "session.jsonl");
+  const qwenFile = path.join(tmp, ".qwen", "projects", "a", "chats", "chat.jsonl");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let droidArgs = null;
+  let qwenArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    droidFiles: [droidFile],
+    qwenFiles: [qwenFile],
+    onDroidParse: async (args) => {
+      droidArgs = args;
+    },
+    onQwenParse: async (args) => {
+      qwenArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(droidArgs?.sessionFiles, [droidFile]);
+  assert.deepEqual(qwenArgs?.chatFiles, [qwenFile]);
+  assert.equal(typeof droidArgs?.onSessionEvent, "function");
+  assert.equal(typeof qwenArgs?.onSessionEvent, "function");
+  assert.equal(typeof droidArgs?.onProgress, "function");
+  assert.equal(typeof qwenArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Cline-family parser when passive task dirs resolve", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-cline-family-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const taskDir = path.join(tmp, "globalStorage", "rooveterinaryinc.roo-cline", "tasks", "task-a");
+  const clineFamilyTaskDirs = [{ provider: "roo", taskDir }];
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let clineArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    clineFamilyTaskDirs,
+    onClineFamilyParse: async (args) => {
+      clineArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(clineArgs?.taskDirs, clineFamilyTaskDirs);
+  assert.equal(typeof clineArgs?.onSessionEvent, "function");
+  assert.equal(typeof clineArgs?.onProgress, "function");
+  assert.doesNotMatch(out, /README banner updated on GitHub/);
+  assert.doesNotMatch(err, /README sync warning/);
+});
+
+test("cmdSync runs Cursor Agent and Antigravity parsers when passive sources resolve", async () => {
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "vibedeck-sync-cursor-agent-antigravity-"));
+  const prevHome = process.env.HOME;
+  const trackerDir = path.join(tmp, ".vibedeck", "tracker");
+  const cursorAgentFile = path.join(tmp, ".cursor", "projects", "a", "agent-transcripts", "agent.jsonl");
+  const antigravityCachePath = path.join(tmp, ".cache", "codeburn", "antigravity-results.json");
+  const antigravityPbFile = path.join(tmp, ".gemini", "antigravity", "conversations", "raw.pb");
+  await fs.mkdir(path.dirname(antigravityCachePath), { recursive: true });
+  await fs.writeFile(antigravityCachePath, "[]", "utf8");
+
+  let out = "";
+  let err = "";
+  const prevStdout = process.stdout.write;
+  const prevStderr = process.stderr.write;
+  const syncModule = require.resolve("../src/commands/sync");
+  let cursorAgentArgs = null;
+  let antigravityArgs = null;
+  const stubs = buildSyncModuleStubs({
+    trackerDir,
+    cursorAgentFiles: [cursorAgentFile],
+    antigravityCachePath,
+    antigravityPbFiles: [antigravityPbFile],
+    onCursorAgentParse: async (args) => {
+      cursorAgentArgs = args;
+    },
+    onAntigravityParse: async (args) => {
+      antigravityArgs = args;
+    },
+  });
+
+  try {
+    process.env.HOME = tmp;
+    process.stdout.write = (chunk) => {
+      out += String(chunk || "");
+      return true;
+    };
+    process.stderr.write = (chunk) => {
+      err += String(chunk || "");
+      return true;
+    };
+
+    delete require.cache[syncModule];
+    const { cmdSync } = require(syncModule);
+    await cmdSync([]);
+  } finally {
+    process.stdout.write = prevStdout;
+    process.stderr.write = prevStderr;
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    resetModuleCache(stubs);
+    delete require.cache[syncModule];
+    await fs.rm(tmp, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(cursorAgentArgs?.transcriptFiles, [cursorAgentFile]);
+  assert.equal(antigravityArgs?.cachePath, antigravityCachePath);
+  assert.deepEqual(antigravityArgs?.pbFiles, [antigravityPbFile]);
+  assert.equal(typeof cursorAgentArgs?.onSessionEvent, "function");
+  assert.equal(typeof antigravityArgs?.onSessionEvent, "function");
+  assert.equal(typeof cursorAgentArgs?.onProgress, "function");
+  assert.equal(typeof antigravityArgs?.onProgress, "function");
   assert.doesNotMatch(out, /README banner updated on GitHub/);
   assert.doesNotMatch(err, /README sync warning/);
 });

@@ -35,12 +35,72 @@ function clampPercent(value) {
   return n;
 }
 
-function buildWindow({ usedPercent, resetAt }) {
+function normalizePositiveInteger(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
+function pickTokenValue(source, keys) {
+  if (!source || typeof source !== "object") return null;
+  for (const key of keys) {
+    const value = normalizePositiveInteger(source[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function extractTokenWindow(source = {}) {
+  const usedTokens = pickTokenValue(source, [
+    "used_tokens",
+    "usedTokens",
+    "tokens_used",
+    "tokensUsed",
+    "used_token_count",
+    "usedTokenCount",
+  ]);
+  const limitTokens = pickTokenValue(source, [
+    "limit_tokens",
+    "limitTokens",
+    "token_limit",
+    "tokenLimit",
+    "tokens_limit",
+    "tokensLimit",
+    "quota_tokens",
+    "quotaTokens",
+    "entitlement_tokens",
+    "entitlementTokens",
+  ]);
+  const remainingTokens = pickTokenValue(source, [
+    "remaining_tokens",
+    "remainingTokens",
+    "tokens_remaining",
+    "tokensRemaining",
+  ]);
+  const resolvedUsed =
+    usedTokens !== null
+      ? usedTokens
+      : limitTokens !== null && remainingTokens !== null
+        ? Math.max(0, limitTokens - remainingTokens)
+        : null;
+  if (resolvedUsed === null || limitTokens === null || limitTokens <= 0) return {};
+  return {
+    used_tokens: Math.min(resolvedUsed, limitTokens),
+    limit_tokens: limitTokens,
+    unit: "tokens",
+  };
+}
+
+function buildWindow({ usedPercent, resetAt, usedTokens, limitTokens, source = null }) {
   const pct = clampPercent(usedPercent);
   if (pct === null) return null;
+  const explicit = extractTokenWindow({ used_tokens: usedTokens, limit_tokens: limitTokens });
+  const extracted = Object.keys(explicit).length ? explicit : extractTokenWindow(source);
   return {
     used_percent: pct,
     reset_at: typeof resetAt === "string" && resetAt ? resetAt : null,
+    ...extracted,
   };
 }
 
@@ -208,9 +268,9 @@ function classifyCodexWindow(window) {
 }
 
 function normalizeCodexRateWindows(rateLimit) {
-  const candidates = [rateLimit?.primary_window, rateLimit?.secondary_window].filter(
-    (w) => w && typeof w === "object",
-  );
+  const candidates = [rateLimit?.primary_window, rateLimit?.secondary_window]
+    .filter((w) => w && typeof w === "object")
+    .map((w) => ({ ...w, ...extractTokenWindow(w) }));
   let session = null;
   let weekly = null;
   for (const w of candidates) {
@@ -404,6 +464,7 @@ function kimiWindowFromUsage(data) {
   return buildWindow({
     usedPercent: (used / limit) * 100,
     resetAt: kimiResetTime(data.resetTime || data.reset_at || data.resetAt),
+    source: data,
   });
 }
 
@@ -727,10 +788,12 @@ function normalizeGeminiModelBuckets(buckets) {
     if (!modelId || !Number.isFinite(remainingFraction)) continue;
     const existing = byModel.get(modelId);
     if (!existing || remainingFraction < existing.remainingFraction) {
+      const tokenWindow = extractTokenWindow(bucket);
       byModel.set(modelId, {
         model_id: modelId,
         remainingFraction,
         reset_at: parseAntigravityDate(bucket?.resetTime),
+        ...tokenWindow,
       });
     }
   }
@@ -782,6 +845,8 @@ function normalizeGeminiQuotaResponse({ buckets, email, tier }) {
       ? buildWindow({
           usedPercent: 100 - model.remainingFraction * 100,
           resetAt: model.reset_at,
+          usedTokens: model.used_tokens,
+          limitTokens: model.limit_tokens,
         })
       : null;
 
@@ -1455,6 +1520,7 @@ function makeAntigravityWindow(model) {
   return buildWindow({
     usedPercent: 100 - remaining,
     resetAt: model.reset_at,
+    source: model,
   });
 }
 

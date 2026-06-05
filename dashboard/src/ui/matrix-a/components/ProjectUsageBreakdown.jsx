@@ -64,7 +64,7 @@ function ProviderRow({ providerEntry }) {
 
   return (
     <li
-      className="rounded-lg border border-oai-gray-200 bg-white/70 p-3 dark:border-oai-gray-700 dark:bg-oai-gray-900/60"
+      className="vd-card-solid rounded-lg border border-[var(--vd-border)] p-3"
       aria-label={providerName}
     >
       <div className="flex items-start justify-between gap-3">
@@ -90,7 +90,7 @@ function ProviderRow({ providerEntry }) {
       </div>
 
       {models.length ? (
-        <ul className="mt-3 space-y-2 border-t border-oai-gray-200/80 pt-3 dark:border-oai-gray-800/80">
+        <ul className="mt-3 space-y-2 border-t border-[var(--vd-border)] pt-3">
           {models.map((modelEntry, index) => {
             const modelName = String(modelEntry?.model || "—");
             const sessionLabel = formatSessions(modelEntry?.session_count);
@@ -99,7 +99,7 @@ function ProviderRow({ providerEntry }) {
             return (
               <li
                 key={`${providerName}-${modelName}-${index}`}
-                className="flex items-start justify-between gap-3 rounded-md bg-oai-black/[0.02] px-3 py-2 dark:bg-white/[0.04]"
+                className="vd-subcard flex items-start justify-between gap-3 rounded-md px-3 py-2"
                 aria-label={modelName}
               >
                 <div className="min-w-0">
@@ -130,7 +130,7 @@ export function ProjectUsageBreakdown({ providers = [] }) {
   if (!rows.length) return null;
 
   return (
-    <div className="border-t border-oai-gray-200 px-4 py-4 dark:border-oai-gray-800">
+    <div className="border-t border-[var(--vd-border)] px-4 py-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h4 className="text-xs font-medium uppercase tracking-wide text-oai-gray-500 dark:text-oai-gray-400">
           {copy("dashboard.projects.breakdown_heading")}

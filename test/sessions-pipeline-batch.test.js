@@ -1,12 +1,14 @@
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs/promises');
+const Module = require('node:module');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
 
 const { ensureSchema } = require('../src/lib/db');
+const { getLiveBus } = require('../src/lib/sessions/live-bus');
 const { processSessionEventBatch } = require('../src/lib/sessions/pipeline');
 
 function getRow(dbPath, sql, ...params) {
@@ -197,6 +199,208 @@ test('processSessionEventBatch uses event branch evidence without provider-log f
   } finally {
     providerBranch.readProviderBranchFromSessionFile = originalRead;
     delete require.cache[pipelinePath];
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('processSessionEventBatch returns hot-path counters and emits latest batch metadata', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-session-batch-summary-'));
+  const bus = getLiveBus();
+  const seen = [];
+  const onStart = (event) => seen.push({ type: 'session:start', event });
+  const onUpdate = (event) => seen.push({ type: 'session:update', event });
+  const onEnd = (event) => seen.push({ type: 'session:end', event });
+  bus.on('session:start', onStart);
+  bus.on('session:update', onUpdate);
+  bus.on('session:end', onEnd);
+
+  try {
+    const repo = path.join(root, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'vibedeck@example.test'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'VibeDeck Test'], { cwd: repo, stdio: 'ignore' });
+    await fs.writeFile(path.join(repo, 'README.md'), 'batch summary\n', 'utf8');
+    execFileSync('git', ['add', 'README.md'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
+    const expectedRepoRoot = await fs.realpath(repo);
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    const summary = await processSessionEventBatch(dbPath, [
+      {
+        kind: 'start',
+        provider: 'codex',
+        session_id: 'summary-session',
+        started_at: '2026-05-10T00:00:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+      },
+      {
+        kind: 'update',
+        provider: 'codex',
+        session_id: 'summary-session',
+        observed_at: '2026-05-10T00:05:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+        delta_tokens: 11,
+        input_tokens: 7,
+        output_tokens: 4,
+      },
+      {
+        kind: 'end',
+        provider: 'codex',
+        session_id: 'summary-session',
+        ended_at: '2026-05-10T00:06:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+        total_tokens: 11,
+        end_reason: 'log_complete',
+      },
+    ]);
+
+    assert.deepEqual(summary, {
+      events_processed: 3,
+      groups_processed: 1,
+      branch_resolution_count: 1,
+      existing_repo_reused_count: 0,
+    });
+    assert.equal(seen.length, 3);
+    assert.deepEqual(
+      seen.map((entry) => entry.type),
+      ['session:start', 'session:update', 'session:end'],
+    );
+    assert.ok(seen.every(({ event }) => event.total_tokens === 11));
+    assert.ok(seen.every(({ event }) => event.branch === 'main'));
+    assert.ok(seen.every(({ event }) => event.repo_root === expectedRepoRoot));
+    assert.ok(seen.every(({ event }) => event.last_observed_at === '2026-05-10T00:05:00.000Z'));
+  } finally {
+    bus.off('session:start', onStart);
+    bus.off('session:update', onUpdate);
+    bus.off('session:end', onEnd);
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('processSessionEventBatch counts existing repo metadata reuse when cwd is unchanged', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-session-batch-repo-reuse-'));
+  try {
+    const repo = path.join(root, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'vibedeck@example.test'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'VibeDeck Test'], { cwd: repo, stdio: 'ignore' });
+    await fs.writeFile(path.join(repo, 'README.md'), 'repo reuse\n', 'utf8');
+    execFileSync('git', ['add', 'README.md'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    await processSessionEventBatch(dbPath, [
+      {
+        kind: 'start',
+        provider: 'codex',
+        session_id: 'repo-reuse-session',
+        started_at: '2026-05-10T00:00:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+      },
+    ]);
+
+    const summary = await processSessionEventBatch(dbPath, [
+      {
+        kind: 'update',
+        provider: 'codex',
+        session_id: 'repo-reuse-session',
+        observed_at: '2026-05-10T00:05:00.000Z',
+        cwd: repo,
+        model: 'gpt-5.4',
+        branch: 'main',
+        delta_tokens: 3,
+        input_tokens: 2,
+        output_tokens: 1,
+      },
+    ]);
+
+    assert.equal(summary.existing_repo_reused_count, 1);
+    assert.equal(summary.events_processed, 1);
+    assert.equal(summary.groups_processed, 1);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('processSessionEventBatch reuses repo resolution cache across grouped batches', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'vd-session-batch-repo-cache-'));
+  const pipelinePath = require.resolve('../src/lib/sessions/pipeline');
+  const repoResolverPath = require.resolve('../src/lib/sessions/repo-resolver');
+  const originalLoad = Module._load;
+  const calls = [];
+  delete require.cache[pipelinePath];
+  delete require.cache[repoResolverPath];
+
+  try {
+    const repo = path.join(root, 'repo');
+    await fs.mkdir(repo, { recursive: true });
+    const dbPath = path.join(root, 'vibedeck.sqlite3');
+    ensureSchema(dbPath);
+
+    Module._load = function loadWithRepoCacheProbe(request, parent, isMain) {
+      if (parent?.filename === pipelinePath && request === './repo-resolver') {
+        return {
+          resolveRepo(cwd) {
+            calls.push(cwd);
+            return {
+              repo_root: repo,
+              repo_common_dir: path.join(repo, '.git'),
+              parent_repo: null,
+              status: 'ok',
+            };
+          },
+        };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const { processSessionEventBatch: freshBatch } = require(pipelinePath);
+    const cache = {};
+    for (const sessionId of ['repo-cache-a', 'repo-cache-b']) {
+      await freshBatch(dbPath, [
+        {
+          kind: 'start',
+          provider: 'codex',
+          session_id: sessionId,
+          started_at: '2026-05-10T00:00:00.000Z',
+          cwd: repo,
+          model: 'gpt-5.4',
+          branch: 'main',
+        },
+        {
+          kind: 'update',
+          provider: 'codex',
+          session_id: sessionId,
+          observed_at: '2026-05-10T00:01:00.000Z',
+          cwd: repo,
+          model: 'gpt-5.4',
+          branch: 'main',
+          delta_tokens: 1,
+          input_tokens: 1,
+          output_tokens: 0,
+        },
+      ], { cache, deferBranchFactRebuild: true });
+    }
+
+    assert.deepEqual(calls, [repo]);
+    assert.ok(cache.repoResolutionByCwd instanceof Map);
+    assert.equal(cache.repoResolutionByCwd.get(repo).repo_root, repo);
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[pipelinePath];
+    delete require.cache[repoResolverPath];
     await fs.rm(root, { recursive: true, force: true });
   }
 });

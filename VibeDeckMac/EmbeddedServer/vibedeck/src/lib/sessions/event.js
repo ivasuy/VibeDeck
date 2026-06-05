@@ -10,6 +10,17 @@ function isNullableString(v) {
   return v === null || v === undefined || typeof v === 'string';
 }
 
+function isNullableJsonString(v) {
+  if (v === null || v === undefined) return true;
+  if (typeof v !== 'string') return false;
+  try {
+    JSON.parse(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function assertNullableNonNegativeInteger(name, v) {
   if (v != null && (!Number.isInteger(v) || v < 0)) {
     throw new TypeError(`SessionEvent.${name} must be a non-negative integer or null`);
@@ -35,12 +46,33 @@ function validateEvent(e) {
   if (e.kind === 'update') {
     assertIsoString('SessionEvent.observed_at', e.observed_at);
     assertNullableNonNegativeInteger('delta_tokens', e.delta_tokens);
+    assertNullableNonNegativeInteger('billable_total_tokens', e.billable_total_tokens);
     assertNullableNonNegativeInteger('input_tokens', e.input_tokens);
     assertNullableNonNegativeInteger('cached_input_tokens', e.cached_input_tokens);
     assertNullableNonNegativeInteger('cache_creation_input_tokens', e.cache_creation_input_tokens);
+    assertNullableNonNegativeInteger('cache_creation_5m_input_tokens', e.cache_creation_5m_input_tokens);
+    assertNullableNonNegativeInteger('cache_creation_1h_input_tokens', e.cache_creation_1h_input_tokens);
     assertNullableNonNegativeInteger('output_tokens', e.output_tokens);
     assertNullableNonNegativeInteger('reasoning_output_tokens', e.reasoning_output_tokens);
+    assertNullableNonNegativeInteger('web_search_requests', e.web_search_requests);
+    assertNullableNonNegativeInteger('tool_call_count', e.tool_call_count);
     assertNullableNonNegativeInteger('conversation_count', e.conversation_count);
+    if (!isNullableJsonString(e.tools_json)) {
+      throw new TypeError('SessionEvent.tools_json must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.activity_json)) {
+      throw new TypeError('SessionEvent.activity_json must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.task_category)) {
+      throw new TypeError('SessionEvent.task_category must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.tools_sequence_json)) {
+      throw new TypeError('SessionEvent.tools_sequence_json must be a valid JSON string or null');
+    }
+    if (!isNullableJsonString(e.skills_json)) {
+      throw new TypeError('SessionEvent.skills_json must be a valid JSON string or null');
+    }
+    assertNullableNonNegativeInteger('fast_mode', e.fast_mode);
   }
   if (e.kind === 'end') {
     assertIsoString('SessionEvent.ended_at', e.ended_at);
@@ -69,13 +101,24 @@ function makeUpdate({
   session_id,
   observed_at,
   delta_tokens = null,
+  billable_total_tokens = null,
   cwd = null,
   model = null,
   input_tokens = null,
   cached_input_tokens = null,
   cache_creation_input_tokens = null,
+  cache_creation_5m_input_tokens = null,
+  cache_creation_1h_input_tokens = null,
   output_tokens = null,
   reasoning_output_tokens = null,
+  web_search_requests = null,
+  tool_call_count = null,
+  tools_json = null,
+  activity_json = null,
+  task_category = null,
+  tools_sequence_json = null,
+  skills_json = null,
+  fast_mode = null,
   conversation_count = null,
   branch = null,
 }) {
@@ -85,13 +128,24 @@ function makeUpdate({
     session_id,
     observed_at,
     delta_tokens,
+    billable_total_tokens,
     cwd,
     model,
     input_tokens,
     cached_input_tokens,
     cache_creation_input_tokens,
+    cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens,
     output_tokens,
     reasoning_output_tokens,
+    web_search_requests,
+    tool_call_count,
+    tools_json,
+    activity_json,
+    task_category,
+    tools_sequence_json,
+    skills_json,
+    fast_mode,
     conversation_count,
     branch,
   };

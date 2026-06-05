@@ -18,7 +18,6 @@ flowchart LR
     ProviderLogs["Provider logs"]
     ProviderDBs["Provider DBs"]
     Hooks["Hook payloads"]
-    Entire["Entire checkpoints"]
   end
 
   subgraph Core["VibeDeck core"]
@@ -39,7 +38,6 @@ flowchart LR
   ProviderLogs --> Sync
   ProviderDBs --> Sync
   Hooks --> Sync
-  Entire --> Sync
   Sync --> Sessions
   Sessions --> Pricing
   Pricing --> SQLite
@@ -69,14 +67,12 @@ flowchart LR
     ProviderLogs["Provider logs"]
     ProviderDBs["Provider DBs"]
     HookPayloads["Hook payloads"]
-    EntireStore["Entire metadata"]
   end
 
   subgraph SyncLayer["Sync layer"]
     Sync["vibedeck sync"]
     Rollout["rollout.js parsers"]
     Events["sessions pipeline"]
-    EntireBridge["entire bridge"]
     Diagnostics["diagnostics"]
   end
 
@@ -88,10 +84,8 @@ flowchart LR
   ProviderLogs --> Sync
   ProviderDBs --> Sync
   HookPayloads --> Sync
-  EntireStore --> EntireBridge
   Sync --> Rollout
   Rollout --> Events
-  EntireBridge --> Events
   Events --> SQLite
   Rollout --> Queues
   Sync --> Diagnostics
@@ -146,7 +140,6 @@ flowchart TB
     Sessions["sessions/*"]
     DB["db/*"]
     Pricing["pricing/*"]
-    EntireLib["entire-*"]
     LocalAPI["local-api.js"]
   end
 
@@ -160,11 +153,9 @@ flowchart TB
   Commands --> Sessions
   Commands --> DB
   Commands --> Pricing
-  Commands --> EntireLib
   Rollout --> Sessions
   Sessions --> DB
   Pricing --> DB
-  EntireLib --> DB
   LocalAPI --> DB
   Dashboard --> LocalAPI
   Native --> LocalAPI
@@ -180,7 +171,6 @@ Key areas:
 | Canonical sessions | `src/lib/sessions/*` |
 | SQLite schema and migrations | `src/lib/db/*` |
 | Costing | `src/lib/pricing/*`, `src/lib/cost-estimation.js`, `src/lib/canonical-cost-summary.js` |
-| Entire checkpoint usage | `src/lib/entire-bridge.js`, `src/lib/entire-checkpoint-usage.js` |
 | Local API | `src/lib/local-api.js` |
 | Dashboard | `dashboard/src/*` |
 | Native app and widget | `VibeDeckMac/*` |
@@ -217,8 +207,6 @@ Important tables:
 | `vibedeck_attribution_overrides` | Manual branch overrides. |
 | `vibedeck_head_history` | Git HEAD history for branch resolution. |
 | `vibedeck_repos` | Known repo state and freshness metadata. |
-| `vibedeck_session_entire_links` | Session-to-Entire linkage. |
-| `vibedeck_entire_checkpoint_matches` | Checkpoint matching diagnostics. |
 | `vibedeck_skills` | Local skill metadata. |
 
 Schema migrations live in `src/lib/db/migrations/`.
@@ -239,11 +227,10 @@ sequenceDiagram
   Parsers->>Sessions: emit normalized session events
   Sessions->>DB: upsert sessions, bucket facts, branch windows
   Sessions->>DB: mark live or ended state
-  CLI->>DB: backfill Entire linkage when needed
   CLI->>Diagnostics: write failures and reconciliation data
 ```
 
-Important rule: `--rebuild-vibedeck-db` rebuilds canonical session state from local provider data. It is the heavy repair path after parser, session, or costing changes.
+Important rule: `--rebuild-vibedeck-db` rebuilds canonical session state from local provider data. It now uses staged output, recent-first lanes, dirty post-drain branch-fact materialization, and grouped-flush repo caches so the UI can serve the last complete DB while historical repair work continues.
 
 ## Provider Ingestion Model
 
@@ -274,7 +261,7 @@ flowchart TD
   Pricing --> Compute["computeRowCost()"]
   Compute --> Quality["cost_quality"]
   Quality --> DB["SQLite rollups"]
-  DB --> ReadModels["Usage, Branches, Live, Entire"]
+  DB --> ReadModels["Usage, Branches, Live, Widgets"]
 ```
 
 Costing behavior:
@@ -282,8 +269,25 @@ Costing behavior:
 - stored provider cost is preserved when authoritative
 - token-bucket cost is computed when model pricing and token buckets exist
 - missing pricing is not silently treated as trustworthy zero
+- billable token totals are stored separately from canonical total tokens
+- daily heatmap rows include per-day cost where source data and pricing allow it
 - read models carry cost quality metadata
 - live views combine historical canonical facts with current live deltas
+
+## Rebuild And Projection Performance
+
+The rebuild path is optimized for first usable state without changing the canonical data contract.
+
+Key pieces:
+
+- staged rebuild output, then promotion only after a successful rebuild
+- startup snapshot and projection freshness read models for UI readiness
+- recent-first lanes so current work can appear before the oldest history finishes
+- dirty post-drain branch-fact materialization instead of repeated inline repair work
+- provider-branch and project-attribution caches during branch-fact rebuilding
+- grouped session-event flush caches keyed by cwd-to-repo resolution
+
+The current local profile for the optimized branch is about `6.53s` for the tested live DB, with grouped flush around `2.28s`, branch facts around `0.56s`, and repair around `0.08s`.
 
 ## Branch, Project, And Session Umbrella
 
@@ -326,28 +330,6 @@ Important rules:
 - active totals must include previous canonical usage plus current live increments
 
 Live API routes are served from `src/lib/local-api.js` under `/functions/vibedeck-sessions-live*`.
-
-## Entire Checkpoint Usage
-
-Entire checkpoint usage is derived from child `metadata.json` files, not only the root checkpoint metadata.
-
-Each child metadata file can contain:
-
-```json
-{
-  "agent": "Codex",
-  "model": "gpt-5.5",
-  "session_id": "...",
-  "token_usage": {
-    "input_tokens": 18087,
-    "cache_creation_tokens": 0,
-    "cache_read_tokens": 641152,
-    "output_tokens": 3139
-  }
-}
-```
-
-`src/lib/entire-checkpoint-usage.js` aggregates child metadata rows into per-checkpoint model and cost rollups.
 
 ## Local Developer Workflows
 

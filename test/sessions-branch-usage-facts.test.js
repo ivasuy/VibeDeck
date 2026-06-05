@@ -312,6 +312,96 @@ test('repairMissingProjectAttribution reuses cwd repo-resolution results includi
   }
 });
 
+test('repairMissingProjectAttribution rebuilds missing facts for existing repo metadata without repo resolution', async () => {
+  const fixture = makeDb();
+  const Module = require('node:module');
+  const originalLoad = Module._load;
+  const branchFactsPath = require.resolve('../src/lib/sessions/branch-usage-facts');
+  const repoResolverPath = require.resolve('../src/lib/sessions/repo-resolver');
+  const repoRoot = path.join(fixture.dir, 'repo-with-metadata');
+  const calls = [];
+
+  try {
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'fact-only',
+        started_at: '2026-05-17T12:20:00.000Z',
+        ended_at: '2026-05-17T12:25:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        model: 'gpt-5.4',
+        total_tokens: 25,
+        total_cost_usd: 0.25,
+        last_observed_at: '2026-05-17T12:25:00.000Z',
+        cost_estimated: 0,
+        cost_quality: 'stored',
+      });
+    } finally {
+      db.close();
+    }
+
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    Module._load = function loadWithFailingRepoResolver(request, parent, isMain) {
+      if (parent?.filename === branchFactsPath && request === './repo-resolver') {
+        return {
+          resolveRepo(cwd) {
+            calls.push(cwd);
+            throw new Error(`resolveRepo should not be called for ${cwd}`);
+          },
+        };
+      }
+      return originalLoad.call(this, request, parent, isMain);
+    };
+
+    const freshBranchFacts = require(branchFactsPath);
+    const repaired = await freshBranchFacts.repairMissingProjectAttribution(fixture.dbPath, {
+      rebuildFacts: true,
+    });
+
+    assert.equal(repaired, 1);
+    assert.deepEqual(calls, []);
+
+    const readDb = new DatabaseSync(fixture.dbPath, { readOnly: true });
+    try {
+      const rows = readDb
+        .prepare(
+          `
+          SELECT provider, session_id, repo_root, total_tokens, total_cost_usd
+          FROM vibedeck_branch_usage_facts
+          WHERE provider = 'codex' AND session_id = 'fact-only'
+          `,
+        )
+        .all()
+        .map((row) => ({
+          provider: row.provider,
+          session_id: row.session_id,
+          repo_root: row.repo_root,
+          total_tokens: row.total_tokens,
+          total_cost_usd: row.total_cost_usd,
+        }));
+      assert.deepEqual(rows, [
+        {
+          provider: 'codex',
+          session_id: 'fact-only',
+          repo_root: repoRoot,
+          total_tokens: 25,
+          total_cost_usd: 0.25,
+        },
+      ]);
+    } finally {
+      readDb.close();
+    }
+  } finally {
+    Module._load = originalLoad;
+    delete require.cache[branchFactsPath];
+    delete require.cache[repoResolverPath];
+    fixture.cleanup();
+  }
+});
+
 test('branch fact rebuild uses shared provider branch helper cache for fallback evidence', async () => {
   const fixture = makeDb();
   const originalRead = providerBranch.readProviderBranchEvidenceFromSessionFile;
@@ -351,6 +441,141 @@ test('branch fact rebuild uses shared provider branch helper cache for fallback 
     assert.equal(reads, 1);
   } finally {
     providerBranch.readProviderBranchEvidenceFromSessionFile = originalRead;
+    fixture.cleanup();
+  }
+});
+
+test('provider branch evidence cache reuses unambiguous strict reads for non-strict branch facts', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-provider-branch-cache-'));
+  const sessionFile = path.join(dir, 'codex-session.jsonl');
+  const originalOpenSync = fs.openSync;
+  let opens = 0;
+
+  try {
+    fs.writeFileSync(sessionFile, `${JSON.stringify({ payload: { git: { branch: 'feature/cache' } } })}\n`, 'utf8');
+    fs.openSync = (...args) => {
+      if (args[0] === sessionFile) opens += 1;
+      return originalOpenSync(...args);
+    };
+
+    const cache = providerBranch.createProviderBranchCache();
+    const strict = providerBranch.readProviderBranchFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+    const nonStrict = providerBranch.readProviderBranchEvidenceFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+
+    assert.equal(strict.branch, 'feature/cache');
+    assert.deepEqual(nonStrict, { branch: 'feature/cache', checked: true, ambiguous: false });
+    assert.equal(opens, 1);
+  } finally {
+    fs.openSync = originalOpenSync;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('provider branch evidence cache does not reuse ambiguous strict reads for non-strict recovery', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vd-provider-branch-cache-ambiguous-'));
+  const sessionFile = path.join(dir, 'codex-session.jsonl');
+  const originalOpenSync = fs.openSync;
+  let opens = 0;
+
+  try {
+    fs.writeFileSync(
+      sessionFile,
+      `{malformed-json}\n${JSON.stringify({ payload: { git: { branch: 'feature/recovered' } } })}\n`,
+      'utf8',
+    );
+    fs.openSync = (...args) => {
+      if (args[0] === sessionFile) opens += 1;
+      return originalOpenSync(...args);
+    };
+
+    const cache = providerBranch.createProviderBranchCache();
+    const strict = providerBranch.readProviderBranchFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+    const nonStrict = providerBranch.readProviderBranchEvidenceFromSessionFile({
+      provider: 'codex',
+      session_id: sessionFile,
+      cache,
+    });
+
+    assert.equal(strict, null);
+    assert.deepEqual(nonStrict, { branch: 'feature/recovered', checked: true, ambiguous: false });
+    assert.equal(opens, 2);
+  } finally {
+    fs.openSync = originalOpenSync;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('branch fact rebuild caches repeated project attribution shapes', async () => {
+  const fixture = makeDb();
+  const originalStatSync = fs.statSync;
+  let repoStats = 0;
+
+  try {
+    const repoRoot = path.join(fixture.dir, 'repo');
+    initGitRepo(repoRoot);
+    const realRepoRoot = fs.realpathSync(repoRoot);
+
+    const db = new DatabaseSync(fixture.dbPath);
+    try {
+      insertSession(db, {
+        provider: 'codex',
+        session_id: 'project-cache',
+        started_at: '2026-05-17T12:00:00.000Z',
+        ended_at: '2026-05-17T12:05:00.000Z',
+        cwd: repoRoot,
+        repo_root: repoRoot,
+        branch: 'main',
+        branch_resolution_tier: 'PROVIDER_LOG',
+        confidence: 'medium',
+        model: 'gpt-5.4',
+        total_tokens: 15,
+        last_observed_at: '2026-05-17T12:05:00.000Z',
+      });
+      for (let index = 0; index < 5; index += 1) {
+        insertEvent(db, {
+          provider: 'codex',
+          session_id: 'project-cache',
+          event_key: `event-${index}`,
+          observed_at: `2026-05-17T12:0${index}:00.000Z`,
+          cwd: repoRoot,
+          repo_root: repoRoot,
+          branch: 'main',
+          branch_resolution_tier: 'PROVIDER_LOG',
+          confidence: 'medium',
+          model: 'gpt-5.4',
+          delta_tokens: 3,
+          input_tokens: 2,
+          output_tokens: 1,
+        });
+      }
+    } finally {
+      db.close();
+    }
+
+    fs.statSync = (...args) => {
+      if (args[0] === realRepoRoot) repoStats += 1;
+      return originalStatSync(...args);
+    };
+
+    const cache = {};
+    const rebuilt = await rebuildAllBranchUsageFacts(fixture.dbPath, { cache });
+    assert.equal(rebuilt, 1);
+    assert.equal(repoStats, 1);
+    assert.ok(cache.projectAttributionByShape instanceof Map);
+  } finally {
+    fs.statSync = originalStatSync;
     fixture.cleanup();
   }
 });

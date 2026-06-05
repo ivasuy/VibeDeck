@@ -70,7 +70,7 @@ export function StreakFlame({
   const isHighStreak = days >= 30;
   const isMediumStreak = days >= 7;
 
-  // Use inline SVG instead of emoji
+  // Use inline SVG for the milestone symbol.
   return (
     <span
       className={`inline-flex items-center justify-center ${className}`}

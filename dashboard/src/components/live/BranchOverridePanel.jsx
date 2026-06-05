@@ -14,7 +14,7 @@ function normalizeConfidence(value) {
   return confidence || "unattributed";
 }
 
-export function BranchOverridePanel({ session, onSuccess, className = "" }) {
+export function BranchOverridePanel({ session, onSuccess, className = "", surface = true }) {
   const [branch, setBranch] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [error, setError] = useState("");
@@ -93,11 +93,12 @@ export function BranchOverridePanel({ session, onSuccess, className = "" }) {
   };
 
   const isBusy = Boolean(busyAction);
+  const shellClassName = surface
+    ? `vd-card rounded-xl border border-[var(--vd-border)] p-5 pb-3 transition-colors duration-200 ${className}`
+    : `pb-3 ${className}`;
 
   return (
-    <section
-      className={`vd-card rounded-xl border border-oai-gray-200 bg-white p-5 pb-3 transition-colors duration-200 dark:border-oai-gray-800 dark:bg-oai-gray-900 ${className}`}
-    >
+    <section className={shellClassName}>
       <div className="flex items-center gap-2">
         <PencilLine className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
         <h2 className="text-sm font-semibold text-oai-black dark:text-white">{copy("live.override.title")}</h2>

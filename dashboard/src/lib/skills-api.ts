@@ -62,6 +62,10 @@ export function getSkillRepos() {
   return fetchSkillsJson({ mode: "repos" });
 }
 
+export function getSkillUsage(options: { limit?: number } = {}) {
+  return fetchSkillsJson({ mode: "usage", ...options });
+}
+
 export function installSkill(skill: AnyRecord, targets: string[]) {
   return mutateSkillsJson({ skill, targets }, "install");
 }

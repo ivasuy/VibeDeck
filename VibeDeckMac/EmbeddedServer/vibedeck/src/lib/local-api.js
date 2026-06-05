@@ -6,14 +6,22 @@ const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const { getLiveBus } = require("./sessions/live-bus");
 const { readLiveAuditRollups } = require("./sessions/live-rollups");
+const {
+  groupingVisible,
+  readSessionGroupingMode,
+  readGroupEdges,
+  buildSessionGroupsForRows,
+  readSessionGroupDiagnostics,
+} = require("./sessions/session-groups");
 const { getIdleTimeoutMin } = require("./sessions/idle-timeout");
-const { requireWriteAuth, issueConfirmToken, consumeConfirmToken } = require("./local-auth");
+const { requireWriteAuth /*, issueConfirmToken, consumeConfirmToken */ } = require("./local-auth");
 const {
   filterRowsByUsageScope,
   getSourceScope,
   listExcludedSources,
   normalizeUsageScope,
 } = require("./source-metadata");
+/*
 const {
   checkpointGroupId,
   buildCheckpointUsage,
@@ -23,6 +31,21 @@ const {
   normalizeCheckpointPath,
   isValidCheckpointPath,
 } = require("./entire-checkpoint-paths");
+*/
+const {
+  readCodeburnFactRows,
+  buildComparePayload,
+  buildModelsPayload,
+  buildStatusPayload,
+  buildExportPayload,
+  buildYieldPayload,
+  detectInstalledProviders,
+  toCsv,
+} = require("./codeburn-parity");
+const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
+const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
+const { readCurrencyRates } = require("./currency-rates");
+const { buildForecastPayload } = require("./forecast-read-model");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -99,6 +122,50 @@ const ROUTES = {
   skills: {
     primary: "/functions/vibedeck-skills",
     legacy: withLegacyRoute("/functions/vibedeck-skills"),
+  },
+  compare: {
+    primary: "/functions/vibedeck-compare",
+    legacy: withLegacyRoute("/functions/vibedeck-compare"),
+  },
+  models: {
+    primary: "/functions/vibedeck-models",
+    legacy: withLegacyRoute("/functions/vibedeck-models"),
+  },
+  status: {
+    primary: "/functions/vibedeck-status",
+    legacy: withLegacyRoute("/functions/vibedeck-status"),
+  },
+  codeburnExport: {
+    primary: "/functions/vibedeck-export",
+    legacy: withLegacyRoute("/functions/vibedeck-export"),
+  },
+  yield: {
+    primary: "/functions/vibedeck-yield",
+    legacy: withLegacyRoute("/functions/vibedeck-yield"),
+  },
+  autoDetect: {
+    primary: "/functions/vibedeck-optimize/auto-detect",
+    legacy: "",
+  },
+  optimizeFindings: {
+    primary: "/functions/vibedeck-optimize/findings",
+    legacy: "",
+  },
+  optimizeScan: {
+    primary: "/functions/vibedeck-optimize/scan",
+    legacy: "",
+  },
+  plan: {
+    primary: "/functions/vibedeck-plan",
+    legacy: "",
+  },
+  currencyRates: {
+    primary: "/functions/vibedeck-currency-rates",
+    legacy: "",
+  },
+  forecast: {
+    primary: "/functions/vibedeck-forecast",
+    legacy: "",
   },
 };
 
@@ -207,9 +274,26 @@ function liveBucketTotal(row) {
     "input_tokens",
     "cached_input_tokens",
     "cache_creation_input_tokens",
+    "cache_creation_5m_input_tokens",
+    "cache_creation_1h_input_tokens",
     "output_tokens",
     "reasoning_output_tokens",
   ].reduce((sum, key) => sum + (Number(row?.[key] || 0) || 0), 0);
+}
+
+function hasLiveBillableEnrichment(row) {
+  const split5m = Number(row?.cache_creation_5m_input_tokens || 0) || 0;
+  const split1h = Number(row?.cache_creation_1h_input_tokens || 0) || 0;
+  const webSearch = typeof row?.web_search_requests === "number" && Number.isFinite(row.web_search_requests)
+    ? row.web_search_requests
+    : 0;
+  return split5m > 0 || split1h > 0 || webSearch > 0;
+}
+
+function liveCostTotalTokens(row) {
+  const total = Number(row?.total_tokens);
+  if (Number.isFinite(total) && total === 0 && hasLiveBillableEnrichment(row)) return null;
+  return row?.total_tokens;
 }
 
 function normalizeCodexUsage(u) {
@@ -324,12 +408,15 @@ function enrichLiveSessionCost(row) {
     stored_cost_usd: active ? null : row?.total_cost_usd,
     source: row?.provider,
     model: row?.model,
-    total_tokens: row?.total_tokens,
+    total_tokens: liveCostTotalTokens(row),
     input_tokens: row?.input_tokens,
     cached_input_tokens: row?.cached_input_tokens,
     cache_creation_input_tokens: row?.cache_creation_input_tokens,
+    cache_creation_5m_input_tokens: row?.cache_creation_5m_input_tokens,
+    cache_creation_1h_input_tokens: row?.cache_creation_1h_input_tokens,
     output_tokens: row?.output_tokens,
     reasoning_output_tokens: row?.reasoning_output_tokens,
+    web_search_requests: row?.web_search_requests,
   });
 
   return {
@@ -338,6 +425,92 @@ function enrichLiveSessionCost(row) {
     cost_estimated: costResult.cost_estimated,
     cost_quality: costResult.cost_quality,
   };
+}
+
+function sanitizeLiveSessionRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+  const next = { ...row };
+  delete next.override_user;
+  delete next.tools_sequence_json;
+  return next;
+}
+
+function sanitizeLiveSessionGroup(group) {
+  if (!group || typeof group !== "object" || Array.isArray(group)) return group;
+  return {
+    ...group,
+    members: Array.isArray(group.members)
+      ? group.members.map(sanitizeLiveSessionRow)
+      : group.members,
+  };
+}
+
+function sanitizeLiveWorkstream(workstream) {
+  if (!workstream || typeof workstream !== "object" || Array.isArray(workstream)) return workstream;
+  return {
+    ...workstream,
+    sessions: Array.isArray(workstream.sessions)
+      ? workstream.sessions.map(sanitizeLiveSessionRow)
+      : workstream.sessions,
+    session_groups: Array.isArray(workstream.session_groups)
+      ? workstream.session_groups.map(sanitizeLiveSessionGroup)
+      : workstream.session_groups,
+  };
+}
+
+function readRecentSessions(dbPath, { limit = 5 } = {}) {
+  const maxRows = Math.max(1, Math.min(50, Number(limit) || 5));
+  try {
+    if (!fs.existsSync(dbPath)) return { sessions: [] };
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const rows = db
+        .prepare(`
+          SELECT
+            provider,
+            session_id,
+            started_at,
+            ended_at,
+            end_reason,
+            cwd,
+            repo_root,
+            repo_common_dir,
+            parent_repo,
+            branch,
+            branch_resolution_tier,
+            confidence,
+            model,
+            total_tokens,
+            total_cost_usd,
+            input_tokens,
+            cached_input_tokens,
+            cache_creation_input_tokens,
+            cache_creation_5m_input_tokens,
+            cache_creation_1h_input_tokens,
+            output_tokens,
+            reasoning_output_tokens,
+            web_search_requests,
+            tool_call_count,
+            last_observed_at,
+            created_at,
+            updated_at
+          FROM vibedeck_sessions
+          ORDER BY COALESCE(last_observed_at, ended_at, started_at, updated_at) DESC
+          LIMIT ?
+        `)
+        .all(maxRows);
+      return {
+        sessions: rows.map((row) => ({
+          ...sanitizeLiveSessionRow(enrichLiveSessionCost(row)),
+          activity_at: normalizeIsoTimestamp(row.last_observed_at || row.ended_at || row.started_at || row.updated_at),
+        })),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return { sessions: [] };
+  }
 }
 
 function readLiveSessionsSnapshot(queuePath) {
@@ -356,8 +529,21 @@ function readLiveSessionsSnapshot(queuePath) {
     idleTimeoutMin: getIdleTimeoutMin(),
     recentEndedMs: LIVE_RECENT_ENDED_MS,
   });
+  const groupingMode = readSessionGroupingMode(process.env);
+  const groupEdges = groupingVisible(groupingMode) ? readGroupEdges(dbPath) : [];
+  const rawSessions = Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [];
+  const groupPayload = groupingVisible(groupingMode)
+    ? buildSessionGroupsForRows(rawSessions, groupEdges)
+    : { sessions: rawSessions, session_groups: undefined };
+  const groupedWorkstreams = Array.isArray(rollups.workstreams)
+    ? rollups.workstreams.map((workstream) => {
+      if (!groupingVisible(groupingMode)) return workstream;
+      const grouped = buildSessionGroupsForRows(workstream.sessions || [], groupEdges);
+      return { ...workstream, sessions: grouped.sessions, session_groups: grouped.session_groups };
+    })
+    : [];
   const liveIdentities = Array.from(new Map(
-    (Array.isArray(rollups?.workstreams) ? rollups.workstreams : [])
+    groupedWorkstreams
       .flatMap((workstream) => Array.isArray(workstream?.sessions) ? workstream.sessions : [])
       .map((row) => {
         const provider = typeof row?.provider === "string" ? row.provider.trim() : "";
@@ -371,7 +557,14 @@ function readLiveSessionsSnapshot(queuePath) {
   const liveCanonical = summarizeCanonicalCompletenessForSessions(dbPath, liveIdentities);
   return {
     ...rollups,
-    sessions: Array.isArray(rollups.sessions) ? rollups.sessions.map(enrichLiveSessionCost) : [],
+    sessions: Array.isArray(groupPayload.sessions)
+      ? groupPayload.sessions.map(sanitizeLiveSessionRow)
+      : groupPayload.sessions,
+    session_groups: Array.isArray(groupPayload.session_groups)
+      ? groupPayload.session_groups.map(sanitizeLiveSessionGroup)
+      : groupPayload.session_groups,
+    session_group_diagnostics: groupingMode === "off" ? undefined : readSessionGroupDiagnostics(dbPath),
+    workstreams: groupedWorkstreams.map(sanitizeLiveWorkstream),
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
@@ -699,6 +892,76 @@ function readCanonicalDbStats(dbPath) {
         canonical_bucket_count: Number(bucketRow?.canonical_bucket_count || 0),
         session_rows_missing_cost: Number(sessionRow?.session_rows_missing_cost || 0),
         unattributed_session_count: Number(sessionRow?.unattributed_session_count || 0),
+      };
+    } finally {
+      db.close();
+    }
+  } catch {
+    return empty;
+  }
+}
+
+function parseJsonCounter(value) {
+  if (!value) return null;
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSkillUsageStats(dbPath, { limit = 10 } = {}) {
+  const maxRows = Math.max(1, Math.min(100, Number(limit) || 10));
+  const empty = { skills: [], totalInvocationCount: 0, totalCostUsd: "0.000000" };
+  try {
+    if (!fs.existsSync(dbPath)) return empty;
+    const db = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      const rows = db
+        .prepare(`
+          SELECT skills_json, total_cost_usd
+          FROM vibedeck_sessions
+          WHERE skills_json IS NOT NULL AND skills_json != ''
+        `)
+        .all();
+      const bySkill = new Map();
+      let totalInvocationCount = 0;
+      let totalCostUsd = 0;
+      for (const row of rows) {
+        const counters = parseJsonCounter(row.skills_json);
+        if (!counters) continue;
+        const entries = Object.entries(counters)
+          .map(([name, rawCount]) => [String(name || "").trim(), Number(rawCount)])
+          .filter(([name, count]) => name && Number.isFinite(count) && count > 0);
+        if (!entries.length) continue;
+        const sessionCount = entries.reduce((sum, [, count]) => sum + count, 0);
+        const sessionCost = Number(row.total_cost_usd);
+        const costKnown = Number.isFinite(sessionCost) && sessionCost > 0 && sessionCount > 0;
+        for (const [name, count] of entries) {
+          const current = bySkill.get(name) || { name, invocation_count: 0, cost_usd: 0 };
+          const costShare = costKnown ? sessionCost * (count / sessionCount) : 0;
+          current.invocation_count += count;
+          current.cost_usd += costShare;
+          bySkill.set(name, current);
+          totalInvocationCount += count;
+          totalCostUsd += costShare;
+        }
+      }
+      const skills = Array.from(bySkill.values())
+        .sort((left, right) => right.invocation_count - left.invocation_count || left.name.localeCompare(right.name))
+        .slice(0, maxRows)
+        .map((row) => ({
+          name: row.name,
+          invocation_count: row.invocation_count,
+          cost_usd: row.cost_usd.toFixed(6),
+        }));
+      return {
+        skills,
+        totalInvocationCount,
+        totalCostUsd: totalCostUsd.toFixed(6),
       };
     } finally {
       db.close();
@@ -1528,7 +1791,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     }
     const bucket = byHour.get(hourKey);
     bucket.total_tokens += row.total_tokens || 0;
-    bucket.billable_total_tokens += row.total_tokens || 0;
+    bucket.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
     bucket.input_tokens += row.input_tokens || 0;
     bucket.output_tokens += row.output_tokens || 0;
     bucket.cached_input_tokens += row.cached_input_tokens || 0;
@@ -1537,6 +1800,20 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     bucket.conversation_count += row.conversation_count || 0;
   }
   return Array.from(byHour.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
+function calculateCurrentStreakDays(byDay, todayStr) {
+  if (!(byDay instanceof Map) || !todayStr) return 0;
+  let streak = 0;
+  const cursor = new Date(`${todayStr}T00:00:00Z`);
+  while (!Number.isNaN(cursor.getTime())) {
+    const day = cursor.toISOString().slice(0, 10);
+    const data = byDay.get(day);
+    if (!data || Number(data.billable_total_tokens || 0) <= 0) break;
+    streak += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak;
 }
 
 // ---------------------------------------------------------------------------
@@ -1753,6 +2030,67 @@ function json(res, data, status) {
   res.end(JSON.stringify(data));
 }
 
+function codeburnDbPath(queuePath) {
+  return path.join(path.dirname(queuePath), "vibedeck.sqlite3");
+}
+
+function codeburnFiltersFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    source: url.searchParams.get("source") || url.searchParams.get("provider"),
+    model: url.searchParams.get("model"),
+    branch: url.searchParams.get("branch"),
+  };
+}
+
+function codeburnRangeFromUrl(url) {
+  return {
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    tz: url.searchParams.get("tz") || "UTC",
+  };
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  return {
+    from: `${year}-${month}-01`,
+    to: `${year}-${month}-${day}`,
+  };
+}
+
+function sumFactCostUsd(rows) {
+  return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+    const n = Number(row?.total_cost_usd || 0);
+    return sum + (Number.isFinite(n) ? n : 0);
+  }, 0);
+}
+
+function buildPlanPayload(dbPath) {
+  const config = readEffectivePlanConfig({ dbPath });
+  const range = currentMonthRange();
+  const rows = readCodeburnFactRows(dbPath, range);
+  const spend = sumFactCostUsd(rows);
+  const monthly = Number(config.monthly_usd || 0);
+  return {
+    ok: true,
+    ...config,
+    month_to_date_api_equivalent_usd: spend.toFixed(4),
+    monthly_plan_usd: monthly.toFixed(2),
+    usage_percent: monthly > 0 ? ((spend / monthly) * 100).toFixed(2) : null,
+    range,
+  };
+}
+
+function currencySymbolsFromUrl(url) {
+  const raw = url.searchParams.get("symbols") || url.searchParams.get("to") || url.searchParams.get("currency") || "EUR";
+  return raw.split(",").map((part) => part.trim()).filter(Boolean);
+}
+
 function resolveRepoFromQuery(url) {
   const raw = String(url.searchParams.get("repo") || "").trim();
   if (!raw) return null;
@@ -1954,7 +2292,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const bus = getLiveBus();
       client.onStart = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:start", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:start", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
       client.onUpdate = (event) => {
@@ -1966,14 +2304,14 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         enqueue({
           type: "session:update",
           dropped: client.dropped,
-          ...enrichLiveSessionCost(event),
+          ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)),
           ...extra,
         });
         enqueueRollupUpdate();
       };
       client.onEnd = (event) => {
         if (shouldSuppressStaleLiveDelta(event)) return;
-        enqueue({ type: "session:end", dropped: client.dropped, ...enrichLiveSessionCost(event) });
+        enqueue({ type: "session:end", dropped: client.dropped, ...sanitizeLiveSessionRow(enrichLiveSessionCost(event)) });
         enqueueRollupUpdate();
       };
 
@@ -2023,6 +2361,18 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    // --- vibedeck-recent-sessions (GET) ---
+    if (p === "/functions/vibedeck-recent-sessions") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+      const limit = Number(url.searchParams.get("limit") || 5);
+      json(res, readRecentSessions(dbPath, { limit }));
+      return true;
+    }
+
     // --- local-sync (POST) ---
     if (isRouteMatch(p, ROUTES.localSync)) {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -2067,6 +2417,135 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         return true;
       }
       json(res, readSyncStatus({ queuePath: qp, syncEnabled }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.compare)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildComparePayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.models)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildModelsPayload(rows, codeburnRangeFromUrl(url)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.status)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildStatusPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.codeburnExport)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      const payload = buildExportPayload(rows, codeburnRangeFromUrl(url));
+      if (String(url.searchParams.get("format") || "json").toLowerCase() === "csv") {
+        res.writeHead(200, {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": 'attachment; filename="vibedeck-export.csv"',
+        });
+        res.end(toCsv(payload.rows));
+        return true;
+      }
+      json(res, payload);
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.yield)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildYieldPayload(rows, { ...codeburnRangeFromUrl(url), execFileSync }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.autoDetect)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, { ok: true, providers: detectInstalledProviders({ env: process.env }) });
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeFindings)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const status = url.searchParams.get("status") || "open";
+      const limit = url.searchParams.get("limit") || 100;
+      json(res, readOptimizeFindings({ dbPath: codeburnDbPath(qp), status, limit }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.optimizeScan)) {
+      if (String(req.method || "GET").toUpperCase() !== "POST") {
+        json(res, { ok: false, error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      if (!isAuthorizedLocalMutation(req)) {
+        json(res, { ok: false, error: "Unauthorized" }, 401);
+        return true;
+      }
+      try {
+        json(res, { ok: true, ...runOptimizeScan({ dbPath: codeburnDbPath(qp) }) });
+      } catch (e) {
+        json(res, { ok: false, error: e?.message || String(e) }, 500);
+      }
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.plan)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      json(res, buildPlanPayload(codeburnDbPath(qp)));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.currencyRates)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const base = url.searchParams.get("base") || "USD";
+      json(res, await readCurrencyRates({ base, symbols: currencySymbolsFromUrl(url) }));
+      return true;
+    }
+
+    if (isRouteMatch(p, ROUTES.forecast)) {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const filters = codeburnFiltersFromUrl(url);
+      const rows = readCodeburnFactRows(codeburnDbPath(qp), filters);
+      json(res, buildForecastPayload(rows, codeburnRangeFromUrl(url)));
       return true;
     }
 
@@ -2184,14 +2663,31 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         const day = cursor.toISOString().slice(0, 10);
         const data = byDay.get(day);
         const billable = data?.billable_total_tokens || 0;
-        cells.push({ day, total_tokens: data?.total_tokens || 0, billable_total_tokens: billable, level: calcLevel(billable) });
+        cells.push({
+          day,
+          total_tokens: data?.total_tokens || 0,
+          billable_total_tokens: billable,
+          total_cost_usd: Number(data?.total_cost_usd || 0),
+          level: calcLevel(billable),
+        });
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
       const weeksArr = [];
       for (let i = 0; i < cells.length; i += 7) {
         weeksArr.push(cells.slice(i, i + 7));
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, week_starts_on: "sun", active_days: cells.filter((c) => c.billable_total_tokens > 0).length, streak_days: 0, weeks: weeksArr });
+      json(res, {
+        from,
+        to,
+        scope,
+        excluded_sources: excludedSources,
+        canonical,
+        canonical_incomplete,
+        week_starts_on: "sun",
+        active_days: cells.filter((c) => c.billable_total_tokens > 0).length,
+        streak_days: calculateCurrentStreakDays(byDay, todayStr),
+        weeks: weeksArr,
+      });
       return true;
     }
 
@@ -2279,6 +2775,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    /*
     // --- vibedeck-checkpoints (GET) ---
     if (p === "/functions/vibedeck-checkpoints") {
       if (String(req.method || "GET").toUpperCase() !== "GET") {
@@ -2347,7 +2844,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       }
       return true;
     }
+    */
 
+    /*
     if (p === "/functions/vibedeck-confirm-destructive") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { error: "Method Not Allowed" }, 405);
@@ -2371,7 +2870,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       json(res, { token: confirmToken, op, expiresInMs: 30000 });
       return true;
     }
+    */
 
+    /*
     if (p === "/functions/vibedeck-entire/rewind") {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
         json(res, { error: "Method Not Allowed" }, 405);
@@ -2591,6 +3092,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       json(res, cached ? { ...status, ...cached } : status);
       return true;
     }
+    */
 
     // --- vibedeck-known-repos (GET) ---
     if (p === "/functions/vibedeck-known-repos") {
@@ -2974,7 +3476,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           byMonth.set(month, { month, total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 });
         const a = byMonth.get(month);
         a.total_tokens += row.total_tokens || 0;
-        a.billable_total_tokens += row.total_tokens || 0;
+        a.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
         a.input_tokens += row.input_tokens || 0;
         a.output_tokens += row.output_tokens || 0;
         a.cached_input_tokens += row.cached_input_tokens || 0;
@@ -3013,6 +3515,12 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           }
           if (mode === "repos") {
             json(res, { repos: skills.listRepos() });
+            return true;
+          }
+          if (mode === "usage") {
+            const dbPath = path.join(path.dirname(qp), "vibedeck.sqlite3");
+            const limit = Number(url.searchParams.get("limit") || 10);
+            json(res, readSkillUsageStats(dbPath, { limit }));
             return true;
           }
           if (mode === "discover") {

@@ -1,11 +1,11 @@
-const ACCOUNT_LEVEL_SOURCES = new Set(["cursor"]);
+const { getProviderMetadata, normalizeProviderId } = require("./provider-registry");
 
 function normalizeSource(value) {
-  return String(value || "").trim().toLowerCase();
+  return normalizeProviderId(value);
 }
 
 function getSourceScope(source) {
-  return ACCOUNT_LEVEL_SOURCES.has(normalizeSource(source)) ? "account" : "local";
+  return getProviderMetadata(source).sourceScope === "account" ? "account" : "local";
 }
 
 function isAccountLevelSource(source) {

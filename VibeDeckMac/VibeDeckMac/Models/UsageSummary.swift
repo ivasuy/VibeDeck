@@ -6,9 +6,10 @@ struct UsageSummaryResponse: Codable, Equatable {
     var days: Int
     var totals: TokenTotals
     var rolling: RollingData
+    var freshness: ProjectionFreshness?
 
-    init(from: String = "", to: String = "", days: Int = 0, totals: TokenTotals = TokenTotals(), rolling: RollingData = RollingData()) {
-        self.from = from; self.to = to; self.days = days; self.totals = totals; self.rolling = rolling
+    init(from: String = "", to: String = "", days: Int = 0, totals: TokenTotals = TokenTotals(), rolling: RollingData = RollingData(), freshness: ProjectionFreshness? = nil) {
+        self.from = from; self.to = to; self.days = days; self.totals = totals; self.rolling = rolling; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -18,10 +19,11 @@ struct UsageSummaryResponse: Codable, Equatable {
         self.days = try c.decodeIfPresent(Int.self, forKey: .days) ?? 0
         self.totals = try c.decodeIfPresent(TokenTotals.self, forKey: .totals) ?? TokenTotals()
         self.rolling = try c.decodeIfPresent(RollingData.self, forKey: .rolling) ?? RollingData()
+        self.freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case from, to, days, totals, rolling
+        case from, to, days, totals, rolling, freshness
     }
 }
 

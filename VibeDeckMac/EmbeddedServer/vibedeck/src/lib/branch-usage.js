@@ -9,12 +9,19 @@ const {
   finalizeCostAccumulator,
 } = require('./cost-estimation');
 const { readBranchUsageFactRows } = require('./sessions/branch-usage-facts');
+const {
+  groupingVisible,
+  readSessionGroupingMode,
+  readGroupEdges,
+  buildSessionGroupsForRows,
+} = require('./sessions/session-groups');
 
 function emptyResult() {
   return {
     repos: [],
     totals: {
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: 0,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
@@ -46,6 +53,94 @@ function toFiniteNumber(value) {
 
 function toBooleanFlag(value) {
   return value === true || value === 1 || value === '1';
+}
+
+function numericField(row, key) {
+  const n = Number(row?.[key] || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function billableTokens(row) {
+  const n = Number((row?.billable_total_tokens ?? row?.total_tokens) || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseCounterJson(value) {
+  if (typeof value !== 'string' || !value.trim()) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out = {};
+  for (const [key, count] of Object.entries(parsed)) {
+    if (typeof key !== 'string' || key === '') continue;
+    if (!Number.isInteger(count) || count < 0) continue;
+    out[key] = count;
+  }
+  return out;
+}
+
+function stableCounterJson(counter) {
+  const keys = Object.keys(counter || {}).sort();
+  if (keys.length === 0) return null;
+  const out = {};
+  for (const key of keys) out[key] = counter[key];
+  return JSON.stringify(out);
+}
+
+function mergeCounterJson(existingJson, nextJson) {
+  const counter = parseCounterJson(existingJson);
+  const next = parseCounterJson(nextJson);
+  for (const [key, count] of Object.entries(next)) {
+    counter[key] = (counter[key] || 0) + count;
+  }
+  return stableCounterJson(counter);
+}
+
+function enrichmentShape() {
+  return {
+    cache_creation_5m_input_tokens: 0,
+    cache_creation_1h_input_tokens: 0,
+    web_search_requests: 0,
+    tool_call_count: 0,
+    tools_json: null,
+    activity_json: null,
+    task_category: null,
+    skills_json: null,
+    fast_mode: 0,
+  };
+}
+
+function addEnrichment(target, row) {
+  target.cache_creation_5m_input_tokens += numericField(row, 'cache_creation_5m_input_tokens');
+  target.cache_creation_1h_input_tokens += numericField(row, 'cache_creation_1h_input_tokens');
+  target.web_search_requests += numericField(row, 'web_search_requests');
+  target.tool_call_count += numericField(row, 'tool_call_count');
+  target.tools_json = mergeCounterJson(target.tools_json, row?.tools_json);
+  target.activity_json = mergeCounterJson(target.activity_json, row?.activity_json);
+  target.task_category = mergeCounterJson(target.task_category, row?.task_category);
+  target.skills_json = mergeCounterJson(target.skills_json, row?.skills_json);
+  target.fast_mode += numericField(row, 'fast_mode');
+}
+
+function stripEmptyEnrichment(row) {
+  const out = { ...row };
+  for (const key of [
+    'cache_creation_5m_input_tokens',
+    'cache_creation_1h_input_tokens',
+    'web_search_requests',
+    'tool_call_count',
+    'fast_mode',
+  ]) {
+    if ((Number(out[key]) || 0) === 0) delete out[key];
+  }
+  for (const key of ['tools_json', 'activity_json', 'task_category', 'skills_json']) {
+    if (out[key] == null) delete out[key];
+  }
+  return out;
 }
 
 function repoRootExists(repoRoot) {
@@ -384,7 +479,7 @@ function displayFilterRows(rawRows, { repo = null, branch = null } = {}) {
     .filter((row) => rowMatchesRepo(row, repo) && rowMatchesBranch(row, branch));
 }
 
-function addModelRollup(models, row, rowTokens, rowCost) {
+function addModelRollup(models, row, rowTokens, rowBillableTokens, rowCost) {
   const provider = String(row?.provider || 'unknown').trim() || 'unknown';
   const modelName = String(row?.model || 'unknown').trim() || 'unknown';
   const modelKey = `${provider}\u241f${modelName}`;
@@ -393,40 +488,48 @@ function addModelRollup(models, row, rowTokens, rowCost) {
       provider,
       model: modelName,
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: null,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
       session_count: 0,
+      ...enrichmentShape(),
       _cost: createCostAccumulator(),
     });
   }
   const modelEntry = models.get(modelKey);
   modelEntry.total_tokens += rowTokens;
+  modelEntry.billable_total_tokens += rowBillableTokens;
   modelEntry.session_count += 1;
+  addEnrichment(modelEntry, row);
   addCostToAccumulator(modelEntry._cost, rowCost);
   return modelEntry;
 }
 
-function addDateBucketRollup(dateBuckets, row, rowTokens, rowCost) {
+function addDateBucketRollup(dateBuckets, row, rowTokens, rowBillableTokens, rowCost) {
   const date = rowDateKey(row);
   if (!date) return null;
   if (!dateBuckets.has(date)) {
     dateBuckets.set(date, {
       date,
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: null,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
       session_count: 0,
       models: new Map(),
+      ...enrichmentShape(),
       _cost: createCostAccumulator(),
     });
   }
   const bucket = dateBuckets.get(date);
   bucket.total_tokens += rowTokens;
+  bucket.billable_total_tokens += rowBillableTokens;
   bucket.session_count += 1;
+  addEnrichment(bucket, row);
   addCostToAccumulator(bucket._cost, rowCost);
-  addModelRollup(bucket.models, row, rowTokens, rowCost);
+  addModelRollup(bucket.models, row, rowTokens, rowBillableTokens, rowCost);
   return date;
 }
 
@@ -434,14 +537,24 @@ function finalizeModelRollups(models, { includeProvider = false } = {}) {
   return Array.from(models.values())
     .map((modelEntry) => {
       const modelCost = finalizeCostAccumulator(modelEntry._cost);
-      const out = {
+      const out = stripEmptyEnrichment({
         model: modelEntry.model,
         total_tokens: modelEntry.total_tokens,
+        billable_total_tokens: modelEntry.billable_total_tokens,
         total_cost_usd: modelCost.total_cost_usd,
         cost_estimated: modelCost.cost_estimated,
         cost_quality: modelCost.cost_quality,
         session_count: modelEntry.session_count,
-      };
+        cache_creation_5m_input_tokens: modelEntry.cache_creation_5m_input_tokens,
+        cache_creation_1h_input_tokens: modelEntry.cache_creation_1h_input_tokens,
+        web_search_requests: modelEntry.web_search_requests,
+        tool_call_count: modelEntry.tool_call_count,
+        tools_json: modelEntry.tools_json,
+        activity_json: modelEntry.activity_json,
+        task_category: modelEntry.task_category,
+        skills_json: modelEntry.skills_json,
+        fast_mode: modelEntry.fast_mode,
+      });
       if (includeProvider) out.provider = modelEntry.provider;
       return out;
     })
@@ -452,15 +565,25 @@ function finalizeDateBuckets(dateBuckets) {
   return Array.from(dateBuckets.values())
     .map((bucket) => {
       const bucketCost = finalizeCostAccumulator(bucket._cost);
-      return {
+      return stripEmptyEnrichment({
         date: bucket.date,
         total_tokens: bucket.total_tokens,
+        billable_total_tokens: bucket.billable_total_tokens,
         total_cost_usd: bucketCost.total_cost_usd,
         cost_estimated: bucketCost.cost_estimated,
         cost_quality: bucketCost.cost_quality,
         session_count: bucket.session_count,
+        cache_creation_5m_input_tokens: bucket.cache_creation_5m_input_tokens,
+        cache_creation_1h_input_tokens: bucket.cache_creation_1h_input_tokens,
+        web_search_requests: bucket.web_search_requests,
+        tool_call_count: bucket.tool_call_count,
+        tools_json: bucket.tools_json,
+        activity_json: bucket.activity_json,
+        task_category: bucket.task_category,
+        skills_json: bucket.skills_json,
+        fast_mode: bucket.fast_mode,
         models: finalizeModelRollups(bucket.models, { includeProvider: true }),
-      };
+      });
     })
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
@@ -481,10 +604,13 @@ function queryBranchUsage(
     includeDateBuckets = false,
     sessionDate = null,
   } = {},
+  context = {},
 ) {
   if (!fs.existsSync(dbPath)) return emptyResult();
 
   const requestedLimit = clampLimit(limit);
+  const groupingMode = context.groupingMode || readSessionGroupingMode(context.env || process.env);
+  const groupEdges = groupingVisible(groupingMode) && includeSessions ? readGroupEdges(dbPath) : [];
   const readOptions = {
     from,
     to,
@@ -513,6 +639,7 @@ function queryBranchUsage(
   const totalsCost = createCostAccumulator();
   const totals = {
     total_tokens: 0,
+    billable_total_tokens: 0,
     total_cost_usd: 0,
     cost_estimated: false,
     cost_quality: 'zero_tokens',
@@ -522,10 +649,12 @@ function queryBranchUsage(
   for (const row of rows) {
     const rowCost = factCost(row);
     const rowTokens = Number(row.total_tokens || 0);
+    const rowBillableTokens = billableTokens(row);
     const rowLastSeen = row.last_observed_at || row.first_observed_at || null;
     const repoKey = repoGroupKey(row);
 
     totals.total_tokens += rowTokens;
+    totals.billable_total_tokens += rowBillableTokens;
     totals.session_count += 1;
     addCostToAccumulator(totalsCost, rowCost);
 
@@ -564,6 +693,7 @@ function queryBranchUsage(
         attribution_branch: row.attribution_branch || attributionBranchName(branchName),
         branch_kind: branchKind,
         total_tokens: 0,
+        billable_total_tokens: 0,
         total_cost_usd: null,
         cost_estimated: false,
         cost_quality: 'zero_tokens',
@@ -572,6 +702,7 @@ function queryBranchUsage(
         confidence: confidenceShape(),
         models: new Map(),
         date_buckets: includeDateBuckets ? new Map() : undefined,
+        ...enrichmentShape(),
         _cost: createCostAccumulator(),
         sessions: includeSessions ? [] : undefined,
         historical_worktree: row.historical_worktree || undefined,
@@ -581,16 +712,18 @@ function queryBranchUsage(
     const branchEntry = repoEntry.branches.get(branchKey);
     branchEntry.historical_worktree = branchEntry.historical_worktree || row.historical_worktree || undefined;
     branchEntry.total_tokens += rowTokens;
+    branchEntry.billable_total_tokens += rowBillableTokens;
     branchEntry.session_count += 1;
+    addEnrichment(branchEntry, row);
     addCostToAccumulator(branchEntry._cost, rowCost);
     if (String(rowLastSeen || '') > String(branchEntry.last_seen_at || '')) {
       branchEntry.last_seen_at = rowLastSeen;
     }
     branchEntry.confidence[normalizeConfidence(row.confidence)] += 1;
 
-    addModelRollup(branchEntry.models, row, rowTokens, rowCost);
+    addModelRollup(branchEntry.models, row, rowTokens, rowBillableTokens, rowCost);
     const sessionDateKey = includeDateBuckets
-      ? addDateBucketRollup(branchEntry.date_buckets, row, rowTokens, rowCost)
+      ? addDateBucketRollup(branchEntry.date_buckets, row, rowTokens, rowBillableTokens, rowCost)
       : null;
 
     if (includeSessions) {
@@ -601,11 +734,21 @@ function queryBranchUsage(
         ended_at: row.last_observed_at,
         model: row.model,
         total_tokens: row.total_tokens,
+        billable_total_tokens: row.billable_total_tokens ?? row.total_tokens,
         total_cost_usd: rowCost.total_cost_usd,
         cost_estimated: rowCost.cost_estimated,
         cost_quality: rowCost.cost_quality,
         confidence: row.confidence,
         branch_resolution_tier: row.branch_resolution_tier,
+        cache_creation_5m_input_tokens: numericField(row, 'cache_creation_5m_input_tokens'),
+        cache_creation_1h_input_tokens: numericField(row, 'cache_creation_1h_input_tokens'),
+        web_search_requests: numericField(row, 'web_search_requests'),
+        tool_call_count: numericField(row, 'tool_call_count'),
+        tools_json: row.tools_json ?? null,
+        activity_json: row.activity_json ?? null,
+        task_category: row.task_category ?? null,
+        skills_json: row.skills_json ?? null,
+        fast_mode: numericField(row, 'fast_mode'),
         _date: sessionDateKey,
       });
     }
@@ -645,7 +788,10 @@ function queryBranchUsage(
                   .filter((session) => !selectedDate || session._date === selectedDate)
                   .map(({ _date, ...session }) => session)
               : branchEntry.sessions;
-            return {
+            const groupedSessions = groupingVisible(groupingMode) && Array.isArray(sessions)
+              ? buildSessionGroupsForRows(sessions, groupEdges)
+              : { sessions, session_groups: undefined };
+            return stripEmptyEnrichment({
               ...branchEntry,
               total_cost_usd: branchCost.total_cost_usd,
               cost_estimated: branchCost.cost_estimated,
@@ -654,8 +800,9 @@ function queryBranchUsage(
               selected_date: selectedDate || undefined,
               date_buckets: includeDateBuckets ? dateBuckets : undefined,
               models: finalizeModelRollups(branchEntry.models),
-              sessions,
-            };
+              sessions: groupedSessions.sessions,
+              session_groups: groupedSessions.session_groups,
+            });
           })
           .map(({ _cost, ...branchEntry }) => branchEntry)
           .sort((a, b) => b.total_tokens - a.total_tokens)

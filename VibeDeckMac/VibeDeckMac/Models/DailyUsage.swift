@@ -4,9 +4,10 @@ struct DailyUsageResponse: Codable, Equatable {
     var from: String
     var to: String
     var data: [DailyEntry]
+    var freshness: ProjectionFreshness?
 
-    init(from: String = "", to: String = "", data: [DailyEntry] = []) {
-        self.from = from; self.to = to; self.data = data
+    init(from: String = "", to: String = "", data: [DailyEntry] = [], freshness: ProjectionFreshness? = nil) {
+        self.from = from; self.to = to; self.data = data; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -14,9 +15,10 @@ struct DailyUsageResponse: Codable, Equatable {
         self.from = try c.decodeIfPresent(String.self, forKey: .from) ?? ""
         self.to = try c.decodeIfPresent(String.self, forKey: .to) ?? ""
         self.data = try c.decodeIfPresent([DailyEntry].self, forKey: .data) ?? []
+        self.freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
-    private enum CodingKeys: String, CodingKey { case from, to, data }
+    private enum CodingKeys: String, CodingKey { case from, to, data, freshness }
 }
 
 struct DailyEntry: Codable, Equatable, Identifiable {
@@ -30,14 +32,17 @@ struct DailyEntry: Codable, Equatable, Identifiable {
     var cacheCreationInputTokens: Int
     var reasoningOutputTokens: Int
     var conversationCount: Int
+    var totalCostUsd: Double
 
     init(day: String = "", totalTokens: Int = 0, billableTotalTokens: Int = 0,
          inputTokens: Int = 0, outputTokens: Int = 0, cachedInputTokens: Int = 0,
-         cacheCreationInputTokens: Int = 0, reasoningOutputTokens: Int = 0, conversationCount: Int = 0) {
+         cacheCreationInputTokens: Int = 0, reasoningOutputTokens: Int = 0, conversationCount: Int = 0,
+         totalCostUsd: Double = 0) {
         self.day = day; self.totalTokens = totalTokens; self.billableTotalTokens = billableTotalTokens
         self.inputTokens = inputTokens; self.outputTokens = outputTokens
         self.cachedInputTokens = cachedInputTokens; self.cacheCreationInputTokens = cacheCreationInputTokens
         self.reasoningOutputTokens = reasoningOutputTokens; self.conversationCount = conversationCount
+        self.totalCostUsd = totalCostUsd
     }
 
     init(from decoder: Decoder) throws {
@@ -51,6 +56,7 @@ struct DailyEntry: Codable, Equatable, Identifiable {
         cacheCreationInputTokens = try c.decodeIfPresent(Int.self, forKey: .cacheCreationInputTokens) ?? 0
         reasoningOutputTokens = try c.decodeIfPresent(Int.self, forKey: .reasoningOutputTokens) ?? 0
         conversationCount = try c.decodeIfPresent(Int.self, forKey: .conversationCount) ?? 0
+        totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -63,5 +69,6 @@ struct DailyEntry: Codable, Equatable, Identifiable {
         case cacheCreationInputTokens = "cache_creation_input_tokens"
         case reasoningOutputTokens = "reasoning_output_tokens"
         case conversationCount = "conversation_count"
+        case totalCostUsd = "total_cost_usd"
     }
 }

@@ -22,12 +22,21 @@ function normalizeUpdates(updates) {
         'input_tokens',
         'cached_input_tokens',
         'cache_creation_input_tokens',
+        'cache_creation_5m_input_tokens',
+        'cache_creation_1h_input_tokens',
         'output_tokens',
         'reasoning_output_tokens',
+        'web_search_requests',
+        'tool_call_count',
         'conversation_count',
+        'billable_total_tokens',
       ]) {
         if (u[key] == null) continue;
         if (!Number.isInteger(u[key]) || u[key] < 0) return null;
+        out[key] = u[key];
+      }
+      for (const key of ['tools_json', 'activity_json']) {
+        if (u[key] == null) continue;
         out[key] = u[key];
       }
       return out;
@@ -74,13 +83,20 @@ function extractSessionEvents({
         session_id: sid,
         observed_at: u.observed_at,
         delta_tokens: u.delta_tokens,
+        billable_total_tokens: u.billable_total_tokens ?? null,
         cwd: cwd ?? null,
         model: model ?? null,
         input_tokens: u.input_tokens ?? null,
         cached_input_tokens: u.cached_input_tokens ?? null,
         cache_creation_input_tokens: u.cache_creation_input_tokens ?? null,
+        cache_creation_5m_input_tokens: u.cache_creation_5m_input_tokens ?? null,
+        cache_creation_1h_input_tokens: u.cache_creation_1h_input_tokens ?? null,
         output_tokens: u.output_tokens ?? null,
         reasoning_output_tokens: u.reasoning_output_tokens ?? null,
+        web_search_requests: u.web_search_requests ?? null,
+        tool_call_count: u.tool_call_count ?? null,
+        tools_json: u.tools_json ?? null,
+        activity_json: u.activity_json ?? null,
         conversation_count: u.conversation_count ?? null,
         branch: branch ?? null,
       }),
@@ -247,7 +263,7 @@ function extractCopilotSessionEvents(batch) {
     started_at: batch.started_at,
     ended_at: batch.ended_at,
     end_reason: batch.end_reason,
-    cwd: null,
+    cwd: batch.cwd ?? null,
     model: batch.model ?? null,
     branch: batch.branch ?? null,
     updates: batch.updates,
@@ -277,7 +293,52 @@ function extractOmpSessionEvents(batch) {
     started_at: batch.started_at,
     ended_at: batch.ended_at,
     end_reason: batch.end_reason,
-    cwd: null,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractPiSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'pi',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractGooseSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'goose',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractCrushSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'crush',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
     model: batch.model ?? null,
     branch: batch.branch ?? null,
     updates: batch.updates,
@@ -300,6 +361,81 @@ function extractCodebuddySessionEvents(batch) {
   });
 }
 
+function extractDroidSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'droid',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractQwenSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'qwen',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractClineFamilySessionEvents(batch) {
+  return extractSessionEvents({
+    provider: batch.provider,
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractCursorAgentSessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'cursor-agent',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: batch.cwd ?? null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
+function extractAntigravitySessionEvents(batch) {
+  return extractSessionEvents({
+    provider: 'antigravity',
+    session_id: batch.session_id,
+    started_at: batch.started_at,
+    ended_at: batch.ended_at,
+    end_reason: batch.end_reason,
+    cwd: null,
+    model: batch.model ?? null,
+    branch: batch.branch ?? null,
+    updates: batch.updates,
+    total_tokens: batch.total_tokens,
+  });
+}
+
 module.exports = {
   extractClaudeCodeSessionEvents,
   extractCodexSessionEvents,
@@ -313,5 +449,13 @@ module.exports = {
   extractCopilotSessionEvents,
   extractKimiSessionEvents,
   extractOmpSessionEvents,
+  extractPiSessionEvents,
+  extractGooseSessionEvents,
+  extractCrushSessionEvents,
   extractCodebuddySessionEvents,
+  extractDroidSessionEvents,
+  extractQwenSessionEvents,
+  extractClineFamilySessionEvents,
+  extractCursorAgentSessionEvents,
+  extractAntigravitySessionEvents,
 };

@@ -6,7 +6,6 @@ import {
   ChevronDown,
   Download,
   ExternalLink,
-  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -14,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button, Card, ConfirmModal, Input } from "../ui/openai/components";
 import { ProviderIcon } from "../ui/matrix-a/components/ProviderIcon.jsx";
-import { PageFrame } from "../components/PageFrame.jsx";
+import { KpiCard, PageShell, SectionHeader, SkeletonRows, Surface } from "../components/RevampSurfaces.jsx";
 import { copy } from "../lib/copy";
 import { cn } from "../lib/cn";
 import {
@@ -23,6 +22,7 @@ import {
   discoverSkills,
   getInstalledSkills,
   getSkillRepos,
+  getSkillUsage,
   importLocalSkill,
   installSkill,
   removeSkillRepo,
@@ -99,6 +99,15 @@ function targetBusyKey(skillId, targetId) {
   return `target:${skillId}:${targetId}`;
 }
 
+function BusyMark({ className = "h-4 w-4" }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("shimmer inline-block shrink-0 rounded-sm", className)}
+    />
+  );
+}
+
 function TargetToggleGroup({ skill, targets, busyKey, onToggleTarget }) {
   const activeTargets = new Set(skill.targets || []);
   return (
@@ -124,7 +133,7 @@ function TargetToggleGroup({ skill, targets, busyKey, onToggleTarget }) {
             )}
           >
             {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <BusyMark className="h-4 w-4" />
             ) : (
               <ProviderIcon provider={target.id} size={16} />
             )}
@@ -170,7 +179,7 @@ function SkillRow({ skill, targets, busyKey, onToggleTarget, onRemove }) {
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-oai-gray-400 opacity-0 transition duration-200 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 disabled:cursor-wait disabled:opacity-100 dark:hover:bg-red-950/30 dark:hover:text-red-300 lg:justify-self-end"
       >
         {removing ? (
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <BusyMark className="h-4 w-4" />
         ) : (
           <Trash2 className="h-4 w-4" aria-hidden />
         )}
@@ -198,6 +207,103 @@ function MySkillsView({ items, totalCount, targets, busyKey, onToggleTarget, onR
         ))}
       </div>
     </div>
+  );
+}
+
+function formatSkillCost(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "$0.00";
+  return numeric.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function skillLookupKeys(skill) {
+  return [
+    skill?.name,
+    skill?.directory,
+    String(skill?.directory || "").split(/[\\/]/).pop(),
+  ]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function SkillUsagePanel({ usage, loading, installedSkills = [] }) {
+  const rows = Array.isArray(usage?.skills) ? usage.skills.slice(0, 3) : [];
+  const sourceByName = useMemo(() => {
+    const map = new Map();
+    for (const skill of installedSkills) {
+      for (const key of skillLookupKeys(skill)) {
+        if (!map.has(key)) map.set(key, skill);
+      }
+    }
+    return map;
+  }, [installedSkills]);
+  const totalInvocationCount = Number(usage?.totalInvocationCount || 0);
+  return (
+    <Surface className="flex flex-col justify-between">
+      <SectionHeader title="Usage attribution" />
+      {loading ? (
+        <div className="mt-1">
+          <SkeletonRows rows={2} />
+        </div>
+      ) : rows.length ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-label uppercase text-oai-gray-500 dark:text-oai-gray-400">Invocations</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-oai-black dark:text-white">
+                {totalInvocationCount.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-label uppercase text-oai-gray-500 dark:text-oai-gray-400">Attributed cost</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums text-oai-black dark:text-white">
+                {formatSkillCost(usage?.totalCostUsd)}
+              </p>
+            </div>
+          </div>
+          <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">
+            {rows.map((row) => (
+              <div key={row.name} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 py-2 text-sm">
+                {(() => {
+                  const source = sourceByName.get(String(row.name || "").trim().toLowerCase());
+                  const href = source?.readmeUrl || null;
+                  return href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-w-0 items-center gap-1 truncate font-medium text-oai-black no-underline hover:underline dark:text-white"
+                    >
+                      <span className="min-w-0 truncate">{row.name}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-oai-gray-400" aria-hidden />
+                    </a>
+                  ) : (
+                    <span className="min-w-0 truncate font-medium text-oai-black dark:text-white">
+                      {row.name}
+                    </span>
+                  );
+                })()}
+                <span className="tabular-nums text-oai-gray-500 dark:text-oai-gray-400">
+                  {Number(row.invocation_count || 0).toLocaleString()} calls
+                </span>
+                <span className="tabular-nums text-oai-black dark:text-white">
+                  {formatSkillCost(row.cost_usd)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm leading-6 text-oai-gray-600 dark:text-oai-gray-300">
+          No skill-level provenance has been recorded yet.
+        </p>
+      )}
+    </Surface>
   );
 }
 
@@ -325,7 +431,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
               title={targetSummary}
             >
               {installing ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+                <BusyMark className="mr-1.5 h-3.5 w-3.5" />
               ) : (
                 <Download className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               )}
@@ -387,7 +493,7 @@ const BrowseCard = React.memo(function BrowseCard({ skill, installed, installing
 
 function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove, onClose }) {
   return (
-    <div className="rounded-lg border border-oai-gray-200 bg-white p-3 dark:border-oai-gray-800 dark:bg-oai-gray-950">
+    <div className="vd-card-solid rounded-lg border border-[var(--vd-border)] p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-oai-black dark:text-white">
@@ -425,7 +531,7 @@ function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove, 
           className="shrink-0 whitespace-nowrap"
         >
           {busyKey === "repo:add" ? (
-            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+            <BusyMark className="mr-1.5 h-4 w-4" />
           ) : (
             <Plus className="mr-1.5 h-4 w-4" aria-hidden />
           )}
@@ -453,7 +559,7 @@ function RepoManager({ repos, repoInput, onRepoInput, busyKey, onAdd, onRemove, 
                   className="shrink-0"
                 >
                   {removing ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                    <BusyMark className="h-3.5 w-3.5" />
                   ) : (
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   )}
@@ -492,6 +598,8 @@ export function SkillsPage() {
   const [loading, setLoading] = useState(true);
   const [myLoading, setMyLoading] = useState(false);
   const [browseLoading, setBrowseLoading] = useState(false);
+  const [skillUsage, setSkillUsage] = useState(null);
+  const [skillUsageLoading, setSkillUsageLoading] = useState(false);
   const [error, setError] = useState("");
   const [pendingRemove, setPendingRemove] = useState(null);
   const [toast, setToast] = useState(null); // { message, undo, key }
@@ -548,6 +656,18 @@ export function SkillsPage() {
   const loadRepos = useCallback(async () => {
     const data = await getSkillRepos();
     setRepos(data.repos || []);
+  }, []);
+
+  const loadSkillUsage = useCallback(async () => {
+    setSkillUsageLoading(true);
+    try {
+      const data = await getSkillUsage({ limit: 8 });
+      setSkillUsage(data && typeof data === "object" ? data : null);
+    } catch (_err) {
+      setSkillUsage(null);
+    } finally {
+      setSkillUsageLoading(false);
+    }
   }, []);
 
   const loadDiscoverPage = useCallback(async ({ force = false, sourceValue = SOURCE_ALL } = {}) => {
@@ -628,13 +748,13 @@ export function SkillsPage() {
     setLoading(true);
     setError("");
     try {
-      await Promise.all([loadInstalledPage(), loadRepos()]);
+      await Promise.all([loadInstalledPage(), loadRepos(), loadSkillUsage()]);
     } catch (err) {
       setError(err?.message || copy("skills.error.generic"));
     } finally {
       setLoading(false);
     }
-  }, [loadInstalledPage, loadRepos]);
+  }, [loadInstalledPage, loadRepos, loadSkillUsage]);
 
   const handleRefresh = useCallback(async () => {
     await loadInitial();
@@ -929,15 +1049,21 @@ export function SkillsPage() {
         (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE,
       )
     : visibleBrowseItems;
+  const installedTotal = Number(installedData.totalCount ?? mySkills.length) || 0;
+  const activeTargetCount = targets.length;
+  const sourceCount = repos.length + 1;
+  const activeSummary = tab === "my"
+    ? `${myTotal.toLocaleString()} visible in the installed catalog`
+    : `${browseTotal.toLocaleString()} matching the active source`;
 
   const loadingNode = (
-    <div className="flex min-h-0 flex-1 items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-oai-gray-400" aria-hidden />
+    <div className="min-h-0 flex-1 px-2">
+      <SkeletonRows rows={5} />
     </div>
   );
   const browseLoadingNode = (
-    <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 px-6 text-center">
-      <Loader2 className="h-8 w-8 animate-spin text-oai-gray-400" aria-hidden />
+    <div className="min-h-[220px] px-2">
+      <SkeletonRows rows={4} />
       <p className="max-w-md text-xs text-oai-gray-500 dark:text-oai-gray-400">
         {copy("skills.browse.loading_hint")}
       </p>
@@ -1121,9 +1247,9 @@ export function SkillsPage() {
   }
 
   return (
-    <PageFrame
+    <PageShell
       title={copy("skills.page.title")}
-      compact
+      subtitle="Installed agent skills, catalog sources, and target sync coverage."
       maxWidth="max-w-[1760px]"
       actions={
         <Button
@@ -1133,12 +1259,41 @@ export function SkillsPage() {
           onClick={handleRefresh}
           disabled={loading || browseLoading}
         >
-          <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", (loading || browseLoading) && "animate-spin")} aria-hidden />
+          {(loading || browseLoading) ? (
+            <BusyMark className="mr-1.5 h-3.5 w-3.5" />
+          ) : (
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          )}
           {copy("skills.action.refresh")}
         </Button>
       }
     >
-      <div className="flex h-[calc(100dvh-96px)] min-h-0 flex-col gap-5 overflow-hidden">
+      <div className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.2fr]">
+        <KpiCard
+          label="Installed"
+          value={installedTotal.toLocaleString()}
+          detail={installedData.loaded ? activeSummary : "Loading local skill registry"}
+          accent
+        />
+        <KpiCard
+          label="Targets"
+          value={activeTargetCount.toLocaleString()}
+          detail="Claude Code, Codex, and configured agent destinations"
+        />
+        <KpiCard
+          label="Sources"
+          value={sourceCount.toLocaleString()}
+          detail={`${repos.length.toLocaleString()} GitHub repos plus skills.sh`}
+        />
+        <SkillUsagePanel
+          usage={skillUsage}
+          loading={skillUsageLoading}
+          installedSkills={mySkills}
+        />
+      </div>
+
+      <Surface className="overflow-hidden !p-0">
+        <div className="flex h-[calc(100dvh-310px)] min-h-[620px] flex-col gap-5 overflow-hidden p-5">
           <div className="flex shrink-0 gap-6 border-b border-[var(--vd-border)]">
             {[
               ["my", copy("skills.tab.my")],
@@ -1219,7 +1374,7 @@ export function SkillsPage() {
                 <Select.Root value={source} onValueChange={setSource}>
                   <Select.Trigger
                     aria-label={copy("skills.source.label")}
-                    className="vd-control inline-flex h-10 w-44 shrink-0 items-center justify-between gap-2 rounded-md border border-oai-gray-200 bg-oai-white px-3 text-sm text-oai-black focus:outline-none data-[popup-open]:border-oai-gray-300 dark:border-oai-gray-800 dark:bg-oai-gray-900 dark:text-white dark:data-[popup-open]:border-oai-gray-700"
+                    className="vd-control inline-flex h-10 w-44 shrink-0 items-center justify-between gap-2 rounded-md border border-[var(--vd-border)] bg-[var(--vd-control-bg)] px-3 text-sm text-oai-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vd-ring)] data-[popup-open]:border-[var(--vd-border-strong)] dark:text-white"
                   >
                     <Select.Value>
                       {(value) => (value === SOURCE_ALL ? copy("skills.source.all") : value)}
@@ -1230,10 +1385,10 @@ export function SkillsPage() {
                   </Select.Trigger>
                   <Select.Portal>
                     <Select.Positioner sideOffset={4} alignItemWithTrigger={false} className="z-[60]">
-                      <Select.Popup className="vd-popover min-w-[var(--anchor-width)] overflow-hidden rounded-md border border-oai-gray-200 bg-white p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.18)] outline-none transition-[opacity,transform] duration-150 ease-out data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[starting-style]:opacity-0 dark:border-oai-gray-800 dark:bg-oai-gray-950 dark:shadow-[0_12px_32px_-12px_rgba(0,0,0,0.6)]">
+                      <Select.Popup className="vd-popover min-w-[var(--anchor-width)] overflow-hidden rounded-md border border-[var(--vd-border)] bg-[var(--vd-popover-bg)] p-1 shadow-[var(--vd-shadow)] outline-none transition-[opacity,transform] duration-150 ease-out data-[ending-style]:scale-[0.97] data-[ending-style]:opacity-0 data-[starting-style]:scale-[0.97] data-[starting-style]:opacity-0">
                         <Select.Item
                           value={SOURCE_ALL}
-                          className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-brand-50 dark:text-white dark:data-[highlighted]:bg-oai-brand-950/50"
+                          className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-[var(--vd-tint)] dark:text-white"
                         >
                           <Select.ItemText>{copy("skills.source.all")}</Select.ItemText>
                           <Select.ItemIndicator>
@@ -1246,7 +1401,7 @@ export function SkillsPage() {
                             <Select.Item
                               key={value}
                               value={value}
-                              className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-oai-brand-50 dark:text-white dark:data-[highlighted]:bg-oai-brand-950/50"
+                              className="flex cursor-default select-none items-center justify-between gap-2 rounded px-3 py-1.5 text-sm text-oai-black outline-none data-[highlighted]:bg-[var(--vd-tint)] dark:text-white"
                             >
                               <Select.ItemText>{value}</Select.ItemText>
                               <Select.ItemIndicator>
@@ -1286,7 +1441,7 @@ export function SkillsPage() {
                   className="focus:!ring-oai-brand/30"
                 >
                   {busyKey === "search" ? (
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+                    <BusyMark className="mr-1.5 h-4 w-4" />
                   ) : (
                     <Search className="mr-1.5 h-4 w-4" aria-hidden />
                   )}
@@ -1314,7 +1469,8 @@ export function SkillsPage() {
           <Card className="min-h-0 flex-1 overflow-hidden" bodyClassName="flex h-full min-h-0 flex-col">
             {contentNode}
           </Card>
-      </div>
+        </div>
+      </Surface>
 
       <ConfirmModal
         open={Boolean(pendingRemove)}
@@ -1352,6 +1508,6 @@ export function SkillsPage() {
           </div>
         </div>
       ) : null}
-    </PageFrame>
+    </PageShell>
   );
 }

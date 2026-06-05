@@ -1,11 +1,9 @@
 import SwiftUI
 import WidgetKit
 
-// Hero-number summary widget. No header chrome, no "updated" footer — the
-// widget gallery already labels the tile and the OS already shows reload
-// state. Each size promotes ONE primary number and lets the rest of the
-// information serve it. Static configuration: each widget kind has a
-// fixed, focused job (no period/metric switcher).
+// Hero-number summary widget. Each size promotes one primary number and lets
+// the rest of the information serve it. Static configuration: each widget kind
+// has a fixed, focused job (no period/metric switcher).
 
 struct SummaryWidget: Widget {
     let kind: String = "VibeDeckSummaryWidget"
@@ -13,13 +11,16 @@ struct SummaryWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: StaticSnapshotProvider()) { entry in
             SummaryWidgetView(entry: entry)
+                .modifier(WidgetFamilyPadding())
                 .containerBackground(for: .widget) {
                     WidgetTheme.widgetBackground
                 }
+                .widgetURL(WidgetDeepLink.url("dashboard"))
         }
+        .contentMarginsDisabled()
         .configurationDisplayName(WidgetStrings.usageName)
         .description(WidgetStrings.usageDescription)
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
 
@@ -28,12 +29,15 @@ struct SummaryWidgetView: View {
     let entry: StaticEntry
 
     var body: some View {
-        switch family {
-        case .systemSmall:      SmallView(snap: entry.snapshot)
-        case .systemMedium:     MediumView(snap: entry.snapshot)
-        case .systemLarge:      LargeView(snap: entry.snapshot)
-        case .systemExtraLarge: LargeView(snap: entry.snapshot)
-        default:                MediumView(snap: entry.snapshot)
+        if entry.snapshot.hasSummaryUsage {
+            switch family {
+            case .systemSmall:      SmallView(snap: entry.snapshot)
+            case .systemMedium:     MediumView(snap: entry.snapshot)
+            case .systemLarge:      LargeView(snap: entry.snapshot)
+            default:                MediumView(snap: entry.snapshot)
+            }
+        } else {
+            SummaryEmptyView(updated: entry.snapshot.generatedAt)
         }
     }
 }
@@ -44,34 +48,35 @@ private struct SmallView: View {
     let snap: WidgetSnapshot
 
     var body: some View {
-        let hasData = snap.today.tokens > 0
-
-        VStack(alignment: .leading, spacing: 0) {
-            Text(WidgetStrings.today)
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.6)
-                .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            SummaryTitleRow(title: WidgetStrings.today, updated: snap.generatedAt)
 
             Spacer(minLength: 0)
 
-            Text(hasData ? WidgetFormat.compact(snap.today.tokens) : "—")
-                .font(.system(size: 38, weight: .bold, design: .rounded))
+            Text(WidgetFormat.cost(snap.today.costUsd))
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .foregroundColor(.primary)
+                .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
-                .padding(.bottom, 2)
 
-            Text(WidgetFormat.delta(snap.todayDeltaPercent))
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(WidgetFormat.deltaColor(snap.todayDeltaPercent))
+            Text("\(WidgetFormat.compact(snap.today.tokens)) tokens")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+            SparklineView(points: Array(snap.dailyTrend.suffix(7)))
+                .frame(height: 24)
 
             Spacer(minLength: 0)
 
-            Text(WidgetStrings.vsYesterday)
-                .font(.system(size: 10))
-                .foregroundColor(.secondary)
+            if let todayDeltaPercent = snap.todayDeltaPercent {
+                DeltaLine(delta: todayDeltaPercent)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryAccessibility(snap, updated: snap.generatedAt, providerCount: 0))
     }
 }
 
@@ -81,28 +86,35 @@ private struct MediumView: View {
     let snap: WidgetSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                HeroBlock(
-                    label: WidgetStrings.today,
-                    value: WidgetFormat.compact(snap.today.tokens),
-                    subText: todaySubText(snap: snap)
-                )
+        VStack(alignment: .leading, spacing: 10) {
+            SummaryTitleRow(title: WidgetStrings.today, updated: snap.generatedAt)
+
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(WidgetFormat.cost(snap.today.costUsd))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("\(WidgetFormat.compact(snap.today.tokens)) tokens")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    SparklineView(points: Array(snap.dailyTrend.suffix(20)))
+                        .frame(height: 32)
+                    if let todayDeltaPercent = snap.todayDeltaPercent {
+                        DeltaLine(delta: todayDeltaPercent)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                HeroBlock(
-                    label: WidgetStrings.sevenDays,
-                    value: WidgetFormat.compact(snap.last7d.tokens),
-                    subText: costSubText(snap.last7d.costUsd)
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ProviderList(sources: Array(snap.sources.prefix(4)))
+                    .frame(width: 112, alignment: .leading)
             }
-
-            Spacer(minLength: 8)
-
-            SparklineView(points: Array(snap.dailyTrend.suffix(14)))
-                .frame(height: 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryAccessibility(snap, updated: snap.generatedAt, providerCount: 4))
     }
 }
 
@@ -113,121 +125,171 @@ private struct LargeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                HeroBlock(
-                    label: WidgetStrings.today,
-                    value: WidgetFormat.compact(snap.today.tokens),
-                    subText: todaySubText(snap: snap),
-                    size: .compact
-                )
+            SummaryTitleRow(title: WidgetStrings.today, updated: snap.generatedAt)
+            HStack(alignment: .top, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(WidgetFormat.cost(snap.today.costUsd))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("\(WidgetFormat.compact(snap.today.tokens)) tokens")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    SparklineView(points: Array(snap.dailyTrend.suffix(20)))
+                        .frame(height: 34)
+                    if let todayDeltaPercent = snap.todayDeltaPercent {
+                        DeltaLine(delta: todayDeltaPercent)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                HeroBlock(
-                    label: WidgetStrings.sevenDays,
-                    value: WidgetFormat.compact(snap.last7d.tokens),
-                    subText: costSubText(snap.last7d.costUsd),
-                    size: .compact
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
-                HeroBlock(
-                    label: WidgetStrings.thirtyDays,
-                    value: WidgetFormat.compact(snap.last30d.tokens),
-                    subText: costSubText(snap.last30d.costUsd),
-                    size: .compact
-                )
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ProviderList(sources: Array(snap.sources.prefix(5)))
+                    .frame(width: 118, alignment: .leading)
             }
 
-            BarTrendChart(points: snap.dailyTrend)
-                .frame(maxWidth: .infinity, minHeight: 56)
+            Divider()
 
-            VStack(spacing: 6) {
-                ForEach(Array(snap.topModels.prefix(3).enumerated()), id: \.element.id) { idx, m in
-                    InlineModelRow(rank: idx, model: m)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(WidgetStrings.sevenDays)
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundColor(.secondary)
+                BarTrendChart(points: Array(snap.dailyTrend.suffix(7)))
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                HStack(spacing: 4) {
+                    Text("\(WidgetFormat.cost(snap.last7d.costUsd)) total")
+                        .monospacedDigit()
+                    Text("·")
+                    Text("\(snap.last7d.activeDays) active days")
+                        .monospacedDigit()
                 }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(summaryAccessibility(snap, updated: snap.generatedAt, providerCount: 5))
     }
 }
 
-// MARK: - Hero number block
-
-private struct HeroBlock: View {
-    let label: String
-    let value: String
-    /// Pre-built `Text` so callers can mix colors inline (e.g. `$12.34 ▼33%`
-    /// where the cost is gray and the delta is colored). Single-line.
-    let subText: Text
-    var size: HeroSize = .large
-
-    enum HeroSize {
-        case large   // medium widget: 2 blocks side by side
-        case compact // large widget: 3 blocks side by side
-
-        var valueFont: CGFloat { self == .large ? 28 : 24 }
-    }
+private struct SummaryEmptyView: View {
+    let updated: Date
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label)
+        VStack(alignment: .leading, spacing: 8) {
+            SummaryTitleRow(title: WidgetStrings.today, updated: updated)
+            WidgetEmptyState(message: WidgetStrings.noUsageData)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("No usage yet, updated \(WidgetFormat.relativeUpdated(updated))")
+    }
+}
+
+private struct SummaryTitleRow: View {
+    let title: String
+    let updated: Date
+
+    var body: some View {
+        HStack(alignment: .lastTextBaseline) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.6)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 0)
+            Text(WidgetFormat.relativeUpdated(updated))
+                .font(.system(size: 9))
+                .foregroundColor(.secondary.opacity(0.75))
+                .monospacedDigit()
+        }
+        .frame(height: 16)
+    }
+}
+
+private struct DeltaLine: View {
+    let delta: Double
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(WidgetFormat.delta(delta))
+                .foregroundStyle(WidgetFormat.deltaColor(delta))
+                .monospacedDigit()
+            Text(WidgetStrings.vsYesterday)
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 10, weight: .semibold, design: .rounded))
+    }
+}
+
+private extension WidgetSnapshot {
+    var hasSummaryUsage: Bool {
+        today.tokens > 0 ||
+            today.costUsd > 0 ||
+            last7d.tokens > 0 ||
+            last7d.costUsd > 0 ||
+            last30d.tokens > 0 ||
+            last30d.costUsd > 0 ||
+            total.tokens > 0 ||
+            total.costUsd > 0 ||
+            dailyTrend.contains { $0.totalTokens > 0 || $0.costUsd > 0 } ||
+            sources.contains { $0.tokens > 0 || $0.costUsd > 0 }
+    }
+}
+
+private func summaryAccessibility(_ snap: WidgetSnapshot, updated: Date, providerCount: Int) -> String {
+    var parts = [
+        "Today's spend \(WidgetFormat.cost(snap.today.costUsd))",
+        "\(WidgetFormat.compact(snap.today.tokens)) tokens",
+    ]
+    if let delta = snap.todayDeltaPercent {
+        parts.append("\(WidgetFormat.delta(delta)) versus yesterday")
+    }
+    if providerCount > 0 {
+        let providers = snap.sources.prefix(providerCount).map { source in
+            "\(source.source.capitalized) \(Int(source.sharePercent.rounded())) percent"
+        }
+        if !providers.isEmpty {
+            parts.append("Provider mix \(providers.joined(separator: ", "))")
+        }
+    }
+    parts.append("updated \(WidgetFormat.relativeUpdated(updated))")
+    return parts.joined(separator: ", ")
+}
+
+private struct ProviderList: View {
+    let sources: [SnapshotSourceEntry]
+
+    var body: some View {
+        let segments = sources.map { source in
+            WidgetBarSegment(
+                id: source.source,
+                label: source.source.capitalized,
+                fraction: source.sharePercent / 100,
+                color: WidgetTheme.sourceColor(source.source)
+            )
+        }
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text("PROVIDERS")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.6)
                 .foregroundColor(.secondary)
-            Text(value)
-                .font(.system(size: size.valueFont, weight: .bold, design: .rounded))
-                .foregroundColor(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-            subText
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .lineLimit(1)
-        }
-    }
-}
-
-// MARK: - Sub-line builders
-
-/// Today's sub line: gray cost + colored delta side by side, e.g.
-/// `$12.34  ▼33%`. Concatenated as a single `Text` so it stays one line and
-/// shares the parent's font / size with the other hero blocks.
-private func todaySubText(snap: WidgetSnapshot) -> Text {
-    let cost = WidgetFormat.cost(snap.today.costUsd)
-    let delta = WidgetFormat.delta(snap.todayDeltaPercent)
-    let deltaColor = WidgetFormat.deltaColor(snap.todayDeltaPercent)
-    return Text("\(cost)  ").foregroundColor(.secondary)
-         + Text(delta).foregroundColor(deltaColor)
-}
-
-/// Plain gray cost line for the 7d / 30d hero blocks.
-private func costSubText(_ usd: Double) -> Text {
-    Text(WidgetFormat.cost(usd)).foregroundColor(.secondary)
-}
-
-// Simple inline row used by Large to surface top models without the
-// separate Top Models widget being installed.
-private struct InlineModelRow: View {
-    let rank: Int
-    let model: SnapshotModelEntry
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(WidgetTheme.modelDot(rank))
-                .frame(width: 6, height: 6)
-            Text(model.name)
-                .font(.system(size: 11, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 6)
-            Text(WidgetFormat.compact(model.tokens))
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-                .monospacedDigit()
-            Text(String(format: "%.0f%%", model.sharePercent))
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(Color.secondary.opacity(0.55))
-                .monospacedDigit()
-                .frame(width: 30, alignment: .trailing)
+            SegmentedBar(segments: segments)
+            ForEach(sources) { source in
+                HStack(spacing: 5) {
+                    WidgetProviderLogo(source: source.source, size: 11)
+                    Text(source.source.capitalized)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(String(format: "%.0f%%", source.sharePercent))
+                        .monospacedDigit()
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+            }
         }
     }
 }

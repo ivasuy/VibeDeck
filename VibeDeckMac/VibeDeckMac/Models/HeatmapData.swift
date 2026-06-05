@@ -7,11 +7,12 @@ struct HeatmapResponse: Codable, Equatable {
     var activeDays: Int
     var streakDays: Int
     var weeks: [[HeatmapCell?]]
+    var freshness: ProjectionFreshness?
 
     init(from: String = "", to: String = "", weekStartsOn: String = "sun",
-         activeDays: Int = 0, streakDays: Int = 0, weeks: [[HeatmapCell?]] = []) {
+         activeDays: Int = 0, streakDays: Int = 0, weeks: [[HeatmapCell?]] = [], freshness: ProjectionFreshness? = nil) {
         self.from = from; self.to = to; self.weekStartsOn = weekStartsOn
-        self.activeDays = activeDays; self.streakDays = streakDays; self.weeks = weeks
+        self.activeDays = activeDays; self.streakDays = streakDays; self.weeks = weeks; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -22,10 +23,11 @@ struct HeatmapResponse: Codable, Equatable {
         activeDays = try c.decodeIfPresent(Int.self, forKey: .activeDays) ?? 0
         streakDays = try c.decodeIfPresent(Int.self, forKey: .streakDays) ?? 0
         weeks = try c.decodeIfPresent([[HeatmapCell?]].self, forKey: .weeks) ?? []
+        freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case from, to, weeks
+        case from, to, weeks, freshness
         case weekStartsOn = "week_starts_on"
         case activeDays = "active_days"
         case streakDays = "streak_days"
@@ -36,11 +38,12 @@ struct HeatmapCell: Codable, Equatable {
     var day: String
     var totalTokens: Int
     var billableTotalTokens: Int
+    var totalCostUsd: Double
     var level: Int
 
-    init(day: String = "", totalTokens: Int = 0, billableTotalTokens: Int = 0, level: Int = 0) {
+    init(day: String = "", totalTokens: Int = 0, billableTotalTokens: Int = 0, totalCostUsd: Double = 0, level: Int = 0) {
         self.day = day; self.totalTokens = totalTokens
-        self.billableTotalTokens = billableTotalTokens; self.level = level
+        self.billableTotalTokens = billableTotalTokens; self.totalCostUsd = totalCostUsd; self.level = level
     }
 
     init(from decoder: Decoder) throws {
@@ -48,6 +51,7 @@ struct HeatmapCell: Codable, Equatable {
         day = try c.decodeIfPresent(String.self, forKey: .day) ?? ""
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
         billableTotalTokens = try c.decodeIfPresent(Int.self, forKey: .billableTotalTokens) ?? 0
+        totalCostUsd = try c.decodeIfPresent(Double.self, forKey: .totalCostUsd) ?? 0
         level = try c.decodeIfPresent(Int.self, forKey: .level) ?? 0
     }
 
@@ -55,6 +59,7 @@ struct HeatmapCell: Codable, Equatable {
         case day
         case totalTokens = "total_tokens"
         case billableTotalTokens = "billable_total_tokens"
+        case totalCostUsd = "total_cost_usd"
         case level
     }
 }

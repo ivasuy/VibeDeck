@@ -7,7 +7,7 @@ shared.unit.million_abbrev,shared,*,*,unit_million_abbrev,M,,active
 shared.unit.billion_abbrev,shared,*,*,unit_billion_abbrev,B,,active
 shared.range.simple,shared,*,*,label,Range: {{range}},,active
 shared.data_source,shared,*,*,label,Data source: {{source}},,active
-shared.error.prefix,shared,*,*,label,Error: {{error}},,active
+shared.error.prefix,shared,*,*,label,Details: {{error}},,active
 shared.status.unsynced,shared,*,*,status,—,,active
 shared.confidence.high,shared,*,Shared,confidence_high,high,,active
 shared.confidence.medium,shared,*,Shared,confidence_medium,medium,,active
@@ -15,9 +15,9 @@ shared.confidence.low,shared,*,Shared,confidence_low,low,,active
 shared.confidence.unattributed,shared,*,Shared,confidence_unattributed,unattributed,,active
 shared.badge.decommissioned,shared,*,Shared,badge_decommissioned,Decommissioned,,active
 brand.name,shared,*,Shared,brand_name,VibeDeck,,active
-error.boundary.title,shared,*,ErrorBoundary,title,Something went wrong,,active
-error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,This view failed to render,,active
-error.boundary.hint,shared,*,ErrorBoundary,hint,"Open the console, then reload the page",,active
+error.boundary.title,shared,*,ErrorBoundary,title,View paused,,active
+error.boundary.subtitle,shared,*,ErrorBoundary,subtitle,VibeDeck could not render this view,,active
+error.boundary.hint,shared,*,ErrorBoundary,hint,Reload the view after checking the local logs,,active
 error.boundary.no_details,shared,*,ErrorBoundary,details,No error details,,active
 error.boundary.action.reload,shared,*,ErrorBoundary,action_reload,Reload,,active
 
@@ -100,6 +100,8 @@ dashboard.model_breakdown.title,ui,NeuralDivergenceMap,NeuralDivergenceMap,title
 dashboard.model_breakdown.footer,ui,NeuralDivergenceMap,NeuralDivergenceMap,footer,Multi-Engine Load Balancing // Active Session,,active
 dashboard.model_breakdown.usage_label,ui,NeuralAdaptiveFleet,NeuralAdaptiveFleet,usage_label,USAGE: {{value}},,active
 dashboard.top_models.title,ui,TopModelsPanel,TopModelsPanel,title,"Top Models",,active
+dashboard.mcp.title,dashboard,DashboardPage,DashboardPage,mcp_title,MCP servers,,active
+dashboard.mcp.empty,dashboard,DashboardPage,DashboardPage,mcp_empty,No MCP activity in this window.,,active
 dashboard.projects.title,ui,ProjectUsagePanel,ProjectUsagePanel,title,Project Usage,,active
 dashboard.projects.tokens_label,ui,ProjectUsagePanel,ProjectUsagePanel,tokens_label,Tokens,,active
 dashboard.projects.stars_label,ui,ProjectUsagePanel,ProjectUsagePanel,stars_label,STAR,,active
@@ -126,7 +128,7 @@ dashboard.upgrade_alert.title,ui,UpgradeAlertModal,UpgradeAlertModal,title,Updat
 dashboard.upgrade_alert.subtitle,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle,VibeDeck v{{required}} is now available.,,active
 dashboard.upgrade_alert.subtitle_generic,ui,UpgradeAlertModal,UpgradeAlertModal,subtitle_generic,A new version of VibeDeck is available.,,active
 dashboard.upgrade_alert.prompt,ui,UpgradeAlertModal,UpgradeAlertModal,prompt,$,,active
-dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,✨,,active
+dashboard.upgrade_alert.sparkle,ui,UpgradeAlertModal,UpgradeAlertModal,sparkle,Update,,active
 dashboard.upgrade_alert.install_command,ui,UpgradeAlertModal,UpgradeAlertModal,install_command,npx --yes vibedeck-cli init,,active
 dashboard.upgrade_alert.copy,ui,UpgradeAlertModal,UpgradeAlertModal,copy,[ COPY ],,active
 dashboard.upgrade_alert.copied,ui,UpgradeAlertModal,UpgradeAlertModal,copied,[ COPIED ],,active
@@ -139,6 +141,15 @@ widgets.cta.open_gallery,dashboard,WidgetsPage,WidgetsPage,cta_open_gallery,Open
 widgets.cta.download,dashboard,WidgetsPage,WidgetsPage,cta_download,Download Mac App,,active
 widgets.cta.macos_only,dashboard,WidgetsPage,WidgetsPage,cta_macos_only,macOS only,,active
 widgets.menubar.section.title,dashboard,WidgetsPage,WidgetsPage,menubar_section_title,Menu Bar,,active
+widgets.config.section.title,dashboard,WidgetsPage,WidgetWorkbench,config_section_title,Widget Configuration,,active
+widgets.config.kind,dashboard,WidgetsPage,WidgetWorkbench,config_kind,Widget,,active
+widgets.config.size,dashboard,WidgetsPage,WidgetWorkbench,config_size,Size,,active
+widgets.config.refresh,dashboard,WidgetsPage,WidgetWorkbench,config_refresh,Refresh,,active
+widgets.config.refresh_hint,dashboard,WidgetsPage,WidgetWorkbench,config_refresh_hint,Widgets refresh every 5 minutes and update after the app writes a new snapshot.,,active
+widgets.config.provider,dashboard,WidgetsPage,WidgetWorkbench,config_provider,Highlighted Provider,,active
+widgets.config.provider_hint,dashboard,WidgetsPage,WidgetWorkbench,config_provider_hint,Controls which provider preview receives focus in the setup panel.,,active
+widgets.config.previewing,dashboard,WidgetsPage,WidgetWorkbench,config_previewing,Previewing,,active
+widgets.config.note,dashboard,WidgetsPage,WidgetWorkbench,config_note,The native widgets open the matching VibeDeck tab when clicked; no controls run inside the widget body.,,active
 widgets.gallery.section.title,dashboard,WidgetsPage,WidgetsPage,gallery_section_title,Desktop Widgets,,active
 widgets.summary.name,dashboard,WidgetsPage,WidgetCatalogCard,name,Summary,,active
 widgets.summary.description,dashboard,WidgetsPage,WidgetCatalogCard,description,Today and rolling totals in one glance.,,active
@@ -280,6 +291,7 @@ live.value.unknown_repo,dashboard,LivePage,LiveSessionList,unknown_repo,Unknown 
 live.value.unknown_time,dashboard,LivePage,LiveSessionList,unknown_time,—,,active
 live.value.unattributed_branch,dashboard,LivePage,LiveSessionList,unattributed_branch,unattributed,,active
 live.value.unknown_provider,dashboard,LivePage,LiveSessionList,unknown_provider,unknown,,active
+live.value.unknown_model,dashboard,LivePage,LiveSessionList,unknown_model,unknown model,,active
 live.row.selected,dashboard,LivePage,LiveSessionList,row_selected,Selected,,active
 live.meta.tier,dashboard,LivePage,LiveSessionList,meta_tier,Tier,,active
 live.meta.model,dashboard,LivePage,LiveSessionList,meta_model,Model,,active
@@ -293,9 +305,6 @@ live.state.live,dashboard,LivePage,LiveSessionList,state_live,live,,active
 live.state.ended,dashboard,LivePage,LiveSessionList,state_ended,ended,,active
 live.state.active,dashboard,LivePage,LiveSessionList,state_active,active,,active
 live.state.unknown,dashboard,LivePage,LiveSessionList,state_unknown,unknown,,active
-live.repo_state.title,dashboard,LivePage,LivePage,repo_title,Repo / Entire state,,active
-live.repo_state.selected,dashboard,LivePage,LivePage,repo_selected,Selected repo: {{repo}},,active
-live.repo_state.empty,dashboard,LivePage,LivePage,repo_empty,Select a session with a repo to inspect Entire status.,,active
 live.attribution.title,dashboard,LivePage,AttributionHealthCard,title,Attribution health,,active
 live.attribution.loading,dashboard,LivePage,AttributionHealthCard,loading,Loading attribution stats…,,active
 live.attribution.error,dashboard,LivePage,AttributionHealthCard,error,Unable to load attribution stats: {{error}},,active
@@ -362,7 +371,6 @@ branches.drawer.tier,dashboard,BranchesPage,BranchSessionDrawer,drawer_tier,Tier
 nav.live,shared,*,Sidebar,nav_live,Live,,active
 nav.usage,shared,*,Sidebar,nav_usage,Usage,,active
 nav.branches,shared,*,Sidebar,nav_branches,Branches,,active
-nav.entire,shared,*,Sidebar,nav_entire,Entire,,active
 nav.limits,shared,*,Sidebar,nav_limits,Limits,,active
 nav.widgets,shared,*,Sidebar,nav_widgets,macOS Widgets,,active
 nav.collapse,shared,*,Sidebar,nav_collapse,Collapse sidebar,,active
@@ -385,6 +393,15 @@ settings.page.subtitle,ui,SettingsPage,SettingsPage,subtitle,"Manage your accoun
 settings.section.appearance,ui,SettingsPage,SettingsPage,sec_appearance,Appearance,,active
 settings.section.account,ui,SettingsPage,SettingsPage,sec_account,Account,,active
 settings.section.limits,ui,SettingsPage,SettingsPage,sec_limits,Limits Display,,active
+settings.model_aliases.title,ui,SettingsPage,SettingsPage,model_aliases_title,Model aliases,,active
+settings.model_aliases.alias_label,ui,SettingsPage,SettingsPage,model_aliases_alias,Alias,,active
+settings.model_aliases.canonical_label,ui,SettingsPage,SettingsPage,model_aliases_canonical,Canonical model,,active
+settings.model_aliases.add,ui,SettingsPage,SettingsPage,model_aliases_add,Add alias,,active
+settings.provider_detect.title,ui,SettingsPage,SettingsPage,provider_detect_title,Provider auto-detect,,active
+settings.provider_detect.scan,ui,SettingsPage,SettingsPage,provider_detect_scan,Scan providers,,active
+settings.provider_detect.scanning,ui,SettingsPage,SettingsPage,provider_detect_scanning,Scanning...,,active
+settings.provider_detect.found,ui,SettingsPage,SettingsPage,provider_detect_found,found,,active
+settings.provider_detect.missing,ui,SettingsPage,SettingsPage,provider_detect_missing,missing,,active
 settings.appearance.theme.label,ui,SettingsPage,SettingsPage,theme_label,Theme,,active
 settings.appearance.theme.hint,ui,SettingsPage,SettingsPage,theme_hint,Choose how VibeDeck looks across the dashboard.,,active
 settings.appearance.theme.light,ui,SettingsPage,SettingsPage,theme_light,Light,,active
@@ -408,9 +425,9 @@ settings.section.menubar,ui,SettingsPage,SettingsPage,sec_menubar,Menu Bar App,,
 settings.menubar.showStats,ui,SettingsPage,SettingsPage,mb_show_stats,Show stats in menu bar,,active
 settings.menubar.showStatsHint,ui,SettingsPage,SettingsPage,mb_show_stats_hint,Display today's token count and cost beside the menu bar icon.,,active
 settings.menubar.animatedIcon,ui,SettingsPage,SettingsPage,mb_anim,Animated icon,,active
-settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Blink the Clawd character and play the syncing animation in the menu bar.,,active
+settings.menubar.animatedIconHint,ui,SettingsPage,SettingsPage,mb_anim_hint,Animate the menu-bar mark while live sessions or sync work are active.,,active
 settings.menubar.launchAtLogin,ui,SettingsPage,SettingsPage,mb_login,Launch at login,,active
-settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start VibeDeckMac automatically when you sign in to macOS.,,active
+settings.menubar.launchAtLoginHint,ui,SettingsPage,SettingsPage,mb_login_hint,Start VibeDeckMac automatically when your Mac session starts.,,active
 settings.menubar.syncNow,ui,SettingsPage,SettingsPage,mb_sync_now,Sync now,,active
 settings.menubar.syncNowHint,ui,SettingsPage,SettingsPage,mb_sync_now_hint,Trigger an immediate parse and upload of local AI tool logs.,,active
 settings.menubar.syncing,ui,SettingsPage,SettingsPage,mb_syncing,Syncing…,,active
@@ -452,7 +469,7 @@ limits.status.no_data,ui,LimitsPage,UsageLimitsPanel,status_no_data,No live limi
 limits.status.all_hidden,ui,LimitsPage,UsageLimitsPanel,status_all_hidden,All limit providers are hidden. Open display settings to show them.,,active
 limits.status.cooldown,ui,LimitsPage,UsageLimitsPanel,status_cooldown,Rate limited. Try again in {{duration}}.,,active
 limits.status.setup_required,ui,LimitsPage,UsageLimitsPanel,status_setup_required,Setup required,,active
-limits.gemini.setup_hint,ui,LimitsPage,UsageLimitsPanel,gemini_setup_hint,"Sign in with Gemini CLI OAuth, then refresh limits.",,active
+limits.gemini.setup_hint,ui,LimitsPage,UsageLimitsPanel,gemini_setup_hint,"Authorize Gemini CLI OAuth, then refresh limits.",,active
 shared.time.now,shared,*,Shared,time_now,now,,active
 nav.skills,shared,*,Sidebar,nav_skills,Skills,,active
 skills.page.title,ui,SkillsPage,SkillsPage,title,Skills,,active
@@ -510,99 +527,17 @@ settings.appearance.language.hint,ui,SettingsPage,SettingsPage,language_hint,Use
 settings.appearance.language.system,ui,SettingsPage,SettingsPage,language_system,System,,active
 settings.appearance.language.english,ui,SettingsPage,SettingsPage,language_english,English,,active
 settings.appearance.language.chinese,ui,SettingsPage,SettingsPage,language_chinese,Simplified Chinese,,active
-entire.title,dashboard,EntirePage,EntirePage,title,Entire,,active
-entire.subtitle,dashboard,EntirePage,EntirePage,subtitle,"Repository status, checkpoints, and controls.",,active
-entire.repo.title,dashboard,EntirePage,RepoPathSelector,title,Repository,,active
-entire.repo.subtitle,dashboard,EntirePage,RepoPathSelector,subtitle,Use an absolute repository path to load Entire status and checkpoints.,,active
-entire.repo.input.label,dashboard,EntirePage,RepoPathSelector,input_label,Repository path,,active
-entire.repo.input.placeholder,dashboard,EntirePage,RepoPathSelector,input_placeholder,/Users/you/project,,active
-entire.repo.action.load,dashboard,EntirePage,RepoPathSelector,action_load,Load repo,,active
-entire.repo.action.loading,dashboard,EntirePage,RepoPathSelector,action_loading,Loading…,,active
-entire.repo.validation.absolute_path,dashboard,EntirePage,RepoPathSelector,validation_absolute_path,Enter an absolute repository path.,,active
-entire.repo.remove.error_fallback,dashboard,EntirePage,RepoPathSelector,remove_error_fallback,Unable to remove recent repository.,,active
-entire.repo.suggestions.label,dashboard,EntirePage,RepoPathSelector,suggestions_label,Recent repos,,active
-entire.status.title,dashboard,EntirePage,EntireStatusCard,title,Entire status,,active
-entire.status.loading,dashboard,EntirePage,EntireStatusCard,loading,Loading status…,,active
-entire.status.error,dashboard,EntirePage,EntireStatusCard,error,Unable to load status: {{error}},,active
-entire.status.error_fallback,dashboard,EntirePage,EntireStatusCard,error_fallback,Request failed,,active
-entire.status.empty,dashboard,EntirePage,EntireStatusCard,empty,Select a repository to load Entire status.,,active
-entire.status.state,dashboard,EntirePage,EntireStatusCard,state_label,State,,active
-entire.status.version,dashboard,EntirePage,EntireStatusCard,version_label,Version,,active
-entire.status.tip,dashboard,EntirePage,EntireStatusCard,tip_label,Checkpoint branch tip,,active
-entire.status.cached_state,dashboard,EntirePage,EntireStatusCard,cached_state_label,Cached state,,active
-entire.state.not_installed,dashboard,EntirePage,EntireStatusCard,state_not_installed,Entire not installed,,active
-entire.state.not_enabled,dashboard,EntirePage,EntireStatusCard,state_not_enabled,Not enabled,,active
-entire.state.enabled_no_commits,dashboard,EntirePage,EntireStatusCard,state_enabled_no_commits,"Enabled, waiting for checkpoints",,active
-entire.state.active,dashboard,EntirePage,EntireStatusCard,state_active,Active,,active
-entire.state.unknown,dashboard,EntirePage,EntireStatusCard,state_unknown,Unknown,,active
-entire.checkpoints.title,dashboard,EntirePage,CheckpointList,title,Checkpoints,,active
-entire.checkpoints.count,dashboard,EntirePage,CheckpointList,count,{{count}} files,,active
-entire.checkpoints.loading,dashboard,EntirePage,CheckpointList,loading,Loading checkpoints…,,active
-entire.checkpoints.error,dashboard,EntirePage,CheckpointList,error,Unable to load checkpoints: {{error}},,active
-entire.checkpoints.error_fallback,dashboard,EntirePage,CheckpointList,error_fallback,Request failed,,active
-entire.checkpoints.empty,dashboard,EntirePage,CheckpointList,empty,Select a repository to view checkpoints.,,active
-entire.checkpoints.none,dashboard,EntirePage,CheckpointList,none,No checkpoint files found.,,active
-entire.checkpoints.reason.branch_not_fetched,dashboard,EntirePage,CheckpointList,reason_branch_not_fetched,Checkpoint branch is not fetched for this repository.,,active
-entire.checkpoints.reason.git_error,dashboard,EntirePage,CheckpointList,reason_git_error,Unable to read checkpoint branch from git.,,active
-entire.checkpoints.reason.git_error_detail,dashboard,EntirePage,CheckpointList,reason_git_error_detail,Git error: {{detail}},,active
-entire.checkpoints.detail.title,dashboard,EntirePage,CheckpointList,detail_title,Checkpoint detail,,active
-entire.checkpoints.detail.loading,dashboard,EntirePage,CheckpointList,detail_loading,Loading checkpoint detail…,,active
-entire.checkpoints.detail.error,dashboard,EntirePage,CheckpointList,detail_error,Unable to load checkpoint: {{error}},,active
-entire.checkpoints.detail.error_fallback,dashboard,EntirePage,CheckpointList,detail_error_fallback,Request failed,,active
-entire.checkpoints.detail.empty,dashboard,EntirePage,CheckpointList,detail_empty,Select a checkpoint file.,,active
-entire.checkpoints.detail.mode.metadata,dashboard,EntirePage,CheckpointList,mode_metadata,Metadata,,active
-entire.checkpoints.detail.mode.raw,dashboard,EntirePage,CheckpointList,mode_raw,Raw content,,active
-entire.checkpoints.detail.meta.path,dashboard,EntirePage,CheckpointList,meta_path,File,,active
-entire.checkpoints.detail.meta.type,dashboard,EntirePage,CheckpointList,meta_type,Type,,active
-entire.checkpoints.detail.meta.keys,dashboard,EntirePage,CheckpointList,meta_keys,Keys,,active
-entire.checkpoints.detail.meta.fields,dashboard,EntirePage,CheckpointList,meta_fields,Fields,,active
-entire.checkpoints.detail.meta.none,dashboard,EntirePage,CheckpointList,meta_none,No metadata fields available.,,active
-entire.checkpoints.usage.not_linked,dashboard,EntirePage,CheckpointList,usage_not_linked,Usage not linked,,active
-entire.checkpoints.usage.ambiguous,dashboard,EntirePage,CheckpointList,usage_ambiguous,Ambiguous usage,,active
-entire.checkpoints.usage.unknown_cost,dashboard,EntirePage,CheckpointList,usage_unknown_cost,Unknown cost,,active
-entire.checkpoints.usage.quality.stored,dashboard,EntirePage,CheckpointList,usage_quality_stored,Stored cost,,active
-entire.checkpoints.usage.quality.estimated,dashboard,EntirePage,CheckpointList,usage_quality_estimated,Estimated cost,,active
-entire.checkpoints.usage.quality.token_buckets,dashboard,EntirePage,CheckpointList,usage_quality_token_buckets,Token bucket cost,,active
-entire.actions.title,dashboard,EntirePage,EntireActionsPanel,title,Actions,,active
-entire.actions.subtitle,dashboard,EntirePage,EntireActionsPanel,subtitle,Run Entire commands for the selected repository.,,active
-entire.actions.empty,dashboard,EntirePage,EntireActionsPanel,empty,Load a repository to run Entire commands.,,active
-entire.actions.enable.agents_label,dashboard,EntirePage,EntireActionsPanel,enable_agents_label,Agents for enable,,active
-entire.actions.enable.agents_hint,dashboard,EntirePage,EntireActionsPanel,enable_agents_hint,Choose one or more agents before enabling Entire.,,active
-entire.actions.enable,dashboard,EntirePage,EntireActionsPanel,enable_action,Enable,,active
-entire.actions.disable,dashboard,EntirePage,EntireActionsPanel,disable_action,Disable,,active
-entire.actions.doctor,dashboard,EntirePage,EntireActionsPanel,doctor_action,Doctor,,active
-entire.actions.status,dashboard,EntirePage,EntireActionsPanel,status_action,Status,,active
-entire.actions.rewind.input_label,dashboard,EntirePage,EntireActionsPanel,rewind_input_label,Checkpoint id,,active
-entire.actions.rewind.input_placeholder,dashboard,EntirePage,EntireActionsPanel,rewind_input_placeholder,checkpoint-id,,active
-entire.actions.rewind,dashboard,EntirePage,EntireActionsPanel,rewind_action,Rewind,,active
-entire.actions.rewind.validation.required,dashboard,EntirePage,EntireActionsPanel,rewind_validation_required,Type a checkpoint id before rewinding.,,active
-entire.actions.clean.all,dashboard,EntirePage,EntireActionsPanel,clean_all,Clean all checkpoints,,active
-entire.actions.clean,dashboard,EntirePage,EntireActionsPanel,clean_action,Clean,,active
-entire.actions.error,dashboard,EntirePage,EntireActionsPanel,error,Command failed: {{error}},,active
-entire.actions.error_fallback,dashboard,EntirePage,EntireActionsPanel,error_fallback,Request failed,,active
-entire.actions.output,dashboard,EntirePage,EntireActionsPanel,output,Command output,,active
-entire.configure.title,dashboard,EntirePage,AdvancedConfigurePanel,title,Configure,,active
-entire.configure.disclosure,dashboard,EntirePage,AdvancedConfigurePanel,disclosure,Advanced raw configure,,active
-entire.configure.subtitle,dashboard,EntirePage,AdvancedConfigurePanel,subtitle,Use raw argv-style arguments for Entire configure.,,active
-entire.configure.empty,dashboard,EntirePage,AdvancedConfigurePanel,empty,Load a repository to configure Entire.,,active
-entire.configure.input.label,dashboard,EntirePage,AdvancedConfigurePanel,input_label,Configure args,,active
-entire.configure.input.placeholder,dashboard,EntirePage,AdvancedConfigurePanel,input_placeholder,--arg value --flag,,active
-entire.configure.action,dashboard,EntirePage,AdvancedConfigurePanel,action,Run configure,,active
-entire.configure.error,dashboard,EntirePage,AdvancedConfigurePanel,error,Configure failed: {{error}},,active
-entire.configure.error_fallback,dashboard,EntirePage,AdvancedConfigurePanel,error_fallback,Request failed,,active
-entire.configure.output,dashboard,EntirePage,AdvancedConfigurePanel,output,Command output,,active
 vibedeck.api.error.db_unavailable,shared,*,VibeDeckAPI,error_db_unavailable,Local VibeDeck database is unavailable.,,active
 vibedeck.api.error.too_many_clients,shared,*,VibeDeckAPI,error_too_many_clients,Too many live stream clients are connected. Close another dashboard and retry.,,active
-vibedeck.api.error.not_installed,shared,*,VibeDeckAPI,error_not_installed,Entire is not installed for this environment.,,active
-vibedeck.api.error.not_enabled,shared,*,VibeDeckAPI,error_not_enabled,Entire is installed but not enabled for this repository.,,active
-vibedeck.api.error.enabled_no_commits,shared,*,VibeDeckAPI,error_enabled_no_commits,Entire is enabled and waiting for checkpoints.,,active
-vibedeck.api.error.active,shared,*,VibeDeckAPI,error_active,Entire is active.,,active
-vibedeck.api.error.branch_not_fetched,shared,*,VibeDeckAPI,error_branch_not_fetched,Checkpoint branch is not fetched.,,active
-vibedeck.api.error.git_error,shared,*,VibeDeckAPI,error_git_error,Git command failed while reading Entire checkpoint data.,,active
 vibedeck.api.error.invalid_repo,shared,*,VibeDeckAPI,error_invalid_repo,Repository path is invalid or unavailable.,,active
-vibedeck.api.error.invalid_path,shared,*,VibeDeckAPI,error_invalid_path,Checkpoint path is invalid.,,active
+vibedeck.api.error.invalid_path,shared,*,VibeDeckAPI,error_invalid_path,Path is invalid.,,active
 vibedeck.api.error.missing_repo,shared,*,VibeDeckAPI,error_missing_repo,Repository path is required.,,active
 vibedeck.api.error.missing_confirm_token,shared,*,VibeDeckAPI,error_missing_confirm_token,Confirmation token is required before destructive commands.,,active
 vibedeck.api.error.invalid_confirm_token,shared,*,VibeDeckAPI,error_invalid_confirm_token,Confirmation token is invalid or expired.,,active
-vibedeck.api.error.unknown_command,shared,*,VibeDeckAPI,error_unknown_command,Unknown Entire command.,,active
 vibedeck.api.error.session_not_found,shared,*,VibeDeckAPI,error_session_not_found,Session was not found. Refresh Live and retry.,,active
+nav.compare,shared,*,Sidebar,nav_compare,Compare,,active
+nav.models,shared,*,Sidebar,nav_models,Models,,active
+nav.yield,shared,*,Sidebar,nav_yield,Yield,,active
+nav.optimize,shared,*,Sidebar,nav_optimize,Optimize,,active
+nav.plan,shared,*,Sidebar,nav_plan,Plan,,active
+nav.export,shared,*,Sidebar,nav_export,Export,,active

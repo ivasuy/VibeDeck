@@ -1,6 +1,23 @@
 "use strict";
 
-const { computeRowCost, lookupModelPricing } = require("./pricing");
+const { computeEnhancedRowCost, lookupModelPricing } = require("./pricing");
+
+const TOKEN_BUCKET_FIELDS = [
+  "input_tokens",
+  "output_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "cache_creation_5m_input_tokens",
+  "cache_creation_1h_input_tokens",
+  "reasoning_output_tokens",
+];
+
+const NON_CACHE_TOKEN_BUCKET_FIELDS = [
+  "input_tokens",
+  "output_tokens",
+  "cached_input_tokens",
+  "reasoning_output_tokens",
+];
 
 function toFiniteNumber(value) {
   if (value == null || value === "") return null;
@@ -8,24 +25,32 @@ function toFiniteNumber(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function toFiniteNumericField(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function hasTokenBuckets(row) {
-  return [
-    "input_tokens",
-    "output_tokens",
-    "cached_input_tokens",
-    "cache_creation_input_tokens",
-    "reasoning_output_tokens",
-  ].some((key) => toFiniteNumber(row?.[key]) != null);
+  return (
+    TOKEN_BUCKET_FIELDS.some((key) => toFiniteNumber(row?.[key]) != null) ||
+    toFiniteNumericField(row?.web_search_requests) != null
+  );
 }
 
 function sumTokenBuckets(row) {
-  return [
-    "input_tokens",
-    "output_tokens",
-    "cached_input_tokens",
-    "cache_creation_input_tokens",
-    "reasoning_output_tokens",
-  ].reduce((sum, key) => sum + (toFiniteNumber(row?.[key]) || 0), 0);
+  const tokenTotal = NON_CACHE_TOKEN_BUCKET_FIELDS.reduce(
+    (sum, key) => sum + (toFiniteNumber(row?.[key]) || 0),
+    0,
+  );
+  const cacheCreation5m = toFiniteNumber(row?.cache_creation_5m_input_tokens) || 0;
+  const cacheCreation1h = toFiniteNumber(row?.cache_creation_1h_input_tokens) || 0;
+  const cacheCreationTotal =
+    cacheCreation5m > 0 || cacheCreation1h > 0
+      ? cacheCreation5m + cacheCreation1h
+      : toFiniteNumber(row?.cache_creation_input_tokens) || 0;
+  const webSearchRequests = toFiniteNumericField(row?.web_search_requests);
+  const webSearchBucketTotal =
+    webSearchRequests != null && webSearchRequests > 0 ? webSearchRequests : 0;
+  return tokenTotal + cacheCreationTotal + webSearchBucketTotal;
 }
 
 function pickFallbackRate(pricing) {
@@ -63,7 +88,7 @@ function estimateUsageCost(row = {}) {
     const bucketTotal = sumTokenBuckets(row);
     const canUseBucketExact = totalTokens == null || totalTokens <= bucketTotal;
     if (canUseBucketExact) {
-      const cost = computeRowCost(row);
+      const cost = computeEnhancedRowCost(row);
       return {
         total_cost_usd: Number.isFinite(cost) ? cost : null,
         cost_estimated: false,

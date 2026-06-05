@@ -141,6 +141,8 @@ async function runRebuild({
   sessionBatchEvents = null,
   captureBatchSizes = false,
   captureBatchOptions = false,
+  recentFastPathEnv = fastPath ? '1' : '0',
+  profileEnv = '1',
 }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), fastPath ? 'vd-rebuild-fast-' : 'vd-rebuild-base-'));
   const previous = {
@@ -152,6 +154,7 @@ async function runRebuild({
     OPENCODE_HOME: process.env.OPENCODE_HOME,
     VIBEDECK_REBUILD_PROFILE: process.env.VIBEDECK_REBUILD_PROFILE,
     VIBEDECK_REBUILD_RECENT_FASTPATH: process.env.VIBEDECK_REBUILD_RECENT_FASTPATH,
+    VIBEDECK_PROJECTION_FRESHNESS: process.env.VIBEDECK_PROJECTION_FRESHNESS,
     VIBEDECK_REBUILD_DIRTY_POST_DRAIN: process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
     VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS: process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS,
     VIBEDECK_REBUILD_SESSION_BATCH_EVENTS: process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS,
@@ -170,11 +173,12 @@ async function runRebuild({
     process.env.CODE_HOME = path.join(root, '.code');
     process.env.GEMINI_HOME = path.join(root, '.gemini');
     process.env.OPENCODE_HOME = path.join(root, '.opencode');
-    process.env.VIBEDECK_REBUILD_PROFILE = '1';
-    if (fastPath) process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
-    else delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
-    if (dirtyPostDrain) process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
-    else delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    if (profileEnv == null) delete process.env.VIBEDECK_REBUILD_PROFILE;
+    else process.env.VIBEDECK_REBUILD_PROFILE = String(profileEnv);
+    if (recentFastPathEnv == null) delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+    else process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = String(recentFastPathEnv);
+    if (dirtyPostDrain == null) delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    else process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = dirtyPostDrain ? '1' : '0';
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;
     else process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS = String(flushSliceEvents);
     if (sessionBatchEvents == null) delete process.env.VIBEDECK_REBUILD_SESSION_BATCH_EVENTS;
@@ -233,8 +237,15 @@ async function runRebuild({
         totals: readTotals(db),
         unknownBuckets: readUnknownBuckets(db),
       };
-      const profile = await readJson(path.join(trackerDir, 'rebuild_profile.json'));
-      summary.recentFlush = profile.stages.find((stage) => stage.name === 'recent_lane_session_event_flush')?.counters || {};
+      let profile = null;
+      try {
+        profile = await readJson(path.join(trackerDir, 'rebuild_profile.json'));
+      } catch (err) {
+        if (err?.code !== 'ENOENT') throw err;
+      }
+      summary.recentFlush =
+        profile?.stages?.find((stage) => stage.name === 'recent_lane_session_event_flush')?.counters || {};
+      summary.profile = profile;
       summary.batchSizes = batchSizes;
       summary.batchOptions = batchOptions;
       return summary;
@@ -444,7 +455,7 @@ test('phase h3 smoke summary fails branch-fact gate when branch rebuild stage is
   }
 });
 
-test('recent fast path preserves rebuild canonical parity while reducing flush boundaries', async () => {
+test('recent-first rebuild preserves canonical parity while materializing recent before historical', async () => {
   const baseline = await runRebuild({ fastPath: false });
   const fastPath = await runRebuild({ fastPath: true });
   const dirtyDeferred = await runRebuild({
@@ -499,9 +510,47 @@ test('recent fast path preserves rebuild canonical parity while reducing flush b
   );
   assert.ok(sliceBatch.recentFlush.slice_threshold_flush_count > 0);
   assert.ok(laneSplitChunked.recentFlush.historical_slice_threshold_flush_count > 0);
-  assert.equal(fastPath.recentFlush.flush_count, 1);
+  assert.equal(fastPath.recentFlush.flush_count, 2);
+  assert.ok(fastPath.recentFlush.recent_session_events_flushed > 0);
+  assert.ok(fastPath.recentFlush.historical_session_events_flushed > 0);
+});
+
+test('rebuild rollout defaults enable recent-first profile diagnostics with documented rollback flags', async () => {
+  const rollout = await runRebuild({
+    fastPath: true,
+    dirtyPostDrain: null,
+    recentFastPathEnv: null,
+    profileEnv: null,
+  });
+
+  assert.equal(rollout.profile.defaults.snapshot_write, true);
+  assert.equal(rollout.profile.defaults.recent_first_rebuild, true);
+  assert.equal(rollout.profile.defaults.dirty_post_drain, true);
+  assert.equal(rollout.profile.defaults.freshness_reporting, true);
+  assert.ok(Number.isFinite(rollout.profile.milestones.first_paint_ready_ms));
+  assert.ok(Number.isFinite(rollout.profile.milestones.historical_completion_ms));
   assert.ok(
-    !Number.isFinite(baseline.recentFlush.flush_count) ||
-      fastPath.recentFlush.flush_count <= baseline.recentFlush.flush_count,
+    rollout.profile.milestones.historical_completion_ms >= rollout.profile.milestones.first_paint_ready_ms,
+    JSON.stringify(rollout.profile.milestones),
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_STARTUP_SNAPSHOT,
+    /0 disables startup snapshot/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_RECENT_FASTPATH,
+    /0 disables recent-first/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_DIRTY_POST_DRAIN,
+    /0 restores inline branch-fact rebuilds/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_PROJECTION_FRESHNESS,
+    /0 disables projection freshness/,
+  );
+  assert.match(
+    rollout.profile.rollback_env_flags.VIBEDECK_REBUILD_PROFILE,
+    /0 disables rebuild profile/,
   );
 });

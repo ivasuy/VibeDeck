@@ -37,9 +37,9 @@ export class ErrorBoundary extends React.Component {
       : copy("error.boundary.no_details");
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-oai-white p-6 font-oai text-oai-black antialiased dark:bg-oai-gray-950 dark:text-oai-white">
-        <div className="w-full max-w-lg rounded-xl border border-oai-gray-200 bg-white p-6 text-center shadow-sm dark:border-oai-gray-800 dark:bg-oai-gray-900">
-          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300">
+      <div className="flex min-h-screen items-center justify-center bg-[var(--oai-white)] p-6 font-oai text-oai-black antialiased dark:bg-oai-gray-950 dark:text-oai-white">
+        <div className="vd-card w-full max-w-lg rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-6 text-center">
+          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[var(--vd-tint)] text-[var(--brand-600)] dark:text-[var(--brand-300)]">
             <AlertTriangle className="h-5 w-5" aria-hidden />
           </div>
           <div className="mt-4 text-xs font-medium uppercase text-oai-gray-500 dark:text-oai-gray-400">

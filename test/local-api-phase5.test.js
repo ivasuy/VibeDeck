@@ -130,6 +130,13 @@ function withEnv(nextEnv, fn) {
   }
 }
 
+function utcDayOffset(offset) {
+  const date = new Date();
+  date.setUTCHours(12, 0, 0, 0);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
 test('GET /functions/vibedeck-optimize/findings returns latest optimizer health and findings', async () => {
   const f = makeFixture();
   try {
@@ -345,6 +352,72 @@ test('GET /functions/vibedeck-usage-heatmap includes per-day cost for widget bes
 
     assert.equal(day.total_tokens, 5000);
     assert.equal(day.total_cost_usd, 4.2);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('GET usage hourly and monthly preserve explicit non-billable queue totals', async () => {
+  const f = makeFixture();
+  try {
+    fs.writeFileSync(f.queuePath, `${JSON.stringify({
+      source: 'cursor',
+      model: 'auto',
+      hour_start: '2026-05-10T12:00:00.000Z',
+      total_tokens: 100,
+      billable_total_tokens: 0,
+      input_tokens: 80,
+      output_tokens: 20,
+      conversation_count: 1,
+    })}\n`, 'utf8');
+
+    const hourly = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-usage-hourly?day=2026-05-10&tz=UTC',
+    )).body);
+    assert.equal(hourly.data[0].total_tokens, 100);
+    assert.equal(hourly.data[0].billable_total_tokens, 0);
+
+    const monthly = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-usage-monthly?from=2026-05-01&to=2026-05-31&tz=UTC',
+    )).body);
+    assert.equal(monthly.data[0].total_tokens, 100);
+    assert.equal(monthly.data[0].billable_total_tokens, 0);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('GET /functions/vibedeck-usage-heatmap reports current consecutive active streak', async () => {
+  const f = makeFixture();
+  try {
+    const yesterday = utcDayOffset(-1);
+    const today = utcDayOffset(0);
+    fs.writeFileSync(f.queuePath, [
+      {
+        source: 'codex',
+        model: 'gpt-5.5',
+        hour_start: `${yesterday}T12:00:00.000Z`,
+        total_tokens: 1000,
+        billable_total_tokens: 1000,
+      },
+      {
+        source: 'codex',
+        model: 'gpt-5.5',
+        hour_start: `${today}T12:00:00.000Z`,
+        total_tokens: 2000,
+        billable_total_tokens: 2000,
+      },
+    ].map((row) => JSON.stringify(row)).join('\n') + '\n', 'utf8');
+
+    const payload = JSON.parse((await call(
+      createLocalApiHandler({ queuePath: f.queuePath }),
+      '/functions/vibedeck-usage-heatmap?weeks=1&tz=UTC',
+    )).body);
+
+    assert.equal(payload.active_days, 2);
+    assert.equal(payload.streak_days, 2);
   } finally {
     f.cleanup();
   }

@@ -4,9 +4,10 @@ struct DailyUsageResponse: Codable, Equatable {
     var from: String
     var to: String
     var data: [DailyEntry]
+    var freshness: ProjectionFreshness?
 
-    init(from: String = "", to: String = "", data: [DailyEntry] = []) {
-        self.from = from; self.to = to; self.data = data
+    init(from: String = "", to: String = "", data: [DailyEntry] = [], freshness: ProjectionFreshness? = nil) {
+        self.from = from; self.to = to; self.data = data; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -14,9 +15,10 @@ struct DailyUsageResponse: Codable, Equatable {
         self.from = try c.decodeIfPresent(String.self, forKey: .from) ?? ""
         self.to = try c.decodeIfPresent(String.self, forKey: .to) ?? ""
         self.data = try c.decodeIfPresent([DailyEntry].self, forKey: .data) ?? []
+        self.freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
-    private enum CodingKeys: String, CodingKey { case from, to, data }
+    private enum CodingKeys: String, CodingKey { case from, to, data, freshness }
 }
 
 struct DailyEntry: Codable, Equatable, Identifiable {

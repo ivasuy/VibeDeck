@@ -54,6 +54,8 @@ class DashboardViewModel: ObservableObject {
     @Published var optimizeFindings: OptimizeFindingsResponse?
     @Published var planView: PlanViewResponse?
     @Published var forecastView: ForecastResponse?
+    @Published var startupSnapshot: StartupSnapshotResponse?
+    @Published var projectionFreshness: ProjectionFreshness?
     @Published var displayCurrency: String = UserDefaults.standard.string(forKey: "vibedeck.displayCurrency") ?? "USD"
     @Published var parityError: String?
 
@@ -72,11 +74,16 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Computed Properties
 
     // Today card (always today)
-    var todayTokens: Int { todaySummary?.totals.totalTokens ?? 0 }
-    var todayCost: String { TokenFormatter.formatCostFromString(todaySummary?.totals.totalCostUsd) }
+    var todayTokens: Int { todaySummary?.totals.totalTokens ?? startupSnapshot?.totals.todayTokens ?? 0 }
+    var todayCost: String {
+        if let todaySummary {
+            return TokenFormatter.formatCostFromString(todaySummary.totals.totalCostUsd)
+        }
+        return TokenFormatter.formatCost(startupSnapshot?.totals.todayCostUsd ?? 0)
+    }
 
     // Rolling stats (always 30-day window)
-    var last7dTokens: Int { rollingSummary?.rolling.last7d.totals.billableTotalTokens ?? 0 }
+    var last7dTokens: Int { rollingSummary?.rolling.last7d.totals.billableTotalTokens ?? startupSnapshot?.totals.weekTokens ?? 0 }
     var last7dActiveDays: Int { rollingSummary?.rolling.last7d.activeDays ?? 0 }
     var last30dTokens: Int { rollingSummary?.rolling.last30d.totals.billableTotalTokens ?? 0 }
     var last30dAvgPerDay: Int { rollingSummary?.rolling.last30d.avgPerActiveDay ?? 0 }
@@ -84,7 +91,21 @@ class DashboardViewModel: ObservableObject {
     // All-time total (matches dashboard "Total" period)
     var totalTokens: Int { totalSummary?.totals.totalTokens ?? 0 }
     var totalCost: String { TokenFormatter.formatCostFromString(totalSummary?.totals.totalCostUsd) }
-    var activeLiveSessions: [LiveSessionRow] { liveSessionsSnapshot?.currentSessions ?? [] }
+    var activeLiveSessions: [LiveSessionRow] {
+        if let liveSessionsSnapshot { return liveSessionsSnapshot.currentSessions }
+        return startupSnapshot?.activeSessions ?? []
+    }
+
+    var readinessState: ProjectionReadinessState? {
+        if let projectionFreshness {
+            return projectionFreshness.readinessState
+        }
+        return startupSnapshot?.readinessState
+    }
+
+    var hasRenderableUsageSurface: Bool {
+        hasTrackedUsage || hasStartupSnapshotUsage || readinessState != nil
+    }
 
     var hasTrackedUsage: Bool {
         todayTokens > 0 ||
@@ -99,6 +120,17 @@ class DashboardViewModel: ObservableObject {
             !fleetData.isEmpty ||
             !topModels.isEmpty ||
             !activeLiveSessions.isEmpty
+    }
+
+    private var hasStartupSnapshotUsage: Bool {
+        guard todaySummary == nil && rollingSummary == nil && totalSummary == nil else { return false }
+        guard let startupSnapshot else { return false }
+        return startupSnapshot.totals.todayTokens > 0 ||
+            startupSnapshot.totals.weekTokens > 0 ||
+            !startupSnapshot.activeSessions.isEmpty ||
+            !startupSnapshot.recentSessions.isEmpty ||
+            !startupSnapshot.topProviders.isEmpty ||
+            !startupSnapshot.recentProjects.isEmpty
     }
 
     // MARK: - Period Switching
@@ -138,7 +170,9 @@ class DashboardViewModel: ObservableObject {
             group.addTask { @MainActor in
                 do {
                     let today = DateHelpers.todayString()
-                    self.todaySummary = try await APIClient.shared.fetchSummary(from: today, to: today)
+                    let response = try await APIClient.shared.fetchSummary(from: today, to: today)
+                    self.todaySummary = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -147,7 +181,9 @@ class DashboardViewModel: ObservableObject {
             // Period summary (for the selected period — drives chart/models)
             group.addTask { @MainActor in
                 do {
-                    self.summary = try await APIClient.shared.fetchSummary(from: range.from, to: range.to)
+                    let response = try await APIClient.shared.fetchSummary(from: range.from, to: range.to)
+                    self.summary = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -156,7 +192,9 @@ class DashboardViewModel: ObservableObject {
             // Rolling summary (always 30-day for the rolling cards)
             group.addTask { @MainActor in
                 do {
-                    self.rollingSummary = try await APIClient.shared.fetchSummary(from: rollingFrom, to: rollingTo)
+                    let response = try await APIClient.shared.fetchSummary(from: rollingFrom, to: rollingTo)
+                    self.rollingSummary = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -165,7 +203,9 @@ class DashboardViewModel: ObservableObject {
             // All-time total summary (matches dashboard "Total" range)
             group.addTask { @MainActor in
                 do {
-                    self.totalSummary = try await APIClient.shared.fetchSummary(from: totalRange.from, to: totalRange.to)
+                    let response = try await APIClient.shared.fetchSummary(from: totalRange.from, to: totalRange.to)
+                    self.totalSummary = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -175,7 +215,9 @@ class DashboardViewModel: ObservableObject {
             group.addTask { @MainActor in
                 do {
                     // Always fetch 30-day daily for week/month chart
-                    self.daily = try await APIClient.shared.fetchDaily(from: rollingFrom, to: rollingTo).data
+                    let response = try await APIClient.shared.fetchDaily(from: rollingFrom, to: rollingTo)
+                    self.daily = response.data
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -184,11 +226,15 @@ class DashboardViewModel: ObservableObject {
             group.addTask { @MainActor in
                 do {
                     if self.period == .day {
-                        self.hourly = try await APIClient.shared.fetchHourly(day: rollingTo).data
+                        let response = try await APIClient.shared.fetchHourly(day: rollingTo)
+                        self.hourly = response.data
                         self.monthly = []
+                        self.applyFreshness(response.freshness)
                     } else if self.period == .total {
-                        self.monthly = try await APIClient.shared.fetchMonthly(from: range.from, to: range.to).data
+                        let response = try await APIClient.shared.fetchMonthly(from: range.from, to: range.to)
+                        self.monthly = response.data
                         self.hourly = []
+                        self.applyFreshness(response.freshness)
                     } else {
                         self.hourly = []
                         self.monthly = []
@@ -201,7 +247,9 @@ class DashboardViewModel: ObservableObject {
             // Heatmap (always full year)
             group.addTask { @MainActor in
                 do {
-                    self.heatmap = try await APIClient.shared.fetchHeatmap()
+                    let response = try await APIClient.shared.fetchHeatmap()
+                    self.heatmap = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -210,7 +258,9 @@ class DashboardViewModel: ObservableObject {
             // Model breakdown (for selected period)
             group.addTask { @MainActor in
                 do {
-                    self.modelBreakdown = try await APIClient.shared.fetchModelBreakdown(from: range.from, to: range.to)
+                    let response = try await APIClient.shared.fetchModelBreakdown(from: range.from, to: range.to)
+                    self.modelBreakdown = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -219,7 +269,9 @@ class DashboardViewModel: ObservableObject {
             // Project usage (for selected period)
             group.addTask { @MainActor in
                 do {
-                    self.projectUsage = try await APIClient.shared.fetchProjectUsage(from: range.from, to: range.to)
+                    let response = try await APIClient.shared.fetchProjectUsage(from: range.from, to: range.to)
+                    self.projectUsage = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     errorCount += 1
                     if firstError == nil { firstError = error.localizedDescription }
@@ -236,7 +288,9 @@ class DashboardViewModel: ObservableObject {
             // Live snapshot (best-effort, non-fatal)
             group.addTask { @MainActor in
                 do {
-                    self.liveSessionsSnapshot = try await APIClient.shared.fetchLiveSessionsSnapshot()
+                    let response = try await APIClient.shared.fetchLiveSessionsSnapshot()
+                    self.liveSessionsSnapshot = response
+                    self.applyFreshness(response.freshness)
                 } catch {
                     self.liveSessionsSnapshot = nil
                 }
@@ -261,8 +315,13 @@ class DashboardViewModel: ObservableObject {
 
     // MARK: - Sync
 
-    /// Initial launch: sync data first, then load dashboard.
+    /// Initial launch: publish the startup snapshot first, then refresh server data.
     func syncThenLoad() async {
+        serverOnline = await APIClient.shared.checkServerHealth()
+        if serverOnline {
+            await loadStartupSnapshot()
+        }
+
         isSyncing = true
         do {
             _ = try await APIClient.shared.triggerSync()
@@ -271,6 +330,16 @@ class DashboardViewModel: ObservableObject {
         }
         isSyncing = false
         await loadAll()
+    }
+
+    func loadStartupSnapshot() async {
+        do {
+            let snapshot = try await APIClient.shared.fetchStartupSnapshot()
+            startupSnapshot = snapshot
+            projectionFreshness = nil
+        } catch {
+            // Snapshot is an optional fast-start path; normal refresh still follows.
+        }
     }
 
     func refreshParityTabs() async {
@@ -351,6 +420,11 @@ class DashboardViewModel: ObservableObject {
     private func updateDerivedData() {
         fleetData = buildFleetData()
         topModels = buildTopModels()
+    }
+
+    private func applyFreshness(_ freshness: ProjectionFreshness?) {
+        guard let freshness else { return }
+        projectionFreshness = freshness
     }
 
     private func buildFleetData() -> [FleetEntry] {

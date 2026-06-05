@@ -70,7 +70,9 @@ targets:
           if [ -d "$SRC_DIR" ]; then
             rm -rf "$DST_DIR"
             cp -a "$SRC_DIR" "$DST_DIR"
-            chmod +x "$DST_DIR/node"
+            if [ -f "$DST_DIR/node" ]; then
+              chmod +x "$DST_DIR/node"
+            fi
           fi
 
           if [ -d "$DASHBOARD_BRAND_LOGOS_DIR" ]; then
@@ -79,6 +81,9 @@ targets:
           fi
           exit 0
         name: "Copy EmbeddedServer to app bundle"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EmbeddedServer"
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/brand-logos"
     entitlements:
       path: VibeDeckMac/VibeDeckMac.entitlements
       properties:

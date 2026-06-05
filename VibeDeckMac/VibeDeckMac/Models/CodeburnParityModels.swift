@@ -1,5 +1,79 @@
 import Foundation
 
+struct ProjectionFreshness: Codable, Equatable {
+    let mode: String
+    let recentReady: Bool
+    let historicalReady: Bool
+    let activeRebuild: Bool
+    let completeThrough: String?
+    let indexingProviders: [String]
+    let failedShards: [ProjectionFailedShard]
+
+    var readinessState: ProjectionReadinessState? {
+        switch mode {
+        case "complete":
+            return nil
+        case "empty":
+            return ProjectionReadinessState(kind: "empty", label: "No data yet", tone: "muted")
+        case "snapshot":
+            return ProjectionReadinessState(kind: "snapshot", label: "Snapshot data", tone: "muted")
+        case "partial":
+            if !historicalReady {
+                return ProjectionReadinessState(kind: "indexing", label: "Indexing historical data", tone: "indexing")
+            }
+            if !recentReady {
+                return ProjectionReadinessState(kind: "indexing", label: "Indexing recent data", tone: "indexing")
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "empty"
+        recentReady = try container.decodeIfPresent(Bool.self, forKey: .recentReady) ?? false
+        historicalReady = try container.decodeIfPresent(Bool.self, forKey: .historicalReady) ?? false
+        activeRebuild = try container.decodeIfPresent(Bool.self, forKey: .activeRebuild) ?? false
+        completeThrough = try container.decodeIfPresent(String.self, forKey: .completeThrough)
+        indexingProviders = try container.decodeIfPresent([String].self, forKey: .indexingProviders) ?? []
+        failedShards = try container.decodeIfPresent([ProjectionFailedShard].self, forKey: .failedShards) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case mode
+        case recentReady = "recent_ready"
+        case historicalReady = "historical_ready"
+        case activeRebuild = "active_rebuild"
+        case completeThrough = "complete_through"
+        case indexingProviders = "indexing_providers"
+        case failedShards = "failed_shards"
+    }
+}
+
+struct ProjectionFailedShard: Codable, Equatable {
+    let shardKey: String?
+    let provider: String?
+    let scope: String?
+    let error: String?
+    let updatedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case shardKey = "shard_key"
+        case provider
+        case scope
+        case error
+        case updatedAt = "updated_at"
+    }
+}
+
+struct ProjectionReadinessState: Equatable {
+    let kind: String
+    let label: String
+    let tone: String
+}
+
 struct CodeburnTotals: Decodable, Equatable {
     let sessionCount: Int?
     let totalTokens: Int?
@@ -155,10 +229,29 @@ struct LiveSessionsSnapshotResponse: Decodable, Equatable {
     let activeSessions: [LiveSessionRow]
     let generatedAt: String?
     let lastSyncAt: String?
+    let freshness: ProjectionFreshness?
 
     var currentSessions: [LiveSessionRow] {
         if !activeSessions.isEmpty { return activeSessions }
         return sessions.filter { $0.isActive }
+    }
+
+    var readinessState: ProjectionReadinessState? {
+        freshness?.readinessState
+    }
+
+    init(
+        sessions: [LiveSessionRow] = [],
+        activeSessions: [LiveSessionRow] = [],
+        generatedAt: String? = nil,
+        lastSyncAt: String? = nil,
+        freshness: ProjectionFreshness? = nil
+    ) {
+        self.sessions = sessions
+        self.activeSessions = activeSessions
+        self.generatedAt = generatedAt
+        self.lastSyncAt = lastSyncAt
+        self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -167,6 +260,7 @@ struct LiveSessionsSnapshotResponse: Decodable, Equatable {
         activeSessions = try container.decodeIfPresent([LiveSessionRow].self, forKey: .activeSessions) ?? []
         generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
         lastSyncAt = try container.decodeIfPresent(String.self, forKey: .lastSyncAt)
+        freshness = try container.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -174,6 +268,89 @@ struct LiveSessionsSnapshotResponse: Decodable, Equatable {
         case activeSessions = "active_sessions"
         case generatedAt = "generated_at"
         case lastSyncAt = "last_sync_at"
+        case freshness
+    }
+}
+
+struct StartupSnapshotResponse: Decodable, Equatable {
+    let ok: Bool
+    let source: String
+    let fresh: Bool
+    let generatedAt: String?
+    let reason: String?
+    let totals: StartupSnapshotTotals
+    let activeSessions: [LiveSessionRow]
+    let recentSessions: [LiveSessionRow]
+    let topProviders: [StartupSnapshotProvider]
+    let recentProjects: [StartupSnapshotProject]
+    let freshness: ProjectionFreshness?
+
+    var readinessState: ProjectionReadinessState? {
+        freshness?.readinessState
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case source
+        case fresh
+        case generatedAt = "generated_at"
+        case reason
+        case totals
+        case activeSessions = "active_sessions"
+        case recentSessions = "recent_sessions"
+        case topProviders = "top_providers"
+        case recentProjects = "recent_projects"
+        case freshness
+    }
+}
+
+struct StartupSnapshotTotals: Decodable, Equatable {
+    let todayCostUsd: Double
+    let weekCostUsd: Double
+    let todayTokens: Int
+    let weekTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case todayCostUsd = "today_cost_usd"
+        case weekCostUsd = "week_cost_usd"
+        case todayTokens = "today_tokens"
+        case weekTokens = "week_tokens"
+    }
+}
+
+struct StartupSnapshotProvider: Decodable, Equatable {
+    let provider: String
+    let totalTokens: Int
+    let totalCostUsd: Double
+    let sessionCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case totalTokens = "total_tokens"
+        case totalCostUsd = "total_cost_usd"
+        case sessionCount = "session_count"
+    }
+}
+
+struct StartupSnapshotProject: Decodable, Equatable {
+    let repoRoot: String?
+    let cwd: String?
+    let branch: String?
+    let provider: String?
+    let model: String?
+    let activityAt: String?
+    let totalTokens: Int
+    let totalCostUsd: Double
+
+    enum CodingKeys: String, CodingKey {
+        case repoRoot = "repo_root"
+        case cwd
+        case branch
+        case provider
+        case model
+        case activityAt = "activity_at"
+        case totalTokens = "total_tokens"
+        case totalCostUsd = "total_cost_usd"
     }
 }
 

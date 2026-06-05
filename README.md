@@ -127,6 +127,8 @@ Some providers are hook-based. Others are passive readers over local JSONL, SQLi
 - Provider and model usage where local data is available
 - Project and branch rollups for attributed local sessions
 - Existing non-git local folders as visible projects
+- Exact billable-token views where provider payloads expose billable token fields
+- Per-day cost heatmaps for active-day and best-day widgets
 - Historical local usage preserved in SQLite
 - Local integration health, sync status, and doctor diagnostics
 
@@ -148,13 +150,13 @@ The packaged macOS app and desktop widgets let VibeDeck live outside the browser
 
 Default local state lives under `~/.vibedeck/`, with canonical usage stored in SQLite and compatibility queue exports preserved alongside it. This keeps VibeDeck local-first while still giving you stable historical rollups and reconciliation surfaces.
 
+### Fast rebuild and startup path
+
+Rebuilds use staged SQLite promotion, projection freshness, recent-first processing, dirty branch-fact materialization, and grouped-flush caches so new users can start from local provider files without blocking the UI on the full historical repair path.
+
 ## Power User Surfaces
 
 VibeDeck also includes supporting surfaces for developers who want deeper local context after the core live-spend view is working.
-
-### Entire checkpoint visibility
-
-VibeDeck reads Entire checkpoint metadata where available, groups checkpoint files, surfaces model usage, and preserves checkpoint context as part of project audit. This is supporting context for saved work, handoffs, and multi-session history rather than the headline product promise.
 
 ### Skill and integration management
 
@@ -238,7 +240,7 @@ Default local state:
     diagnostics/
 ```
 
-`vibedeck.sqlite3` is the canonical local store for sessions, branches, projects, usage buckets, optional power-user metadata, and historical audit state.
+`vibedeck.sqlite3` is the canonical local store for sessions, branches, projects, usage buckets, billable token rollups, projection freshness, and historical audit state.
 
 ## FAQ
 

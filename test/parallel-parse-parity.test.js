@@ -169,8 +169,7 @@ async function runRebuild({
     process.env.OPENCODE_HOME = path.join(root, '.opencode');
     process.env.VIBEDECK_REBUILD_PROFILE = '1';
     process.env.VIBEDECK_PARALLEL_PARSE = '1';
-    if (dirtyPostDrain) process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = '1';
-    else delete process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+    process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN = dirtyPostDrain ? '1' : '0';
     if (recentFastPath) process.env.VIBEDECK_REBUILD_RECENT_FASTPATH = '1';
     else delete process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
     if (flushSliceEvents == null) delete process.env.VIBEDECK_REBUILD_FLUSH_SLICE_EVENTS;

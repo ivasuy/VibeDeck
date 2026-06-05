@@ -97,10 +97,10 @@ enum WidgetSnapshotWriter {
         var last30d = rollingTotals(from: inputs.rollingSummary?.rolling.last30d)
         last30d.costUsd = cost30d
 
-        // All-time total — pair the tokens/cost with the heatmap's all-time
-        // active-days so widgets can show a consistent "lifetime" row.
+        // Keep the total row internally consistent: tokens, cost, and active
+        // days all come from the same total summary range.
         var total = periodTotals(from: inputs.totalSummary)
-        total.activeDays = inputs.heatmap?.activeDays ?? total.activeDays
+        total.activeDays = inputs.totalSummary?.days ?? total.activeDays
 
         return WidgetSnapshot(
             generatedAt: Date(),

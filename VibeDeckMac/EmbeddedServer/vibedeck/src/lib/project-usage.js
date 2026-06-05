@@ -561,7 +561,7 @@ function readProjectUsageEntries(
       provider: row?.provider,
       model: row?.model,
       total_tokens: Number(row?.total_tokens || 0),
-      billable_total_tokens: Number(row?.total_tokens || 0),
+      billable_total_tokens: Number((row?.billable_total_tokens ?? row?.total_tokens) || 0),
       session_count: 1,
       last_seen_at: lastSeenAt,
       branches: branchName ? [branchName] : [],

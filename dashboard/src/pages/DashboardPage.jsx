@@ -41,7 +41,9 @@ import {
   getForecastView,
   getPlanView,
   getRecentSessions,
+  getStartupSnapshot,
   getSyncStatus,
+  resolveProjectionReadinessState,
 } from "../lib/vibedeck-api";
 import { getSyncFreshnessWarning } from "../lib/sync-freshness";
 import { DashboardView } from "../ui/matrix-a/views/DashboardView.jsx";
@@ -198,6 +200,7 @@ export function DashboardPage({
   const [recentSessions, setRecentSessions] = useState([]);
   const [forecastView, setForecastView] = useState(null);
   const [planView, setPlanView] = useState(null);
+  const [readinessState, setReadinessState] = useState(null);
   const identityScrambleDurationMs = 2200;
   const [coreIndexCollapsed, setCoreIndexCollapsed] = useState(true);
   const [installCopied, setInstallCopied] = useState(false);
@@ -512,6 +515,24 @@ export function DashboardPage({
   useEffect(() => {
     refreshSyncStatus();
   }, [refreshSyncStatus]);
+
+  useEffect(() => {
+    if (!isLocalMode) {
+      setReadinessState(null);
+      return;
+    }
+    let active = true;
+    getStartupSnapshot()
+      .then((payload) => {
+        if (active) setReadinessState(resolveProjectionReadinessState(payload?.freshness));
+      })
+      .catch(() => {
+        if (active) setReadinessState(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isLocalMode]);
 
   useEffect(() => {
     let active = true;
@@ -958,9 +979,12 @@ export function DashboardPage({
 
   const attentionInsight = useMemo(() => {
     if (showForecastBanner) {
+      const inferred = planView?.inferred === true;
       return {
         title: "Plan pressure",
-        body: "Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.",
+        body: inferred
+          ? "Projected month spend is over your detected plan. Set an exact budget in Settings to fine-tune."
+          : "Projected month spend is over your plan. Numbers shown are API-equivalent, not what you'll be billed.",
       };
     }
     if (showReadingPatternHint) {
@@ -1333,6 +1357,7 @@ export function DashboardPage({
       showExpiredGate={showExpiredGate}
       showAuthGate={showAuthGate}
       hasDashboardUsage={hasDashboardUsage}
+      readinessState={readinessState}
       screenshotTitleLine1={screenshotTitleLine1}
       screenshotTitleLine2={screenshotTitleLine2}
       identityDisplayName={identityDisplayName}

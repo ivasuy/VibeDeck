@@ -322,9 +322,21 @@ struct PlanTab: View {
                         Text(plan.label)
                             .font(.caption)
                             .modifier(FontWeightModifier(weight: .semibold))
-                        Text(plan.plan)
-                            .font(.title3)
-                            .modifier(FontWeightModifier(weight: .semibold))
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(Self.prettyPlanName(plan.plan))
+                                .font(.title3)
+                                .modifier(FontWeightModifier(weight: .semibold))
+                            if plan.inferred == true {
+                                Text("auto-detected")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule().fill(Color.panelFillStrong)
+                                    )
+                            }
+                        }
                         if !plan.labelDetail.isEmpty {
                             Text(plan.labelDetail)
                                 .font(.caption2)
@@ -391,6 +403,22 @@ struct PlanTab: View {
 
     private func progressFraction(_ plan: PlanViewResponse) -> Double {
         min(1, usagePercent(plan) / 100)
+    }
+
+    static func prettyPlanName(_ plan: String) -> String {
+        switch plan.lowercased() {
+        case "claude-pro": return "Claude Pro"
+        case "claude-max": return "Claude Max"
+        case "claude-monthly": return "Claude monthly"
+        case "codex-monthly": return "Codex monthly"
+        case "mixed-monthly": return "Claude + Codex monthly"
+        case "cursor-pro": return "Cursor Pro"
+        case "copilot-pro": return "Copilot Pro"
+        case "custom": return "Custom"
+        default:
+            let trimmed = plan.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Custom" : trimmed.replacingOccurrences(of: "-", with: " ").capitalized
+        }
     }
 }
 

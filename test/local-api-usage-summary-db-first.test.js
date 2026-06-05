@@ -79,6 +79,7 @@ test('usage endpoints prefer SQLite bucket facts over stale queue rows', async (
       session_id: 's-db-first',
       observed_at: '2026-05-11T09:01:00.000Z',
       delta_tokens: 120,
+      billable_total_tokens: 0,
       input_tokens: 100,
       cached_input_tokens: 0,
       cache_creation_input_tokens: 0,
@@ -93,8 +94,23 @@ test('usage endpoints prefer SQLite bucket facts over stale queue rows', async (
       `/functions/${["token", "tracker"].join("")}-usage-summary?from=2026-05-11&to=2026-05-11&tz=UTC`,
     );
     assert.equal(summary.totals.total_tokens, 120);
+    assert.equal(summary.totals.billable_total_tokens, 0);
     assert.equal(summary.canonical.complete, true);
     assert.equal(summary.canonical_incomplete, false);
+
+    const hourly = await callEndpoint(
+      queuePath,
+      `/functions/${["token", "tracker"].join("")}-usage-hourly?day=2026-05-11&tz=UTC`,
+    );
+    assert.equal(hourly.data[0].total_tokens, 120);
+    assert.equal(hourly.data[0].billable_total_tokens, 0);
+
+    const monthly = await callEndpoint(
+      queuePath,
+      `/functions/${["token", "tracker"].join("")}-usage-monthly?from=2026-05-01&to=2026-05-31&tz=UTC`,
+    );
+    assert.equal(monthly.data[0].total_tokens, 120);
+    assert.equal(monthly.data[0].billable_total_tokens, 0);
 
     const breakdown = await callEndpoint(
       queuePath,
@@ -103,6 +119,7 @@ test('usage endpoints prefer SQLite bucket facts over stale queue rows', async (
     assert.deepEqual(breakdown.sources.map((entry) => entry.source), ['codex']);
     assert.equal(breakdown.sources[0].models[0].model, 'gpt-5.4');
     assert.equal(breakdown.sources[0].models[0].totals.total_tokens, 120);
+    assert.equal(breakdown.sources[0].models[0].totals.billable_total_tokens, 0);
     assert.equal(breakdown.canonical.complete, true);
     assert.equal(breakdown.canonical_incomplete, false);
   } finally {

@@ -43,9 +43,14 @@ const {
   toCsv,
 } = require("./codeburn-parity");
 const { readOptimizeFindings, runOptimizeScan } = require("./optimize-scanner");
-const { readPlanConfig } = require("./plan-config");
+const { readPlanConfig, readEffectivePlanConfig } = require("./plan-config");
 const { readCurrencyRates } = require("./currency-rates");
 const { buildForecastPayload } = require("./forecast-read-model");
+const { emptyStartupSnapshot, readStartupSnapshot } = require("./startup-snapshot");
+const {
+  emptyProjectionFreshness,
+  readProjectionFreshnessPayload,
+} = require("./projection-freshness");
 
 const SYNC_TIMEOUT_MS = 120_000;
 const TRACKER_BIN = path.resolve(__dirname, "../../bin/vibedeck.js");
@@ -568,6 +573,7 @@ function readLiveSessionsSnapshot(queuePath) {
     canonical: globalCanonical,
     live_canonical: liveCanonical,
     canonical_incomplete: !liveCanonical.complete,
+    freshness: readLocalProjectionFreshness({ dbPath }),
     generated_at: generatedAt,
     last_sync_at: lastSyncAt || null,
   };
@@ -1694,6 +1700,7 @@ function scopedQueueRows(queuePath, url) {
     excludedSources: listExcludedSources(allRows, scope),
     canonical,
     canonical_incomplete: !canonical.complete,
+    freshness: readLocalProjectionFreshness({ dbPath }),
   };
 }
 
@@ -1791,7 +1798,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     }
     const bucket = byHour.get(hourKey);
     bucket.total_tokens += row.total_tokens || 0;
-    bucket.billable_total_tokens += row.total_tokens || 0;
+    bucket.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
     bucket.input_tokens += row.input_tokens || 0;
     bucket.output_tokens += row.output_tokens || 0;
     bucket.cached_input_tokens += row.cached_input_tokens || 0;
@@ -1800,6 +1807,20 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     bucket.conversation_count += row.conversation_count || 0;
   }
   return Array.from(byHour.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
+function calculateCurrentStreakDays(byDay, todayStr) {
+  if (!(byDay instanceof Map) || !todayStr) return 0;
+  let streak = 0;
+  const cursor = new Date(`${todayStr}T00:00:00Z`);
+  while (!Number.isNaN(cursor.getTime())) {
+    const day = cursor.toISOString().slice(0, 10);
+    const data = byDay.get(day);
+    if (!data || Number(data.billable_total_tokens || 0) <= 0) break;
+    streak += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak;
 }
 
 // ---------------------------------------------------------------------------
@@ -2020,6 +2041,89 @@ function codeburnDbPath(queuePath) {
   return path.join(path.dirname(queuePath), "vibedeck.sqlite3");
 }
 
+function projectionFreshnessForQueue(queuePath, { missingDbMode = "empty" } = {}) {
+  const dbPath = codeburnDbPath(queuePath);
+  if (!isProjectionFreshnessEnabled()) return emptyProjectionFreshness("disabled");
+  if (!fs.existsSync(dbPath) && missingDbMode === "snapshot") {
+    return emptyProjectionFreshness("snapshot");
+  }
+  return readProjectionFreshnessPayload({ dbPath });
+}
+
+function readLocalProjectionFreshness({ dbPath } = {}) {
+  if (!isProjectionFreshnessEnabled()) return emptyProjectionFreshness("disabled");
+  return readProjectionFreshnessPayload({ dbPath });
+}
+
+function isStartupSnapshotEnabled() {
+  const raw = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isProjectionFreshnessEnabled() {
+  const raw = process.env.VIBEDECK_PROJECTION_FRESHNESS;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isRebuildProfileDiagnosticsEnabled() {
+  const raw = process.env.VIBEDECK_REBUILD_PROFILE;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function finiteNonNegative(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function readStartupDiagnostics(trackerDir) {
+  const diagnostics = { rebuild: null };
+  if (!isRebuildProfileDiagnosticsEnabled()) return diagnostics;
+  try {
+    const payload = JSON.parse(fs.readFileSync(path.join(trackerDir, "rebuild_profile.json"), "utf8"));
+    const defaults = payload?.defaults && typeof payload.defaults === "object" ? payload.defaults : {};
+    const milestones = payload?.milestones && typeof payload.milestones === "object" ? payload.milestones : {};
+    const rollbackEnvFlags =
+      payload?.rollback_env_flags && typeof payload.rollback_env_flags === "object"
+        ? payload.rollback_env_flags
+        : {};
+    diagnostics.rebuild = {
+      generated_at: typeof payload?.generated_at === "string" ? payload.generated_at : null,
+      first_paint_ready_ms: finiteNonNegative(milestones.first_paint_ready_ms),
+      historical_completion_ms: finiteNonNegative(milestones.historical_completion_ms),
+      defaults: {
+        snapshot_write: defaults.snapshot_write === true,
+        recent_first_rebuild: defaults.recent_first_rebuild === true,
+        freshness_reporting: defaults.freshness_reporting === true,
+      },
+      rollback_env_flags: {
+        VIBEDECK_STARTUP_SNAPSHOT:
+          typeof rollbackEnvFlags.VIBEDECK_STARTUP_SNAPSHOT === "string"
+            ? rollbackEnvFlags.VIBEDECK_STARTUP_SNAPSHOT
+            : null,
+        VIBEDECK_REBUILD_RECENT_FASTPATH:
+          typeof rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH === "string"
+            ? rollbackEnvFlags.VIBEDECK_REBUILD_RECENT_FASTPATH
+            : null,
+        VIBEDECK_PROJECTION_FRESHNESS:
+          typeof rollbackEnvFlags.VIBEDECK_PROJECTION_FRESHNESS === "string"
+            ? rollbackEnvFlags.VIBEDECK_PROJECTION_FRESHNESS
+            : null,
+        VIBEDECK_REBUILD_PROFILE:
+          typeof rollbackEnvFlags.VIBEDECK_REBUILD_PROFILE === "string"
+            ? rollbackEnvFlags.VIBEDECK_REBUILD_PROFILE
+            : null,
+      },
+    };
+  } catch {}
+  return diagnostics;
+}
+
 function codeburnFiltersFromUrl(url) {
   return {
     from: url.searchParams.get("from"),
@@ -2057,7 +2161,7 @@ function sumFactCostUsd(rows) {
 }
 
 function buildPlanPayload(dbPath) {
-  const config = readPlanConfig();
+  const config = readEffectivePlanConfig({ dbPath });
   const range = currentMonthRange();
   const rows = readCodeburnFactRows(dbPath, range);
   const spend = sumFactCostUsd(rows);
@@ -2359,6 +2463,24 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       return true;
     }
 
+    // --- vibedeck-startup-snapshot (GET) ---
+    if (p === "/functions/vibedeck-startup-snapshot") {
+      if (String(req.method || "GET").toUpperCase() !== "GET") {
+        json(res, { error: "Method Not Allowed" }, 405);
+        return true;
+      }
+      const trackerDir = path.dirname(qp);
+      const snapshot = isStartupSnapshotEnabled()
+        ? readStartupSnapshot({ trackerDir })
+        : emptyStartupSnapshot({ reason: "disabled" });
+      json(res, {
+        ...snapshot,
+        freshness: projectionFreshnessForQueue(qp, { missingDbMode: "snapshot" }),
+        diagnostics: readStartupDiagnostics(trackerDir),
+      });
+      return true;
+    }
+
     // --- local-sync (POST) ---
     if (isRouteMatch(p, ROUTES.localSync)) {
       if (String(req.method || "GET").toUpperCase() !== "POST") {
@@ -2540,7 +2662,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext).filter((d) => d.day >= from && d.day <= to);
       const totals = daily.reduce(
         (acc, r) => {
@@ -2595,6 +2717,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         from, to, days: daily.length, scope, excluded_sources: excludedSources,
         canonical,
         canonical_incomplete,
+        freshness,
         totals: { ...totals, total_cost_usd: totalCost.toFixed(6) },
         rolling: {
           last_7d: { from: l7fromStr, to: todayStr, active_days: l7.length, totals: l7t },
@@ -2609,9 +2732,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext).filter((d) => d.day >= from && d.day <= to);
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data: daily });
+      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data: daily });
       return true;
     }
 
@@ -2619,7 +2742,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     if (isRouteMatch(p, ROUTES.usageHeatmap)) {
       const weeks = parseInt(url.searchParams.get("weeks") || "52", 10);
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const daily = aggregateByDay(rows, timeZoneContext);
       const todayParts = getZonedParts(new Date(), timeZoneContext);
       const todayStr = formatPartsDayKey(todayParts) || new Date().toISOString().slice(0, 10);
@@ -2662,7 +2785,19 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       for (let i = 0; i < cells.length; i += 7) {
         weeksArr.push(cells.slice(i, i + 7));
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, week_starts_on: "sun", active_days: cells.filter((c) => c.billable_total_tokens > 0).length, streak_days: 0, weeks: weeksArr });
+      json(res, {
+        from,
+        to,
+        scope,
+        excluded_sources: excludedSources,
+        canonical,
+        canonical_incomplete,
+        freshness,
+        week_starts_on: "sun",
+        active_days: cells.filter((c) => c.billable_total_tokens > 0).length,
+        streak_days: calculateCurrentStreakDays(byDay, todayStr),
+        weeks: weeksArr,
+      });
       return true;
     }
 
@@ -2671,7 +2806,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows: scopedRows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows: scopedRows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const rows = scopedRows.filter((r) => {
         if (!r.hour_start) return false;
         const d = rowDayKey(r, timeZoneContext);
@@ -2744,7 +2879,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       });
 
       json(res, {
-        from, to, days: 0, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, sources,
+        from, to, days: 0, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, sources,
         pricing: { model: "per-model", pricing_mode: "per_token_type", source: "litellm", effective_from: new Date().toISOString().slice(0, 10) },
       });
       return true;
@@ -3429,9 +3564,9 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
     if (isRouteMatch(p, ROUTES.usageHourly)) {
       const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const data = aggregateHourlyByDay(rows, day, timeZoneContext);
-      json(res, { day, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data });
+      json(res, { day, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data });
       return true;
     }
 
@@ -3440,7 +3575,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       const from = url.searchParams.get("from") || "";
       const to = url.searchParams.get("to") || "";
       const timeZoneContext = getTimeZoneContext(url);
-      const { rows, scope, excludedSources, canonical, canonical_incomplete } = scopedQueueRows(qp, url);
+      const { rows, scope, excludedSources, canonical, canonical_incomplete, freshness } = scopedQueueRows(qp, url);
       const byMonth = new Map();
       for (const row of rows) {
         if (!row.hour_start) continue;
@@ -3451,7 +3586,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           byMonth.set(month, { month, total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 });
         const a = byMonth.get(month);
         a.total_tokens += row.total_tokens || 0;
-        a.billable_total_tokens += row.total_tokens || 0;
+        a.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
         a.input_tokens += row.input_tokens || 0;
         a.output_tokens += row.output_tokens || 0;
         a.cached_input_tokens += row.cached_input_tokens || 0;
@@ -3459,7 +3594,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
         a.reasoning_output_tokens += row.reasoning_output_tokens || 0;
         a.conversation_count += row.conversation_count || 0;
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, data: Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month)) });
+      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, data: Array.from(byMonth.values()).sort((a, b) => a.month.localeCompare(b.month)) });
       return true;
     }
 

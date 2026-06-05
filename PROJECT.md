@@ -1,7 +1,7 @@
 # VibeDeck
 
 **Version:** 1.0.4 (release branch, unreleased)
-**Last updated:** 2026-05-28
+**Last updated:** 2026-06-05
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -32,6 +32,149 @@ VibeDeck should stay true to five promises:
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
 
+### 1.0.4 Rebuild Flush And Repair Audit
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Plan:** `docs/superpowers/plans/2026-05-29-rebuild-flush-repair-optimization.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-8-report.md`
+
+#### Problem
+
+The previous fast-startup work moved rebuild time down sharply, but the latest live DB profile showed the remaining DB build cost concentrated in post-parse work: grouped session-event flush and the repair pass.
+
+#### What changed
+
+- Split repair candidates into repo-metadata repair vs branch-fact rebuild work.
+- Skipped filesystem repo resolution for sessions that already have repo metadata and only need missing branch facts rebuilt.
+- Reused the already-loaded post-ledger session row for batch live-event emission instead of reloading the same row after commit.
+- Added rebuild profile counters for grouped flush events, groups, branch resolutions, and existing repo metadata reuse.
+- Promoted dirty post-drain branch-fact rebuilding to the default rebuild path, with `VIBEDECK_REBUILD_DIRTY_POST_DRAIN=0` as the rollback to inline branch-fact rebuilds during grouped flush.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity/freshness suite | `80/80` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Current live DB rebuild on previous branch | `24.51s` |
+| This branch before default dirty post-drain | `25.03s` |
+| This branch after default dirty post-drain | `17.93s` |
+| Earlier this-branch live DB rebuild | `24.34s` |
+
+#### Follow-up
+
+The default rebuild path now uses dirty post-drain materialization. On the latest local DB profile, `recent_lane_session_event_flush` dropped to `6,417.036ms`, `repair_pass` dropped to `95.639ms`, and `branch_fact_rebuild_pass` is now the main remaining stage at `8,100.361ms` for `126` dirty branch facts. The next performance phase should target faster dirty branch-fact materialization.
+
+### 1.0.4 Dirty Branch-Fact Materialization
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-9-dirty-branch-fact-materialization.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-9-report.md`
+
+#### Problem
+
+After dirty post-drain became the default rebuild path, `branch_fact_rebuild_pass` became the dominant remaining stage. The live profile showed about `8.1s` spent rebuilding `126` dirty branch facts.
+
+#### What changed
+
+- Reused unambiguous strict provider-branch evidence for later non-strict branch-fact evidence reads.
+- Kept ambiguous strict reads isolated so non-strict recovery can still ignore malformed lines and recover a valid provider branch.
+- Added a shared project-attribution cache for branch-fact materialization so repeated events with the same cwd/repo do not repeat filesystem `realpath` and `stat` work.
+- Preserved provider-log branch evidence, historical unknown, missing project, non-git project, and dirty post-drain parity behavior.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity/freshness suite | `83/83` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Live DB rebuild before this phase | `17.93s` |
+| Live DB rebuild after this phase | `10.81s` |
+| `branch_fact_rebuild_pass` before this phase | `8,100.361ms` |
+| `branch_fact_rebuild_pass` after this phase | `577.476ms` |
+
+#### Follow-up
+
+The main remaining stage is now grouped flush at about `6.54s`. The next rebuild phase should target grouped session flush itself: fewer per-session DB writes, less branch resolution during flush, or a bulk session-event materialization path that preserves live session rows and canonical parity.
+
+### 1.0.4 Grouped Flush Repo Cache
+
+**Date:** 2026-05-29
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-10-grouped-flush-repo-cache.md`
+**Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-10-report.md`
+
+#### Problem
+
+After branch-fact materialization was reduced, grouped session flush became the remaining rebuild bottleneck. Instrumentation showed `resolveRepo` ran `159` times and consumed about `5.65s`, while branch resolution itself consumed only about `0.45s`.
+
+#### What changed
+
+- Added a shared `repoResolutionByCwd` cache to the rebuild batch cache.
+- Reused cwd -> repo resolution results across grouped session batches.
+- Cached both successful repo lookups and null results, preserving the previous catch-and-null behavior.
+- Left `existingRepoStillApplies` skips unchanged.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Consolidated backend/parity/freshness suite | `84/84` passed |
+| Syntax checks | Passed |
+| Whitespace diff check | Passed |
+| Live DB rebuild before this phase | `10.81s` |
+| Live DB rebuild after this phase | `6.53s` |
+| `recent_lane_session_event_flush` before this phase | `6,538.046ms` |
+| `recent_lane_session_event_flush` after this phase | `2,280.066ms` |
+
+#### Follow-up
+
+The latest profile is balanced: grouped flush is about `2.28s`, branch facts about `0.56s`, repair about `0.08s`, and total rebuild about `6.53s`. Further gains likely require reducing per-group DB writes or avoiding per-session branch resolution work, but the largest filesystem hotspot has been removed.
+
+### 1.0.4 Data-Layer Completion And Smoke Cleanup
+
+**Date:** 2026-06-05
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+
+#### Problem
+
+The release branch still had two data-contract leftovers and three smoke-test warnings after the design and rebuild work:
+
+- Usage Limits needed exact token numerator/denominator fields wherever provider payloads expose them.
+- Heatmap best-day dollars needed per-day cost data instead of inferred copy.
+- The dashboard dev mock heatmap endpoint could return `500` because its streak date was not defined.
+- The production dashboard build still emitted a large chunk warning.
+- The local macOS debug build still emitted the copy-script output warning and a missing embedded `node` chmod warning.
+
+#### What changed
+
+- Added billable token totals to the canonical session-event, bucket, branch, project, and usage read models, with migrations for both root backend and embedded Mac backend copies.
+- Preserved canonical `total_tokens` while exposing `billable_total_tokens`, token numerator/denominator data, and per-day `total_cost_usd` for dashboard, native, menubar, and widget consumers.
+- Fixed the local Vite API heatmap mock so it returns streak days and per-cell costs consistently with the backend contract.
+- Split the dashboard app into lazy route chunks and package-name vendor chunks so the production build no longer ships one oversized main bundle.
+- Updated dashboard dev dependencies and lockfiles so `npm audit` reports zero vulnerabilities.
+- Added Xcode script outputs and guarded the optional embedded `node` chmod so local debug builds stop warning about that copy phase.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Backend data-layer suite | `65/65` passed |
+| Dashboard component and route tests | `22/22` passed |
+| Dashboard production build | Passed with no large-chunk warning |
+| Dashboard dependency audit | `0` vulnerabilities |
+| Browser smoke | Dashboard, Branches, Widgets, Live, Models, and 5 local API routes passed |
+| Native Mac build | `BUILD SUCCEEDED`; copy-script/chmod warnings removed |
+| Whitespace diff check | Passed |
+
+#### Follow-up
+
+The only remaining local warning is `xcodebuild` selecting the first of two matching macOS destinations when invoked as `-destination 'platform=macOS'`. That is a command-line destination ambiguity, not a project build-script issue.
+
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28
@@ -59,8 +202,8 @@ The DESIGN.md pass required VibeDeck to remove active Entire traces from the use
 | Focused dashboard regression suite | `33/33` passed |
 | Backend usage/data-contract tests | `35/35` passed |
 | UsageLimitsPanel token-pair tests | `6/6` passed |
-| Dashboard production build | Passed, existing large-chunk warning only |
-| Native Mac/widget build | Passed, existing script-output warning only |
+| Dashboard production build | Passed; large-chunk warning fixed in the post-smoke cleanup |
+| Native Mac/widget build | Passed; copy-script/chmod warnings fixed in the post-smoke cleanup |
 | Rendered route sweep | 14 routes across desktop and mobile passed |
 | Built bundle removed-surface scan | No Entire, sign-in, stack-trace, or canned 502 traces found |
 
@@ -1035,3 +1178,34 @@ After the first DB and cursor state exist, later starts should usually be much f
 Product caveat: we should not market current `0.1.3` as instant first-run startup for heavy users. H.6 fixed a real repair resolver bottleneck and kept `/usage`, `/dashboard`, `/branches`, Unknown branch, and Historical unknown data intact, but it did not land the architectural fast-serve behavior.
 
 Next real startup-speed direction: start the dashboard immediately from the last-good DB, show an honest `as of` timestamp / refresh status, and run sync/index refresh in the background. That is the change that would make repeat starts feel instant without sacrificing data richness or correctness.
+
+### Phase 7 - Hardening Default Rollout: Defaults, Observability, And Release Notes
+
+**Date:** 2026-05-29 IST
+**Branch:** `agent/fast-startup-rebuild`
+**Plan:** `docs/superpowers/plans/2026-05-29-phase-7-hardening-default-rollout.md`
+**Task:** `P7-T1 Defaults, Observability, And Release Notes`
+**Status:** implemented locally, pending phase audit/merge.
+
+#### What changed
+
+- `vibedeck serve` now reports first-paint readiness time and schedules the initial provider-log sync in the background after the dashboard is listening, so the UI can open from the current snapshot/empty shell instead of waiting for a full historical scan first.
+- Rebuild profile diagnostics are on by default for `sync --rebuild-vibedeck-db` and record conservative rollout defaults, first-paint readiness, historical completion, and rollback flags.
+- `/functions/vibedeck-startup-snapshot` now includes rebuild readiness diagnostics additively next to projection freshness.
+- Startup snapshot reads and writes remain enabled by default and can be rolled back with `VIBEDECK_STARTUP_SNAPSHOT=0`.
+- Recent-first rebuild remains enabled by default and can be rolled back with `VIBEDECK_REBUILD_RECENT_FASTPATH=0`.
+- Projection freshness reporting remains enabled by default and can be rolled back with `VIBEDECK_PROJECTION_FRESHNESS=0`.
+- Rebuild profile diagnostics can be rolled back with `VIBEDECK_REBUILD_PROFILE=0`.
+  When disabled, the startup snapshot endpoint does not return stale `rebuild_profile.json` diagnostics.
+
+#### Smoke results
+
+| Check | Result |
+|---|---:|
+| Startup snapshot + projection freshness suite | Passed (`24/24`) |
+| Rebuild DB + parity harness | Passed (`29/29`) |
+| Serve lifecycle/default rollout tests | Passed (`4/4`) |
+| Dashboard production build | Passed, existing large-chunk warning only |
+| `git diff --check` | Passed |
+
+The rebuild parity harness still verifies final canonical parity for sessions, session events, branch facts, branch windows, totals, and Unknown/Historical buckets between baseline and recent-first rebuild paths.

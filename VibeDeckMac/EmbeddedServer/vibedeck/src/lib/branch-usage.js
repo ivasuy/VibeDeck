@@ -21,6 +21,7 @@ function emptyResult() {
     repos: [],
     totals: {
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: 0,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
@@ -56,6 +57,11 @@ function toBooleanFlag(value) {
 
 function numericField(row, key) {
   const n = Number(row?.[key] || 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function billableTokens(row) {
+  const n = Number((row?.billable_total_tokens ?? row?.total_tokens) || 0);
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -473,7 +479,7 @@ function displayFilterRows(rawRows, { repo = null, branch = null } = {}) {
     .filter((row) => rowMatchesRepo(row, repo) && rowMatchesBranch(row, branch));
 }
 
-function addModelRollup(models, row, rowTokens, rowCost) {
+function addModelRollup(models, row, rowTokens, rowBillableTokens, rowCost) {
   const provider = String(row?.provider || 'unknown').trim() || 'unknown';
   const modelName = String(row?.model || 'unknown').trim() || 'unknown';
   const modelKey = `${provider}\u241f${modelName}`;
@@ -482,6 +488,7 @@ function addModelRollup(models, row, rowTokens, rowCost) {
       provider,
       model: modelName,
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: null,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
@@ -492,19 +499,21 @@ function addModelRollup(models, row, rowTokens, rowCost) {
   }
   const modelEntry = models.get(modelKey);
   modelEntry.total_tokens += rowTokens;
+  modelEntry.billable_total_tokens += rowBillableTokens;
   modelEntry.session_count += 1;
   addEnrichment(modelEntry, row);
   addCostToAccumulator(modelEntry._cost, rowCost);
   return modelEntry;
 }
 
-function addDateBucketRollup(dateBuckets, row, rowTokens, rowCost) {
+function addDateBucketRollup(dateBuckets, row, rowTokens, rowBillableTokens, rowCost) {
   const date = rowDateKey(row);
   if (!date) return null;
   if (!dateBuckets.has(date)) {
     dateBuckets.set(date, {
       date,
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: null,
       cost_estimated: false,
       cost_quality: 'zero_tokens',
@@ -516,10 +525,11 @@ function addDateBucketRollup(dateBuckets, row, rowTokens, rowCost) {
   }
   const bucket = dateBuckets.get(date);
   bucket.total_tokens += rowTokens;
+  bucket.billable_total_tokens += rowBillableTokens;
   bucket.session_count += 1;
   addEnrichment(bucket, row);
   addCostToAccumulator(bucket._cost, rowCost);
-  addModelRollup(bucket.models, row, rowTokens, rowCost);
+  addModelRollup(bucket.models, row, rowTokens, rowBillableTokens, rowCost);
   return date;
 }
 
@@ -530,6 +540,7 @@ function finalizeModelRollups(models, { includeProvider = false } = {}) {
       const out = stripEmptyEnrichment({
         model: modelEntry.model,
         total_tokens: modelEntry.total_tokens,
+        billable_total_tokens: modelEntry.billable_total_tokens,
         total_cost_usd: modelCost.total_cost_usd,
         cost_estimated: modelCost.cost_estimated,
         cost_quality: modelCost.cost_quality,
@@ -557,6 +568,7 @@ function finalizeDateBuckets(dateBuckets) {
       return stripEmptyEnrichment({
         date: bucket.date,
         total_tokens: bucket.total_tokens,
+        billable_total_tokens: bucket.billable_total_tokens,
         total_cost_usd: bucketCost.total_cost_usd,
         cost_estimated: bucketCost.cost_estimated,
         cost_quality: bucketCost.cost_quality,
@@ -627,6 +639,7 @@ function queryBranchUsage(
   const totalsCost = createCostAccumulator();
   const totals = {
     total_tokens: 0,
+    billable_total_tokens: 0,
     total_cost_usd: 0,
     cost_estimated: false,
     cost_quality: 'zero_tokens',
@@ -636,10 +649,12 @@ function queryBranchUsage(
   for (const row of rows) {
     const rowCost = factCost(row);
     const rowTokens = Number(row.total_tokens || 0);
+    const rowBillableTokens = billableTokens(row);
     const rowLastSeen = row.last_observed_at || row.first_observed_at || null;
     const repoKey = repoGroupKey(row);
 
     totals.total_tokens += rowTokens;
+    totals.billable_total_tokens += rowBillableTokens;
     totals.session_count += 1;
     addCostToAccumulator(totalsCost, rowCost);
 
@@ -678,6 +693,7 @@ function queryBranchUsage(
         attribution_branch: row.attribution_branch || attributionBranchName(branchName),
         branch_kind: branchKind,
         total_tokens: 0,
+        billable_total_tokens: 0,
         total_cost_usd: null,
         cost_estimated: false,
         cost_quality: 'zero_tokens',
@@ -696,6 +712,7 @@ function queryBranchUsage(
     const branchEntry = repoEntry.branches.get(branchKey);
     branchEntry.historical_worktree = branchEntry.historical_worktree || row.historical_worktree || undefined;
     branchEntry.total_tokens += rowTokens;
+    branchEntry.billable_total_tokens += rowBillableTokens;
     branchEntry.session_count += 1;
     addEnrichment(branchEntry, row);
     addCostToAccumulator(branchEntry._cost, rowCost);
@@ -704,9 +721,9 @@ function queryBranchUsage(
     }
     branchEntry.confidence[normalizeConfidence(row.confidence)] += 1;
 
-    addModelRollup(branchEntry.models, row, rowTokens, rowCost);
+    addModelRollup(branchEntry.models, row, rowTokens, rowBillableTokens, rowCost);
     const sessionDateKey = includeDateBuckets
-      ? addDateBucketRollup(branchEntry.date_buckets, row, rowTokens, rowCost)
+      ? addDateBucketRollup(branchEntry.date_buckets, row, rowTokens, rowBillableTokens, rowCost)
       : null;
 
     if (includeSessions) {
@@ -717,6 +734,7 @@ function queryBranchUsage(
         ended_at: row.last_observed_at,
         model: row.model,
         total_tokens: row.total_tokens,
+        billable_total_tokens: row.billable_total_tokens ?? row.total_tokens,
         total_cost_usd: rowCost.total_cost_usd,
         cost_estimated: rowCost.cost_estimated,
         cost_quality: rowCost.cost_quality,

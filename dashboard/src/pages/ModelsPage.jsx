@@ -2,11 +2,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import { EmptyState, KpiCard, PageShell, SectionHeader, SimpleBar, SkeletonKpiGrid, SkeletonRows, Surface } from "../components/RevampSurfaces.jsx";
 import { ProviderLogo } from "../lib/provider-logos.jsx";
 import { formatUsdCurrency, toDisplayNumber } from "../lib/format";
-import { getModelsView } from "../lib/api";
+import { getModelsView, resolveProjectionReadinessState } from "../lib/vibedeck-api";
 
 function topTask(taskCategories) {
   const entries = Object.entries(taskCategories || {}).sort((a, b) => Number(b[1]) - Number(a[1]) || a[0].localeCompare(b[0]));
   return entries[0]?.[0] || "-";
+}
+
+function ReadinessBadge({ state }) {
+  if (!state?.label) return null;
+  const toneClass = state.tone === "indexing"
+    ? "border-amber-300/60 bg-amber-50/60 text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200"
+    : "border-[var(--vd-border)] bg-[var(--vd-tint)] text-oai-gray-600 dark:text-oai-gray-300";
+  return (
+    <span className={`inline-flex h-8 items-center rounded-md border px-3 text-caption font-semibold uppercase ${toneClass}`}>
+      {state.label}
+    </span>
+  );
 }
 
 export function ModelsPage() {
@@ -36,12 +48,18 @@ export function ModelsPage() {
   }, []);
 
   const models = Array.isArray(payload?.models) ? payload.models : [];
-  const empty = !loading && !error && models.length === 0;
+  const readinessState = resolveProjectionReadinessState(payload?.freshness);
+  const indexing = readinessState?.kind === "indexing";
+  const empty = !loading && !error && models.length === 0 && !indexing;
   const maxTokens = useMemo(() => Math.max(...models.map((model) => Number(model.total_tokens || 0)), 1), [models]);
   const totals = payload?.totals || {};
 
   return (
-    <PageShell title="Models" subtitle="Ranked model usage with provider identity and cost context.">
+    <PageShell
+      title="Models"
+      subtitle="Ranked model usage with provider identity and cost context."
+      actions={<ReadinessBadge state={readinessState} />}
+    >
       <div className="mb-5">
         {loading ? (
           <>
@@ -61,6 +79,7 @@ export function ModelsPage() {
         <SectionHeader title="Top models" />
         {loading ? <SkeletonRows rows={5} /> : null}
         {error ? <EmptyState title={error} body="Check that the local VibeDeck server is running, then refresh." /> : null}
+        {indexing ? <EmptyState title={readinessState.label} /> : null}
         {empty ? <EmptyState title="No data for this window yet." body="Try a wider range, or check back after more sessions." /> : null}
         {models.length ? (
           <div className="divide-y divide-oai-gray-200/70 dark:divide-oai-gray-800/70">

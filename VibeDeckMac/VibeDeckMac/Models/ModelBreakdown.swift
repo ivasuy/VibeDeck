@@ -6,9 +6,10 @@ struct ModelBreakdownResponse: Codable, Equatable {
     var days: Int
     var sources: [SourceEntry]
     var pricing: PricingInfo?
+    var freshness: ProjectionFreshness?
 
-    init(from: String = "", to: String = "", days: Int = 0, sources: [SourceEntry] = [], pricing: PricingInfo? = nil) {
-        self.from = from; self.to = to; self.days = days; self.sources = sources; self.pricing = pricing
+    init(from: String = "", to: String = "", days: Int = 0, sources: [SourceEntry] = [], pricing: PricingInfo? = nil, freshness: ProjectionFreshness? = nil) {
+        self.from = from; self.to = to; self.days = days; self.sources = sources; self.pricing = pricing; self.freshness = freshness
     }
 
     init(from decoder: Decoder) throws {
@@ -18,9 +19,10 @@ struct ModelBreakdownResponse: Codable, Equatable {
         self.days = try c.decodeIfPresent(Int.self, forKey: .days) ?? 0
         self.sources = try c.decodeIfPresent([SourceEntry].self, forKey: .sources) ?? []
         self.pricing = try c.decodeIfPresent(PricingInfo.self, forKey: .pricing)
+        self.freshness = try c.decodeIfPresent(ProjectionFreshness.self, forKey: .freshness)
     }
 
-    private enum CodingKeys: String, CodingKey { case from, to, days, sources, pricing }
+    private enum CodingKeys: String, CodingKey { case from, to, days, sources, pricing, freshness }
 }
 
 struct SourceEntry: Codable, Equatable {

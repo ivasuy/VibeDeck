@@ -14,11 +14,11 @@ struct DashboardView: View {
             case .idle, .starting:
                 ServerStartingView()
             case .running:
-                if viewModel.isSyncing {
+                if viewModel.isSyncing && !viewModel.hasRenderableUsageSurface {
                     syncingView
-                } else if viewModel.isLoading && viewModel.summary == nil {
+                } else if viewModel.isLoading && !viewModel.hasRenderableUsageSurface {
                     loadingView
-                } else if !viewModel.hasTrackedUsage {
+                } else if !viewModel.hasRenderableUsageSurface {
                     DashboardFirstRunView(
                         isSyncing: viewModel.isSyncing,
                         onDetect: {
@@ -38,6 +38,12 @@ struct DashboardView: View {
                                     }
                                 )
                             }
+                            if let readinessState = viewModel.readinessState {
+                                DashboardReadinessBanner(
+                                    state: readinessState,
+                                    isRefreshing: viewModel.isSyncing || viewModel.isLoading
+                                )
+                            }
                             SummaryCardsView(
                                 todayTokens: viewModel.todayTokens,
                                 todayCost: viewModel.todayCost,
@@ -52,6 +58,7 @@ struct DashboardView: View {
                                 ForecastCard(forecast: forecast)
                             }
                             UsageLimitsView(limits: viewModel.usageLimits)
+                            ProjectUsageView(projectUsage: viewModel.projectUsage)
                             CodeburnParityTabsView(viewModel: viewModel)
                             ActivityHeatmapView(heatmap: viewModel.heatmap)
                             UsageTrendChartWrapper(
@@ -110,6 +117,132 @@ struct DashboardView: View {
     private func openSetupGuide() {
         if let url = URL(string: "https://github.com/ivasuy/VibeDeck#quick-start") {
             NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private struct ProjectUsageView: View {
+    let projectUsage: ProjectUsageResponse?
+
+    private var entries: [ProjectEntry] {
+        Array((projectUsage?.entries ?? [])
+            .filter { $0.billableTokensInt > 0 || (Int($0.totalTokens) ?? 0) > 0 }
+            .prefix(4))
+    }
+
+    var body: some View {
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Projects")
+                        .font(.caption)
+                        .modifier(FontWeightModifier(weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Selected period")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                VStack(spacing: 8) {
+                    ForEach(entries) { entry in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(projectName(entry))
+                                    .font(.caption)
+                                    .modifier(FontWeightModifier(weight: .semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if let ref = entry.projectRef, !ref.isEmpty {
+                                    Text(ref)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Text(TokenFormatter.formatCompact(entry.billableTokensInt > 0 ? entry.billableTokensInt : (Int(entry.totalTokens) ?? 0)))
+                                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(Color.primary)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.panelFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.panelBorder, lineWidth: 1)
+                    )
+            )
+        }
+    }
+
+    private func projectName(_ entry: ProjectEntry) -> String {
+        let raw = entry.projectKey.isEmpty ? (entry.projectRef ?? "Unknown project") : entry.projectKey
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Unknown project" }
+        if trimmed.contains("/") {
+            return trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        }
+        return trimmed
+    }
+}
+
+private struct DashboardReadinessBanner: View {
+    let state: ProjectionReadinessState
+    let isRefreshing: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: state.tone == "indexing" ? "clock.arrow.circlepath" : "tray.full")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(state.tone == "indexing" ? Color.statusWarning : Color.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(state.label)
+                    .font(.caption)
+                    .modifier(FontWeightModifier(weight: .semibold))
+                Text(detailText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 40)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.panelFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color.panelBorder, lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var detailText: String {
+        if isRefreshing { return "Refreshing local server data." }
+        switch state.kind {
+        case "indexing":
+            return "Historical views will fill in as indexing completes."
+        case "snapshot":
+            return "Showing local startup snapshot while refresh continues."
+        default:
+            return "Waiting for local usage data."
         }
     }
 }

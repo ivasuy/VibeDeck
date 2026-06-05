@@ -10,6 +10,16 @@ import { getOptimizeFindings, triggerOptimizeScan } from "../lib/api";
 const FIRST_SCAN_TEXT = "No optimize scan has run yet. Run a local scan to populate findings from this machine.";
 const EMPTY_TEXT = "No open optimize findings in the latest scan.";
 
+const SEVERITY_TINT = {
+  high: "bg-[var(--brand-700)]/12 dark:bg-[var(--brand-400)]/12",
+  medium: "bg-[var(--brand-500)]/8 dark:bg-[var(--brand-400)]/8",
+};
+
+function severityTint(severity) {
+  const key = String(severity || "").toLowerCase();
+  return SEVERITY_TINT[key] || "";
+}
+
 function severityLabel(severity) {
   const value = String(severity || "");
   return value ? value[0].toUpperCase() + value.slice(1) : "Unknown";
@@ -129,7 +139,7 @@ export function OptimizePage() {
               {hasRun ? EMPTY_TEXT : FIRST_SCAN_TEXT}
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-oai-gray-500 dark:text-oai-gray-400">
-              {hasRun ? "Everything's running tight already." : "Run a scan after you have enough local sessions for meaningful findings."}
+              {hasRun ? "Nothing to optimize right now. Run another scan after a few more sessions." : "Run a scan after you have enough local sessions for meaningful findings."}
             </p>
             {!hasRun ? (
               <button
@@ -172,7 +182,10 @@ export function OptimizePage() {
         <div className="grid gap-3">
           {loading ? <SkeletonRows rows={4} /> : null}
           {groupedFindings.map((finding) => (
-            <Surface key={finding.id || finding.fingerprint || finding.title} className="border-l-4 border-l-[var(--brand-500)]">
+            <Surface
+              key={finding.id || finding.fingerprint || finding.title}
+              className={severityTint(finding.severity)}
+            >
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">

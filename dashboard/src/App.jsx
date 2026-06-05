@@ -7,22 +7,27 @@ import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { useLocale } from "./hooks/useLocale.js";
 import { ThemeProvider } from "./ui/foundation/ThemeProvider.jsx";
 import { getBackendBaseUrl } from "./lib/config";
-import { DashboardPage } from "./pages/DashboardPage.jsx";
-import { LivePage } from "./pages/LivePage.jsx";
-import { BranchesPage } from "./pages/BranchesPage.jsx";
-import { SettingsPage } from "./pages/SettingsPage.jsx";
-import { SkillsPage } from "./pages/SkillsPage.jsx";
-import { ComparePage } from "./pages/ComparePage.jsx";
-import { ModelsPage } from "./pages/ModelsPage.jsx";
-import { YieldPage } from "./pages/YieldPage.jsx";
-import { ExportPage } from "./pages/ExportPage.jsx";
-import { OptimizePage } from "./pages/OptimizePage.jsx";
-import { PlanPage } from "./pages/PlanPage.jsx";
 import { AppLayout } from "./ui/openai/components/Sidebar.jsx";
-import { WidgetsPage } from "./pages/WidgetsPage.jsx";
 import { PageTransition } from "./ui/foundation/PageTransition.jsx";
 
 const FIRST_LAUNCH_STORAGE_KEY = "vd-first-launch-seen";
+
+function lazyNamed(loader, exportName) {
+  return React.lazy(() => loader().then((module) => ({ default: module[exportName] })));
+}
+
+const DashboardPage = lazyNamed(() => import("./pages/DashboardPage.jsx"), "DashboardPage");
+const LivePage = lazyNamed(() => import("./pages/LivePage.jsx"), "LivePage");
+const BranchesPage = lazyNamed(() => import("./pages/BranchesPage.jsx"), "BranchesPage");
+const SettingsPage = lazyNamed(() => import("./pages/SettingsPage.jsx"), "SettingsPage");
+const SkillsPage = lazyNamed(() => import("./pages/SkillsPage.jsx"), "SkillsPage");
+const ComparePage = lazyNamed(() => import("./pages/ComparePage.jsx"), "ComparePage");
+const ModelsPage = lazyNamed(() => import("./pages/ModelsPage.jsx"), "ModelsPage");
+const YieldPage = lazyNamed(() => import("./pages/YieldPage.jsx"), "YieldPage");
+const ExportPage = lazyNamed(() => import("./pages/ExportPage.jsx"), "ExportPage");
+const OptimizePage = lazyNamed(() => import("./pages/OptimizePage.jsx"), "OptimizePage");
+const PlanPage = lazyNamed(() => import("./pages/PlanPage.jsx"), "PlanPage");
+const WidgetsPage = lazyNamed(() => import("./pages/WidgetsPage.jsx"), "WidgetsPage");
 
 function RemovedLimitsRedirect() {
   return <Navigate to="/dashboard" replace />;
@@ -117,17 +122,19 @@ export default function App() {
   const pageNode = (
     <AnimatePresence mode="wait" initial={false}>
       <PageTransition key={pageKey}>
-        <PageComponent
-          baseUrl={baseUrl}
-          auth={null}
-          signedIn={true}
-          sessionSoftExpired={false}
-          signOut={() => Promise.resolve()}
-          publicMode={publicMode}
-          publicToken={publicToken}
-          signInUrl="/"
-          signUpUrl="/"
-        />
+        <React.Suspense fallback={null}>
+          <PageComponent
+            baseUrl={baseUrl}
+            auth={null}
+            signedIn={true}
+            sessionSoftExpired={false}
+            signOut={() => Promise.resolve()}
+            publicMode={publicMode}
+            publicToken={publicToken}
+            signInUrl="/"
+            signUpUrl="/"
+          />
+        </React.Suspense>
       </PageTransition>
     </AnimatePresence>
   );

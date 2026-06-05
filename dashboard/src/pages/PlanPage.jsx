@@ -10,6 +10,22 @@ function numberOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+const PLAN_LABELS = {
+  "claude-pro": "Claude Pro",
+  "claude-max": "Claude Max",
+  "claude-monthly": "Claude monthly",
+  "codex-monthly": "Codex monthly",
+  "mixed-monthly": "Claude + Codex monthly",
+  "cursor-pro": "Cursor Pro",
+  "copilot-pro": "Copilot Pro",
+  custom: "Custom",
+};
+
+function prettyPlan(plan) {
+  const key = typeof plan === "string" ? plan.trim().toLowerCase() : "";
+  return PLAN_LABELS[key] || (key ? key.replace(/-/g, " ") : "Custom");
+}
+
 function normalizePlanDetail(payload) {
   const label = String(payload?.label || "Plan usage");
   const rawDetail = String(payload?.label_detail || payload?.labelDetail || label);
@@ -86,6 +102,8 @@ export function PlanPage() {
   }, [monthToDateUsd, monthlyUsd, payload?.usage_percent]);
   const detail = normalizePlanDetail(payload);
   const configuredPlan = monthlyUsd > 0;
+  const isInferred = payload?.inferred === true;
+  const isUnknown = payload?.inferred === null;
   const paygWins = configuredPlan && monthToDateUsd < monthlyUsd;
   const observedDaysRaw = payload?.active_days ?? payload?.activeDays ?? payload?.days_observed ?? payload?.history_days;
   const observedDays = Number(observedDaysRaw);
@@ -101,14 +119,10 @@ export function PlanPage() {
       {loading ? <div className="mb-5"><SkeletonKpiGrid count={3} /></div> : null}
       {error ? <p className="mb-4 text-sm text-red-700 dark:text-red-300">{error}</p> : null}
 
-      {!loading && !error && !configuredPlan ? (
-        <Surface className="mb-4">
-          <h2 className="text-h4 font-semibold text-oai-black dark:text-white">Monthly plan not configured</h2>
-          <p className="mt-2 text-sm text-oai-gray-600 dark:text-oai-gray-300">
-            VibeDeck is showing live API-equivalent spend, but it cannot calculate budget percentage until
-            `VIBEDECK_PLAN`, `VIBEDECK_PLAN_MONTHLY_USD`, or `~/.vibedeck/plan-config.json` is configured.
-          </p>
-        </Surface>
+      {!loading && !error && isUnknown ? (
+        <p className="mb-4 text-sm text-oai-gray-600 dark:text-oai-gray-300">
+          No recent activity yet. Once you use Claude or Codex, VibeDeck will pick a plan automatically.
+        </p>
       ) : null}
 
       {!loading && !error && insufficientData ? (
@@ -131,10 +145,13 @@ export function PlanPage() {
           </div>
           <div className="relative overflow-hidden rounded-xl bg-white/10 p-4">
             <p className="text-label uppercase text-white/60">Current plan</p>
-            <p className="mt-2 text-h3 font-semibold text-white">{payload?.plan || "custom"}</p>
+            <p className="mt-2 text-h3 font-semibold capitalize text-white">{prettyPlan(payload?.plan)}</p>
             <p className="mt-1 text-sm tabular-nums text-white/75">
               {formatUsdCurrency(monthlyUsd, { decimals: 2 })} / mo
             </p>
+            {isInferred ? (
+              <p className="mt-1 text-caption text-white/55">Auto-detected</p>
+            ) : null}
             <ClawdAnimated state={clawdState} size={64} className="absolute bottom-3 right-3 opacity-95" />
           </div>
         </div>
@@ -144,8 +161,10 @@ export function PlanPage() {
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         <KpiCard
           label={payload?.label || "Plan usage"}
-          value={configuredPlan ? `${usagePercent.toFixed(2)}%` : "Not configured"}
-          detail={configuredPlan ? `${formatUsdCurrency(monthToDateUsd, { decimals: 4 })} of ${formatUsdCurrency(monthlyUsd, { decimals: 2 })}` : "Budget percentage unavailable until a monthly plan amount is configured."}
+          value={configuredPlan ? `${usagePercent.toFixed(2)}%` : "—"}
+          detail={configuredPlan
+            ? `${formatUsdCurrency(monthToDateUsd, { decimals: 4 })} of ${formatUsdCurrency(monthlyUsd, { decimals: 2 })}`
+            : "Tracking your activity. A plan will appear here after the next sync."}
         >
           {configuredPlan ? (
             <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Number(Math.min(100, usagePercent).toFixed(2))}>

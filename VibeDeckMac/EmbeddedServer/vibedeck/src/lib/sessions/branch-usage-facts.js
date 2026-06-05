@@ -139,6 +139,11 @@ function costTotalTokens(row) {
   return webSearchRequests > 0 ? webSearchRequests : totalTokens;
 }
 
+function eventBillableTokenTotal(event) {
+  if (event?.billable_total_tokens != null) return toInteger(event.billable_total_tokens);
+  return eventTokenTotal(event);
+}
+
 function branchUsageDisplayBranch({ branch, project }) {
   if (branch && typeof branch === 'object') {
     if (branch.branch_kind === 'historical_unknown') {
@@ -425,6 +430,7 @@ async function buildSyntheticGroup(session, { dbPath, provider, session_id, db =
     last_observed_at: times.last,
     event_count: 0,
     total_tokens: toInteger(session.total_tokens),
+    billable_total_tokens: toInteger(session.total_tokens),
     input_tokens: toInteger(session.input_tokens),
     cached_input_tokens: toInteger(session.cached_input_tokens),
     cache_creation_input_tokens: toInteger(session.cache_creation_input_tokens),
@@ -506,6 +512,8 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
         last_observed_at: observedAt,
         event_count: 0,
         total_tokens: 0,
+        billable_total_tokens: 0,
+        billable_tokens_explicit: false,
         input_tokens: 0,
         cached_input_tokens: 0,
         cache_creation_input_tokens: 0,
@@ -534,6 +542,8 @@ async function buildEventGroups(session, events, { dbPath, provider, session_id,
     group.last_observed_at = maxIso(group.last_observed_at, observedAt);
     group.event_count += 1;
     group.total_tokens += eventTokenTotal(event);
+    group.billable_total_tokens += eventBillableTokenTotal(event);
+    if (event.billable_total_tokens != null) group.billable_tokens_explicit = true;
     group.input_tokens += toInteger(event.input_tokens);
     group.cached_input_tokens += toInteger(event.cached_input_tokens);
     group.cache_creation_input_tokens += toInteger(event.cache_creation_input_tokens);
@@ -578,6 +588,9 @@ function reconcileGroupTokens(groups, session) {
     const target = maxTokenGroupIndex(groups);
     if (target < 0) return;
     groups[target].total_tokens += delta;
+    if (!groups[target].billable_tokens_explicit) {
+      groups[target].billable_total_tokens += delta;
+    }
     groups[target].token_reconciled = 1;
     return;
   }
@@ -594,6 +607,9 @@ function reconcileGroupTokens(groups, session) {
     if (available === 0) continue;
     const take = Math.min(available, remaining);
     groups[index].total_tokens = available - take;
+    if (!groups[index].billable_tokens_explicit) {
+      groups[index].billable_total_tokens = Math.max(0, toInteger(groups[index].billable_total_tokens) - take);
+    }
     groups[index].token_reconciled = 1;
     remaining -= take;
   }
@@ -602,6 +618,9 @@ function reconcileGroupTokens(groups, session) {
     if (group.total_tokens < 0) {
       group.total_tokens = 0;
       group.token_reconciled = 1;
+    }
+    if (group.billable_total_tokens < 0) {
+      group.billable_total_tokens = 0;
     }
   }
 }
@@ -721,6 +740,7 @@ function insertFacts(db, session, groups) {
       branch_resolution_tier, confidence, model,
       first_observed_at, last_observed_at,
       event_count, total_tokens,
+      billable_total_tokens,
       input_tokens, cached_input_tokens, cache_creation_input_tokens,
       cache_creation_5m_input_tokens, cache_creation_1h_input_tokens,
       output_tokens, reasoning_output_tokens,
@@ -738,6 +758,7 @@ function insertFacts(db, session, groups) {
       @branch_resolution_tier, @confidence, @model,
       @first_observed_at, @last_observed_at,
       @event_count, @total_tokens,
+      @billable_total_tokens,
       @input_tokens, @cached_input_tokens, @cache_creation_input_tokens,
       @cache_creation_5m_input_tokens, @cache_creation_1h_input_tokens,
       @output_tokens, @reasoning_output_tokens,
@@ -752,10 +773,11 @@ function insertFacts(db, session, groups) {
   );
 
   for (const group of groups) {
+    const { billable_tokens_explicit: _billableTokensExplicit, ...storedGroup } = group;
     stmt.run({
       provider: session.provider,
       session_id: session.session_id,
-      ...group,
+      ...storedGroup,
       created_at: now,
       updated_at: now,
     });

@@ -338,6 +338,7 @@ export function DashboardView(props) {
     showAuthGate,
     identityDisplayName,
     hasDashboardUsage = true,
+    readinessState = null,
     syncFreshnessWarning,
     syncFreshnessSource,
     activeLiveSessions = 0,
@@ -371,6 +372,9 @@ export function DashboardView(props) {
   const resolvedAttentionInsight =
     attentionInsight && typeof attentionInsight === "object" ? attentionInsight : null;
   const totalCost = summaryCostValue && summaryCostValue !== "-" ? summaryCostValue : "$0.00";
+  const spendLabel = period === "day"
+    ? "Today's spend"
+    : `${PERIOD_LABELS[period] || "Selected"} spend`;
   const activeLabel = liveSessionsLoading ? "Loading" : liveSessionsStale ? "Stale" : `${activeLiveSessions}`;
   const identityName = typeof identityDisplayName === "string" ? identityDisplayName.trim() : "";
   const hasPersonalIdentity = Boolean(identityName && !["anonymous", "vibedeck"].includes(identityName.toLowerCase()));
@@ -423,6 +427,15 @@ export function DashboardView(props) {
               </p>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              {readinessState?.label ? (
+                <span className={`inline-flex h-8 items-center rounded-md border px-3 text-caption font-semibold uppercase ${
+                  readinessState.tone === "indexing"
+                    ? "border-amber-300/60 bg-amber-50/60 text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200"
+                    : "border-[var(--vd-border)] bg-[var(--vd-tint)] text-oai-gray-600 dark:text-oai-gray-300"
+                }`}>
+                  {readinessState.label}
+                </span>
+              ) : null}
               <PeriodPicker
                 period={period}
                 periods={periodsForDisplay}
@@ -486,7 +499,7 @@ export function DashboardView(props) {
             <Surface className="border-transparent text-white" style={{ background: "var(--brand-600)" }}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-label uppercase text-white/70">Today&apos;s spend</p>
+                  <p className="text-label uppercase text-white/70">{spendLabel}</p>
                   <p className="mt-4 text-hero font-semibold tabular-nums">{totalCost}</p>
                   <p className="mt-2 text-sm text-white/75">
                     {summaryValue} tokens tracked

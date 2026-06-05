@@ -5,6 +5,7 @@ import { cn } from "../lib/cn";
 import { isNativeEmbed, nativeAction } from "../lib/native-bridge.js";
 import { GITHUB_RELEASES_URL } from "../lib/public-links.js";
 import { useNativeSettings } from "../hooks/use-native-settings.js";
+import { getStartupSnapshot, resolveProjectionReadinessState } from "../lib/vibedeck-api";
 import {
   FALLBACK_MENU_BAR_ITEMS,
   normalizeMenuBarItems,
@@ -729,6 +730,18 @@ function HeaderCta() {
   );
 }
 
+function ReadinessBadge({ state }) {
+  if (!state?.label) return null;
+  const toneClass = state.tone === "indexing"
+    ? "border-amber-300/60 bg-amber-50/60 text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/10 dark:text-amber-200"
+    : "border-[var(--vd-border)] bg-[var(--vd-tint)] text-oai-gray-600 dark:text-oai-gray-300";
+  return (
+    <span className={`inline-flex h-8 items-center rounded-md border px-3 text-caption font-semibold uppercase ${toneClass}`}>
+      {state.label}
+    </span>
+  );
+}
+
 /* ---------- Widget workbench + catalog data ---------- */
 
 const SECONDARY_WIDGETS = [
@@ -927,6 +940,22 @@ function SectionTitle({ titleKey }) {
 }
 
 export function WidgetsPage() {
+  const [readinessState, setReadinessState] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getStartupSnapshot()
+      .then((payload) => {
+        if (active) setReadinessState(resolveProjectionReadinessState(payload?.freshness));
+      })
+      .catch(() => {
+        if (active) setReadinessState(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="flex flex-col flex-1 text-oai-black dark:text-oai-white font-oai antialiased">
       <main className="flex-1 pt-8 sm:pt-10 pb-12 sm:pb-16">
@@ -938,7 +967,8 @@ export function WidgetsPage() {
               <h1 className="text-3xl font-semibold tracking-tight text-oai-black dark:text-white sm:text-4xl">
                 {copy("widgets.page.title")}
               </h1>
-              <div className="shrink-0">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <ReadinessBadge state={readinessState} />
                 <HeaderCta />
               </div>
             </header>

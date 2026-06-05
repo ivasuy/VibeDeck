@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   getForecastView: vi.fn(),
   getPlanView: vi.fn(),
   getRecentSessions: vi.fn(),
+  getStartupSnapshot: vi.fn(),
   getSyncStatus: vi.fn(),
 }));
 
@@ -100,25 +101,31 @@ vi.mock("../lib/api", () => ({
   triggerLocalSync: vi.fn(async () => ({ ok: true })),
 }));
 
-vi.mock("../lib/vibedeck-api", () => ({
-  getAttributionStats: api.getAttributionStats,
-  getForecastView: api.getForecastView,
-  getPlanView: api.getPlanView,
-  getRecentSessions: api.getRecentSessions,
-  getSyncStatus: api.getSyncStatus,
-}));
+vi.mock("../lib/vibedeck-api", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    getAttributionStats: api.getAttributionStats,
+    getForecastView: api.getForecastView,
+    getPlanView: api.getPlanView,
+    getRecentSessions: api.getRecentSessions,
+    getStartupSnapshot: api.getStartupSnapshot,
+    getSyncStatus: api.getSyncStatus,
+  };
+});
 
 vi.mock("../lib/sync-freshness", () => ({
   getSyncFreshnessWarning: () => null,
 }));
 
 vi.mock("../ui/matrix-a/views/DashboardView.jsx", () => ({
-  DashboardView: ({ attentionInsight, attributionStats, hasDashboardUsage, identityDisplayName, recentSessionRows }) => (
+  DashboardView: ({ attentionInsight, attributionStats, hasDashboardUsage, identityDisplayName, readinessState, recentSessionRows }) => (
     <div>
       <div>Dashboard shell</div>
       <div>Attribution total: {attributionStats?.total ?? "none"}</div>
       <div>Dashboard has usage: {hasDashboardUsage ? "yes" : "no"}</div>
       <div>Identity: {identityDisplayName}</div>
+      <div>Readiness: {readinessState?.label || "none"}</div>
       <div>Recent sessions: {recentSessionRows?.length ?? 0}</div>
       {attentionInsight ? <div>{attentionInsight.body}</div> : null}
     </div>
@@ -137,6 +144,8 @@ beforeEach(() => {
   api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 0 });
   api.getRecentSessions.mockReset();
   api.getRecentSessions.mockResolvedValue({ sessions: [] });
+  api.getStartupSnapshot.mockReset();
+  api.getStartupSnapshot.mockResolvedValue({ ok: true, freshness: { mode: "complete", historical_ready: true } });
   api.getSyncStatus.mockReset();
   api.getSyncStatus.mockResolvedValue({ ok: true });
   window.matchMedia = vi.fn().mockReturnValue({
@@ -153,7 +162,16 @@ describe("DashboardPage", () => {
 
     render(<DashboardPage signedIn auth="token" />);
 
-    expect(await screen.findByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeTruthy();
+    expect(await screen.findByText("Projected month spend is over your plan. Numbers shown are API-equivalent, not what you'll be billed.")).toBeTruthy();
+  });
+
+  it("uses softer copy when the plan is auto-detected", async () => {
+    api.getForecastView.mockResolvedValue({ ok: true, forecast_30d_usd: "320.00" });
+    api.getPlanView.mockResolvedValue({ ok: true, monthly_usd: 200, inferred: true, plan: "claude-monthly" });
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Projected month spend is over your detected plan. Set an exact budget in Settings to fine-tune.")).toBeTruthy();
   });
 
   it("hides forecast banner when forecast data is missing", async () => {
@@ -163,7 +181,7 @@ describe("DashboardPage", () => {
     render(<DashboardPage signedIn auth="token" />);
 
     expect(await screen.findByText("Dashboard shell")).toBeTruthy();
-    expect(screen.queryByText("Projected month spend is above your configured plan. Showing API-equivalent cost, not provider billing.")).toBeNull();
+    expect(screen.queryByText(/Projected month spend is over/)).toBeNull();
   });
 
   it("passes first-run dashboard state when no tracked usage exists", async () => {
@@ -247,6 +265,25 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("Attribution total: 3")).toBeTruthy();
     expect(screen.getByText("Recent sessions: 1")).toBeTruthy();
     expect(api.getAttributionStats).toHaveBeenCalled();
+  });
+
+  it("passes historical indexing readiness into the dashboard view", async () => {
+    api.getStartupSnapshot.mockResolvedValue({
+      ok: true,
+      freshness: {
+        mode: "partial",
+        recent_ready: true,
+        historical_ready: false,
+        active_rebuild: true,
+        complete_through: null,
+        indexing_providers: ["codex"],
+        failed_shards: [],
+      },
+    });
+
+    render(<DashboardPage signedIn auth="token" />);
+
+    expect(await screen.findByText("Readiness: Indexing historical data")).toBeTruthy();
   });
 
   it("passes exact historical recent sessions from the backend when no live rows exist", async () => {

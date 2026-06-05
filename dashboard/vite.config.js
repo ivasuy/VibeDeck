@@ -210,7 +210,7 @@ async function handleLocalApi(req, res, url) {
       }
       const agg = byDay.get(day);
       agg.total_tokens += row.total_tokens || 0;
-      agg.billable_total_tokens += row.total_tokens || 0;
+      agg.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       agg.total_cost_usd += computeRowCost(row);
       agg.input_tokens += row.input_tokens || 0;
       agg.output_tokens += row.output_tokens || 0;
@@ -220,6 +220,20 @@ async function handleLocalApi(req, res, url) {
       agg.conversation_count += row.conversation_count || 0;
     }
     return Array.from(byDay.values()).sort((a, b) => a.day.localeCompare(b.day));
+  }
+
+  function calculateCurrentStreakDays(byDay, todayStr) {
+    if (!(byDay instanceof Map) || !todayStr) return 0;
+    let streak = 0;
+    const cursor = new Date(`${todayStr}T00:00:00Z`);
+    while (!Number.isNaN(cursor.getTime())) {
+      const day = cursor.toISOString().slice(0, 10);
+      const data = byDay.get(day);
+      if (!data || Number(data.billable_total_tokens || 0) <= 0) break;
+      streak += 1;
+      cursor.setUTCDate(cursor.getUTCDate() - 1);
+    }
+    return streak;
   }
 
   const pathname = url.pathname;
@@ -506,6 +520,7 @@ async function handleLocalApi(req, res, url) {
     const daily = aggregateByDay(rows);
     const today = new Date();
     const end = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+    const todayStr = end.toISOString().slice(0, 10);
     const start = new Date(end);
     start.setUTCDate(start.getUTCDate() - weeks * 7 + 1);
     const from = start.toISOString().slice(0, 10);
@@ -537,6 +552,7 @@ async function handleLocalApi(req, res, url) {
         day,
         total_tokens: data?.total_tokens || 0,
         billable_total_tokens: billable,
+        total_cost_usd: Number(data?.total_cost_usd || 0),
         level: calcLevel(billable),
       });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -548,7 +564,7 @@ async function handleLocalApi(req, res, url) {
       weeksArr.push(cells.slice(i, i + 7));
     }
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: 0, weeks: weeksArr }));
+    res.end(JSON.stringify({ from, to, week_starts_on: "sun", active_days: activeDays, streak_days: calculateCurrentStreakDays(byDay, todayStr), weeks: weeksArr }));
     return true;
   }
 
@@ -583,7 +599,7 @@ async function handleLocalApi(req, res, url) {
 
 
       sourceAgg.totals.total_tokens += row.total_tokens || 0;
-      sourceAgg.totals.billable_total_tokens += row.total_tokens || 0;
+      sourceAgg.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       sourceAgg.totals.input_tokens += row.input_tokens || 0;
       sourceAgg.totals.output_tokens += row.output_tokens || 0;
       sourceAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
@@ -600,7 +616,7 @@ async function handleLocalApi(req, res, url) {
       }
       const modelAgg = sourceAgg.models.get(modelName);
       modelAgg.totals.total_tokens += row.total_tokens || 0;
-      modelAgg.totals.billable_total_tokens += row.total_tokens || 0;
+      modelAgg.totals.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       modelAgg.totals.input_tokens += row.input_tokens || 0;
       modelAgg.totals.output_tokens += row.output_tokens || 0;
       modelAgg.totals.cached_input_tokens += row.cached_input_tokens || 0;
@@ -662,7 +678,7 @@ async function handleLocalApi(req, res, url) {
         }
         const agg = byProject.get(key);
         agg.total_tokens += Number(row.total_tokens || 0);
-        agg.billable_total_tokens += Number(row.total_tokens || 0);
+        agg.billable_total_tokens += Number((row.billable_total_tokens ?? row.total_tokens) || 0);
         if (!agg.project_ref && row.project_ref) agg.project_ref = row.project_ref;
       }
       if (byProject.size > 0) {
@@ -821,9 +837,9 @@ async function handleLocalApi(req, res, url) {
           });
         }
         bySource.get(source).total_tokens += row.total_tokens || 0;
-        bySource.get(source).billable_total_tokens += row.total_tokens || 0;
+        bySource.get(source).billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
       }
-      entries.push(...Array.from(bySource.values()).sort((a, b) => b.billable_total_tokens - a.total_tokens).map(e => ({
+      entries.push(...Array.from(bySource.values()).sort((a, b) => b.billable_total_tokens - a.billable_total_tokens).map(e => ({
         ...e,
         total_tokens: String(e.total_tokens),
         billable_total_tokens: String(e.billable_total_tokens)
@@ -944,6 +960,15 @@ function localDataApiPlugin() {
   };
 }
 
+function getNodeModulePackageName(id) {
+  const marker = "node_modules/";
+  const index = id.lastIndexOf(marker);
+  if (index === -1) return null;
+  const parts = id.slice(index + marker.length).split("/");
+  if (parts[0]?.startsWith("@")) return `${parts[0]}/${parts[1] || ""}`;
+  return parts[0] || null;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ROOT_DIR, "VITE_");
   const fallbackVersion = loadAppVersion();
@@ -960,6 +985,20 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         input: {
           main: path.resolve(ROOT_DIR, "index.html"),
+        },
+        output: {
+          manualChunks(id) {
+            const packageName = getNodeModulePackageName(id);
+            if (!packageName) return undefined;
+            if (["react", "react-dom", "scheduler"].includes(packageName)) {
+              return "react-vendor";
+            }
+            if (["react-router", "react-router-dom"].includes(packageName)) return "router-vendor";
+            if (packageName === "motion") return "motion-vendor";
+            if (packageName === "lucide-react") return "icons-vendor";
+            if (["date-fns", "react-day-picker"].includes(packageName)) return "date-vendor";
+            return undefined;
+          },
         },
       },
     },

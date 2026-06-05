@@ -46,6 +46,7 @@ function validateEvent(e) {
   if (e.kind === 'update') {
     assertIsoString('SessionEvent.observed_at', e.observed_at);
     assertNullableNonNegativeInteger('delta_tokens', e.delta_tokens);
+    assertNullableNonNegativeInteger('billable_total_tokens', e.billable_total_tokens);
     assertNullableNonNegativeInteger('input_tokens', e.input_tokens);
     assertNullableNonNegativeInteger('cached_input_tokens', e.cached_input_tokens);
     assertNullableNonNegativeInteger('cache_creation_input_tokens', e.cache_creation_input_tokens);
@@ -100,6 +101,7 @@ function makeUpdate({
   session_id,
   observed_at,
   delta_tokens = null,
+  billable_total_tokens = null,
   cwd = null,
   model = null,
   input_tokens = null,
@@ -126,6 +128,7 @@ function makeUpdate({
     session_id,
     observed_at,
     delta_tokens,
+    billable_total_tokens,
     cwd,
     model,
     input_tokens,

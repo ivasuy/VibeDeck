@@ -75,10 +75,33 @@ function createServeLifecycleReporter({ stdout = process.stdout, enabled = true 
     providerDone(name, message) {
       write(`  ${name}: ${message}`);
     },
-    ready(url) {
+    ready(url, timing = {}) {
       write(`Dashboard ready: ${url}`);
+      const startedAtMs = Number(timing.startedAtMs);
+      const nowMs = Number.isFinite(Number(timing.nowMs)) ? Number(timing.nowMs) : Date.now();
+      if (Number.isFinite(startedAtMs) && startedAtMs >= 0 && nowMs >= startedAtMs) {
+        write(`First paint ready: ${Math.round(nowMs - startedAtMs)}ms`);
+      }
     },
   };
+}
+
+function startServeSyncInBackground({
+  syncEnabled = true,
+  lifecycle = null,
+  cmdSyncFn = null,
+  stdout = process.stdout,
+} = {}) {
+  if (!syncEnabled) return null;
+  lifecycle?.phase?.("Syncing provider logs in background...");
+  return Promise.resolve()
+    .then(async () => {
+      const syncFn = cmdSyncFn || require("./sync").cmdSync;
+      await syncFn(["--auto"], { lifecycle });
+    })
+    .catch((e) => {
+      stdout?.write?.(`Sync warning: ${e?.message || e}\n`);
+    });
 }
 
 function formatLifecycleNumber(value) {
@@ -263,6 +286,7 @@ function describeSocket(socket) {
 async function cmdServe(argv) {
   const opts = parseArgs(argv);
   const lifecycle = createServeLifecycleReporter();
+  const serveStartedAtMs = Date.now();
 
   // 0. First-time setup: if tracker dir doesn't exist, run init first
   const { trackerDir } = await resolveTrackerPaths();
@@ -301,17 +325,6 @@ async function cmdServe(argv) {
     await installLocalTrackerApp({ appDir: path.join(trackerDir, "app") });
   } catch (e) {
     process.stdout.write(`Runtime refresh warning: ${e?.message || e}\n`);
-  }
-
-  // 1. Optional sync
-  if (opts.sync) {
-    lifecycle.phase("Syncing provider logs...");
-    try {
-      const { cmdSync } = require("./sync");
-      await cmdSync(["--auto"], { lifecycle });
-    } catch (e) {
-      process.stdout.write(`Sync warning: ${e?.message || e}\n`);
-    }
   }
 
   const { warmSkillMetadataIndex } = require("../lib/skills-warmup");
@@ -414,7 +427,7 @@ async function cmdServe(argv) {
   await ensurePortFree(port);
   server.listen(port, LOCAL_BIND_HOST, () => {
     const url = getLocalServerUrl(port);
-    lifecycle.ready(url);
+    lifecycle.ready(url, { startedAtMs: serveStartedAtMs });
     startOptimizeSchedule({ dbPath });
     process.stdout.write(
       [
@@ -433,6 +446,20 @@ async function cmdServe(argv) {
     if (opts.open) {
       openInBrowser(url);
     }
+    startServeSyncInBackground({
+      syncEnabled: opts.sync,
+      lifecycle,
+      cmdSyncFn: async (...args) => {
+        if (syncing) return;
+        syncing = true;
+        try {
+          const { cmdSync } = require("./sync");
+          await cmdSync(...args);
+        } finally {
+          syncing = false;
+        }
+      },
+    });
   });
 
   server.on("error", (e) => {
@@ -531,6 +558,7 @@ module.exports = {
   cmdServe,
   createServeShutdownHandler,
   createServeLifecycleReporter,
+  startServeSyncInBackground,
   buildPortInUseHint,
   NPM_PACKAGE_NAME,
   LOCAL_BIND_HOST,

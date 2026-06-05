@@ -32,7 +32,7 @@ describe("PlanPage", () => {
 
     render(<PlanPage />);
 
-    expect(await screen.findByText("cursor-pro")).toBeTruthy();
+    expect(await screen.findByText("Cursor Pro")).toBeTruthy();
     expect(screen.getByText("API-equivalent cost — this is what these tokens would have cost via direct API, not what you owe Cursor.")).toBeTruthy();
     expect(screen.getByRole("progressbar")).toBeTruthy();
   });
@@ -54,24 +54,49 @@ describe("PlanPage", () => {
     expect(screen.queryByText(/not what you owe Cursor/i)).toBeNull();
   });
 
-  it("explains unconfigured custom plan while keeping month-to-date spend visible", async () => {
+  it("shows a soft inline hint when there is no observed activity yet", async () => {
     api.getPlanView.mockResolvedValue({
       ok: true,
       plan: "custom",
       monthly_usd: 0,
       monthly_plan_usd: "0.00",
-      month_to_date_api_equivalent_usd: "3632.0315",
+      month_to_date_api_equivalent_usd: "0.0000",
       usage_percent: null,
+      inferred: null,
       label: "API-equivalent cost",
       label_detail: "API-equivalent cost - this is direct API-equivalent display cost, not a subscription bill.",
     });
 
     render(<PlanPage />);
 
-    expect(await screen.findByText("Monthly plan not configured")).toBeTruthy();
-    expect(screen.getByText("$3,632.0315")).toBeTruthy();
-    expect(screen.getByText("Budget percentage unavailable until a monthly plan amount is configured.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "No recent activity yet. Once you use Claude or Codex, VibeDeck will pick a plan automatically.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Monthly plan not configured/i)).toBeNull();
     expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("renders an Auto-detected badge for an inferred plan", async () => {
+    api.getPlanView.mockResolvedValue({
+      ok: true,
+      plan: "claude-monthly",
+      monthly_usd: 200,
+      monthly_plan_usd: "200.00",
+      month_to_date_api_equivalent_usd: "82.7700",
+      usage_percent: "41.39",
+      inferred: true,
+      label: "Plan usage",
+      label_detail: "Plan usage, detected from your Claude activity.",
+    });
+
+    render(<PlanPage />);
+
+    expect(await screen.findByText("Claude monthly")).toBeTruthy();
+    expect(screen.getByText("Auto-detected")).toBeTruthy();
+    expect(screen.queryByText(/Monthly plan not configured/i)).toBeNull();
+    expect(screen.getByRole("progressbar")).toBeTruthy();
   });
 
   it("marks forecast as locked until seven active days are available", async () => {

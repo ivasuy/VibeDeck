@@ -56,6 +56,7 @@ const {
   resolveKiroCliSessionFiles,
   resolveKiroCliDbPath,
   parseKiroCliIncremental,
+  orderRebuildProviderFilesRecentFirst,
 } = require("../lib/rollout");
 const { createProgress, renderBar, formatNumber, formatBytes } = require("../lib/progress");
 const {
@@ -67,6 +68,7 @@ const {
 const { purgeProjectUsage } = require("../lib/project-usage-purge");
 const { resolveTrackerPaths } = require("../lib/tracker-paths");
 const { ensureSchema } = require("../lib/db");
+const { writeStartupSnapshot } = require("../lib/startup-snapshot");
 const { reapOrphanedSessions } = require("../lib/sessions/reaper");
 const { getIdleTimeoutMin } = require("../lib/sessions/idle-timeout");
 const { processSessionEvent, recoverActiveSessionMetadata } = require("../lib/sessions/pipeline");
@@ -99,6 +101,13 @@ const REBUILD_PROFILE_STAGE_NAMES = [
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_REBUILD_FLUSH_SLICE_EVENTS = 2000;
 const DEFAULT_REBUILD_SESSION_BATCH_EVENTS = 1000;
+const ROLLBACK_ENV_FLAGS = {
+  VIBEDECK_STARTUP_SNAPSHOT: "0 disables startup snapshot read/write",
+  VIBEDECK_REBUILD_RECENT_FASTPATH: "0 disables recent-first rebuild",
+  VIBEDECK_REBUILD_DIRTY_POST_DRAIN: "0 restores inline branch-fact rebuilds during grouped flush",
+  VIBEDECK_PROJECTION_FRESHNESS: "0 disables projection freshness reporting",
+  VIBEDECK_REBUILD_PROFILE: "0 disables rebuild profile diagnostics",
+};
 let autoBranchFactsRebuilt = false;
 
 function roundedProfileMs(value) {
@@ -143,11 +152,41 @@ function isRecentRebuildSessionEvent(event, { now = Date.now() } = {}) {
 }
 
 function isRebuildRecentFastPathEnabled({ rebuildVibedeckDb = false } = {}) {
-  return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_RECENT_FASTPATH === "1";
+  if (!rebuildVibedeckDb) return false;
+  const raw = process.env.VIBEDECK_REBUILD_RECENT_FASTPATH;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isStartupSnapshotEnabled() {
+  const raw = process.env.VIBEDECK_STARTUP_SNAPSHOT;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isRebuildProfileEnabled({ rebuildVibedeckDb = false } = {}) {
+  if (!rebuildVibedeckDb) return false;
+  const raw = process.env.VIBEDECK_REBUILD_PROFILE;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
+}
+
+function isProjectionFreshnessEnabled() {
+  const raw = process.env.VIBEDECK_PROJECTION_FRESHNESS;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
 }
 
 function isRebuildDirtyPostDrainEnabled({ rebuildVibedeckDb = false } = {}) {
-  return rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN === "1";
+  if (!rebuildVibedeckDb) return false;
+  const raw = process.env.VIBEDECK_REBUILD_DIRTY_POST_DRAIN;
+  if (raw === undefined || raw === null || raw === "") return true;
+  const value = String(raw).trim().toLowerCase();
+  return !["0", "false", "off", "no"].includes(value);
 }
 
 function getRebuildFlushSliceEvents({ rebuildVibedeckDb = false } = {}) {
@@ -168,8 +207,13 @@ function getRebuildSessionBatchEvents({ rebuildVibedeckDb = false } = {}) {
   return parsed;
 }
 
-function createRebuildProfile({ trackerDir } = {}) {
+function createRebuildProfile({ trackerDir, defaults = {} } = {}) {
   if (!trackerDir) return null;
+  const startedAt = process.hrtime.bigint();
+  const milestones = {
+    first_paint_ready_ms: null,
+    historical_completion_ms: null,
+  };
   const stages = new Map(
     REBUILD_PROFILE_STAGE_NAMES.map((name) => [
       name,
@@ -185,6 +229,10 @@ function createRebuildProfile({ trackerDir } = {}) {
     historical_session_events_flushed: 0,
     slice_threshold_flush_count: 0,
     historical_slice_threshold_flush_count: 0,
+    events_processed: 0,
+    groups_processed: 0,
+    branch_resolution_count: 0,
+    existing_repo_reused_count: 0,
     repair_candidates_attempted: 0,
     branch_facts_rebuilt_by_scope: {},
   };
@@ -194,6 +242,15 @@ function createRebuildProfile({ trackerDir } = {}) {
     const stage = stages.get(name);
     stage.duration_ms = roundedProfileMs(stage.duration_ms + roundedProfileMs(durationMs));
     mergeProfileCounters(stage.counters, stageCounters);
+  }
+
+  function elapsedMs() {
+    return roundedProfileMs(Number(process.hrtime.bigint() - startedAt) / 1_000_000);
+  }
+
+  function markMilestone(name) {
+    if (!Object.hasOwn(milestones, name) || milestones[name] !== null) return;
+    milestones[name] = elapsedMs();
   }
 
   return {
@@ -212,12 +269,20 @@ function createRebuildProfile({ trackerDir } = {}) {
       flush_count = 0,
       slice_threshold_flush_count = 0,
       historical_slice_threshold_flush_count = 0,
+      events_processed = 0,
+      groups_processed = 0,
+      branch_resolution_count = 0,
+      existing_repo_reused_count = 0,
     } = {}) {
       counters.recent_session_events_flushed += Number(recent) || 0;
       counters.historical_session_events_flushed += Number(historical) || 0;
       counters.slice_threshold_flush_count += Number(slice_threshold_flush_count) || 0;
       counters.historical_slice_threshold_flush_count +=
         Number(historical_slice_threshold_flush_count) || 0;
+      counters.events_processed += Number(events_processed) || 0;
+      counters.groups_processed += Number(groups_processed) || 0;
+      counters.branch_resolution_count += Number(branch_resolution_count) || 0;
+      counters.existing_repo_reused_count += Number(existing_repo_reused_count) || 0;
       const flushCount = Number(flush_count) || 0;
       mergeProfileCounters(stages.get("recent_lane_session_event_flush")?.counters, {
         recent_session_events_flushed: Number(recent) || 0,
@@ -225,6 +290,10 @@ function createRebuildProfile({ trackerDir } = {}) {
         flush_count: flushCount,
         slice_threshold_flush_count: Number(slice_threshold_flush_count) || 0,
         historical_slice_threshold_flush_count: Number(historical_slice_threshold_flush_count) || 0,
+        events_processed: Number(events_processed) || 0,
+        groups_processed: Number(groups_processed) || 0,
+        branch_resolution_count: Number(branch_resolution_count) || 0,
+        existing_repo_reused_count: Number(existing_repo_reused_count) || 0,
       });
     },
     recordRepairCandidates(count, scope = "full") {
@@ -253,9 +322,24 @@ function createRebuildProfile({ trackerDir } = {}) {
         addStageDuration(name, Number(process.hrtime.bigint() - startedAt) / 1_000_000);
       }
     },
+    markFirstPaintReady() {
+      markMilestone("first_paint_ready_ms");
+    },
+    markHistoricalComplete() {
+      markMilestone("first_paint_ready_ms");
+      markMilestone("historical_completion_ms");
+    },
     async write() {
       const payload = {
         generated_at: new Date().toISOString(),
+        defaults: {
+          snapshot_write: defaults.snapshot_write === true,
+          recent_first_rebuild: defaults.recent_first_rebuild === true,
+          dirty_post_drain: defaults.dirty_post_drain === true,
+          freshness_reporting: defaults.freshness_reporting !== false,
+        },
+        milestones,
+        rollback_env_flags: ROLLBACK_ENV_FLAGS,
         stages: REBUILD_PROFILE_STAGE_NAMES.map((name) => stages.get(name)),
         counters,
       };
@@ -266,6 +350,135 @@ function createRebuildProfile({ trackerDir } = {}) {
       );
     },
   };
+}
+
+function normalizeProjectionShardProvider(provider) {
+  const value = typeof provider === "string" ? provider.trim().toLowerCase() : "";
+  if (value === "every-code") return "codex";
+  if (value === "codex" || value === "claude") return value;
+  return null;
+}
+
+function normalizeProjectionSourceGroup(sourceGroup, provider) {
+  const raw = typeof sourceGroup === "string" ? sourceGroup.trim().toLowerCase() : "";
+  if (/^[a-z0-9._-]+$/.test(raw)) return raw;
+  const normalizedProvider = normalizeProjectionShardProvider(provider);
+  return normalizedProvider ? `${normalizedProvider}-jsonl` : null;
+}
+
+function createRebuildProjectionShardRecorder() {
+  const shards = new Map();
+  return {
+    recordProviderFile(meta = {}) {
+      const provider = normalizeProjectionShardProvider(meta.provider);
+      if (!provider) return;
+      const sourceGroup = normalizeProjectionSourceGroup(meta.sourceGroup, meta.provider);
+      const scope = normalizeRebuildProfileLane(meta.lane);
+      const shardKey = `${provider}:${scope}`;
+      const shard = shards.get(shardKey) || {
+        provider,
+        scope,
+        source_groups: [],
+        file_count: 0,
+        event_count: 0,
+      };
+      if (sourceGroup && !shard.source_groups.includes(sourceGroup)) {
+        shard.source_groups.push(sourceGroup);
+        shard.source_groups.sort((a, b) => a.localeCompare(b));
+      }
+      shard.file_count += 1;
+      shard.event_count += Number(meta.eventsAggregated) || 0;
+      shards.set(shardKey, shard);
+    },
+    async write(dbPath) {
+      return recordRebuildProjectionShardMetadata({
+        dbPath,
+        shards: Array.from(shards.values()),
+      });
+    },
+  };
+}
+
+async function recordRebuildProjectionShardMetadata({ dbPath, shards = [] } = {}) {
+  if (typeof dbPath !== "string" || !dbPath.trim()) return 0;
+  if (!Array.isArray(shards) || shards.length === 0) return 0;
+
+  const db = new DatabaseSync(dbPath);
+  try {
+    const table = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'vibedeck_projection_shards'")
+      .get();
+    if (!table) return 0;
+
+    const now = new Date().toISOString();
+    const insert = db.prepare(`
+      INSERT INTO vibedeck_projection_shards (
+        shard_key, provider, source_group, scope, status, watermark_json,
+        file_count, event_count, session_count, fact_count,
+        started_at, finished_at, last_error, created_at, updated_at
+      ) VALUES (
+        @shard_key, @provider, @source_group, @scope, 'ready', @watermark_json,
+        @file_count, @event_count, @session_count, @fact_count,
+        @started_at, @finished_at, NULL, @created_at, @updated_at
+      )
+      ON CONFLICT(shard_key) DO UPDATE SET
+        provider = excluded.provider,
+        source_group = excluded.source_group,
+        scope = excluded.scope,
+        status = excluded.status,
+        watermark_json = excluded.watermark_json,
+        file_count = excluded.file_count,
+        event_count = excluded.event_count,
+        session_count = excluded.session_count,
+        fact_count = excluded.fact_count,
+        finished_at = excluded.finished_at,
+        last_error = NULL,
+        updated_at = excluded.updated_at
+    `);
+
+    let recorded = 0;
+    db.exec("BEGIN");
+    try {
+      for (const shard of shards) {
+        const provider = normalizeProjectionShardProvider(shard?.provider);
+        const scope = normalizeRebuildProfileLane(shard?.scope);
+        if (!provider) continue;
+        const sourceGroups = Array.isArray(shard.source_groups)
+          ? shard.source_groups
+              .map((group) => normalizeProjectionSourceGroup(group, provider))
+              .filter(Boolean)
+              .filter((group, index, all) => all.indexOf(group) === index)
+              .sort((a, b) => a.localeCompare(b))
+          : [normalizeProjectionSourceGroup(shard.source_group, provider) || `${provider}-jsonl`];
+        const sourceGroup = sourceGroups.length === 1 ? sourceGroups[0] : `${provider}-jsonl`;
+        insert.run({
+          shard_key: `${provider}:${scope}`,
+          provider,
+          source_group: sourceGroup,
+          scope,
+          watermark_json: JSON.stringify({ rebuilt_at: now, source_groups: sourceGroups }),
+          file_count: Math.max(0, Math.floor(Number(shard.file_count) || 0)),
+          event_count: Math.max(0, Math.floor(Number(shard.event_count) || 0)),
+          session_count: Math.max(0, Math.floor(Number(shard.session_count) || 0)),
+          fact_count: Math.max(0, Math.floor(Number(shard.fact_count) || 0)),
+          started_at: shard.started_at || now,
+          finished_at: shard.finished_at || now,
+          created_at: shard.created_at || now,
+          updated_at: shard.updated_at || now,
+        });
+        recorded += 1;
+      }
+      db.exec("COMMIT");
+    } catch (err) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {}
+      throw err;
+    }
+    return recorded;
+  } finally {
+    db.close();
+  }
 }
 
 function shouldRunFullBranchFactRebuild({
@@ -299,6 +512,27 @@ function createSyncLifecycleProgressCallback({
 
 function providerDoneSummary({ action = "read", count = 0, unit = "items", events = 0, buckets = 0 } = {}) {
   return `${action} ${formatNumber(count)} ${unit} · ${formatNumber(events)} events · ${formatNumber(buckets)} buckets`;
+}
+
+function splitScheduledProviderFilesByLane(files) {
+  const recent = [];
+  const historical = [];
+  for (const entry of Array.isArray(files) ? files : []) {
+    if (entry && typeof entry === "object" && entry.rebuildLane === "recent") {
+      recent.push(entry);
+    } else {
+      historical.push(entry);
+    }
+  }
+  return { recent, historical };
+}
+
+function addProviderParseResult(target, result = {}) {
+  if (!target || !result) return target;
+  for (const key of ["filesProcessed", "eventsAggregated", "bucketsQueued", "projectBucketsQueued"]) {
+    target[key] = (Number(target[key]) || 0) + (Number(result[key]) || 0);
+  }
+  return target;
 }
 
 async function cmdSync(argv, { lifecycle = null } = {}) {
@@ -337,11 +571,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     let queueStatePath = liveQueueStatePath;
     let projectQueuePath = liveProjectQueuePath;
     let projectQueueStatePath = liveProjectQueueStatePath;
-    const rebuildProfile =
-      opts.rebuildVibedeckDb && process.env.VIBEDECK_REBUILD_PROFILE === "1"
-        ? createRebuildProfile({ trackerDir })
-        : null;
-
     const config = await readJson(configPath);
     const cursors = (await readJson(cursorsPath)) || { version: 1, files: {}, updatedAt: null };
     if (opts.rebuildVibedeckDb) {
@@ -375,13 +604,29 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     const recentFastPathEnabled = isRebuildRecentFastPathEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
+    const snapshotEnabled = isStartupSnapshotEnabled();
+    const projectionFreshnessEnabled = isProjectionFreshnessEnabled();
+    const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
+      rebuildVibedeckDb: opts.rebuildVibedeckDb,
+    });
+    const rebuildProfile = isRebuildProfileEnabled({ rebuildVibedeckDb: opts.rebuildVibedeckDb })
+      ? createRebuildProfile({
+          trackerDir,
+          defaults: {
+            snapshot_write: snapshotEnabled,
+            recent_first_rebuild: recentFastPathEnabled,
+            dirty_post_drain: dirtyPostDrainEnabled,
+            freshness_reporting: projectionFreshnessEnabled,
+          },
+        })
+      : null;
+    const rebuildShardRecorder = opts.rebuildVibedeckDb
+      ? createRebuildProjectionShardRecorder()
+      : null;
     const rebuildFlushSliceEvents = getRebuildFlushSliceEvents({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const rebuildSessionBatchEvents = getRebuildSessionBatchEvents({
-      rebuildVibedeckDb: opts.rebuildVibedeckDb,
-    });
-    const dirtyPostDrainEnabled = isRebuildDirtyPostDrainEnabled({
       rebuildVibedeckDb: opts.rebuildVibedeckDb,
     });
     const sessionEventProcessor = opts.rebuildVibedeckDb
@@ -401,6 +646,32 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         )
       : createSessionEventProcessor((e) => processSessionEvent(dbPath, e));
     const onSessionEvent = sessionEventProcessor.onSessionEvent;
+    const onRebuildProviderFileProfile =
+      rebuildProfile || rebuildShardRecorder
+        ? (meta) => {
+            rebuildProfile?.recordProviderFile(meta);
+            rebuildShardRecorder?.recordProviderFile(meta);
+          }
+        : null;
+    const onRecentLaneComplete =
+      opts.rebuildVibedeckDb && recentFastPathEnabled && typeof sessionEventProcessor.flush === "function"
+        ? () => {
+            if (
+              typeof sessionEventProcessor.getPendingEventCount === "function" &&
+              sessionEventProcessor.getPendingEventCount("recent") <= 0
+            ) {
+              return Promise.resolve();
+            }
+            const flush = () =>
+              sessionEventProcessor.flush({
+                lane: "recent",
+                reason: "lane_boundary",
+              });
+            return rebuildProfile
+              ? rebuildProfile.measure("recent_lane_session_event_flush", flush)
+              : flush();
+          }
+        : null;
     const onProviderFileComplete =
       opts.rebuildVibedeckDb && typeof sessionEventProcessor.flush === "function"
         ? (meta = {}) => {
@@ -460,9 +731,13 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
         rolloutFiles.push({ path: filePath, source: entry.source });
       }
     }
+    const scheduledRolloutFiles =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? await orderRebuildProviderFilesRecentFirst(rolloutFiles)
+        : rolloutFiles;
     lifecycle?.provider?.("Codex", `found ${formatNumber(rolloutFiles.length)} session file${rolloutFiles.length === 1 ? "" : "s"}`);
 
-    await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles });
+    await migrateRolloutCumulativeDeltaBuckets({ cursors, queuePath, rolloutFiles: scheduledRolloutFiles });
 
     const openclawFiles = openclawSignal?.sessionFile
       ? [{ path: openclawSignal.sessionFile, source: "openclaw" }]
@@ -475,35 +750,138 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       process.stderr.write("Rebuild phase: parsing provider logs\n");
     }
 
-    if (progress?.enabled) {
-      progress.start(
-        `Parsing ${renderBar(0)} 0/${formatNumber(rolloutFiles.length)} files | buckets 0`,
+    lifecycle?.provider?.("Claude", "discovering project transcripts");
+    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
+    lifecycle?.provider?.("Claude", `found ${formatNumber(claudeFiles.length)} project file${claudeFiles.length === 1 ? "" : "s"}`);
+    await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
+    const scheduledClaudeFiles =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? await orderRebuildProviderFilesRecentFirst(claudeFiles)
+        : claudeFiles;
+
+    const parseResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, projectBucketsQueued: 0 };
+    const claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0, projectBucketsQueued: 0 };
+    const rolloutLanes =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? splitScheduledProviderFilesByLane(scheduledRolloutFiles)
+        : { recent: [], historical: scheduledRolloutFiles };
+    const claudeLanes =
+      opts.rebuildVibedeckDb && recentFastPathEnabled
+        ? splitScheduledProviderFilesByLane(scheduledClaudeFiles)
+        : { recent: [], historical: scheduledClaudeFiles };
+
+    const parseRolloutFiles = async (files) => {
+      const rolloutSlice = Array.isArray(files) ? files : [];
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing ${renderBar(0)} 0/${formatNumber(rolloutSlice.length)} files | buckets 0`,
+        );
+      }
+      addProviderParseResult(
+        parseResult,
+        await parseRolloutIncremental({
+          rolloutFiles: rolloutSlice,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          onSessionEvent,
+          onFileComplete: onProviderFileComplete,
+          onFileProfile: onRebuildProviderFileProfile,
+          onLaneComplete: onRecentLaneComplete,
+          onProgress: createSyncLifecycleProgressCallback({
+            provider: "Codex",
+            unit: "files",
+            lifecycle,
+            progress,
+            renderProgress: (p) => {
+              const pct = p.total > 0 ? p.index / p.total : 1;
+              return `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`;
+            },
+          }),
+        }),
       );
+    };
+
+    const parseClaudeFiles = async (files) => {
+      if (!Array.isArray(files) || files.length === 0) return;
+      if (progress?.enabled) {
+        progress.start(
+          `Parsing Claude ${renderBar(0)} 0/${formatNumber(files.length)} files | buckets 0`,
+        );
+      }
+      addProviderParseResult(
+        claudeResult,
+        await parseClaudeIncremental({
+          projectFiles: files,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          onSessionEvent,
+          onFileComplete: onProviderFileComplete,
+          onFileProfile: onRebuildProviderFileProfile,
+          onLaneComplete: onRecentLaneComplete,
+          onProgress: createSyncLifecycleProgressCallback({
+            provider: "Claude",
+            unit: "files",
+            lifecycle,
+            progress,
+            renderProgress: (p) => {
+              const pct = p.total > 0 ? p.index / p.total : 1;
+              return `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
+                p.bucketsQueued,
+              )}`;
+            },
+          }),
+          source: "claude",
+        }),
+      );
+    };
+
+    let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
+    let openclawParsed = false;
+    const parseOpenclawInputs = async () => {
+      if (openclawParsed) return;
+      openclawParsed = true;
+      if (openclawFiles.length > 0) {
+        // Only runs when explicitly triggered by OpenClaw hooks.
+        openclawResult = await parseOpenclawIncremental({
+          sessionFiles: openclawFiles,
+          cursors,
+          queuePath,
+          projectQueuePath,
+          source: "openclaw",
+          onSessionEvent,
+        });
+      }
+
+      const openclawFallback = await applyOpenclawTotalsFallback({
+        trackerDir,
+        signal: openclawSignal,
+        cursors,
+        queuePath,
+        projectQueuePath,
+      });
+      openclawResult.filesProcessed += openclawFallback.filesProcessed;
+      openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
+      openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
+    };
+
+    if (opts.rebuildVibedeckDb && recentFastPathEnabled) {
+      await parseRolloutFiles(rolloutLanes.recent);
+      await parseClaudeFiles(claudeLanes.recent);
+      await onRecentLaneComplete?.();
+      rebuildProfile?.markFirstPaintReady();
+      await parseRolloutFiles(rolloutLanes.historical);
+      await parseOpenclawInputs();
+      await parseClaudeFiles(claudeLanes.historical);
+    } else {
+      await parseRolloutFiles(rolloutLanes.historical);
+      await parseOpenclawInputs();
+      await parseClaudeFiles(claudeLanes.historical);
     }
 
-    const parseResult = await parseRolloutIncremental({
-      rolloutFiles,
-      cursors,
-      queuePath,
-      projectQueuePath,
-      onSessionEvent,
-      onFileComplete: onProviderFileComplete,
-      onFileProfile: rebuildProfile
-        ? (meta) => rebuildProfile.recordProviderFile(meta)
-        : null,
-      onProgress: createSyncLifecycleProgressCallback({
-        provider: "Codex",
-        unit: "files",
-        lifecycle,
-        progress,
-        renderProgress: (p) => {
-          const pct = p.total > 0 ? p.index / p.total : 1;
-          return `Parsing ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-            p.bucketsQueued,
-          )}`;
-        },
-      }),
-    });
     lifecycle?.providerDone?.(
       "Codex",
       providerDoneSummary({
@@ -515,66 +893,6 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       }),
     );
 
-    let openclawResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    if (openclawFiles.length > 0) {
-      // Only runs when explicitly triggered by OpenClaw hooks.
-      openclawResult = await parseOpenclawIncremental({
-        sessionFiles: openclawFiles,
-        cursors,
-        queuePath,
-        projectQueuePath,
-        source: "openclaw",
-        onSessionEvent,
-      });
-    }
-
-    const openclawFallback = await applyOpenclawTotalsFallback({
-      trackerDir,
-      signal: openclawSignal,
-      cursors,
-      queuePath,
-      projectQueuePath,
-    });
-    openclawResult.filesProcessed += openclawFallback.filesProcessed;
-    openclawResult.eventsAggregated += openclawFallback.eventsAggregated;
-    openclawResult.bucketsQueued += openclawFallback.bucketsQueued;
-
-    lifecycle?.provider?.("Claude", "discovering project transcripts");
-    const claudeFiles = await listClaudeProjectFiles(claudeProjectsDir);
-    lifecycle?.provider?.("Claude", `found ${formatNumber(claudeFiles.length)} project file${claudeFiles.length === 1 ? "" : "s"}`);
-    await reincludeClaudeMemObserverFiles({ cursors, claudeFiles, queuePath });
-    let claudeResult = { filesProcessed: 0, eventsAggregated: 0, bucketsQueued: 0 };
-    if (claudeFiles.length > 0) {
-      if (progress?.enabled) {
-        progress.start(
-          `Parsing Claude ${renderBar(0)} 0/${formatNumber(claudeFiles.length)} files | buckets 0`,
-        );
-      }
-      claudeResult = await parseClaudeIncremental({
-        projectFiles: claudeFiles,
-        cursors,
-        queuePath,
-        projectQueuePath,
-        onSessionEvent,
-        onFileComplete: onProviderFileComplete,
-        onFileProfile: rebuildProfile
-          ? (meta) => rebuildProfile.recordProviderFile(meta)
-          : null,
-        onProgress: createSyncLifecycleProgressCallback({
-          provider: "Claude",
-          unit: "files",
-          lifecycle,
-          progress,
-          renderProgress: (p) => {
-            const pct = p.total > 0 ? p.index / p.total : 1;
-            return `Parsing Claude ${renderBar(pct)} ${formatNumber(p.index)}/${formatNumber(p.total)} files | buckets ${formatNumber(
-              p.bucketsQueued,
-            )}`;
-          },
-        }),
-        source: "claude",
-      });
-    }
     lifecycle?.providerDone?.(
       "Claude",
       providerDoneSummary({
@@ -1284,6 +1602,9 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       rebuildProfile?.recordBranchFacts("skipped", 0);
       lifecycle?.providerDone?.("Indexes", "branch usage facts already current");
     }
+    if (opts.rebuildVibedeckDb && rebuildShardRecorder) {
+      await rebuildShardRecorder.write(dbPath);
+    }
     /*
     lifecycle?.provider?.("Indexes", "backfilling checkpoint links");
     await runEntireCheckpointBackfill({
@@ -1329,6 +1650,7 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
     }
 
     if (rebuildProfile) {
+      rebuildProfile.markHistoricalComplete();
       await rebuildProfile.write();
     }
 
@@ -1350,6 +1672,19 @@ async function cmdSync(argv, { lifecycle = null } = {}) {
       } catch (_e) {
         // ignore
       }
+    }
+
+    if (snapshotEnabled) {
+      try {
+        writeStartupSnapshot({ trackerDir, dbPath: liveDbPath });
+        lifecycle?.providerDone?.("Startup snapshot", "updated");
+      } catch (e) {
+        const message = e?.message || String(e);
+        if (!opts.auto) process.stderr.write(`Startup snapshot: warning: ${message}\n`);
+        lifecycle?.providerDone?.("Startup snapshot", `warning: ${message}`);
+      }
+    } else {
+      lifecycle?.providerDone?.("Startup snapshot", "disabled by VIBEDECK_STARTUP_SNAPSHOT=0");
     }
 
     if (!opts.auto) {
@@ -1608,6 +1943,8 @@ function clearCanonicalVibedeckTables(dbPath) {
         DELETE FROM vibedeck_session_buckets;
         DELETE FROM vibedeck_session_events;
         DELETE FROM vibedeck_sessions;
+        DELETE FROM vibedeck_session_entire_links;
+        DELETE FROM vibedeck_entire_checkpoint_matches;
       `);
       db.exec('COMMIT');
     } catch (err) {
@@ -1738,7 +2075,12 @@ function createGroupedSessionEventProcessor(
       });
     }
     const key = `${event?.provider || ""}\u0000${event?.session_id || ""}`;
-    const lane = isRecentRebuildSessionEvent(event) ? "recent" : "historical";
+    const lane =
+      event?.rebuild_lane === "recent" || event?.rebuild_lane === "historical"
+        ? event.rebuild_lane
+        : isRecentRebuildSessionEvent(event)
+          ? "recent"
+          : "historical";
     const group = groups.get(key);
     const entry = { event, sequence: total };
     if (group) {
@@ -1777,6 +2119,17 @@ function createGroupedSessionEventProcessor(
     return pending;
   };
 
+  const mergeProcessorSummary = (target, summary, fallbackEventCount) => {
+    const eventCount = Number(summary?.events_processed);
+    const groupCount = Number(summary?.groups_processed);
+    target.events_processed += Number.isFinite(eventCount) ? eventCount : fallbackEventCount;
+    target.groups_processed += Number.isFinite(groupCount) ? groupCount : 1;
+    for (const key of ["branch_resolution_count", "existing_repo_reused_count"]) {
+      const value = Number(summary?.[key]);
+      if (Number.isFinite(value)) target[key] += value;
+    }
+  };
+
   const flush = async ({ onProgress, lane = "all", reason = "manual" } = {}) => {
     const progressCallback = typeof onProgress === "function" ? onProgress : null;
     if (progressCallback) {
@@ -1794,14 +2147,23 @@ function createGroupedSessionEventProcessor(
 
     let recentFlushed = 0;
     let historicalFlushed = 0;
+    const processorCounters = {
+      events_processed: 0,
+      groups_processed: 0,
+      branch_resolution_count: 0,
+      existing_repo_reused_count: 0,
+    };
 
     for (const events of pendingGroups) {
       try {
         if (batchEvents === null || events.length <= batchEvents) {
-          await processor(events);
+          const summary = await processor(events);
+          mergeProcessorSummary(processorCounters, summary, events.length);
         } else {
           for (let offset = 0; offset < events.length; offset += batchEvents) {
-            await processor(events.slice(offset, offset + batchEvents));
+            const chunk = events.slice(offset, offset + batchEvents);
+            const summary = await processor(chunk);
+            mergeProcessorSummary(processorCounters, summary, chunk.length);
           }
         }
       } catch (err) {
@@ -1829,6 +2191,7 @@ function createGroupedSessionEventProcessor(
         slice_threshold_flush_count: thresholdFlush,
         historical_slice_threshold_flush_count:
           thresholdFlush && normalizedLane === "historical" ? 1 : 0,
+        ...processorCounters,
       });
     }
 
@@ -2116,6 +2479,7 @@ module.exports = {
   migrateCursorUnknownBuckets,
   migrateRolloutCumulativeDeltaBuckets,
   reincludeClaudeMemObserverFiles,
+  recordRebuildProjectionShardMetadata,
   resetVibedeckSyncState,
   CURSOR_UNKNOWN_MIGRATION_KEY,
   ROLLOUT_CUMULATIVE_DELTA_MIGRATION_KEY,

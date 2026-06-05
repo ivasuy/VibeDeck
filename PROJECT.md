@@ -1,6 +1,6 @@
 # VibeDeck
 
-**Version:** 1.0.4 (release branch, unreleased)
+**Version:** 1.1.4 (release branch, unreleased)
 **Last updated:** 2026-06-05
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
@@ -32,10 +32,10 @@ VibeDeck should stay true to five promises:
 
 This section is intentionally short. It records the problem, the fix, the evidence, and the commits worth reading. It is not a raw commit dump.
 
-### 1.0.4 Rebuild Flush And Repair Audit
+### 1.1.4 Rebuild Flush And Repair Audit
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.1.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-rebuild-flush-repair-optimization.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-8-report.md`
 
@@ -67,10 +67,10 @@ The previous fast-startup work moved rebuild time down sharply, but the latest l
 
 The default rebuild path now uses dirty post-drain materialization. On the latest local DB profile, `recent_lane_session_event_flush` dropped to `6,417.036ms`, `repair_pass` dropped to `95.639ms`, and `branch_fact_rebuild_pass` is now the main remaining stage at `8,100.361ms` for `126` dirty branch facts. The next performance phase should target faster dirty branch-fact materialization.
 
-### 1.0.4 Dirty Branch-Fact Materialization
+### 1.1.4 Dirty Branch-Fact Materialization
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.1.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-phase-9-dirty-branch-fact-materialization.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-9-report.md`
 
@@ -101,10 +101,10 @@ After dirty post-drain became the default rebuild path, `branch_fact_rebuild_pas
 
 The main remaining stage is now grouped flush at about `6.54s`. The next rebuild phase should target grouped session flush itself: fewer per-session DB writes, less branch resolution during flush, or a bulk session-event materialization path that preserves live session rows and canonical parity.
 
-### 1.0.4 Grouped Flush Repo Cache
+### 1.1.4 Grouped Flush Repo Cache
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.1.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-phase-10-grouped-flush-repo-cache.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-10-report.md`
 
@@ -135,10 +135,10 @@ After branch-fact materialization was reduced, grouped session flush became the 
 
 The latest profile is balanced: grouped flush is about `2.28s`, branch facts about `0.56s`, repair about `0.08s`, and total rebuild about `6.53s`. Further gains likely require reducing per-group DB writes or avoiding per-session branch resolution work, but the largest filesystem hotspot has been removed.
 
-### 1.0.4 Data-Layer Completion And Smoke Cleanup
+### 1.1.4 Data-Layer Completion And Smoke Cleanup
 
 **Date:** 2026-06-05
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.1.4`.
 
 #### Problem
 
@@ -175,10 +175,10 @@ The release branch still had two data-contract leftovers and three smoke-test wa
 
 The only remaining local warning is `xcodebuild` selecting the first of two matching macOS destinations when invoked as `-destination 'platform=macOS'`. That is a command-line destination ambiguity, not a project build-script issue.
 
-### 1.0.4 UI Revamp - DESIGN.md Coverage
+### 1.1.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28
-**Status:** implemented on `ui-revamp` and merged into `release/1.0.4`.
+**Status:** implemented on `ui-revamp` and merged into `release/1.1.4`.
 **Spec:** root `DESIGN.md`
 **Implementation notes:** root `implementation-notes.html`
 
@@ -207,15 +207,15 @@ The DESIGN.md pass required VibeDeck to remove active Entire traces from the use
 | Rendered route sweep | 14 routes across desktop and mobile passed |
 | Built bundle removed-surface scan | No Entire, sign-in, stack-trace, or canned 502 traces found |
 
-### 1.0.4 Release Candidate - Provider Enrichment, Session Grouping, And Codeburn Surfaces
+### 1.1.4 Release Candidate - Provider Enrichment, Session Grouping, And Codeburn Surfaces
 
-**Status:** merged on `release/1.0.4`, unreleased.
+**Status:** merged on `release/1.1.4`, unreleased.
 
 **Branches:**
 
 | Branch | Purpose |
 |---|---|
-| `release/1.0.4` | Release branch containing Phases 1-5 plus the post-close live surface fix. |
+| `release/1.1.4` | Release branch containing Phases 1-5 plus the post-close live surface fix. |
 | `agent/phase-1-claude-codex-enrichment` | Phase 1: Claude/Codex cost, token-bucket, tool, and session enrichment. |
 | `agent/phase-1-5-subagent-grouping` | Phase 1.5: Claude/Codex subagent grouping as an additive read-model layer. |
 | `agent/phase-2-tier-1-2-provider-breadth` | Phase 2: Tier 1+2 provider breadth and cwd pass-through. |
@@ -528,7 +528,7 @@ Caveats:
 - The Mac build succeeded, but the existing `Copy EmbeddedServer to app bundle` script still prints a missing bundled `node` chmod warning and a script-output warning during local debug builds.
 - The isolated rebuild doctor output still reports the existing non-critical local configuration state: missing `base_url`, missing device token/config, unattributed distribution warning, and one stale live-session warning.
 
-#### What Remains After 1.0.4
+#### What Remains After 1.1.4
 
 - Decide whether subagent grouping should stay in `shadow`, move to `preview`, or become default-on after more local/beta soak.
 - Add grouping support for other providers only where provider logs expose proof, not heuristics.

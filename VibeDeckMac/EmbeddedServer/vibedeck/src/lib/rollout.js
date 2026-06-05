@@ -48,6 +48,17 @@ const CLAUDE_MEM_OBSERVER_PATH_SEGMENT = "--claude-mem-observer-sessions";
 const CLAUDE_MEM_OBSERVER_PROJECT_REF =
   "https://local.vibedeck/claude-mem/observer-sessions";
 const REBUILD_PROFILE_RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SOURCE_HASH_ALGORITHM = "sha256";
+const TOTAL_FIELD_NAMES = Object.freeze([
+  "input_tokens",
+  "cached_input_tokens",
+  "cache_creation_input_tokens",
+  "output_tokens",
+  "reasoning_output_tokens",
+  "total_tokens",
+  "billable_total_tokens",
+  "conversation_count",
+]);
 
 function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   const mtimeMs = Number(stat?.mtimeMs);
@@ -55,12 +66,232 @@ function rebuildProfileLaneForStat(stat, { now = Date.now() } = {}) {
   return mtimeMs >= now - REBUILD_PROFILE_RECENT_WINDOW_MS ? "recent" : "historical";
 }
 
+function sourceGroupForProvider(source) {
+  const normalized = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  return `${normalized}-jsonl`;
+}
+
+function statSourceSize(stat) {
+  const size = Number(stat?.size);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function statSourceMtimeMs(stat) {
+  const mtimeMs = Number(stat?.mtimeMs);
+  return Number.isFinite(mtimeMs) && mtimeMs >= 0 ? mtimeMs : 0;
+}
+
+function statSourceInode(stat) {
+  const inode = Number(stat?.ino);
+  return Number.isFinite(inode) && inode >= 0 ? inode : 0;
+}
+
+function hashFileRange(filePath, byteLength) {
+  const length = Math.max(0, Math.floor(Number(byteLength) || 0));
+  const hash = crypto.createHash(SOURCE_HASH_ALGORITHM);
+  if (length === 0) return Promise.resolve(hash.digest("hex"));
+
+  return new Promise((resolve, reject) => {
+    const stream = fssync.createReadStream(filePath, {
+      start: 0,
+      end: length - 1,
+    });
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
+}
+
+function normalizeCursorOffset(prev) {
+  const offset = Number(prev?.offset ?? prev?.size);
+  return Number.isFinite(offset) && offset >= 0 ? offset : 0;
+}
+
+function normalizeCursorSize(prev) {
+  const size = Number(prev?.size ?? prev?.offset);
+  return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+async function classifySourceFileRead({ filePath, stat, prev }) {
+  const size = statSourceSize(stat);
+  const inode = statSourceInode(stat);
+  if (!prev || typeof prev !== "object") {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  const sameInode = prevInode === inode;
+  if (!sameInode) {
+    return { mode: "full", startOffset: 0, previousSize: 0 };
+  }
+
+  const prevSize = normalizeCursorSize(prev);
+  const prevOffset = normalizeCursorOffset(prev);
+  if (prevSize > size || prevOffset > size) {
+    return { mode: "full", startOffset: 0, previousSize: prevSize };
+  }
+
+  if (typeof prev.contentHash === "string" && prev.contentHash) {
+    const prefixHash = await hashFileRange(filePath, prevSize);
+    if (prefixHash !== prev.contentHash) {
+      return { mode: "full", startOffset: 0, previousSize: prevSize };
+    }
+    if (size === prevSize && prevOffset >= size) {
+      return { mode: "skip", startOffset: size, previousSize: prevSize, contentHash: prefixHash };
+    }
+    return {
+      mode: "append",
+      startOffset: Math.min(prevOffset, size),
+      previousSize: prevSize,
+      contentHash: prefixHash,
+    };
+  }
+
+  const prevMtimeMs = Number(prev.mtimeMs);
+  if (size === prevSize && prevOffset >= size && prevMtimeMs === statSourceMtimeMs(stat)) {
+    return { mode: "skip", startOffset: size, previousSize: prevSize };
+  }
+  if (size >= prevOffset && prevOffset > 0) {
+    return { mode: "append", startOffset: prevOffset, previousSize: prevSize };
+  }
+  return { mode: "full", startOffset: 0, previousSize: prevSize };
+}
+
+function needsLegacySourceCursorMigration({ filePath, stat, prev }) {
+  if (!prev || typeof prev !== "object") return false;
+  if (typeof prev.contentHash === "string" && prev.contentHash) return false;
+  const prevPath = typeof prev.sourcePath === "string" && prev.sourcePath ? prev.sourcePath : filePath;
+  if (prevPath !== filePath) return false;
+  const prevInode = Number(prev.inode ?? prev.ino ?? 0) || 0;
+  if (prevInode !== statSourceInode(stat)) return false;
+  const offset = normalizeCursorOffset(prev);
+  return offset > 0 && offset <= statSourceSize(stat);
+}
+
+function cloneContributionTotals(value) {
+  const out = initTotals();
+  if (!value || typeof value !== "object") return out;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const n = Number(value[key]);
+    if (Number.isFinite(n)) out[key] = n;
+  }
+  return out;
+}
+
+function contributionMapFromCursor(value) {
+  const map = new Map();
+  if (!value || typeof value !== "object") return map;
+  for (const [key, totals] of Object.entries(value)) {
+    if (!key) continue;
+    map.set(key, cloneContributionTotals(totals));
+  }
+  return map;
+}
+
+function contributionMapToCursor(map) {
+  const out = {};
+  if (!(map instanceof Map)) return out;
+  for (const [key, totals] of map.entries()) {
+    if (!key) continue;
+    out[key] = cloneContributionTotals(totals);
+  }
+  return out;
+}
+
+function recordContribution(map, key, delta) {
+  if (!(map instanceof Map) || !key || !delta) return;
+  const totals = map.get(key) || initTotals();
+  addTotals(totals, delta);
+  map.set(key, totals);
+}
+
+function subtractContributionTotals(target, delta) {
+  if (!target || !delta) return;
+  for (const key of TOTAL_FIELD_NAMES) {
+    const current = Number(target[key]) || 0;
+    const next = current - (Number(delta[key]) || 0);
+    target[key] = next > 0 ? next : 0;
+  }
+}
+
+function subtractStoredSourceContributions({
+  hourlyState,
+  projectState,
+  prev,
+  touchedBuckets,
+  projectTouchedBuckets,
+}) {
+  const bucketContributions = prev?.bucketContributions;
+  if (bucketContributions && typeof bucketContributions === "object") {
+    for (const [key, delta] of Object.entries(bucketContributions)) {
+      const bucket = hourlyState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      touchedBuckets?.add(key);
+    }
+  }
+
+  const projectContributions = prev?.projectBucketContributions;
+  if (projectContributions && typeof projectContributions === "object") {
+    for (const [key, delta] of Object.entries(projectContributions)) {
+      const bucket = projectState?.buckets?.[key];
+      if (bucket?.totals) subtractContributionTotals(bucket.totals, delta);
+      projectTouchedBuckets?.add(key);
+    }
+  }
+}
+
+async function buildSourceWatermark({ filePath, stat, offset, contentHash, source }) {
+  const size = statSourceSize(stat);
+  return {
+    sourcePath: filePath,
+    sourceGroup: sourceGroupForProvider(source),
+    inode: statSourceInode(stat),
+    offset: Math.max(0, Math.floor(Number(offset) || 0)),
+    size,
+    mtimeMs: statSourceMtimeMs(stat),
+    contentHash: contentHash || (await hashFileRange(filePath, size)),
+  };
+}
+
+async function orderRebuildProviderFilesRecentFirst(files, { now = Date.now() } = {}) {
+  if (!Array.isArray(files) || files.length === 0) return [];
+  const rows = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const entry = files[index];
+    const filePath = typeof entry === "string" ? entry : entry?.path;
+    const st = filePath ? await fs.stat(filePath).catch(() => null) : null;
+    const lane = st && st.isFile() ? rebuildProfileLaneForStat(st, { now }) : "historical";
+    rows.push({ entry, index, lane });
+  }
+  rows.sort((a, b) => {
+    if (a.lane !== b.lane) return a.lane === "recent" ? -1 : 1;
+    return a.index - b.index;
+  });
+  return rows.map(({ entry, lane }) => {
+    if (typeof entry === "string") return { path: entry, rebuildLane: lane };
+    if (!entry || typeof entry !== "object") return entry;
+    return { ...entry, rebuildLane: lane };
+  });
+}
+
 function emitSessionEvents(extractFn, batch, onSessionEvent) {
   if (typeof onSessionEvent !== "function") return;
   if (typeof extractFn !== "function") return;
   const events = extractFn(batch);
   if (!Array.isArray(events) || events.length === 0) return;
-  for (const e of events) onSessionEvent(e);
+  const rebuildLane =
+    batch?.rebuild_lane === "recent" || batch?.rebuild_lane === "historical"
+      ? batch.rebuild_lane
+      : null;
+  for (const e of events) {
+    if (rebuildLane) e.rebuild_lane = rebuildLane;
+    onSessionEvent(e);
+  }
 }
 
 function extractClaudeCwdFromLine(line) {
@@ -219,6 +450,7 @@ async function parseRolloutIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -236,6 +468,9 @@ async function parseRolloutIncremental({
   const publicRepoCache = projectEnabled ? new Map() : null;
   const touchedBuckets = new Set();
   const defaultSource = normalizeSourceInput(source) || DEFAULT_SOURCE;
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -251,18 +486,22 @@ async function parseRolloutIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-    const lastTotal = prev && prev.inode === inode ? prev.lastTotal || null : null;
-    const lastModel = prev && prev.inode === inode ? prev.lastModel || null : null;
-    const pendingCodexTools =
-      fileSource === "codex" && prev && prev.inode === inode
-        ? normalizePendingCodexTools(prev.pendingCodexTools)
-        : [];
-
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
@@ -274,6 +513,81 @@ async function parseRolloutIncremental({
       : null;
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    let canReuseCursor = readPlan.mode === "append";
+    let lastTotal = canReuseCursor ? prev?.lastTotal || null : null;
+    let lastModel = canReuseCursor ? prev?.lastModel || null : null;
+    let pendingCodexTools =
+      fileSource === "codex" && canReuseCursor
+        ? normalizePendingCodexTools(prev.pendingCodexTools)
+        : [];
+    const bucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      canReuseCursor ? contributionMapFromCursor(prev?.projectBucketContributions) : new Map();
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillHourlyState = normalizeHourlyState(null);
+      const backfillProjectState = projectEnabled ? normalizeProjectState(null) : null;
+      const backfillResult = await parseRolloutFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        lastTotal: null,
+        lastModel: null,
+        pendingCodexTools: [],
+        hourlyState: backfillHourlyState,
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: backfillProjectState,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        projectMetaCache,
+        publicRepoCache,
+        publicRepoResolver,
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      startOffset = accountedOffset;
+      canReuseCursor = true;
+      lastTotal = backfillResult.lastTotal || null;
+      lastModel = backfillResult.lastModel || null;
+      pendingCodexTools =
+        fileSource === "codex" ? normalizePendingCodexTools(backfillResult.pendingCodexTools) : [];
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          lastTotal,
+          lastModel,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          ...(fileSource === "codex" ? { pendingCodexTools } : {}),
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
+      continue;
+    } else if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+    }
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseRolloutFile({
@@ -292,15 +606,18 @@ async function parseRolloutIncremental({
       projectMetaCache,
       publicRepoCache,
       publicRepoResolver,
+      rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -311,17 +628,27 @@ async function parseRolloutIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
+      offset: result.endOffset,
+      source: fileSource,
+    });
     cursors.files[key] = {
-      inode,
+      ...sourceWatermark,
       offset: result.endOffset,
       lastTotal: result.lastTotal,
       lastModel: result.lastModel,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
       ...(fileSource === "codex" ? { pendingCodexTools: result.pendingCodexTools } : {}),
       updatedAt: new Date().toISOString(),
     };
@@ -364,6 +691,7 @@ async function parseClaudeIncremental({
   onSessionEvent,
   onFileComplete,
   onFileProfile,
+  onLaneComplete,
   source,
   publicRepoResolver,
 }) {
@@ -386,6 +714,9 @@ async function parseClaudeIncremental({
   const prevHashes = Array.isArray(cursors.claudeHashes) ? cursors.claudeHashes : [];
   const seenMessageHashes = new Set(prevHashes);
   const defaultSource = normalizeSourceInput(source) || "claude";
+  const laneComplete = typeof onLaneComplete === "function" ? onLaneComplete : null;
+  let recentLaneSeen = false;
+  let recentLaneCompleted = false;
 
   if (!cursors.files || typeof cursors.files !== "object") {
     cursors.files = {};
@@ -401,12 +732,22 @@ async function parseClaudeIncremental({
         : normalizeSourceInput(entry?.source) || defaultSource;
     const st = await fs.stat(filePath).catch(() => null);
     if (!st || !st.isFile()) continue;
+    const profileLane =
+      entry && typeof entry === "object" && entry.rebuildLane === "recent"
+        ? "recent"
+        : entry && typeof entry === "object" && entry.rebuildLane === "historical"
+          ? "historical"
+          : rebuildProfileLaneForStat(st);
+
+    if (profileLane === "historical" && recentLaneSeen && !recentLaneCompleted && laneComplete) {
+      await laneComplete({ lane: "recent", nextLane: "historical" });
+      recentLaneCompleted = true;
+    }
+    if (profileLane === "recent") recentLaneSeen = true;
 
     const key = filePath;
     const prev = cursors.files[key] || null;
-    const inode = st.ino || 0;
-    const startOffset = prev && prev.inode === inode ? prev.offset || 0 : 0;
-
+    const readPlan = await classifySourceFileRead({ filePath, stat: st, prev });
     const projectContext = projectEnabled
       ? await resolveProjectContextForFile({
           filePath,
@@ -418,6 +759,74 @@ async function parseClaudeIncremental({
       : null;
     const projectRef = projectContext?.projectRef || null;
     const projectKey = projectContext?.projectKey || null;
+    const legacyMigrationNeeded = needsLegacySourceCursorMigration({ filePath, stat: st, prev });
+    let startOffset = readPlan.startOffset;
+    const bucketContributions =
+      readPlan.mode === "append" ? contributionMapFromCursor(prev?.bucketContributions) : new Map();
+    const projectBucketContributions =
+      readPlan.mode === "append"
+        ? contributionMapFromCursor(prev?.projectBucketContributions)
+        : new Map();
+    let migratedMessageHashes = [];
+
+    if (legacyMigrationNeeded) {
+      const accountedOffset = normalizeCursorOffset(prev);
+      const backfillResult = await parseClaudeFile({
+        filePath,
+        startOffset: 0,
+        endOffset: accountedOffset,
+        hourlyState: normalizeHourlyState(null),
+        touchedBuckets: new Set(),
+        source: fileSource,
+        projectState: projectEnabled ? normalizeProjectState(null) : null,
+        projectTouchedBuckets: projectEnabled ? new Set() : null,
+        projectRef,
+        projectKey,
+        seenMessageHashes: new Set(),
+        rebuildLane: profileLane,
+        bucketContributions,
+        projectBucketContributions,
+      });
+      migratedMessageHashes = Array.isArray(backfillResult.messageHashes)
+        ? backfillResult.messageHashes
+        : [];
+      for (const hash of migratedMessageHashes) {
+        seenMessageHashes.add(hash);
+      }
+      startOffset = accountedOffset;
+      if (accountedOffset >= statSourceSize(st)) {
+        const sourceWatermark = await buildSourceWatermark({
+          filePath,
+          stat: st,
+          offset: accountedOffset,
+          source: fileSource,
+        });
+        cursors.files[key] = {
+          ...sourceWatermark,
+          offset: accountedOffset,
+          bucketContributions: contributionMapToCursor(bucketContributions),
+          projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+          messageHashes: migratedMessageHashes,
+          updatedAt: new Date().toISOString(),
+        };
+        continue;
+      }
+    } else if (readPlan.mode === "skip") {
+      continue;
+    } else if (readPlan.mode === "full") {
+      subtractStoredSourceContributions({
+        hourlyState,
+        projectState,
+        prev,
+        touchedBuckets,
+        projectTouchedBuckets,
+      });
+      if (seenMessageHashes && Array.isArray(prev?.messageHashes)) {
+        for (const hash of prev.messageHashes) {
+          seenMessageHashes.delete(hash);
+        }
+      }
+    }
 
     const profileStartedAt = typeof onFileProfile === "function" ? process.hrtime.bigint() : null;
     const result = await parseClaudeFile({
@@ -431,15 +840,18 @@ async function parseClaudeIncremental({
       projectRef,
       projectKey,
       seenMessageHashes,
+      rebuildLane: profileLane,
+      bucketContributions,
+      projectBucketContributions,
       onSessionEvent,
     });
     const profileDurationMs =
       profileStartedAt == null ? 0 : Number(process.hrtime.bigint() - profileStartedAt) / 1_000_000;
-    const profileLane = rebuildProfileLaneForStat(st);
 
     if (typeof onFileProfile === "function") {
       onFileProfile({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         durationMs: profileDurationMs,
@@ -450,15 +862,38 @@ async function parseClaudeIncremental({
     if (typeof onFileComplete === "function") {
       await onFileComplete({
         provider: fileSource,
+        sourceGroup: sourceGroupForProvider(fileSource),
         filePath,
         lane: profileLane,
         eventsAggregated: result.eventsAggregated,
       });
     }
 
-    cursors.files[key] = {
-      inode,
+    const postStat = await fs.stat(filePath).catch(() => st);
+    const sourceWatermark = await buildSourceWatermark({
+      filePath,
+      stat: postStat,
       offset: result.endOffset,
+      source: fileSource,
+    });
+    cursors.files[key] = {
+      ...sourceWatermark,
+      offset: result.endOffset,
+      bucketContributions: contributionMapToCursor(bucketContributions),
+      projectBucketContributions: contributionMapToCursor(projectBucketContributions),
+      messageHashes:
+        readPlan.mode === "append" || legacyMigrationNeeded
+          ? [
+              ...(legacyMigrationNeeded
+                ? migratedMessageHashes
+                : Array.isArray(prev?.messageHashes)
+                  ? prev.messageHashes
+                  : []),
+              ...(Array.isArray(result.messageHashes) ? result.messageHashes : []),
+            ]
+          : Array.isArray(result.messageHashes)
+            ? result.messageHashes
+            : [],
       updatedAt: new Date().toISOString(),
     };
 
@@ -974,6 +1409,7 @@ async function parseOpenclawSessionFile({
 async function parseRolloutFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   lastTotal,
   lastModel,
   pendingCodexTools: initialPendingCodexTools,
@@ -987,16 +1423,23 @@ async function parseRolloutFile({
   projectMetaCache,
   publicRepoCache,
   publicRepoResolver,
+  rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath);
-  const endOffset = st.size;
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
   const pendingCodexTools = source === "codex" ? normalizePendingCodexTools(initialPendingCodexTools) : [];
   if (startOffset >= endOffset) {
     return { endOffset, lastTotal, lastModel, pendingCodexTools, eventsAggregated: 0 };
   }
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let model = typeof lastModel === "string" ? lastModel : null;
@@ -1116,7 +1559,9 @@ async function parseRolloutFile({
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (currentProjectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1126,7 +1571,9 @@ async function parseRolloutFile({
         currentProjectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(currentProjectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(currentProjectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1143,6 +1590,7 @@ async function parseRolloutFile({
       extractFn,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -1162,6 +1610,7 @@ async function parseRolloutFile({
 async function parseClaudeFile({
   filePath,
   startOffset,
+  endOffset: requestedEndOffset,
   hourlyState,
   touchedBuckets,
   source,
@@ -1170,15 +1619,22 @@ async function parseClaudeFile({
   projectRef,
   projectKey,
   seenMessageHashes,
+  rebuildLane,
+  bucketContributions,
+  projectBucketContributions,
   onSessionEvent,
 }) {
   const st = await fs.stat(filePath).catch(() => null);
-  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0 };
+  if (!st || !st.isFile()) return { endOffset: startOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const endOffset = st.size;
-  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0 };
+  const endOffset = Math.min(st.size, Math.max(0, Math.floor(Number(requestedEndOffset ?? st.size) || 0)));
+  if (startOffset >= endOffset) return { endOffset, eventsAggregated: 0, messageHashes: [] };
 
-  const stream = fssync.createReadStream(filePath, { encoding: "utf8", start: startOffset });
+  const stream = fssync.createReadStream(filePath, {
+    encoding: "utf8",
+    start: startOffset,
+    end: endOffset - 1,
+  });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
   let eventsAggregated = 0;
@@ -1190,6 +1646,7 @@ async function parseClaudeFile({
   let sessionCwd = decodeClaudeProjectPathFromSessionFile(filePath);
   const providerBranchState = createProviderBranchState();
   const isMainSession = !filePath.includes("/subagents/");
+  const messageHashes = [];
   for await (const line of rl) {
     if (!line) continue;
     if (!sessionCwd) {
@@ -1226,8 +1683,11 @@ async function parseClaudeFile({
           if (userBucketStart) {
             const userModel = DEFAULT_MODEL;
             const userBucket = getHourlyBucket(hourlyState, source, userModel, userBucketStart);
-            userBucket.totals.conversation_count += 1;
-            touchedBuckets.add(bucketKey(source, userModel, userBucketStart));
+            const delta = { conversation_count: 1 };
+            addTotals(userBucket.totals, delta);
+            const userBucketKey = bucketKey(source, userModel, userBucketStart);
+            touchedBuckets.add(userBucketKey);
+            recordContribution(bucketContributions, userBucketKey, delta);
           }
         }
       }
@@ -1252,6 +1712,7 @@ async function parseClaudeFile({
         const hash = `${msgId}:${reqId}`;
         if (seenMessageHashes.has(hash)) continue;
         seenMessageHashes.add(hash);
+        messageHashes.push(hash);
       }
     }
 
@@ -1290,7 +1751,9 @@ async function parseClaudeFile({
 
     const bucket = getHourlyBucket(hourlyState, source, model, bucketStart);
     addTotals(bucket.totals, delta);
-    touchedBuckets.add(bucketKey(source, model, bucketStart));
+    const hourlyKey = bucketKey(source, model, bucketStart);
+    touchedBuckets.add(hourlyKey);
+    recordContribution(bucketContributions, hourlyKey, delta);
     if (projectKey && projectState && projectTouchedBuckets) {
       const projectBucket = getProjectBucket(
         projectState,
@@ -1300,7 +1763,9 @@ async function parseClaudeFile({
         projectRef,
       );
       addTotals(projectBucket.totals, delta);
-      projectTouchedBuckets.add(projectBucketKey(projectKey, source, bucketStart));
+      const projectKeyForBucket = projectBucketKey(projectKey, source, bucketStart);
+      projectTouchedBuckets.add(projectKeyForBucket);
+      recordContribution(projectBucketContributions, projectKeyForBucket, delta);
     }
     eventsAggregated += 1;
   }
@@ -1313,6 +1778,7 @@ async function parseClaudeFile({
       extractClaudeCodeSessionEvents,
       {
         session_id: filePath,
+        rebuild_lane: rebuildLane,
         started_at: sessionStartedAt,
         ended_at: sessionEndedAt,
         end_reason: "log_complete",
@@ -1325,7 +1791,7 @@ async function parseClaudeFile({
       onSessionEvent,
     );
   }
-  return { endOffset, eventsAggregated };
+  return { endOffset, eventsAggregated, messageHashes };
 }
 
 async function parseGeminiFile({
@@ -7736,6 +8202,7 @@ async function parseCopilotIncremental({ otelPaths, cursors, queuePath, onProgre
 
 module.exports = {
   listRolloutFiles,
+  orderRebuildProviderFilesRecentFirst,
   listClaudeProjectFiles,
   listGeminiSessionFiles,
   listOpencodeMessageFiles,

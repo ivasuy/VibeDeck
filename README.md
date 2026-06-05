@@ -50,7 +50,7 @@ For team sharing, VibeDeck stays intentionally local-first. Share exports, scree
 ### macOS app
 
 - [Download `VibeDeck.dmg`](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck.dmg)
-- [Download the universal app zip](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck-0.1.3-universal.zip)
+- [Download the universal app zip](https://github.com/ivasuy/VibeDeck/releases/latest/download/VibeDeck-1.1.4-universal.zip)
 - [View the latest release](https://github.com/ivasuy/VibeDeck/releases/latest)
 
 ### Homebrew

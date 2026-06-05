@@ -10,7 +10,7 @@ const { rebuildBranchUsageFactsForSession } = require('./branch-usage-facts');
 const { getLiveBus } = require('./live-bus');
 const { getIdleTimeoutMin } = require('./idle-timeout');
 const { insertSessionEvent } = require('./event-ledger');
-const { upsertBucketFact, recomputeSessionLedger } = require('./bucket-facts');
+const { upsertBucketFact, recomputeSessionLedger, rebuildBucketFactsForSession } = require('./bucket-facts');
 // const { upsertEntireLink } = require('./entire-links');
 const providerBranch = require('./provider-branch');
 const { cleanProviderBranch } = providerBranch;
@@ -425,7 +425,7 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
 
         let latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
         if (latest) {
-          const inserted = insertSessionEvent(db, event, {
+          const ledgerWrite = insertSessionEvent(db, event, {
             repo_root: latest.repo_root,
             repo_common_dir: latest.repo_common_dir,
             parent_repo: latest.parent_repo,
@@ -433,8 +433,10 @@ async function processSessionEvent(dbPath, event, { deferBranchFactRebuild = fal
             branch_resolution_tier: latest.branch_resolution_tier,
             confidence: latest.confidence,
           });
-          if (inserted) {
+          if (ledgerWrite.inserted) {
             upsertBucketFact(db, latest, event);
+          } else if (ledgerWrite.updated) {
+            rebuildBucketFactsForSession(db, latest);
           }
           recomputeSessionLedger(db, latest);
           latest = loadSession(db, { provider: session.provider, session_id: session.session_id });
@@ -654,8 +656,9 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
         session = loadSession(db, { provider: session.provider, session_id: session.session_id });
       }
 
+      let needsBucketRebuild = false;
       for (const event of enrichedEvents) {
-        const inserted = insertSessionEvent(db, event, {
+        const ledgerWrite = insertSessionEvent(db, event, {
           repo_root: session.repo_root,
           repo_common_dir: session.repo_common_dir,
           parent_repo: session.parent_repo,
@@ -663,10 +666,15 @@ async function processSessionEventBatch(dbPath, events, { cache = null, deferBra
           branch_resolution_tier: session.branch_resolution_tier,
           confidence: session.confidence,
         });
-        if (inserted) upsertBucketFact(db, session, event);
+        if (ledgerWrite.inserted) upsertBucketFact(db, session, event);
+        if (ledgerWrite.updated) needsBucketRebuild = true;
       }
 
-      recomputeSessionLedger(db, session);
+      if (needsBucketRebuild) {
+        rebuildBucketFactsForSession(db, session);
+      } else {
+        recomputeSessionLedger(db, session);
+      }
       latestForEmit = loadSession(db, { provider: session.provider, session_id: session.session_id });
       if (latestForEmit && !deferBranchFactRebuild) {
         await rebuildBranchUsageFactsForSession(db, {

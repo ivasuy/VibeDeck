@@ -1798,7 +1798,7 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     }
     const bucket = byHour.get(hourKey);
     bucket.total_tokens += row.total_tokens || 0;
-    bucket.billable_total_tokens += row.total_tokens || 0;
+    bucket.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
     bucket.input_tokens += row.input_tokens || 0;
     bucket.output_tokens += row.output_tokens || 0;
     bucket.cached_input_tokens += row.cached_input_tokens || 0;
@@ -1807,6 +1807,20 @@ function aggregateHourlyByDay(rows, dayKey, timeZoneContext) {
     bucket.conversation_count += row.conversation_count || 0;
   }
   return Array.from(byHour.values()).sort((a, b) => a.hour.localeCompare(b.hour));
+}
+
+function calculateCurrentStreakDays(byDay, todayStr) {
+  if (!(byDay instanceof Map) || !todayStr) return 0;
+  let streak = 0;
+  const cursor = new Date(`${todayStr}T00:00:00Z`);
+  while (!Number.isNaN(cursor.getTime())) {
+    const day = cursor.toISOString().slice(0, 10);
+    const data = byDay.get(day);
+    if (!data || Number(data.billable_total_tokens || 0) <= 0) break;
+    streak += 1;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak;
 }
 
 // ---------------------------------------------------------------------------
@@ -2771,7 +2785,19 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
       for (let i = 0; i < cells.length; i += 7) {
         weeksArr.push(cells.slice(i, i + 7));
       }
-      json(res, { from, to, scope, excluded_sources: excludedSources, canonical, canonical_incomplete, freshness, week_starts_on: "sun", active_days: cells.filter((c) => c.billable_total_tokens > 0).length, streak_days: 0, weeks: weeksArr });
+      json(res, {
+        from,
+        to,
+        scope,
+        excluded_sources: excludedSources,
+        canonical,
+        canonical_incomplete,
+        freshness,
+        week_starts_on: "sun",
+        active_days: cells.filter((c) => c.billable_total_tokens > 0).length,
+        streak_days: calculateCurrentStreakDays(byDay, todayStr),
+        weeks: weeksArr,
+      });
       return true;
     }
 
@@ -3560,7 +3586,7 @@ function createLocalApiHandler({ queuePath, syncEnabled = true }) {
           byMonth.set(month, { month, total_tokens: 0, billable_total_tokens: 0, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_creation_input_tokens: 0, reasoning_output_tokens: 0, conversation_count: 0 });
         const a = byMonth.get(month);
         a.total_tokens += row.total_tokens || 0;
-        a.billable_total_tokens += row.total_tokens || 0;
+        a.billable_total_tokens += row.billable_total_tokens ?? row.total_tokens ?? 0;
         a.input_tokens += row.input_tokens || 0;
         a.output_tokens += row.output_tokens || 0;
         a.cached_input_tokens += row.cached_input_tokens || 0;

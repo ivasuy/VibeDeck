@@ -21,6 +21,9 @@ const m013 = require('./migrations/013-session-groups');
 const m014 = require('./migrations/014-codeburn-parity-fields');
 const m015 = require('./migrations/015-optimize-findings');
 const m016 = require('./migrations/016-projection-shards');
+const m017 = require('./migrations/017-session-events-billable-total');
+const m018 = require('./migrations/018-session-buckets-billable-total');
+const m019 = require('./migrations/019-branch-usage-billable-total');
 
 let registered = false;
 function registerAll() {
@@ -41,6 +44,9 @@ function registerAll() {
   registerMigration(m014);
   registerMigration(m015);
   registerMigration(m016);
+  registerMigration(m017);
+  registerMigration(m018);
+  registerMigration(m019);
   registered = true;
 }
 

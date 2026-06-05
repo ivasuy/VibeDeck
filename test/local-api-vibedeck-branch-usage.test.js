@@ -246,6 +246,7 @@ test('GET /functions/vibedeck-branch-usage aggregates sessions by repo and branc
       {
         model: 'unknown-model',
         total_tokens: 40,
+        billable_total_tokens: 40,
         total_cost_usd: null,
         cost_estimated: true,
         cost_quality: 'partial_unknown',
@@ -922,6 +923,7 @@ test('GET /functions/vibedeck-branch-usage returns empty shape when db is absent
       repos: [],
       totals: {
         total_tokens: 0,
+        billable_total_tokens: 0,
         total_cost_usd: 0,
         cost_estimated: false,
         cost_quality: 'zero_tokens',

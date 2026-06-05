@@ -12,6 +12,12 @@ enum MenuBarDisplayMetric: String, CaseIterable {
     case claude7d
     case codex5h
     case codex7d
+    case cursorPlan
+    case geminiPro
+    case kimiWeekly
+    case kiroMonth
+    case copilotPremium
+    case antigravityClaude
 
     var menuLabel: String {
         switch self {
@@ -24,6 +30,12 @@ enum MenuBarDisplayMetric: String, CaseIterable {
         case .claude7d: return "Cl 7d"
         case .codex5h: return "Cx 5h"
         case .codex7d: return "Cx 7d"
+        case .cursorPlan: return "Cur"
+        case .geminiPro: return "Gem"
+        case .kimiWeekly: return "Kimi"
+        case .kiroMonth: return "Kiro"
+        case .copilotPremium: return "Cop"
+        case .antigravityClaude: return "Ag"
         }
     }
 
@@ -38,6 +50,12 @@ enum MenuBarDisplayMetric: String, CaseIterable {
         case .claude7d: return "Claude 7d Limit"
         case .codex5h: return "Codex 5h Limit"
         case .codex7d: return "Codex 7d Limit"
+        case .cursorPlan: return "Cursor Plan Limit"
+        case .geminiPro: return "Gemini Pro Limit"
+        case .kimiWeekly: return "Kimi Weekly Limit"
+        case .kiroMonth: return "Kiro Monthly Limit"
+        case .copilotPremium: return "Copilot Premium Limit"
+        case .antigravityClaude: return "Antigravity Claude Limit"
         }
     }
 
@@ -47,7 +65,9 @@ enum MenuBarDisplayMetric: String, CaseIterable {
             return "tokens"
         case .todayCost, .totalCost:
             return "cost"
-        case .claude5h, .claude7d, .codex5h, .codex7d:
+        case .claude5h, .claude7d, .codex5h, .codex7d, .cursorPlan,
+             .geminiPro, .kimiWeekly, .kiroMonth, .copilotPremium,
+             .antigravityClaude:
             return "limits"
         }
     }
@@ -345,6 +365,36 @@ final class StatusBarController: NSObject {
                       viewModel.usageLimits?.codex.configured == true,
                       viewModel.usageLimits?.codex.error == nil else { return nil }
                 return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: "\(window.usedPercent)%")
+            case .cursorPlan:
+                guard let window = viewModel.usageLimits?.cursor.primaryWindow,
+                      viewModel.usageLimits?.cursor.configured == true,
+                      viewModel.usageLimits?.cursor.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
+            case .geminiPro:
+                guard let window = viewModel.usageLimits?.gemini.primaryWindow,
+                      viewModel.usageLimits?.gemini.configured == true,
+                      viewModel.usageLimits?.gemini.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
+            case .kimiWeekly:
+                guard let window = viewModel.usageLimits?.kimi?.primaryWindow,
+                      viewModel.usageLimits?.kimi?.configured == true,
+                      viewModel.usageLimits?.kimi?.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
+            case .kiroMonth:
+                guard let window = viewModel.usageLimits?.kiro.primaryWindow,
+                      viewModel.usageLimits?.kiro.configured == true,
+                      viewModel.usageLimits?.kiro.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
+            case .copilotPremium:
+                guard let window = viewModel.usageLimits?.copilot?.primaryWindow,
+                      viewModel.usageLimits?.copilot?.configured == true,
+                      viewModel.usageLimits?.copilot?.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
+            case .antigravityClaude:
+                guard let window = viewModel.usageLimits?.antigravity.primaryWindow,
+                      viewModel.usageLimits?.antigravity.configured == true,
+                      viewModel.usageLimits?.antigravity.error == nil else { return nil }
+                return MenuBarDisplayValue(id: id, label: metric.menuLabel, value: formatLimitPercent(window.usedPercent))
             }
         }
     }

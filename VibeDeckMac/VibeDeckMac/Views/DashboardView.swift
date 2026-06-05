@@ -58,6 +58,7 @@ struct DashboardView: View {
                                 ForecastCard(forecast: forecast)
                             }
                             UsageLimitsView(limits: viewModel.usageLimits)
+                            ProjectUsageView(projectUsage: viewModel.projectUsage)
                             CodeburnParityTabsView(viewModel: viewModel)
                             ActivityHeatmapView(heatmap: viewModel.heatmap)
                             UsageTrendChartWrapper(
@@ -117,6 +118,78 @@ struct DashboardView: View {
         if let url = URL(string: "https://github.com/ivasuy/VibeDeck#quick-start") {
             NSWorkspace.shared.open(url)
         }
+    }
+}
+
+private struct ProjectUsageView: View {
+    let projectUsage: ProjectUsageResponse?
+
+    private var entries: [ProjectEntry] {
+        Array((projectUsage?.entries ?? [])
+            .filter { $0.billableTokensInt > 0 || (Int($0.totalTokens) ?? 0) > 0 }
+            .prefix(4))
+    }
+
+    var body: some View {
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Projects")
+                        .font(.caption)
+                        .modifier(FontWeightModifier(weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("Selected period")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                VStack(spacing: 8) {
+                    ForEach(entries) { entry in
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(projectName(entry))
+                                    .font(.caption)
+                                    .modifier(FontWeightModifier(weight: .semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                if let ref = entry.projectRef, !ref.isEmpty {
+                                    Text(ref)
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Text(TokenFormatter.formatCompact(entry.billableTokensInt > 0 ? entry.billableTokensInt : (Int(entry.totalTokens) ?? 0)))
+                                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                                .foregroundStyle(Color.primary)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.panelFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .stroke(Color.panelBorder, lineWidth: 1)
+                    )
+            )
+        }
+    }
+
+    private func projectName(_ entry: ProjectEntry) -> String {
+        let raw = entry.projectKey.isEmpty ? (entry.projectRef ?? "Unknown project") : entry.projectKey
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Unknown project" }
+        if trimmed.contains("/") {
+            return trimmed.split(separator: "/").last.map(String.init) ?? trimmed
+        }
+        return trimmed
     }
 }
 

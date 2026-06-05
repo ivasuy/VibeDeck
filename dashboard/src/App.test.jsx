@@ -62,7 +62,7 @@ describe("App routes", () => {
     ["/export", "Export Page"],
     ["/optimize", "Optimize Page"],
     ["/plan", "Plan Page"],
-  ])("renders the %s route inside the dashboard layout", (route, label) => {
+  ])("renders the %s route inside the dashboard layout", async (route, label) => {
     render(
       <MemoryRouter initialEntries={[route]}>
         <LocaleProvider>
@@ -72,6 +72,6 @@ describe("App routes", () => {
     );
 
     expect(screen.getByTestId("app-layout")).toBeTruthy();
-    expect(screen.getByText(label)).toBeTruthy();
+    expect(await screen.findByText(label)).toBeTruthy();
   });
 });

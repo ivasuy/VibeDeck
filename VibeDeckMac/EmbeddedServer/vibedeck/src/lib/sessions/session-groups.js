@@ -307,6 +307,10 @@ function stableCost(value) {
 
 function summarizeGroup(sessionGroupId, root, members, { includeMembers = true } = {}) {
   const tokenTotal = members.reduce((sum, row) => sum + (numberOrNull(row.total_tokens) || 0), 0);
+  const billableTokenTotal = members.reduce(
+    (sum, row) => sum + (numberOrNull(row.billable_total_tokens ?? row.total_tokens) || 0),
+    0,
+  );
   let knownCostUsd = 0;
   let costUnknownCount = 0;
   const modelMap = new Map();
@@ -321,10 +325,12 @@ function summarizeGroup(sessionGroupId, root, members, { includeMembers = true }
       provider: text(row.provider).toLowerCase(),
       model: text(row.model) || 'unknown',
       total_tokens: 0,
+      billable_total_tokens: 0,
       total_cost_usd: 0,
       cost_unknown_count: 0,
     };
     model.total_tokens += numberOrNull(row.total_tokens) || 0;
+    model.billable_total_tokens += numberOrNull(row.billable_total_tokens ?? row.total_tokens) || 0;
     if (cost == null) model.cost_unknown_count += 1;
     else model.total_cost_usd += cost;
     modelMap.set(modelKey, model);
@@ -343,6 +349,7 @@ function summarizeGroup(sessionGroupId, root, members, { includeMembers = true }
     member_count: members.length,
     active_member_count: members.filter((row) => text(row.state).toLowerCase() === 'live' || !text(row.ended_at)).length,
     total_tokens: tokenTotal,
+    billable_total_tokens: billableTokenTotal,
     total_cost_usd: costUnknownCount > 0 ? null : stableCost(knownCostUsd),
     known_cost_usd: stableCost(knownCostUsd),
     cost_unknown_count: costUnknownCount,

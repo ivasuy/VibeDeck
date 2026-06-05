@@ -446,10 +446,12 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/EmbeddedServer",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/brand-logos",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "SRC_DIR=\"${SRCROOT}/EmbeddedServer\"\nif [ ! -d \"$SRC_DIR\" ]; then\n  SRC_DIR=\"${SRCROOT}/../EmbeddedServer\"\nfi\nDST_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer\"\nDASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/../dashboard/dist/brand-logos\"\nif [ ! -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  DASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/dashboard/dist/brand-logos\"\nfi\nBRAND_LOGOS_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/brand-logos\"\nif [ -d \"$SRC_DIR\" ]; then\n  rm -rf \"$DST_DIR\"\n  cp -a \"$SRC_DIR\" \"$DST_DIR\"\n  chmod +x \"$DST_DIR/node\"\nfi\n\nif [ -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  mkdir -p \"$BRAND_LOGOS_DIR\"\n  cp -a \"$DASHBOARD_BRAND_LOGOS_DIR/.\" \"$BRAND_LOGOS_DIR/\"\nfi\nexit 0\n";
+			shellScript = "SRC_DIR=\"${SRCROOT}/EmbeddedServer\"\nif [ ! -d \"$SRC_DIR\" ]; then\n  SRC_DIR=\"${SRCROOT}/../EmbeddedServer\"\nfi\nDST_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/EmbeddedServer\"\nDASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/../dashboard/dist/brand-logos\"\nif [ ! -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  DASHBOARD_BRAND_LOGOS_DIR=\"${SRCROOT}/dashboard/dist/brand-logos\"\nfi\nBRAND_LOGOS_DIR=\"${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/brand-logos\"\nif [ -d \"$SRC_DIR\" ]; then\n  rm -rf \"$DST_DIR\"\n  cp -a \"$SRC_DIR\" \"$DST_DIR\"\n  if [ -f \"$DST_DIR/node\" ]; then\n    chmod +x \"$DST_DIR/node\"\n  fi\nfi\n\nif [ -d \"$DASHBOARD_BRAND_LOGOS_DIR\" ]; then\n  mkdir -p \"$BRAND_LOGOS_DIR\"\n  cp -a \"$DASHBOARD_BRAND_LOGOS_DIR/.\" \"$BRAND_LOGOS_DIR/\"\nfi\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

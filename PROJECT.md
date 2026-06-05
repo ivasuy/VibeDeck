@@ -1,7 +1,7 @@
 # VibeDeck
 
 **Version:** 1.0.4 (release branch, unreleased)
-**Last updated:** 2026-05-28
+**Last updated:** 2026-06-05
 **Tagline:** Live AI coding spend across every tool you use, on your machine.
 
 VibeDeck is a local-first dashboard for developers who use multiple AI coding tools. It reads local provider records, stores the usage in SQLite, and shows live cost, token, project, branch, model, and provider breakdowns without routing traffic through a proxy.
@@ -35,7 +35,7 @@ This section is intentionally short. It records the problem, the fix, the eviden
 ### 1.0.4 Rebuild Flush And Repair Audit
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-rebuild-flush-repair-optimization.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-8-report.md`
 
@@ -70,7 +70,7 @@ The default rebuild path now uses dirty post-drain materialization. On the lates
 ### 1.0.4 Dirty Branch-Fact Materialization
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-phase-9-dirty-branch-fact-materialization.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-9-report.md`
 
@@ -104,7 +104,7 @@ The main remaining stage is now grouped flush at about `6.54s`. The next rebuild
 ### 1.0.4 Grouped Flush Repo Cache
 
 **Date:** 2026-05-29
-**Status:** implemented on `agent/rebuild-flush-repair-optimization`, not pushed.
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
 **Plan:** `docs/superpowers/plans/2026-05-29-phase-10-grouped-flush-repo-cache.md`
 **Audit:** `agent-runs/rebuild-flush-repair-optimization/audit/phase-10-report.md`
 
@@ -135,6 +135,46 @@ After branch-fact materialization was reduced, grouped session flush became the 
 
 The latest profile is balanced: grouped flush is about `2.28s`, branch facts about `0.56s`, repair about `0.08s`, and total rebuild about `6.53s`. Further gains likely require reducing per-group DB writes or avoiding per-session branch resolution work, but the largest filesystem hotspot has been removed.
 
+### 1.0.4 Data-Layer Completion And Smoke Cleanup
+
+**Date:** 2026-06-05
+**Status:** implemented on `agent/rebuild-flush-repair-optimization`, merged into `release/1.0.4`.
+
+#### Problem
+
+The release branch still had two data-contract leftovers and three smoke-test warnings after the design and rebuild work:
+
+- Usage Limits needed exact token numerator/denominator fields wherever provider payloads expose them.
+- Heatmap best-day dollars needed per-day cost data instead of inferred copy.
+- The dashboard dev mock heatmap endpoint could return `500` because its streak date was not defined.
+- The production dashboard build still emitted a large chunk warning.
+- The local macOS debug build still emitted the copy-script output warning and a missing embedded `node` chmod warning.
+
+#### What changed
+
+- Added billable token totals to the canonical session-event, bucket, branch, project, and usage read models, with migrations for both root backend and embedded Mac backend copies.
+- Preserved canonical `total_tokens` while exposing `billable_total_tokens`, token numerator/denominator data, and per-day `total_cost_usd` for dashboard, native, menubar, and widget consumers.
+- Fixed the local Vite API heatmap mock so it returns streak days and per-cell costs consistently with the backend contract.
+- Split the dashboard app into lazy route chunks and package-name vendor chunks so the production build no longer ships one oversized main bundle.
+- Updated dashboard dev dependencies and lockfiles so `npm audit` reports zero vulnerabilities.
+- Added Xcode script outputs and guarded the optional embedded `node` chmod so local debug builds stop warning about that copy phase.
+
+#### Evidence
+
+| Check | Result |
+|---|---:|
+| Backend data-layer suite | `65/65` passed |
+| Dashboard component and route tests | `22/22` passed |
+| Dashboard production build | Passed with no large-chunk warning |
+| Dashboard dependency audit | `0` vulnerabilities |
+| Browser smoke | Dashboard, Branches, Widgets, Live, Models, and 5 local API routes passed |
+| Native Mac build | `BUILD SUCCEEDED`; copy-script/chmod warnings removed |
+| Whitespace diff check | Passed |
+
+#### Follow-up
+
+The only remaining local warning is `xcodebuild` selecting the first of two matching macOS destinations when invoked as `-destination 'platform=macOS'`. That is a command-line destination ambiguity, not a project build-script issue.
+
 ### 1.0.4 UI Revamp - DESIGN.md Coverage
 
 **Date:** 2026-05-28
@@ -162,8 +202,8 @@ The DESIGN.md pass required VibeDeck to remove active Entire traces from the use
 | Focused dashboard regression suite | `33/33` passed |
 | Backend usage/data-contract tests | `35/35` passed |
 | UsageLimitsPanel token-pair tests | `6/6` passed |
-| Dashboard production build | Passed, existing large-chunk warning only |
-| Native Mac/widget build | Passed, existing script-output warning only |
+| Dashboard production build | Passed; large-chunk warning fixed in the post-smoke cleanup |
+| Native Mac/widget build | Passed; copy-script/chmod warnings fixed in the post-smoke cleanup |
 | Rendered route sweep | 14 routes across desktop and mobile passed |
 | Built bundle removed-surface scan | No Entire, sign-in, stack-trace, or canned 502 traces found |
 

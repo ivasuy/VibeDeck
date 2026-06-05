@@ -140,6 +140,9 @@ function upsertBucketFact(db, sessionRow, event) {
     event.delta_tokens == null
       ? inputTokens + cachedInputTokens + eventCacheCreationTotal + outputTokens + reasoningOutputTokens
       : Number(event.delta_tokens || 0) || 0;
+  const billableTotalTokens = event.billable_total_tokens == null
+    ? bucketTotalTokens
+    : Number(event.billable_total_tokens || 0) || 0;
 
   if (
     bucketTotalTokens === 0 &&
@@ -186,7 +189,7 @@ function upsertBucketFact(db, sessionRow, event) {
       output_tokens, reasoning_output_tokens,
       web_search_requests, tool_call_count, tools_json, activity_json,
       task_category, skills_json, fast_mode,
-      conversation_count, total_tokens,
+      conversation_count, total_tokens, billable_total_tokens,
       last_observed_at
     ) VALUES (
       @provider, @session_id, @bucket_provider, @bucket_model, @bucket_hour_start,
@@ -195,7 +198,7 @@ function upsertBucketFact(db, sessionRow, event) {
       @output_tokens, @reasoning_output_tokens,
       @web_search_requests, @tool_call_count, @tools_json, @activity_json,
       @task_category, @skills_json, @fast_mode,
-      @conversation_count, @total_tokens,
+      @conversation_count, @total_tokens, @billable_total_tokens,
       @last_observed_at
     )
     ON CONFLICT(provider, session_id, bucket_provider, bucket_model, bucket_hour_start) DO UPDATE SET
@@ -218,6 +221,7 @@ function upsertBucketFact(db, sessionRow, event) {
       fast_mode = vibedeck_session_buckets.fast_mode + excluded.fast_mode,
       conversation_count = vibedeck_session_buckets.conversation_count + excluded.conversation_count,
       total_tokens = vibedeck_session_buckets.total_tokens + excluded.total_tokens,
+      billable_total_tokens = vibedeck_session_buckets.billable_total_tokens + excluded.billable_total_tokens,
       last_observed_at = CASE
         WHEN vibedeck_session_buckets.last_observed_at IS NULL THEN excluded.last_observed_at
         WHEN excluded.last_observed_at > vibedeck_session_buckets.last_observed_at THEN excluded.last_observed_at
@@ -250,6 +254,7 @@ function upsertBucketFact(db, sessionRow, event) {
     merged_skills_json: mergedSkillsJson,
     conversation_count: conversationCount,
     total_tokens: bucketTotalTokens,
+    billable_total_tokens: billableTotalTokens,
     last_observed_at: event.observed_at,
   });
 
@@ -348,4 +353,26 @@ function recomputeSessionLedger(db, sessionRow) {
   };
 }
 
-module.exports = { toUtcHalfHourStart, upsertBucketFact, recomputeSessionLedger };
+function rebuildBucketFactsForSession(db, sessionRow) {
+  if (!sessionRow) return null;
+  db.prepare('DELETE FROM vibedeck_session_buckets WHERE provider = ? AND session_id = ?').run(
+    sessionRow.provider,
+    sessionRow.session_id,
+  );
+  const events = db
+    .prepare(
+      `
+      SELECT *
+      FROM vibedeck_session_events
+      WHERE provider = ? AND session_id = ? AND kind = 'update'
+      ORDER BY observed_at ASC, event_key ASC
+      `,
+    )
+    .all(sessionRow.provider, sessionRow.session_id);
+  for (const event of events) {
+    upsertBucketFact(db, sessionRow, event);
+  }
+  return recomputeSessionLedger(db, sessionRow);
+}
+
+module.exports = { toUtcHalfHourStart, upsertBucketFact, recomputeSessionLedger, rebuildBucketFactsForSession };

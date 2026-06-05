@@ -30,6 +30,7 @@ function readUsageRowsFromDb(dbPath) {
           reasoning_output_tokens,
           conversation_count,
           total_tokens,
+          billable_total_tokens,
           total_cost_usd,
           cost_estimated,
           cost_quality
@@ -71,7 +72,7 @@ function readUsageRowsFromDb(dbPath) {
       entry.reasoning_output_tokens += Number(row?.reasoning_output_tokens || 0) || 0;
       entry.conversation_count += Number(row?.conversation_count || 0) || 0;
       entry.total_tokens += Number(row?.total_tokens || 0) || 0;
-      entry.billable_total_tokens += Number(row?.total_tokens || 0) || 0;
+      entry.billable_total_tokens += Number((row?.billable_total_tokens ?? row?.total_tokens) || 0) || 0;
       addCostToAccumulator(entry._cost, {
         total_cost_usd: row?.total_cost_usd == null ? null : Number(row.total_cost_usd),
         cost_estimated: Boolean(row?.cost_estimated),

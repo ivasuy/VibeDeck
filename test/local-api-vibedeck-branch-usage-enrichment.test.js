@@ -212,6 +212,7 @@ test('vibedeck-branch-usage exposes fact enrichment on sessions, models, and dat
     assert.deepEqual(main.models, [{
       model: 'gpt-5.4',
       total_tokens: 150,
+      billable_total_tokens: 150,
       total_cost_usd: main.models[0].total_cost_usd,
       cost_estimated: false,
       cost_quality: 'stored',

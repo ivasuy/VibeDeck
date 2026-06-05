@@ -372,6 +372,9 @@ export function DashboardView(props) {
   const resolvedAttentionInsight =
     attentionInsight && typeof attentionInsight === "object" ? attentionInsight : null;
   const totalCost = summaryCostValue && summaryCostValue !== "-" ? summaryCostValue : "$0.00";
+  const spendLabel = period === "day"
+    ? "Today's spend"
+    : `${PERIOD_LABELS[period] || "Selected"} spend`;
   const activeLabel = liveSessionsLoading ? "Loading" : liveSessionsStale ? "Stale" : `${activeLiveSessions}`;
   const identityName = typeof identityDisplayName === "string" ? identityDisplayName.trim() : "";
   const hasPersonalIdentity = Boolean(identityName && !["anonymous", "vibedeck"].includes(identityName.toLowerCase()));
@@ -496,7 +499,7 @@ export function DashboardView(props) {
             <Surface className="border-transparent text-white" style={{ background: "var(--brand-600)" }}>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-label uppercase text-white/70">Today&apos;s spend</p>
+                  <p className="text-label uppercase text-white/70">{spendLabel}</p>
                   <p className="mt-4 text-hero font-semibold tabular-nums">{totalCost}</p>
                   <p className="mt-2 text-sm text-white/75">
                     {summaryValue} tokens tracked

@@ -14,7 +14,34 @@ function eventKey(event) {
 
 function insertSessionEvent(db, event, attribution = {}) {
   const now = new Date().toISOString();
-  const result = db
+  const event_key = eventKey(event);
+  const existing = db
+    .prepare(
+      `
+      SELECT billable_total_tokens
+      FROM vibedeck_session_events
+      WHERE provider = ? AND session_id = ? AND event_key = ?
+      `,
+    )
+    .get(event.provider, event.session_id, event_key);
+
+  if (existing) {
+    const nextBillable = event.billable_total_tokens ?? null;
+    const currentBillable = existing.billable_total_tokens ?? null;
+    if (nextBillable != null && currentBillable !== nextBillable) {
+      db.prepare(
+        `
+        UPDATE vibedeck_session_events
+        SET billable_total_tokens = ?
+        WHERE provider = ? AND session_id = ? AND event_key = ?
+        `,
+      ).run(nextBillable, event.provider, event.session_id, event_key);
+      return { inserted: false, updated: true };
+    }
+    return { inserted: false, updated: false };
+  }
+
+  db
     .prepare(
       `
       INSERT INTO vibedeck_session_events (
@@ -27,7 +54,7 @@ function insertSessionEvent(db, event, attribution = {}) {
         cache_creation_1h_input_tokens, output_tokens, reasoning_output_tokens,
         web_search_requests, tool_call_count, tools_json, activity_json,
         task_category, tools_sequence_json, skills_json, fast_mode,
-        conversation_count, total_tokens, created_at
+        conversation_count, total_tokens, billable_total_tokens, created_at
       ) VALUES (
         @provider, @session_id, @event_key, @kind, @observed_at,
         @started_at, @ended_at, @end_reason,
@@ -38,7 +65,7 @@ function insertSessionEvent(db, event, attribution = {}) {
         @cache_creation_1h_input_tokens, @output_tokens, @reasoning_output_tokens,
         @web_search_requests, @tool_call_count, @tools_json, @activity_json,
         @task_category, @tools_sequence_json, @skills_json, @fast_mode,
-        @conversation_count, @total_tokens, @created_at
+        @conversation_count, @total_tokens, @billable_total_tokens, @created_at
       )
       ON CONFLICT(provider, session_id, event_key) DO NOTHING
       `,
@@ -46,7 +73,7 @@ function insertSessionEvent(db, event, attribution = {}) {
     .run({
       provider: event.provider,
       session_id: event.session_id,
-      event_key: eventKey(event),
+      event_key,
       kind: event.kind,
       observed_at: event.observed_at || event.started_at || event.ended_at,
       started_at: event.started_at || null,
@@ -78,9 +105,10 @@ function insertSessionEvent(db, event, attribution = {}) {
       fast_mode: event.fast_mode ?? null,
       conversation_count: event.conversation_count ?? null,
       total_tokens: event.total_tokens ?? null,
+      billable_total_tokens: event.billable_total_tokens ?? null,
       created_at: now,
     });
-  return Number(result.changes || 0) > 0;
+  return { inserted: true, updated: false };
 }
 
 module.exports = { eventKey, insertSessionEvent };

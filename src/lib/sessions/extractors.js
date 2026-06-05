@@ -29,6 +29,7 @@ function normalizeUpdates(updates) {
         'web_search_requests',
         'tool_call_count',
         'conversation_count',
+        'billable_total_tokens',
       ]) {
         if (u[key] == null) continue;
         if (!Number.isInteger(u[key]) || u[key] < 0) return null;
@@ -82,6 +83,7 @@ function extractSessionEvents({
         session_id: sid,
         observed_at: u.observed_at,
         delta_tokens: u.delta_tokens,
+        billable_total_tokens: u.billable_total_tokens ?? null,
         cwd: cwd ?? null,
         model: model ?? null,
         input_tokens: u.input_tokens ?? null,

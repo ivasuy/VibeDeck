@@ -2,7 +2,7 @@
 
 Single source of truth for the **Dashboard (web)**, **macOS app**, and **macOS Widgets**.
 Color is locked to the logo. Surface-level revamp covers every API surface introduced
-through 1.0.4 (Optimize, Plan, Live actionable panels, expanded provider breadth, analytics surfaces).
+through 1.1.4 (Optimize, Plan, Live actionable panels, expanded provider breadth, analytics surfaces).
 
 > Implementation grounding:
 > - Web tokens live in `dashboard/src/styles.css` (`:root` + `:root.dark`)
@@ -234,7 +234,7 @@ Use `.buttonStyle(.borderedProminent)` with `.tint(Colors.brandPrimary)` for pri
 
 ### What changed (since the last palette rework)
 
-New pages introduced through 1.0.4 that the revamp must cleanly express:
+New pages introduced through 1.1.4 that the revamp must cleanly express:
 
 - `OptimizePage.jsx` — Phase 5 optimize scanner output. Surfaces savings opportunities per provider, model, and session.
 - `PlanPage.jsx` — Phase 5 currency forecast. Subscription vs PAYG breakeven, projected monthly spend.
@@ -1278,7 +1278,7 @@ All four follow the same pattern: header with period picker → top KPI strip (3
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
 │ │ BRANCH ATTRIBUTION                                       Filter ⌕      │ │
 │ │ ──────────────────────────────────────────────────────────────────── │ │
-│ │  release/1.0.4   ▍▍▍▍ high   72 sessions   $42.10   →                 │ │
+│ │  release/1.1.4   ▍▍▍▍ high   72 sessions   $42.10   →                 │ │
 │ │  main            ▍▍▍▍ high   183 sessions  $128.40  →                 │ │
 │ │  feature/optim   ▍▍▍░ med    18 sessions   $9.20    →                 │ │
 │ │  (unknown)       ▍▍░░ low    14 sessions   $4.10    ⚠  Override →     │ │
@@ -1308,7 +1308,7 @@ Page is a 2-column grid: left = widget SVG previews (already implemented in `Wid
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ ⊙ ⊙ ⊙   VibeDeck — release/1.0.4                                  ⚙  ●   │ ← Title bar inline title
+│ ⊙ ⊙ ⊙   VibeDeck — release/1.1.4                                  ⚙  ●   │ ← Title bar inline title
 ├──────────────┬──────────────────────────────────────────────────────────────┤
 │ Sidebar      │ Detail (the active tab)                                       │
 │  220pt       │                                                               │
@@ -2724,7 +2724,7 @@ This whole section, in one sentence: **make things move because they have somewh
 | 2026-05 | Indigo-slate palette (`#5b5fc7`) replacing emerald/teal | Original teal was "too aggressive," didn't blend with grey/black UI. Logged in `project_palette_rework.md`. |
 | 2026-05 | Plus Jakarta Sans + Outfit + JetBrains Mono | Replaced DM Sans/Inter pairing. Outfit's rounded geometry differentiates from every Inter-based dev tool. |
 | 2026-05 | All neutrals OKLCH with `264` hue | Indigo undertone in greys keeps the accent in family. |
-| 2026-05-27 | DESIGN.md authored — locks logo palette across Dashboard, macOS app, Widgets | User directive: "just keep the logo colour." Three surfaces, one source of truth, covering 1.0.4 API additions (Optimize, Plan, Live actionable surfaces, provider breadth, analytics surfaces). |
+| 2026-05-27 | DESIGN.md authored — locks logo palette across Dashboard, macOS app, Widgets | User directive: "just keep the logo colour." Three surfaces, one source of truth, covering 1.1.4 API additions (Optimize, Plan, Live actionable surfaces, provider breadth, analytics surfaces). |
 | 2026-05-27 | EntirePage (and all checkpoint inspector / repo command center surfaces) removed from scope | User commented out the Entire feature's UI, setup, and backend. Not shipping in this revamp. |
 | 2026-05-27 | Provider logos (not color dots) become the canonical provider identity in UI | 12 local SVGs already in `dashboard/public/brand-logos/`. Dots reserved for status, not identity. |
 | 2026-05-27 | Motion system spec'd (§33) — springs over beziers as the default | Springs read as natural; beziers read as scripted. The product needs to feel alive and earned. Reduced-motion override is mandatory. |

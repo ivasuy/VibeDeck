@@ -22,14 +22,6 @@ function deriveMissingFromState({ state, readmeSyncConfig, githubToken }) {
     missing.push("native_app");
   }
 
-  /*
-  if (!state?.entire?.installed) {
-    missing.push("entire_install");
-  } else if (!state?.entire?.logged_in) {
-    missing.push("entire_login");
-  }
-  */
-
   if (!readmeSyncConfig?.enabled || !isTruthy(githubToken)) {
     missing.push("readme_sync");
   }

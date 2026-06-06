@@ -78,6 +78,7 @@ If `serve` fails, run these in order:
 
 ```bash
 node bin/vibedeck.js status --diagnostics
+node bin/vibedeck.js diagnostics --pretty
 node bin/vibedeck.js doctor
 node bin/vibedeck.js sync --rebuild-vibedeck-db
 ```
@@ -141,6 +142,7 @@ What `serve` does:
 - optionally runs sync first
 - starts the local API
 - starts HEAD watching and stale-session reaping
+- starts the optimize schedule
 - serves `dashboard/dist`
 
 ### Frontend loop
@@ -162,6 +164,15 @@ The production CLI/native app path expects built assets under:
 ```text
 dashboard/dist
 ```
+
+### Root package scripts
+
+```bash
+npm run dashboard:build
+npm test
+```
+
+The root `npm test` command runs `node scripts/run-tests.js`.
 
 ### Native macOS loop
 
@@ -238,7 +249,6 @@ vibedeck init
 vibedeck init --yes
 vibedeck init --dry-run
 vibedeck init --no-open
-vibedeck init --skip-entire-login
 vibedeck init --link-code <code>
 ```
 
@@ -247,6 +257,8 @@ This installs or refreshes provider hooks and local runtime state under:
 ```text
 ~/.vibedeck/tracker/app
 ```
+
+The accepted `init` flags are listed above. Unknown options fail fast.
 
 ### `status` and `doctor`
 
@@ -271,8 +283,18 @@ Use `status` for a quick provider/runtime summary. Use `doctor` for deeper check
 - hook integrity
 - live-session health
 - cost quality
-- Entire checkpoint linkage
 - local API reachability
+
+### `diagnostics`
+
+```bash
+vibedeck diagnostics
+vibedeck diagnostics --pretty
+vibedeck diagnostics --compact
+vibedeck diagnostics --out diagnostics.json
+```
+
+Use this when you need machine-readable local runtime and tracker state without the full doctor scoring model.
 
 ### `attribute`
 
@@ -424,11 +446,15 @@ Expected error:
 README.md not found in current directory
 ```
 
-### `entire`
+### `optimize`
 
 ```bash
-vibedeck entire login
+vibedeck optimize
+vibedeck optimize --scan
+vibedeck optimize --scan --json
 ```
+
+Runs a local optimization scan against the VibeDeck SQLite database and records findings under the optimize tables.
 
 ### `uninstall`
 
@@ -468,7 +494,7 @@ npm --prefix dashboard run typecheck
 Focused dashboard examples:
 
 ```bash
-npm --prefix dashboard run test -- BranchesPage.test.jsx EntirePage.test.jsx CheckpointFileInspector.test.jsx
+npm --prefix dashboard run test -- BranchesPage.test.jsx LivePage.test.jsx OptimizePage.test.jsx
 npm --prefix dashboard run test -- vibedeck-api.test.ts
 ```
 
@@ -546,7 +572,7 @@ gh run watch
 Manual native release fallback:
 
 ```bash
-gh workflow run release-dmg.yml -f version=0.1.3
+gh workflow run release-dmg.yml -f version=1.1.4
 ```
 
 ## Useful Paths
@@ -589,6 +615,8 @@ VibeDeckMac/build/DerivedData/
 | `VIBEDECK_HTTP_TIMEOUT_MS` | Override local HTTP timeout in milliseconds. |
 | `VIBEDECK_BACKEND_BASE_URL` | Point dashboard or native clients at a specific local backend. |
 | `VIBEDECK_SERVE_SYNC_MS` | Background sync interval while `serve` is running. |
+| `VIBEDECK_DB_PATH` | Override the SQLite database path for optimize scans. |
+| `VIBEDECK_HOME` | Override the home root used by auth and repo migration helpers. |
 | `CODEX_HOME` | Override Codex config and session directory root. |
 | `GEMINI_HOME` | Override Gemini config and session directory root. |
 | `OPENCODE_HOME` | Override OpenCode state root. |

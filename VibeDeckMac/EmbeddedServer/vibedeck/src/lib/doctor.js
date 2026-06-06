@@ -6,7 +6,6 @@ const pathMod = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 
 const { readJsonStrict } = require("./fs");
-// const { detectEntire } = require("./entire-bridge");
 const { readBootstrapState } = require("./bootstrap/state");
 const { readReadmeSyncConfig, readGitHubToken } = require("./readme-sync/config");
 const hookSignature = require("./hook-merger/signature");
@@ -46,8 +45,6 @@ async function runDoctorChecks({
   const checks = [];
 
   checks.push(...buildRuntimeChecks(runtime));
-
-  // checks.push(await checkEntireCli());
 
   if (paths.trackerDir) {
     checks.push(await checkTrackerDir(paths.trackerDir));
@@ -92,31 +89,6 @@ async function buildBootstrapChecks() {
       version: bootstrapState?.native_app?.version || null,
     },
   });
-
-  /*
-  const entireInstalled = Boolean(bootstrapState?.entire?.installed);
-  const entireLoggedIn = entireInstalled ? Boolean(bootstrapState?.entire?.logged_in) : false;
-  checks.push({
-    id: "bootstrap.entire_installed",
-    status: "info",
-    detail: entireInstalled
-      ? "Entire CLI/install state recorded"
-      : "Entire not installed (bootstrap state)",
-    critical: false,
-    meta: { installed: entireInstalled, version: bootstrapState?.entire?.version || null },
-  });
-  checks.push({
-    id: "bootstrap.entire_login",
-    status: "info",
-    detail: entireInstalled
-      ? entireLoggedIn
-        ? "Entire login recorded"
-        : "Entire login not completed"
-      : "Entire login unavailable (Entire not installed)",
-    critical: false,
-    meta: { logged_in: entireLoggedIn, installed: entireInstalled },
-  });
-  */
 
   const readmeReady = Boolean(readmeSyncConfig?.enabled && githubToken);
   checks.push({
@@ -322,22 +294,6 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
         critical: false,
         meta: { path: resolved },
       },
-      /*
-      {
-        id: "db.entire_checkpoint_coverage",
-        status: "info",
-        detail: `DB not found (${resolved})`,
-        critical: false,
-        meta: { path: resolved },
-      },
-      {
-        id: "db.entire_checkpoint_unmatched",
-        status: "info",
-        detail: `DB not found (${resolved})`,
-        critical: false,
-        meta: { path: resolved },
-      },
-      */
     ];
   }
 
@@ -477,93 +433,11 @@ async function buildDbHealthChecks({ home, paths, dbPath }) {
       });
     }
 
-    /*
-    // entire_checkpoint_coverage + entire_checkpoint_unmatched
-    try {
-      const row = db
-        .prepare(
-          `SELECT
-             COUNT(*) AS scanned,
-             SUM(CASE WHEN match_status = 'linked' THEN 1 ELSE 0 END) AS linked,
-             SUM(CASE WHEN match_status = 'ambiguous' THEN 1 ELSE 0 END) AS ambiguous,
-             SUM(CASE WHEN match_status = 'unmatched' THEN 1 ELSE 0 END) AS unmatched
-           FROM vibedeck_entire_checkpoint_matches`,
-        )
-        .get();
-      const scanned = Number(row?.scanned || 0);
-      const linked = Number(row?.linked || 0);
-      const ambiguous = Number(row?.ambiguous || 0);
-      const unmatched = Number(row?.unmatched || 0);
-      const ratio = scanned > 0 ? linked / scanned : null;
-      checks.push({
-        id: "db.entire_checkpoint_coverage",
-        status: scanned === 0 ? "info" : ratio >= 0.8 ? "ok" : "warn",
-        detail:
-          scanned === 0
-            ? "no checkpoint match rows"
-            : `checkpoint link coverage ${(ratio * 100).toFixed(1)}% (${linked}/${scanned})`,
-        critical: false,
-        meta: { scanned, linked, ambiguous, unmatched, linked_ratio: ratio },
-      });
-      checks.push({
-        id: "db.entire_checkpoint_unmatched",
-        status: scanned === 0 ? "info" : ambiguous + unmatched > 0 ? "warn" : "ok",
-        detail:
-          scanned === 0
-            ? "no checkpoint match rows"
-            : ambiguous + unmatched > 0
-              ? `found ${ambiguous} ambiguous and ${unmatched} unmatched checkpoints`
-              : "no ambiguous or unmatched checkpoints",
-        critical: false,
-        meta: { scanned, ambiguous, unmatched },
-      });
-    } catch (err) {
-      checks.push({
-        id: "db.entire_checkpoint_coverage",
-        status: "fail",
-        detail: `checkpoint coverage query failed: ${err?.message || String(err)}`,
-        critical: false,
-        meta: { path: resolved },
-      });
-      checks.push({
-        id: "db.entire_checkpoint_unmatched",
-        status: "fail",
-        detail: `checkpoint unmatched query failed: ${err?.message || String(err)}`,
-        critical: false,
-        meta: { path: resolved },
-      });
-    }
-    */
-
     return checks;
   } finally {
     db.close();
   }
 }
-
-/*
-async function checkEntireCli() {
-  const ent = await detectEntire({ timeoutMs: 2000 });
-  if (ent.present) {
-    return {
-      id: "entire.cli",
-      status: "ok",
-      detail: `Entire CLI ${ent.version || "unknown"} on PATH`,
-      critical: false,
-      meta: { present: true, version: ent.version || null },
-    };
-  }
-
-  return {
-    id: "entire.cli",
-    status: "info",
-    detail:
-      "Entire CLI not found on PATH. Install: brew install --cask entireio/tap/entire (or curl -fsSL https://entire.io/install.sh | bash). Without Entire, session→branch attribution falls back to lower-confidence tiers.",
-    critical: false,
-    meta: { present: false, version: null },
-  };
-}
-*/
 
 function buildRuntimeChecks(runtime = {}) {
   const checks = [];

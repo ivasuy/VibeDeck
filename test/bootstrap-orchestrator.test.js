@@ -3,44 +3,42 @@ const test = require("node:test");
 
 const { collectMissingPrerequisites, runFirstRunBootstrapIfNeeded } = require("../src/lib/bootstrap/orchestrator");
 
-test("orchestrator reports missing entire login and readme sync config", async () => {
+test("orchestrator reports missing readme sync config", async () => {
   const missing = await collectMissingPrerequisites({
     bootstrapState: {
       native_app: { installed: true },
-      entire: { installed: true, logged_in: false },
     },
     readmeSyncConfig: null,
     githubToken: null,
     platform: "darwin",
   });
-  assert.deepEqual(missing, ["entire_login", "readme_sync"]);
+  assert.deepEqual(missing, ["readme_sync"]);
 });
 
-test("orchestrator reports missing native app and readme prereqs on non-login state", async () => {
+test("orchestrator reports missing native app and readme prereqs", async () => {
   const missing = await collectMissingPrerequisites({
     bootstrapState: {
       native_app: { installed: false },
-      entire: { installed: false, logged_in: false },
     },
     readmeSyncConfig: { enabled: false },
     githubToken: null,
     platform: "darwin",
   });
-  assert.deepEqual(missing, ["native_app", "entire_install", "readme_sync"]);
+  assert.deepEqual(missing, ["native_app", "readme_sync"]);
 });
 
 test("runFirstRunBootstrapIfNeeded declines setup and continues", async () => {
   let fixed = 0;
   const result = await runFirstRunBootstrapIfNeeded({
     platform: "darwin",
-    missing: ["native_app", "entire_login"],
+    missing: ["native_app", "readme_sync"],
     isInteractive: true,
     promptImpl: async () => false,
     fixers: {
       native_app: async () => {
         fixed += 1;
       },
-      entire_login: async () => {
+      readme_sync: async () => {
         fixed += 1;
       },
     },
@@ -48,7 +46,7 @@ test("runFirstRunBootstrapIfNeeded declines setup and continues", async () => {
 
   assert.equal(result.prompted, true);
   assert.equal(result.accepted, false);
-  assert.deepEqual(result.missing, ["native_app", "entire_login"]);
+  assert.deepEqual(result.missing, ["native_app", "readme_sync"]);
   assert.equal(fixed, 0);
 });
 
@@ -56,14 +54,14 @@ test("runFirstRunBootstrapIfNeeded treats cancel as decline", async () => {
   let fixed = 0;
   const result = await runFirstRunBootstrapIfNeeded({
     platform: "darwin",
-    missing: ["native_app", "entire_login"],
+    missing: ["native_app", "readme_sync"],
     isInteractive: true,
     promptImpl: async () => null,
     fixers: {
       native_app: async () => {
         fixed += 1;
       },
-      entire_login: async () => {
+      readme_sync: async () => {
         fixed += 1;
       },
     },
@@ -71,6 +69,6 @@ test("runFirstRunBootstrapIfNeeded treats cancel as decline", async () => {
 
   assert.equal(result.prompted, true);
   assert.equal(result.accepted, false);
-  assert.deepEqual(result.missing, ["native_app", "entire_login"]);
+  assert.deepEqual(result.missing, ["native_app", "readme_sync"]);
   assert.equal(fixed, 0);
 });

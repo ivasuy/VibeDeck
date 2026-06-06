@@ -19,7 +19,7 @@ test("init issues local auth token at ~/.vibedeck/auth.token with mode 0600", as
     process.env.OPENCODE_CONFIG_DIR = path.join(tmp, ".config", "opencode");
     delete process.env.TOKENTRACKER_DEVICE_TOKEN;
 
-    await cmdInit(["--yes", "--no-auth", "--no-open", "--skip-entire-login", "--base-url", "https://example.invalid"]);
+    await cmdInit(["--yes", "--no-auth", "--no-open", "--base-url", "https://example.invalid"]);
 
     const tokenPath = path.join(tmp, ".vibedeck", "auth.token");
     const stat = await fs.stat(tokenPath);
@@ -38,4 +38,3 @@ test("init issues local auth token at ~/.vibedeck/auth.token with mode 0600", as
     await fs.rm(tmp, { recursive: true, force: true });
   }
 });
-

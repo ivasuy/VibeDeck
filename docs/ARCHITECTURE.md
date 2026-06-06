@@ -216,7 +216,7 @@ Core SQLite objects are created by `src/lib/db/migrations/*`:
 | `vibedeck_session_branch_windows` and `vibedeck_branch_usage_facts` | Branch/project rollups and branch-window slices. |
 | `vibedeck_attribution_overrides` | Manual branch attribution overrides from `vibedeck attribute`. |
 | `vibedeck_head_history` | Observed Git HEAD changes used during branch resolution. |
-| `vibedeck_repos` | Known repo state, freshness, suppression, and compatibility metadata. |
+| `vibedeck_repos` | Repo metadata retained for migration compatibility. |
 | `vibedeck_skills` | Local skill metadata. |
 | `vibedeck_session_group_edges` and `vibedeck_session_group_skips` | Session grouping projection and diagnostics. |
 | `vibedeck_optimize_runs` and `vibedeck_optimize_findings` | Optimize scan history and findings. |

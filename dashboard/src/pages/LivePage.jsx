@@ -68,69 +68,6 @@ function ReadinessBadge({ state }) {
   );
 }
 
-/*
-function entireStateLabel(state) {
-  if (state === "not_installed") return copy("entire.state.not_installed");
-  if (state === "not_enabled") return copy("entire.state.not_enabled");
-  if (state === "enabled_no_commits") return copy("entire.state.enabled_no_commits");
-  if (state === "active") return copy("entire.state.active");
-  return copy("entire.state.unknown");
-}
-
-function stateClass(state) {
-  if (state === "active") return "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300";
-  if (state === "not_installed") return "bg-red-500/10 text-red-700 dark:text-red-300";
-  if (state === "enabled_no_commits") return "bg-amber-500/10 text-amber-700 dark:text-amber-300";
-  return "bg-oai-black/[0.06] text-oai-gray-700 dark:bg-white/[0.12] dark:text-oai-gray-200";
-}
-
-function RepoEntireCard({ session, status, loading, error }) {
-  const repo = String(session?.repo_root || "");
-  const state = String(status?.state || "");
-
-  return (
-    <Card className="h-[178px] overflow-hidden" bodyClassName="h-full overflow-auto">
-      <div className="flex items-center gap-2">
-        <FolderGit2 className="h-4 w-4 text-oai-gray-500 dark:text-oai-gray-400" aria-hidden />
-        <h2 className="text-sm font-semibold text-oai-black dark:text-white">
-          {copy("live.repo_state.title")}
-        </h2>
-      </div>
-      {!repo ? (
-        <p className="mt-2 text-sm text-oai-gray-500 dark:text-oai-gray-400">
-          {copy("live.repo_state.empty")}
-        </p>
-      ) : (
-        <div className="mt-3 space-y-2">
-          <div className="vd-subcard rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-oai-brand-500 dark:text-oai-brand-300">
-              <Database className="h-3.5 w-3.5" aria-hidden />
-              Repo
-            </div>
-            <div className="truncate font-medium text-oai-black dark:text-white" title={repo}>{repo}</div>
-          </div>
-          <div className="vd-subcard flex items-center justify-between gap-3 rounded-md bg-oai-black/[0.03] px-2.5 py-2 text-xs text-oai-gray-600 dark:bg-white/[0.08] dark:text-oai-gray-300">
-            <span className="flex items-center gap-1.5">
-              <Box className="h-3.5 w-3.5" aria-hidden />
-              Entire
-            </span>
-            {loading ? (
-              <span className="font-medium text-oai-gray-500 dark:text-oai-gray-400">{copy("entire.status.loading")}</span>
-            ) : error ? (
-              <span className="truncate pl-2 text-right font-medium text-red-700 dark:text-red-300" title={error}>{error}</span>
-            ) : (
-              <span className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${stateClass(state)}`}>
-                {entireStateLabel(state)}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
-*/
-
 function LiveOperationsTable({ sessions = [] }) {
   const rows = Array.isArray(sessions) ? sessions.slice(0, 50) : [];
   if (rows.length === 0) return null;
@@ -260,12 +197,6 @@ export function LivePage() {
   const [attributionError, setAttributionError] = useState("");
   const [overrideSession, setOverrideSession] = useState(null);
   const [readinessState, setReadinessState] = useState(null);
-  /*
-  const [entireStatus, setEntireStatus] = useState(null);
-  const [entireLoading, setEntireLoading] = useState(false);
-  const [entireError, setEntireError] = useState("");
-  */
-
   const refreshAttributionStats = useCallback(async () => {
     setAttributionLoading(true);
     setAttributionError("");
@@ -340,38 +271,6 @@ export function LivePage() {
     if (!key || sessions.some((row) => sessionKey(row) === key)) return;
     setOverrideSession(null);
   }, [overrideSession, sessions]);
-
-  /*
-  useEffect(() => {
-    const repo = String(selectedSession?.repo_root || "");
-    if (!repo) {
-      setEntireStatus(null);
-      setEntireError("");
-      setEntireLoading(false);
-      return;
-    }
-    let active = true;
-    setEntireLoading(true);
-    setEntireError("");
-    getEntireStatus(repo)
-      .then((payload) => {
-        if (!active) return;
-        setEntireStatus(payload || null);
-      })
-      .catch((cause) => {
-        if (!active) return;
-        const message = cause instanceof Error ? cause.message : copy("entire.status.error_fallback");
-        setEntireError(message);
-        setEntireStatus(null);
-      })
-      .finally(() => {
-        if (active) setEntireLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedSession?.repo_root]);
-  */
 
   return (
     <PageShell

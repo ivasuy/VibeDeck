@@ -70,14 +70,14 @@ test('removeAll removes only signed entries across all formats', async () => {
     },
   });
 
-  // Add an Entire marker + manual entries to prove removeAll keeps them.
+  // Add an External marker + manual entries to prove removeAll keeps them.
   {
     const json = readJson(claudePath);
-    json.hooks.SessionEnd.push({ command: '/usr/local/bin/entire hook session-end' });
+    json.hooks.SessionEnd.push({ command: '/usr/local/bin/external-tool hook session-end' });
     json.hooks.SessionEnd.push({ command: 'echo manual' });
     fs.writeFileSync(claudePath, JSON.stringify(json, null, 2));
   }
-  fs.appendFileSync(codexPath, "notify = ['/usr/local/bin/entire hook session-end']\n");
+  fs.appendFileSync(codexPath, "notify = ['/usr/local/bin/external-tool hook session-end']\n");
 
   await hookMerger.removeAll({
     providers: ['claude', 'cursor', 'gemini', 'codex', 'factory', 'codebuddy', 'copilot'],
@@ -94,7 +94,7 @@ test('removeAll removes only signed entries across all formats', async () => {
 
   const claudeOut = readJson(claudePath);
   assert.strictEqual(claudeOut.hooks.SessionEnd.filter((e) => e && e._vibedeck === 'v1').length, 0);
-  assert.strictEqual(claudeOut.hooks.SessionEnd.filter((e) => /entire/.test(e.command || '')).length, 1);
+  assert.strictEqual(claudeOut.hooks.SessionEnd.filter((e) => /external-tool/.test(e.command || '')).length, 1);
   assert.strictEqual(claudeOut.hooks.SessionEnd.filter((e) => /manual/.test(e.command || '')).length, 1);
 });
 

@@ -40,27 +40,18 @@ function readFile(filePath) {
 
 test("DashboardPage places TrendMonitor and heatmap in left column", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("xl:col-span-4");
-  const rightStart = src.indexOf("xl:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
-
-  const leftColumn = src.slice(leftStart, rightStart);
-  const trendIndex = leftColumn.indexOf("<TrendMonitor");
-  const heatmapIndex = leftColumn.indexOf("{activityHeatmapBlock}");
-  assert.ok(trendIndex !== -1, "expected TrendMonitor in left column");
-  assert.ok(heatmapIndex !== -1, "expected heatmap block in left column");
+  assert.ok(
+    src.includes("lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]"),
+    "expected dashboard hero metric grid",
+  );
+  assert.ok(src.includes("<SparklineBars"), "expected trend sparkline in dashboard summary");
+  assert.ok(src.includes("<ProviderBreakdown"), "expected provider breakdown panel");
 });
 
 test("DashboardPage right column contains UsageOverview", () => {
   const src = readFile(viewPath);
-  const leftStart = src.indexOf("xl:col-span-4");
-  const rightStart = src.indexOf("xl:col-span-8", leftStart + 1);
-  assert.ok(leftStart !== -1, "expected left column markup");
-  assert.ok(rightStart !== -1, "expected right column markup");
-
-  const rightColumn = src.slice(rightStart);
-  assert.ok(rightColumn.includes("<UsageOverview"), "expected UsageOverview in right column");
+  assert.ok(src.includes("Today's spend"), "expected spend overview in summary surface");
+  assert.ok(src.includes("Active sessions"), "expected session overview in summary surface");
 });
 
 test("ProjectUsagePanel lays out cards in responsive grid", () => {
@@ -129,8 +120,8 @@ test("DashboardPage wires install panel gating through helper", () => {
     "expected helper to hide card for active device token",
   );
   assert.ok(
-    viewSrc.includes("shouldShowInstall ? ("),
-    "expected install panel to use shouldShowInstall",
+    containerSrc.includes("shouldShowInstall={shouldShowInstall}"),
+    "expected install panel visibility to be passed into dashboard view",
   );
 });
 
@@ -156,7 +147,7 @@ test("copy registry removes unused install steps and range label", () => {
 test("DashboardPage lets TrendMonitor auto-size", () => {
   const src = readFile(viewPath);
   assert.ok(!src.includes('className="min-h-[240px]"'), "expected TrendMonitor min height removed");
-  assert.ok(src.includes("<TrendMonitor"), "expected TrendMonitor to be rendered");
+  assert.ok(src.includes("<SparklineBars"), "expected dashboard trend sparkline to be rendered");
 });
 
 test("TrendMonitor root does not force full height", () => {

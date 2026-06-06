@@ -18,15 +18,15 @@ test('1. empty file: install adds vibedeck entry', async () => {
   assert.strictEqual(json.hooks.SessionEnd.filter((e) => e._vibedeck === 'v1').length, 1);
 });
 
-test('2. existing Entire entry preserved alongside vibedeck', async () => {
+test('2. existing external entry preserved alongside vibedeck', async () => {
   const f = tmpFile(
-    JSON.stringify({ hooks: { SessionEnd: [{ command: '/usr/local/bin/entire hook session-end' }] } }, null, 2),
+    JSON.stringify({ hooks: { SessionEnd: [{ command: '/usr/local/bin/external-tool hook session-end' }] } }, null, 2),
   );
   await claude.install(f);
   const json = JSON.parse(fs.readFileSync(f, 'utf8'));
-  const entire = json.hooks.SessionEnd.filter((e) => /entire/.test(e.command || ''));
+  const external = json.hooks.SessionEnd.filter((e) => /external-tool/.test(e.command || ''));
   const ours = json.hooks.SessionEnd.filter((e) => e._vibedeck === 'v1');
-  assert.strictEqual(entire.length, 1);
+  assert.strictEqual(external.length, 1);
   assert.strictEqual(ours.length, 1);
 });
 
@@ -51,11 +51,11 @@ test('5. malformed JSON aborts and never overwrites', async () => {
   assert.strictEqual(fs.readFileSync(f, 'utf8'), '{ this is not json');
 });
 
-test('6. remove deletes only ours; entire and user entries untouched', async () => {
+test('6. remove deletes only ours; external and user entries untouched', async () => {
   const f = tmpFile(null);
   await claude.install(f);
   const json = JSON.parse(fs.readFileSync(f, 'utf8'));
-  json.hooks.SessionEnd.push({ command: '/usr/local/bin/entire hook session-end' });
+  json.hooks.SessionEnd.push({ command: '/usr/local/bin/external-tool hook session-end' });
   json.hooks.SessionEnd.push({ command: 'echo manual' });
   fs.writeFileSync(f, JSON.stringify(json, null, 2));
   await claude.remove(f);

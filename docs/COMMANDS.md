@@ -475,7 +475,6 @@ node --test test/*.test.js
 ### Focused backend examples
 
 ```bash
-node --test test/local-api-vibedeck-checkpoints.test.js
 node --test test/local-api-vibedeck-branch-usage.test.js
 node --test test/local-api-vibedeck-sessions-live.test.js
 node --test test/release-main-workflow.test.js

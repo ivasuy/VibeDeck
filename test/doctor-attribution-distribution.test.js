@@ -71,43 +71,6 @@ function insertSession({
   }
 }
 
-function insertCheckpointMatch({
-  repoRoot = "/repo",
-  groupId = "e2/abdc1ec6",
-  checkpointId = "e2abdc1ec6",
-  metadataPath = "e2/abdc1ec6/metadata.json",
-  status = "linked",
-  confidence = "exact",
-  reason = null,
-  candidateCount = 1,
-}) {
-  const db = new DatabaseSync(dbPath);
-  try {
-    const now = "2026-05-09T00:00:00.000Z";
-    db.prepare(
-      `INSERT INTO vibedeck_entire_checkpoint_matches (
-        repo_root, checkpoint_group_id, checkpoint_id, metadata_path, checkpoint_tip,
-        entire_session_id, agent, provider, model, branch, started_at, ended_at,
-        session_provider, session_id, match_status, match_confidence, reason, candidate_count,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?);`,
-    ).run(
-      repoRoot,
-      groupId,
-      checkpointId,
-      metadataPath,
-      status,
-      confidence,
-      reason,
-      candidateCount,
-      now,
-      now,
-    );
-  } finally {
-    db.close();
-  }
-}
-
 test("attribution_distribution check reports percentages and ok status when < 25% unattributed", async () => {
   ensureSchema(dbPath);
   insertSession({ confidence: "high", startedAt: "2026-05-09T00:00:00.000Z", endedAt: null });
@@ -189,8 +152,6 @@ test("db checks include stable release IDs as info when DB is missing", async ()
   });
   assert.equal(getCheck(checks, "db.canonical_completeness").status, "info");
   assert.equal(getCheck(checks, "db.session_cost_quality").status, "info");
-  assert.equal(getCheck(checks, "db.entire_checkpoint_coverage").status, "info");
-  assert.equal(getCheck(checks, "db.entire_checkpoint_unmatched").status, "info");
 });
 
 test("canonical completeness is ok when positive-token sessions have bucket facts", async () => {
@@ -240,52 +201,4 @@ test("session cost quality warns when positive-token sessions are missing canoni
     dbPath,
   });
   assert.equal(getCheck(checks, "db.session_cost_quality").status, "warn");
-});
-
-test("entire checkpoint coverage is info with no match rows", async () => {
-  ensureSchema(dbPath);
-  const checks = await runDoctorChecks({
-    runtime: { baseUrl: null },
-    paths: {},
-    fetch: () => Promise.resolve({}),
-    dbPath,
-  });
-  assert.equal(getCheck(checks, "db.entire_checkpoint_coverage").status, "info");
-});
-
-test("entire checkpoint coverage warns below 80% and unmatched warns on ambiguous/unmatched rows", async () => {
-  ensureSchema(dbPath);
-  insertCheckpointMatch({
-    groupId: "e2/linked",
-    metadataPath: "e2/linked/metadata.json",
-    status: "linked",
-    confidence: "exact",
-    reason: null,
-    candidateCount: 1,
-  });
-  insertCheckpointMatch({
-    groupId: "e2/ambiguous",
-    metadataPath: "e2/ambiguous/metadata.json",
-    status: "ambiguous",
-    confidence: "ambiguous",
-    reason: "multiple_matching_sessions",
-    candidateCount: 2,
-  });
-  insertCheckpointMatch({
-    groupId: "e2/unmatched",
-    metadataPath: "e2/unmatched/metadata.json",
-    status: "unmatched",
-    confidence: "unmatched",
-    reason: "no_matching_session",
-    candidateCount: 0,
-  });
-
-  const checks = await runDoctorChecks({
-    runtime: { baseUrl: null },
-    paths: {},
-    fetch: () => Promise.resolve({}),
-    dbPath,
-  });
-  assert.equal(getCheck(checks, "db.entire_checkpoint_coverage").status, "warn");
-  assert.equal(getCheck(checks, "db.entire_checkpoint_unmatched").status, "warn");
 });

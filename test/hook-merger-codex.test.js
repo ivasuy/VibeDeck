@@ -27,11 +27,11 @@ test('1. empty file: install adds vibedeck notify entry', async () => {
   assert.ok(notify.includes(signature.canonicalCommandPath()));
 });
 
-test('2. existing Entire entry preserved alongside vibedeck', async () => {
-  const f = tmpFile('notify = ["entire hook session-end"]\n');
+test('2. existing external entry preserved alongside vibedeck', async () => {
+  const f = tmpFile('notify = ["external-tool hook session-end"]\n');
   await codex.install(f);
   const notify = parseNotifyArray(fs.readFileSync(f, 'utf8'));
-  assert.ok(notify.includes('entire hook session-end'));
+  assert.ok(notify.includes('external-tool hook session-end'));
   assert.ok(notify.includes(signature.canonicalCommandPath()));
 });
 
@@ -57,14 +57,14 @@ test('5. malformed TOML aborts and never overwrites', async () => {
   assert.strictEqual(fs.readFileSync(f, 'utf8'), 'notify = ["unterminated"\n');
 });
 
-test('6. remove deletes only ours; entire and user entries untouched', async () => {
-  const f = tmpFile('notify = ["echo manual", "entire hook session-end"]\n');
+test('6. remove deletes only ours; external and user entries untouched', async () => {
+  const f = tmpFile('notify = ["echo manual", "external-tool hook session-end"]\n');
   await codex.install(f);
   await codex.remove(f);
   const notify = parseNotifyArray(fs.readFileSync(f, 'utf8'));
   assert.ok(Array.isArray(notify));
   assert.ok(!notify.includes(signature.canonicalCommandPath()));
-  assert.ok(notify.includes('entire hook session-end'));
+  assert.ok(notify.includes('external-tool hook session-end'));
   assert.ok(notify.includes('echo manual'));
 });
 

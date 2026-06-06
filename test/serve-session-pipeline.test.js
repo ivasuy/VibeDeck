@@ -56,6 +56,10 @@ async function startServe({ home, port }) {
     env: {
       ...process.env,
       HOME: home,
+      CODEX_HOME: path.join(home, '.codex'),
+      CODE_HOME: path.join(home, '.code'),
+      GEMINI_HOME: path.join(home, '.gemini'),
+      OPENCODE_HOME: path.join(home, '.opencode'),
       // Keep this test deterministic even when production serve default is conservative.
       VIBEDECK_SERVE_SYNC_MS: '250',
     },
@@ -214,7 +218,15 @@ test('sync reaper ends stale live sessions', { timeout: 30_000 }, async () => {
   }
 
   const child = cp.spawn(process.execPath, [path.join(__dirname, '..', 'bin', 'vibedeck.js'), 'sync', '--auto'], {
-    env: { ...process.env, HOME: home, VIBEDECK_IDLE_TIMEOUT_MIN: '30' },
+    env: {
+      ...process.env,
+      HOME: home,
+      CODEX_HOME: path.join(home, '.codex'),
+      CODE_HOME: path.join(home, '.code'),
+      GEMINI_HOME: path.join(home, '.gemini'),
+      OPENCODE_HOME: path.join(home, '.opencode'),
+      VIBEDECK_IDLE_TIMEOUT_MIN: '30',
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   await once(child, 'close');

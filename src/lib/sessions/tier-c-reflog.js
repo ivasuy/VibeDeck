@@ -1,6 +1,6 @@
 'use strict';
 
-const execa = require('execa');
+const { execFile } = require('node:child_process');
 
 function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim() !== '';
@@ -26,7 +26,17 @@ function isFullSha(v) {
 }
 
 async function _git(repoRoot, args) {
-  return execa('git', ['-C', repoRoot, ...args], { stdio: 'pipe' });
+  return new Promise((resolve, reject) => {
+    execFile('git', ['-C', repoRoot, ...args], { encoding: 'utf8' }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
 }
 
 function getCacheMap(cache, key) {

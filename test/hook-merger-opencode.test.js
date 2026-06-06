@@ -20,12 +20,12 @@ test('1. install creates vibedeck.ts in plugin dir', async () => {
   assert.ok(fs.existsSync(pluginPath(repoRoot, 'vibedeck.ts')));
 });
 
-test('2. existing entire.ts plugin is untouched', async () => {
+test('2. existing external-tool.ts plugin is untouched', async () => {
   const repoRoot = tmpRepo();
-  fs.mkdirSync(path.dirname(pluginPath(repoRoot, 'entire.ts')), { recursive: true });
-  fs.writeFileSync(pluginPath(repoRoot, 'entire.ts'), '// entire plugin\n');
+  fs.mkdirSync(path.dirname(pluginPath(repoRoot, 'external-tool.ts')), { recursive: true });
+  fs.writeFileSync(pluginPath(repoRoot, 'external-tool.ts'), '// external tool plugin\n');
   await opencode.install(repoRoot);
-  assert.strictEqual(fs.readFileSync(pluginPath(repoRoot, 'entire.ts'), 'utf8'), '// entire plugin\n');
+  assert.strictEqual(fs.readFileSync(pluginPath(repoRoot, 'external-tool.ts'), 'utf8'), '// external tool plugin\n');
 });
 
 test('3. existing index.ts is untouched (we do not touch it)', async () => {
@@ -51,12 +51,12 @@ test('4. re-install with same content is a no-op (mtime preserved)', async () =>
 
 test('5. remove deletes vibedeck.ts only', async () => {
   const repoRoot = tmpRepo();
-  fs.mkdirSync(path.dirname(pluginPath(repoRoot, 'entire.ts')), { recursive: true });
-  fs.writeFileSync(pluginPath(repoRoot, 'entire.ts'), '// entire plugin\n');
+  fs.mkdirSync(path.dirname(pluginPath(repoRoot, 'external-tool.ts')), { recursive: true });
+  fs.writeFileSync(pluginPath(repoRoot, 'external-tool.ts'), '// external tool plugin\n');
   await opencode.install(repoRoot);
   await opencode.remove(repoRoot);
   assert.strictEqual(fs.existsSync(pluginPath(repoRoot, 'vibedeck.ts')), false);
-  assert.strictEqual(fs.existsSync(pluginPath(repoRoot, 'entire.ts')), true);
+  assert.strictEqual(fs.existsSync(pluginPath(repoRoot, 'external-tool.ts')), true);
 });
 
 test('6. plugin file content exports the expected named plugin export', async () => {

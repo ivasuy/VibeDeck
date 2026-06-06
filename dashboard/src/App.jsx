@@ -33,12 +33,6 @@ function RemovedLimitsRedirect() {
   return <Navigate to="/dashboard" replace />;
 }
 
-/*
-function RemovedDashboardRouteRedirect() {
-  return <Navigate to="/dashboard" replace />;
-}
-*/
-
 export default function App() {
   // Subscribing to locale here makes App rerender on language switch, which
   // rebuilds every child element reference and triggers copy() re-evaluation
@@ -58,7 +52,6 @@ export default function App() {
   const isLivePath = normalizedPath === "/live";
   const isUsagePath = normalizedPath === "/usage";
   const isBranchesPath = normalizedPath === "/branches";
-  // const isEntirePath = normalizedPath === "/entire";
   const isSettingsPath = normalizedPath === "/settings";
   const isSkillsPath = normalizedPath === "/skills";
   const isWidgetsPath = normalizedPath === "/widgets";
@@ -78,10 +71,6 @@ export default function App() {
     PageComponent = LivePage;
   } else if (isBranchesPath) {
     PageComponent = BranchesPage;
-  /*
-  } else if (isEntirePath) {
-    PageComponent = RemovedDashboardRouteRedirect;
-  */
   } else if (isSettingsPath) {
     PageComponent = SettingsPage;
   } else if (isSkillsPath) {

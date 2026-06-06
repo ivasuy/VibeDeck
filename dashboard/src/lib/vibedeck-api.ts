@@ -28,20 +28,9 @@ function normalizeApiErrorCode(payload: AnyRecord | null) {
 function knownApiErrorMessage(code: string) {
   if (code === "db_unavailable") return copy("vibedeck.api.error.db_unavailable");
   if (code === "too_many_clients") return copy("vibedeck.api.error.too_many_clients");
-  /*
-  if (code === "not_installed") return copy("vibedeck.api.error.not_installed");
-  if (code === "not_enabled") return copy("vibedeck.api.error.not_enabled");
-  if (code === "enabled_no_commits") return copy("vibedeck.api.error.enabled_no_commits");
-  if (code === "active") return copy("vibedeck.api.error.active");
-  if (code === "branch_not_fetched") return copy("vibedeck.api.error.branch_not_fetched");
-  if (code === "git_error") return copy("vibedeck.api.error.git_error");
-  */
   if (code === "invalid_repo") return copy("vibedeck.api.error.invalid_repo");
   if (code === "invalid_path") return copy("vibedeck.api.error.invalid_path");
   if (code === "missing_repo") return copy("vibedeck.api.error.missing_repo");
-  if (code === "missing_confirm_token") return copy("vibedeck.api.error.missing_confirm_token");
-  if (code === "invalid_confirm_token") return copy("vibedeck.api.error.invalid_confirm_token");
-  // if (code === "unknown_command") return copy("vibedeck.api.error.unknown_command");
   if (code === "session_not_found") return copy("vibedeck.api.error.session_not_found");
   return "";
 }
@@ -236,29 +225,6 @@ export function downloadExport({ format = "json", ...params }: AnyRecord = {}, f
   return fetchImpl(query("vibedeck-export", { ...params, format }), readOptions).then(jsonOrThrow);
 }
 
-export function getKnownRepos(params: { limit?: number } = {}, fetchImpl: FetchImpl = fetch) {
-  return fetchImpl(query("vibedeck-known-repos", params), readOptions).then(jsonOrThrow);
-}
-
-export function hideKnownRepo(repo: string, fetchImpl: FetchImpl = fetch) {
-  return postVibeDeckJson("vibedeck-known-repos/hide", { repo }, fetchImpl);
-}
-
-/*
-export function getEntireStatus(repo: string, fetchImpl: FetchImpl = fetch) {
-  return fetchImpl(query("vibedeck-entire-status", { repo, cached: "1" }), readOptions).then(jsonOrThrow);
-}
-
-export function getCheckpoints(repo: string, fetchImpl: FetchImpl = fetch) {
-  return fetchImpl(query("vibedeck-checkpoints", { repo }), readOptions).then(jsonOrThrow);
-}
-
-export function getCheckpoint(repo: string, path: string, fetchImpl: FetchImpl = fetch) {
-  return fetchImpl(query("vibedeck-checkpoint", { repo, path }), readOptions).then(jsonOrThrow);
-}
-*/
-
-
 export async function postVibeDeckJson(path: string, body: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
   const authHeaders = await getLocalApiAuthHeaders(fetchImpl);
   const response = await fetchImpl(`/functions/${path}`, {
@@ -277,16 +243,3 @@ export async function postVibeDeckJson(path: string, body: AnyRecord = {}, fetch
 export function postAttribute(body: AnyRecord, fetchImpl: FetchImpl = fetch) {
   return postVibeDeckJson("vibedeck-attribute", body, fetchImpl);
 }
-
-/*
-export function postEntireCommand(cmd: string, body: AnyRecord = {}, fetchImpl: FetchImpl = fetch) {
-  return postVibeDeckJson(`vibedeck-entire/${cmd}`, body, fetchImpl);
-}
-*/
-
-
-/*
-export function confirmDestructive(op: string, fetchImpl: FetchImpl = fetch) {
-  return postVibeDeckJson("vibedeck-confirm-destructive", { op }, fetchImpl);
-}
-*/

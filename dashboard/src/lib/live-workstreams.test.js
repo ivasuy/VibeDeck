@@ -46,12 +46,12 @@ describe("buildLiveWorkstreams fallback ordering", () => {
     const sessions = [
       {
         provider: "codex",
-        session_id: "old-entire-ui-fix",
+        session_id: "old-cleanup-ui-fix",
         started_at: "2026-05-19T05:00:00.000Z",
         ended_at: null,
         cwd: "/repo/VibeDeck",
         repo_root: "/repo/VibeDeck",
-        branch: "entire/ui-fix",
+        branch: "cleanup/ui-fix",
         model: "gpt-5.5",
         total_tokens: 100,
         total_cost_usd: 1,
@@ -84,12 +84,12 @@ describe("buildLiveWorkstreams fallback ordering", () => {
     expect(workstreams[0].active_session_count).toBe(1);
     expect(workstreams[0].recently_completed_count).toBe(1);
 
-    const entire = workstreams[0].branch_groups.find((row) => row.branch === "entire/ui-fix");
+    const cleanup = workstreams[0].branch_groups.find((row) => row.branch === "cleanup/ui-fix");
     const release = workstreams[0].branch_groups.find((row) => row.branch === "release/0.1.3");
-    expect(entire).toBeTruthy();
+    expect(cleanup).toBeTruthy();
     expect(release).toBeTruthy();
-    expect(entire.active_session_count).toBe(0);
-    expect(entire.recently_completed_count).toBe(1);
+    expect(cleanup.active_session_count).toBe(0);
+    expect(cleanup.recently_completed_count).toBe(1);
     expect(release.active_session_count).toBe(1);
     expect(release.recently_completed_count).toBe(0);
   });

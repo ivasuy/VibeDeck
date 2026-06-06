@@ -64,10 +64,6 @@ const {
   createSpinner,
 } = require("../lib/cli-ui");
 const { renderLocalReport, renderAuthTransition, renderSuccessBox } = require("../lib/init-flow");
-/*
-const { detectEntire } = require("../lib/entire-bridge");
-const { runEntireLogin } = require("../lib/bootstrap/ensure-entire");
-*/
 
 const ASCII_LOGO = [
   "  ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓███████▓▒░░▒▓████████▓▒░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░",
@@ -193,8 +189,6 @@ async function cmdInit(argv) {
 
   renderLocalReport({ summary: setup.summary, isDryRun: false });
 
-  // await maybeOfferEntireLogin({ opts });
-
   renderLocalSuccess();
 
   try {
@@ -204,46 +198,6 @@ async function cmdInit(argv) {
     process.stderr.write(`Initial sync spawn failed: ${msg}\n`);
   }
 }
-
-/*
-async function maybeOfferEntireLogin({ opts }) {
-  const detection = await detectEntire();
-  if (!detection?.present) return;
-
-  process.stdout.write(`\nEntire CLI ${detection.version} detected.\n`);
-  process.stdout.write(
-    "Entire works locally without authentication. For AI summaries and entire.io sync, login is required.\n",
-  );
-
-  if (opts.skipEntireLogin || !isInteractive() || opts.yes) {
-    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries.\n\n");
-    return;
-  }
-
-  const choice = await promptMenu({
-    message: "? Run `entire login` now to set up your Entire account? (skippable)",
-    options: ["Yes, run entire login", "No, skip"],
-    defaultIndex: 1,
-  });
-  const normalizedChoice = String(choice || "")
-    .trim()
-    .toLowerCase();
-  if (!normalizedChoice.startsWith("yes")) {
-    process.stdout.write("Skipped. Run `entire login` later if you want AI summaries.\n\n");
-    return;
-  }
-
-  try {
-    await runEntireLogin();
-    process.stdout.write("Entire login complete.\n\n");
-  } catch (err) {
-    const msg = err && (err.shortMessage || err.message) ? err.shortMessage || err.message : "unknown error";
-    process.stdout.write(
-      `Entire login did not complete (${msg}). Run \`entire login\` later.\n\n`,
-    );
-  }
-}
-*/
 
 function renderWelcome() {
   process.stdout.write(
@@ -785,7 +739,6 @@ function parseArgs(argv) {
     noOpen: false,
     yes: false,
     dryRun: false,
-    // skipEntireLogin: false,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -800,7 +753,6 @@ function parseArgs(argv) {
     else if (a === "--no-open") out.noOpen = true;
     else if (a === "--yes") out.yes = true;
     else if (a === "--dry-run") out.dryRun = true;
-    // else if (a === "--skip-entire-login") out.skipEntireLogin = true;
     else throw new Error(`Unknown option: ${a}`);
   }
   return out;

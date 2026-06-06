@@ -64,11 +64,6 @@ async function run(argv) {
     case "repo":
       process.exitCode = await require("./commands/repo").run(rest);
       return;
-    /*
-    case "entire":
-      process.exitCode = await require("./commands/entire").run(rest);
-      return;
-    */
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -91,7 +86,6 @@ function printHelp() {
       "  npx vibedeck-cli [--debug] readme-sync <set|update|status|unset>",
       "  npx vibedeck-cli [--debug] project-readme-sync",
       "  npx vibedeck-cli [--debug] optimize [--scan] [--json]",
-      // "  npx vibedeck-cli [--debug] entire login",
       "  npx vibedeck-cli [--debug] uninstall [--purge]",
       "",
       "Notes:",

@@ -23,7 +23,7 @@ VibeDeck shows you what every AI coding tool on your machine is burning, in real
 
 <div align="center">
 
-Local-first. Multi-provider. Mac-native as the premier surface, with CLI and dashboard access for everyone. Branch-aware when you want to go deeper.
+Local-first. Multi-provider. Mac-native as the premier surface, with CLI and dashboard access for everyone. Branch-aware when local evidence supports it.
 
 </div>
 
@@ -119,7 +119,7 @@ npx vibedeck-cli serve
 | <img src="dashboard/public/brand-logos/hermes.svg" width="20" height="20" /> | Hermes Agent | Yes | Local agent runtime files |
 | <img src="dashboard/public/brand-logos/antigravity.svg" width="20" height="20" /> | Antigravity | Yes | Local provider runtime state |
 
-Some providers are hook-based. Others are passive readers over local JSONL, SQLite, CSV, or native app state. Attribution depth depends on the local records each provider exposes, so VibeDeck is designed for mixed-runtime environments rather than single-provider lock-in.
+Additional local adapters are present for Every Code, Goose, Crush, OMP, Pi, Droid, Qwen, Cursor Agent, IBM Bob, Roo Code, KiloCode, CodeBuddy, and Craft where local files or databases are available. Some providers are hook-based. Others are passive readers over local JSONL, SQLite, CSV, or native app state. Attribution depth depends on the local records each provider exposes, so VibeDeck is designed for mixed-runtime environments rather than single-provider lock-in.
 
 ## What VibeDeck Tracks Today
 
@@ -217,9 +217,12 @@ vibedeck serve
 vibedeck sync
 vibedeck status
 vibedeck doctor
+vibedeck diagnostics
+vibedeck optimize --scan
 vibedeck auth show
 vibedeck auth rotate
 vibedeck readme-sync status
+vibedeck project-readme-sync
 ```
 
 More examples live in [docs/COMMANDS.md](docs/COMMANDS.md).
@@ -241,6 +244,8 @@ Default local state:
 ```
 
 `vibedeck.sqlite3` is the canonical local store for sessions, branches, projects, usage buckets, billable token rollups, projection freshness, and historical audit state.
+
+Public dashboard routes today include `/dashboard`, `/live`, `/branches`, `/settings`, `/skills`, `/widgets`, `/compare`, `/models`, `/yield`, `/export`, `/optimize`, and `/plan`.
 
 ## FAQ
 

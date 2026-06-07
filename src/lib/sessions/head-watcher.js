@@ -1,6 +1,5 @@
 'use strict';
 
-const chokidar = require('chokidar');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -61,6 +60,7 @@ function addRepoWatches(watcher, repoRoot) {
 
 function startHeadWatcher({ dbPath, repos, polling } = {}) {
   if (!isNonEmptyString(dbPath)) throw new TypeError('startHeadWatcher: dbPath must be a non-empty string');
+  const chokidar = require('chokidar');
 
   // Polling is the safe default for .git/HEAD: git uses atomic-replace (open
   // temp, fsync, rename) which native fsevents/inotify often miss because the

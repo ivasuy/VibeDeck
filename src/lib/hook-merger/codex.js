@@ -262,10 +262,10 @@ function buildInstallPayload(configPath) {
 
   const notify = extractNotifyValues(raw);
   const normalized = Array.isArray(notify) ? notify : [];
-  const { entire, unknown } = signature.classifyEntries(normalized, 'toml');
+  const { unknown } = signature.classifyEntries(normalized, 'toml');
 
   const ours = [signature.canonicalCommandPath()];
-  const nextNotify = ours.concat(entire, unknown);
+  const nextNotify = ours.concat(unknown);
 
   const currentOnly = normalized.filter((v) => typeof v === 'string');
   if (entriesEqual(nextNotify, currentOnly) && /^\s*notify\s*=/.test(raw)) {
@@ -283,9 +283,9 @@ function buildRemovePayload(configPath) {
   const raw = fs.readFileSync(configPath, 'utf8');
   const notify = extractNotifyValues(raw);
   const normalized = Array.isArray(notify) ? notify : [];
-  const { ours, entire, unknown } = signature.classifyEntries(normalized, 'toml');
+  const { ours, unknown } = signature.classifyEntries(normalized, 'toml');
 
-  const nextNotify = entire.concat(unknown);
+  const nextNotify = unknown;
   if (entriesEqual(nextNotify, normalized)) return null;
 
   // If the file's notify consisted solely of our injected hook, remove the notify

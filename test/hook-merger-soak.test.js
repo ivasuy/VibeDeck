@@ -45,8 +45,8 @@ function shuffleInPlace(rng, arr) {
   return arr;
 }
 
-function entireEntry(rng, id) {
-  const cmd = `/usr/local/bin/entire hook session-end --id=${id}`;
+function externalEntry(rng, id) {
+  const cmd = `/usr/local/bin/external-tool hook session-end --id=${id}`;
   if (randInt(rng, 2) === 0) return { command: cmd };
   return { hooks: [{ type: 'command', command: cmd }] };
 }
@@ -70,12 +70,12 @@ function unknownEntry(rng, id) {
 }
 
 function buildInitialConfig(rng, provider) {
-  const entireCount = randInt(rng, 6); // 0-5
+  const externalCount = randInt(rng, 6); // 0-5
   const manualCount = randInt(rng, 4); // 0-3
   const unknownCount = randInt(rng, 3); // 0-2
 
   const entries = [];
-  for (let i = 0; i < entireCount; i++) entries.push(entireEntry(rng, `e${i}`));
+  for (let i = 0; i < externalCount; i++) entries.push(externalEntry(rng, `e${i}`));
   for (let i = 0; i < manualCount; i++) entries.push(manualEntry(rng, `m${i}`));
   for (let i = 0; i < unknownCount; i++) entries.push(unknownEntry(rng, `u${i}`));
 
@@ -190,16 +190,16 @@ function buildTomlFixture(rng) {
     lines.push(`enabled = ${randInt(rng, 2) === 0 ? 'true' : 'false'}`);
   }
 
-  const entireCount = randInt(rng, 6); // 0-5
+  const externalCount = randInt(rng, 6); // 0-5
   const manualCount = randInt(rng, 4); // 0-3
 
-  const entire = [];
-  for (let i = 0; i < entireCount; i++) entire.push(`/usr/local/bin/entire hook session-end --id=e${i}`);
+  const external = [];
+  for (let i = 0; i < externalCount; i++) external.push(`/usr/local/bin/external-tool hook session-end --id=e${i}`);
 
   const manual = [];
   for (let i = 0; i < manualCount; i++) manual.push(`echo manual-${i}`);
 
-  const notifyValues = shuffleInPlace(rng, entire.concat(manual));
+  const notifyValues = shuffleInPlace(rng, external.concat(manual));
 
   const notifyMode = randInt(rng, 4); // 0=absent,1=string,2=array,3=multiline+comments
   if (notifyMode !== 0) {
@@ -286,9 +286,8 @@ test('hook-merger property soak: 500 random TOML states preserve non-notify line
     const originalText = fs.readFileSync(filePath, 'utf8');
     const originalHadNotify = hasNotifyAssignment(originalText);
     const originalNotify = extractNotifyValuesFromFixtureToml(originalText);
-    const originalEntire = new Set(originalNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
-    const originalManual = new Set(
-      originalNotify.filter((v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v)),
+    const originalExternal = new Set(
+      originalNotify.filter((v) => !signature.isVibedeckCommandStringTOML(v)),
     );
 
     const preservedLines = extractNonNotifyLines(originalText);
@@ -303,14 +302,10 @@ test('hook-merger property soak: 500 random TOML states preserve non-notify line
       assert.ok(hasNotifyAssignment(afterInstallText));
       assert.strictEqual(afterInstallNotify.filter((v) => signature.isVibedeckCommandStringTOML(v)).length, 1);
 
-      const afterInstallEntire = new Set(afterInstallNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
-      const afterInstallManual = new Set(
-        afterInstallNotify.filter(
-          (v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v),
-        ),
+      const afterInstallExternal = new Set(
+        afterInstallNotify.filter((v) => !signature.isVibedeckCommandStringTOML(v)),
       );
-      assert.deepStrictEqual(afterInstallEntire, originalEntire);
-      assert.deepStrictEqual(afterInstallManual, originalManual);
+      assert.deepStrictEqual(afterInstallExternal, originalExternal);
 
       await codex.remove(filePath);
       const afterRemoveText = fs.readFileSync(filePath, 'utf8');
@@ -323,14 +318,10 @@ test('hook-merger property soak: 500 random TOML states preserve non-notify line
       const afterRemoveNotify = extractNotifyValuesFromFixtureToml(afterRemoveText);
       assert.strictEqual(afterRemoveNotify.filter((v) => signature.isVibedeckCommandStringTOML(v)).length, 0);
 
-      const afterRemoveEntire = new Set(afterRemoveNotify.filter((v) => signature.isEntireCommandStringTOML(v)));
-      const afterRemoveManual = new Set(
-        afterRemoveNotify.filter(
-          (v) => !signature.isEntireCommandStringTOML(v) && !signature.isVibedeckCommandStringTOML(v),
-        ),
+      const afterRemoveExternal = new Set(
+        afterRemoveNotify.filter((v) => !signature.isVibedeckCommandStringTOML(v)),
       );
-      assert.deepStrictEqual(afterRemoveEntire, originalEntire);
-      assert.deepStrictEqual(afterRemoveManual, originalManual);
+      assert.deepStrictEqual(afterRemoveExternal, originalExternal);
     } catch (err) {
       const msg =
         `TOML soak failure (seed=${TOML_SEED} iter=${i}). ` +

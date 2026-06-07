@@ -532,8 +532,6 @@ vibedeck.api.error.too_many_clients,shared,*,VibeDeckAPI,error_too_many_clients,
 vibedeck.api.error.invalid_repo,shared,*,VibeDeckAPI,error_invalid_repo,Repository path is invalid or unavailable.,,active
 vibedeck.api.error.invalid_path,shared,*,VibeDeckAPI,error_invalid_path,Path is invalid.,,active
 vibedeck.api.error.missing_repo,shared,*,VibeDeckAPI,error_missing_repo,Repository path is required.,,active
-vibedeck.api.error.missing_confirm_token,shared,*,VibeDeckAPI,error_missing_confirm_token,Confirmation token is required before destructive commands.,,active
-vibedeck.api.error.invalid_confirm_token,shared,*,VibeDeckAPI,error_invalid_confirm_token,Confirmation token is invalid or expired.,,active
 vibedeck.api.error.session_not_found,shared,*,VibeDeckAPI,error_session_not_found,Session was not found. Refresh Live and retry.,,active
 nav.compare,shared,*,Sidebar,nav_compare,Compare,,active
 nav.models,shared,*,Sidebar,nav_models,Models,,active

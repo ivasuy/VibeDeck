@@ -45,26 +45,13 @@ function isVibedeckEntryJSON(entry) {
   return false;
 }
 
-function isEntireEntryJSON(entry) {
-  for (const cmd of _entryCommandStrings(entry)) {
-    if (/entire\s+hook\s+session-end/i.test(cmd) || /\bentire\b.*\bhook\b/i.test(cmd)) return true;
-  }
-  return false;
-}
-
 function isVibedeckCommandStringTOML(cmd) {
   if (typeof cmd !== 'string') return false;
   return cmd.includes(COMMAND_SUFFIX);
 }
 
-function isEntireCommandStringTOML(cmd) {
-  if (typeof cmd !== 'string') return false;
-  return /entire\s+hook\s+session-end/i.test(cmd) || /\bentire\b.*\bhook\b/i.test(cmd);
-}
-
 function classifyEntries(entries, format) {
   const ours = [];
-  const entire = [];
   const unknown = [];
 
   const list = Array.isArray(entries) ? entries : [];
@@ -72,29 +59,24 @@ function classifyEntries(entries, format) {
   if (format === 'toml') {
     for (const entry of list) {
       if (isVibedeckCommandStringTOML(entry)) ours.push(entry);
-      else if (isEntireCommandStringTOML(entry)) entire.push(entry);
       else unknown.push(entry);
     }
-    return { ours, entire, unknown };
+    return { ours, unknown };
   }
 
   if (format !== 'json') throw new Error(`Unsupported format: ${format}`);
 
   for (const entry of list) {
     if (isVibedeckEntryJSON(entry)) ours.push(entry);
-    else if (isEntireEntryJSON(entry)) entire.push(entry);
     else unknown.push(entry);
   }
 
-  return { ours, entire, unknown };
+  return { ours, unknown };
 }
 
 module.exports = {
   canonicalCommandPath,
   isVibedeckEntryJSON,
-  isEntireEntryJSON,
   isVibedeckCommandStringTOML,
-  isEntireCommandStringTOML,
   classifyEntries,
 };
-

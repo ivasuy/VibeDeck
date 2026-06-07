@@ -212,34 +212,6 @@ test("POST /functions/vibedeck-skills/uninstall rejects local dashboard auth wit
 
 const localMutationCases = [
   {
-    name: "confirm-destructive",
-    pathname: "/functions/vibedeck-confirm-destructive",
-    body: {},
-    expectedAuthPassStatus: 400,
-    expectedAuthPassError: "missing_op",
-  },
-  {
-    name: "entire unknown command",
-    pathname: "/functions/vibedeck-entire/not-a-command",
-    body: {},
-    expectedAuthPassStatus: 400,
-    expectedAuthPassError: "unknown_command",
-  },
-  {
-    name: "entire rewind",
-    pathname: "/functions/vibedeck-entire/rewind",
-    body: {},
-    expectedAuthPassStatus: 400,
-    expectedAuthPassError: "missing_params",
-  },
-  {
-    name: "entire clean",
-    pathname: "/functions/vibedeck-entire/clean",
-    body: {},
-    expectedAuthPassStatus: 400,
-    expectedAuthPassError: "missing_params",
-  },
-  {
     name: "attribute",
     pathname: "/functions/vibedeck-attribute",
     body: {},

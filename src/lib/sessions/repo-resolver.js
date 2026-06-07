@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { sync: execaSync } = require('execa');
+const { spawnSync } = require('node:child_process');
 
 function nullResult(status) {
   return { repo_root: null, repo_common_dir: null, parent_repo: null, status };
@@ -17,12 +17,23 @@ function includesDotGitSegment(p) {
 
 function gitTry(cwd, args) {
   try {
-    return { ok: true, out: execaSync('git', ['-C', cwd, ...args], { stdio: 'pipe' }).stdout };
+    const result = spawnSync('git', ['-C', cwd, ...args], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    });
+    if (result.error) {
+      return { ok: false, err: result.error.message };
+    }
+    if (result.status !== 0) {
+      return {
+        ok: false,
+        err: `${result.stderr || ''}\n${result.stdout || ''}`.trim(),
+      };
+    }
+    return { ok: true, out: result.stdout || '' };
   } catch (e) {
-    const stderr = typeof e?.stderr === 'string' ? e.stderr : '';
-    const stdout = typeof e?.stdout === 'string' ? e.stdout : '';
     const msg = typeof e?.message === 'string' ? e.message : '';
-    return { ok: false, err: `${stderr}\n${stdout}\n${msg}`.trim() };
+    return { ok: false, err: msg };
   }
 }
 

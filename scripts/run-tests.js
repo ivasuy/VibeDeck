@@ -39,12 +39,22 @@ function main() {
 
   const isolatedHome = fs.mkdtempSync(path.join(os.tmpdir(), 'vibedeck-test-home-'));
   const testFiles = process.argv.slice(2);
-  const args = ['--test', ...(testFiles.length > 0 ? testFiles : listDefaultTests())];
+  const args = ['--test', '--test-concurrency=1', ...(testFiles.length > 0 ? testFiles : listDefaultTests())];
   try {
     return run(process.execPath, args, {
       env: {
         ...process.env,
-        VIBEDECK_HOME: isolatedHome,
+        HOME: isolatedHome,
+        CODEX_HOME: path.join(isolatedHome, '.codex'),
+        CODE_HOME: path.join(isolatedHome, '.code'),
+        GEMINI_HOME: path.join(isolatedHome, '.gemini'),
+        OPENCODE_HOME: path.join(isolatedHome, '.opencode'),
+        OPENCODE_CONFIG_DIR: path.join(isolatedHome, '.config', 'opencode'),
+        GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME || 'VibeDeck Test',
+        GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL || 'vibedeck-test@example.invalid',
+        GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME || 'VibeDeck Test',
+        GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL || 'vibedeck-test@example.invalid',
+        VIBEDECK_TEST_HOME: isolatedHome,
       },
     });
   } finally {

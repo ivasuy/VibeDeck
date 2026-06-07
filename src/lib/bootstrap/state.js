@@ -23,7 +23,6 @@ async function readBootstrapState() {
   if (result.status !== "ok") {
     return {
       native_app: { installed: false, path: null, version: null },
-      entire: { installed: false, logged_in: false },
       pending: [],
     };
   }

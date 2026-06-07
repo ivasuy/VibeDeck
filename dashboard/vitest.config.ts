@@ -10,8 +10,6 @@ export default defineConfig({
     exclude: [
       "node_modules/**",
       "dist/**",
-      "src/components/entire/**/*.test.{js,jsx,ts,tsx}",
-      "src/pages/EntirePage*.test.{js,jsx,ts,tsx}",
     ],
     globals: true,
   },

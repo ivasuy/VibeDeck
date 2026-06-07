@@ -44,8 +44,9 @@ test("provider logo resolution uses shared helper instead of duplicated Embedded
   assert.ok(helper.includes("struct BrandLogoResolver"), "shared helper file should exist");
   assert.ok(!limitsSettings.includes("EmbeddedServer/vibedeck/dashboard/dist/brand-logos"));
   assert.ok(!usageLimits.includes("EmbeddedServer/vibedeck/dashboard/dist/brand-logos"));
-  assert.ok(limitsSettings.includes("BrandLogoResolver.shared.image"));
-  assert.ok(usageLimits.includes("BrandLogoResolver.shared.image"));
+  assert.ok(limitsSettings.includes("ProviderLogoView(provider: id"));
+  assert.ok(usageLimits.includes("ProviderLogoView(provider: providerId"));
+  assert.ok(read("VibeDeckMac/VibeDeckMac/Views/SharedComponents.swift").includes("BrandLogoResolver.shared.image"));
 });
 
 test("widget extension remains embedded in native build configuration", () => {
@@ -129,12 +130,12 @@ test("top models view should use provider logos instead of rank dots", () => {
   const topModelsView = read("VibeDeckMac/VibeDeckMac/Views/TopModelsView.swift");
 
   assert.ok(
-    topModelsView.includes("BrandLogoResolver.shared.image"),
-    "top models rows should resolve provider logos from bundled assets"
+    topModelsView.includes("ProviderLogoView(provider: model.source"),
+    "top models rows should resolve provider logos through the shared provider logo view"
   );
   assert.ok(
-    topModelsView.includes("providerIcon"),
-    "top models rows should render a dedicated provider icon view"
+    topModelsView.includes("ProviderLogoView(provider: model.source"),
+    "top models rows should render the shared provider logo view"
   );
   assert.ok(
     !topModelsView.includes(".fill(Color.modelDot"),

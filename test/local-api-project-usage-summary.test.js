@@ -369,7 +369,7 @@ test("project usage skips remote queue rows when a matching live local repo has 
   try {
     const trackerDir = path.join(tmp, "tracker");
     const repoRoot = path.join(tmp, "Projects", "switchyard");
-    initGitRepo(repoRoot, ["publish-main", "main", "entire/checkpoints/v1"]);
+    initGitRepo(repoRoot, ["publish-main", "main", "cleanup/checkpoints/v1"]);
     execFileSync("git", ["remote", "add", "origin", "https://github.com/ivasuy/Switchyard.git"], {
       cwd: repoRoot,
       stdio: "ignore",

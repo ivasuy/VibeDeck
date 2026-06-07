@@ -498,13 +498,13 @@ test("live rollups mark older same-provider same-cwd branch session as supersede
   const payload = buildLiveAuditRollups([
     {
       provider: "codex",
-      session_id: "old-entire-ui-fix",
+      session_id: "old-cleanup-ui-fix",
       started_at: "2026-05-19T05:00:00.000Z",
       ended_at: null,
       cwd: "/repo/VibeDeck",
       repo_root: "/repo/VibeDeck",
       parent_repo: null,
-      branch: "entire/ui-fix",
+      branch: "cleanup/ui-fix",
       model: "gpt-5.5",
       total_tokens: 100,
       total_cost_usd: 1,
@@ -541,7 +541,7 @@ test("live rollups mark older same-provider same-cwd branch session as supersede
   assert.equal(payload.active_sessions.length, 1);
   assert.equal(payload.superseded_sessions.length, 1);
   assert.equal(payload.active_sessions[0].session_id, "new-release");
-  assert.equal(payload.superseded_sessions[0].session_id, "old-entire-ui-fix");
+  assert.equal(payload.superseded_sessions[0].session_id, "old-cleanup-ui-fix");
   assert.equal(payload.superseded_sessions[0].live_state, "superseded");
   assert.equal(payload.superseded_sessions[0].superseded_by_branch, "release/0.1.3");
 
@@ -556,19 +556,19 @@ test("live rollups mark older same-provider same-cwd branch session as supersede
   assert.equal(ws.audit_total_cost_usd, 1.25);
   assert.equal(ws.primary_session.session_id, "new-release");
 
-  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  const cleanup = ws.branch_groups.find((row) => row.branch === "cleanup/ui-fix");
   const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
-  assert.ok(entire);
+  assert.ok(cleanup);
   assert.ok(release);
 
-  assert.equal(entire.active_session_count, 0);
-  assert.equal(entire.recently_completed_count, 1);
-  assert.equal(entire.audit_session_count, 1);
-  assert.equal(entire.active_total_tokens, 0);
-  assert.equal(entire.audit_total_tokens, 100);
-  assert.equal(entire.active_total_cost_usd, 0);
-  assert.equal(entire.audit_total_cost_usd, 1);
-  assert.equal(entire.sessions[0].live_state, "superseded");
+  assert.equal(cleanup.active_session_count, 0);
+  assert.equal(cleanup.recently_completed_count, 1);
+  assert.equal(cleanup.audit_session_count, 1);
+  assert.equal(cleanup.active_total_tokens, 0);
+  assert.equal(cleanup.audit_total_tokens, 100);
+  assert.equal(cleanup.active_total_cost_usd, 0);
+  assert.equal(cleanup.audit_total_cost_usd, 1);
+  assert.equal(cleanup.sessions[0].live_state, "superseded");
 
   assert.equal(release.active_session_count, 1);
   assert.equal(release.recently_completed_count, 0);
@@ -601,13 +601,13 @@ test("live rollups keep different providers active on different branches", () =>
     },
     {
       provider: "claude",
-      session_id: "claude-entire",
+      session_id: "claude-cleanup",
       started_at: "2026-05-19T05:05:00.000Z",
       ended_at: null,
       cwd: "/repo/VibeDeck",
       repo_root: "/repo/VibeDeck",
       parent_repo: "/repo/VibeDeck",
-      branch: "entire/ui-fix",
+      branch: "cleanup/ui-fix",
       model: "claude-sonnet-4",
       total_tokens: 70,
       total_cost_usd: 0.7,
@@ -633,11 +633,11 @@ test("live rollups keep different providers active on different branches", () =>
   assert.equal(ws.audit_total_tokens, 120);
 
   const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
-  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  const cleanup = ws.branch_groups.find((row) => row.branch === "cleanup/ui-fix");
   assert.ok(release);
-  assert.ok(entire);
+  assert.ok(cleanup);
   assert.equal(release.active_session_count, 1);
-  assert.equal(entire.active_session_count, 1);
+  assert.equal(cleanup.active_session_count, 1);
 });
 
 test("live rollups keep same-provider different worktrees active", () => {
@@ -662,13 +662,13 @@ test("live rollups keep same-provider different worktrees active", () => {
     },
     {
       provider: "codex",
-      session_id: "side-worktree-entire",
+      session_id: "side-worktree-cleanup",
       started_at: "2026-05-19T05:05:00.000Z",
       ended_at: null,
-      cwd: "/repo/VibeDeck/.worktrees/entire-ui-fix",
-      repo_root: "/repo/VibeDeck/.worktrees/entire-ui-fix",
+      cwd: "/repo/VibeDeck/.worktrees/cleanup-ui-fix",
+      repo_root: "/repo/VibeDeck/.worktrees/cleanup-ui-fix",
       parent_repo: "/repo/VibeDeck",
-      branch: "entire/ui-fix",
+      branch: "cleanup/ui-fix",
       model: "gpt-5.5",
       total_tokens: 90,
       total_cost_usd: 0.9,
@@ -693,11 +693,11 @@ test("live rollups keep same-provider different worktrees active", () => {
   assert.equal(ws.recently_completed_count, 0);
 
   const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
-  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  const cleanup = ws.branch_groups.find((row) => row.branch === "cleanup/ui-fix");
   assert.ok(release);
-  assert.ok(entire);
+  assert.ok(cleanup);
   assert.equal(release.active_session_count, 1);
-  assert.equal(entire.active_session_count, 1);
+  assert.equal(cleanup.active_session_count, 1);
 });
 
 test("live rollups make the old branch active again when it has newest same-lane activity", () => {
@@ -722,13 +722,13 @@ test("live rollups make the old branch active again when it has newest same-lane
     },
     {
       provider: "codex",
-      session_id: "entire-after-return",
+      session_id: "cleanup-after-return",
       started_at: "2026-05-19T05:20:00.000Z",
       ended_at: null,
       cwd: "/repo/VibeDeck",
       repo_root: "/repo/VibeDeck",
       parent_repo: null,
-      branch: "entire/ui-fix",
+      branch: "cleanup/ui-fix",
       model: "gpt-5.5",
       total_tokens: 60,
       total_cost_usd: 0.6,
@@ -747,20 +747,20 @@ test("live rollups make the old branch active again when it has newest same-lane
   const ws = payload.workstreams[0];
   assert.ok(ws);
   assert.equal(payload.active_sessions.length, 1);
-  assert.equal(payload.active_sessions[0].session_id, "entire-after-return");
+  assert.equal(payload.active_sessions[0].session_id, "cleanup-after-return");
   assert.equal(payload.superseded_sessions.length, 1);
   assert.equal(payload.superseded_sessions[0].session_id, "release-before-return");
 
   const release = ws.branch_groups.find((row) => row.branch === "release/0.1.3");
-  const entire = ws.branch_groups.find((row) => row.branch === "entire/ui-fix");
+  const cleanup = ws.branch_groups.find((row) => row.branch === "cleanup/ui-fix");
   assert.ok(release);
-  assert.ok(entire);
+  assert.ok(cleanup);
   assert.equal(release.active_session_count, 0);
   assert.equal(release.recently_completed_count, 1);
   assert.equal(release.audit_total_tokens, 40);
-  assert.equal(entire.active_session_count, 1);
-  assert.equal(entire.recently_completed_count, 0);
-  assert.equal(entire.active_total_tokens, 60);
+  assert.equal(cleanup.active_session_count, 1);
+  assert.equal(cleanup.recently_completed_count, 0);
+  assert.equal(cleanup.active_total_tokens, 60);
 });
 
 test("branch groups split one active session by canonical branch facts", () => {

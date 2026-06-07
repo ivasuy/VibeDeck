@@ -18,12 +18,10 @@ test("bootstrap state round-trips under VIBEDECK_HOME", async () => {
     process.env.VIBEDECK_HOME = tmp;
     await writeBootstrapState({
       native_app: { installed: true, path: "/Applications/VibeDeck.app", version: "0.1.2" },
-      entire: { installed: true, logged_in: false },
-      pending: ["entire_login", "readme_sync"],
+      pending: ["readme_sync"],
     });
     const state = await readBootstrapState();
     assert.equal(state.native_app.installed, true);
-    assert.equal(state.entire.logged_in, false);
 
     await mergeBootstrapState({ pending: ["readme_sync"] });
     const merged = await readBootstrapState();

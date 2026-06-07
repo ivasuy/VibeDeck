@@ -21,13 +21,14 @@ function readCopyValue(csv, key) {
 test("DashboardPage maps earliest usage day to identity start date label", () => {
   const src = readFile(pagePath);
   assert.ok(src.includes("identityStartDate"), "expected identity start date helper");
-  assert.ok(src.includes("heatmapDaily"), "expected heatmap daily usage scan");
-  assert.ok(src.includes("heatmap?.weeks"), "expected heatmap weeks scan");
+  assert.ok(src.includes("dailyBreakdownDaily"), "expected daily breakdown usage scan");
+  assert.ok(src.includes("hasUsageValue(getBillableTotal(row))"), "expected non-zero usage filter");
 });
 
 test("DashboardPage uses active days for identity stats", () => {
   const src = readFile(pagePath);
-  assert.ok(src.includes("active_days"), "expected active days usage");
+  assert.ok(src.includes("const activeDays = useMemo"), "expected active days helper");
+  assert.ok(src.includes("activeDays={activeDays}"), "expected active days to be passed to view");
 });
 
 test("IdentityCard renders rank value", () => {
@@ -61,8 +62,8 @@ test("Dashboard identity wiring includes subscription badges", () => {
   );
   const viewSrc = readFile(viewPath);
   assert.ok(
-    viewSrc.includes("subscriptions={identitySubscriptions}"),
-    "expected DashboardView to pass subscriptions into IdentityCard",
+    pageSrc.includes("identitySubscriptions={identitySubscriptions}"),
+    "expected DashboardPage to pass subscriptions into DashboardView",
   );
 
   const componentPath = path.join(

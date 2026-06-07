@@ -1,6 +1,5 @@
 'use strict';
 
-// const { resolveBranchTierA } = require('./tier-a-entire');
 const { findBranchAt } = require('./head-history');
 const { resolveBranchTierC } = require('./tier-c-reflog');
 const { getOverride } = require('./overrides');
@@ -12,7 +11,6 @@ function isNonEmptyString(v) {
 
 async function resolveBranchForSession(
   { provider, session_id, repo_root, started_at, ended_at, dbPath, override, provider_branch } = {},
-  // { resolveTierA = resolveBranchTierA, findBranchAt: findTierB = findBranchAt, resolveTierC = resolveBranchTierC } = {},
   { findBranchAt: findTierB = findBranchAt, resolveTierC = resolveBranchTierC } = {},
 ) {
   if (override) {
@@ -36,15 +34,6 @@ async function resolveBranchForSession(
   }
 
   const repoRoot = repo_root;
-
-  /*
-  const tierA = await resolveTierA({ repoRoot, provider, started_at, ended_at });
-  if (tierA) {
-    const res = { branch: tierA.branch, tier: 'A', confidence: 'high' };
-    if (isNonEmptyString(tierA.entire_session_id)) res.entire_link = tierA.entire_session_id;
-    return res;
-  }
-  */
 
   const providerBranch = cleanProviderBranch(provider_branch);
   if (providerBranch) {

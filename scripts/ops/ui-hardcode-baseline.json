@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-05-11T13:23:10.964Z",
+  "generatedAt": "2026-06-06T14:14:50.347Z",
   "root": "dashboard/src",
   "rules": {
     "colors": "hex/rgb(a) literals",
     "rawText": "JSX text nodes containing letters or digits"
   },
   "totals": {
-    "colors": 153,
-    "rawText": 117
+    "colors": 114,
+    "rawText": 210
   },
   "files": {
     "dashboard/src/App.jsx": {
@@ -18,6 +18,32 @@
         ": pageNode; return ("
       ]
     },
+    "dashboard/src/App.test.jsx": {
+      "colors": 0,
+      "rawText": 12,
+      "rawTextTokens": [
+        "Branches Page",
+        "Compare Page",
+        "Dashboard Page",
+        "Export Page",
+        "Live Page",
+        "Models Page",
+        "Optimize Page",
+        "Plan Page",
+        "Settings Page",
+        "Skills Page",
+        "Widgets Page",
+        "Yield Page"
+      ]
+    },
+    "dashboard/src/components/RevampSurfaces.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "Appearance",
+        "option.value === value); return ("
+      ]
+    },
     "dashboard/src/components/Sparkline.jsx": {
       "colors": 2,
       "rawText": 1,
@@ -25,60 +51,27 @@
         "typeof n === \"number\"); if (values.length"
       ]
     },
+    "dashboard/src/components/branches/BranchSessionDrawer.jsx": {
+      "colors": 0,
+      "rawText": 11,
+      "rawTextTokens": [
+        ") : error ? (",
+        ") : filteredSessions.length === 0 ? (",
+        "0 ? (",
+        "Agent group",
+        "Agent groups",
+        "Loading branch usage...",
+        "Raw sessions",
+        "Session date"
+      ]
+    },
     "dashboard/src/components/branches/BranchUsageTable.jsx": {
-      "colors": 3,
+      "colors": 2,
       "rawText": 3,
       "rawTextTokens": [
         "0 ? (",
         "1; return (",
         "View"
-      ]
-    },
-    "dashboard/src/components/entire/CheckpointFileInspector.jsx": {
-      "colors": 4,
-      "rawText": 7,
-      "rawTextTokens": [
-        ") : file.kind === \"hash\" ? (",
-        ") : file.kind === \"json\" ? (",
-        ") : file.kind === \"jsonl\" ? (",
-        ") : tab === \"parsed\" ? (",
-        "Copy",
-        "Loading checkpoint file...",
-        "Select a checkpoint file."
-      ]
-    },
-    "dashboard/src/components/entire/CheckpointList.jsx": {
-      "colors": 1,
-      "rawText": 5,
-      "rawTextTokens": [
-        ") : !checkpoints?.available || files.length === 0 ? (",
-        ") : !repo ? (",
-        ") : error ? (",
-        "0 ? (",
-        "Checkpoint files"
-      ]
-    },
-    "dashboard/src/components/entire/CheckpointNavigator.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "Checkpoint files"
-      ]
-    },
-    "dashboard/src/components/entire/EntireStatusCard.jsx": {
-      "colors": 0,
-      "rawText": 3,
-      "rawTextTokens": [
-        ") : !status ? (",
-        ") : error ? (",
-        "statusLabel(state), [state]); return ("
-      ]
-    },
-    "dashboard/src/components/entire/RepoPathSelector.jsx": {
-      "colors": 0,
-      "rawText": 1,
-      "rawTextTokens": [
-        "0 ? ("
       ]
     },
     "dashboard/src/components/live/AttributionHealthCard.jsx": {
@@ -92,7 +85,7 @@
       ]
     },
     "dashboard/src/components/live/LiveBranchSignalMap.jsx": {
-      "colors": 1,
+      "colors": 0,
       "rawText": 8,
       "rawTextTokens": [
         "Branch routing",
@@ -120,10 +113,13 @@
     },
     "dashboard/src/components/live/LiveSessionList.jsx": {
       "colors": 0,
-      "rawText": 4,
+      "rawText": 7,
       "rawTextTokens": [
         ") : hint ? (",
+        ") : visibleWorkstreams.length === 0 ? (",
         "Active workstreams",
+        "Correct branch",
+        "Loading live workstreams...",
         "View breakdown",
         "activateWorkstream(workstream, onSelectSession); return ("
       ]
@@ -132,21 +128,24 @@
       "colors": 0,
       "rawText": 3,
       "rawTextTokens": [
-        "0; return (",
-        "Live control center",
-        "active cost"
+        "Canonical backfill is incomplete. Live audit totals may exclude older sessions until rebuild finishes.",
+        "Live control center"
       ]
     },
     "dashboard/src/components/live/LiveWorkstreamDrawer.jsx": {
       "colors": 0,
-      "rawText": 6,
+      "rawText": 14,
       "rawTextTokens": [
-        "0 ? null : workstream.total_cost_usd; return (",
+        "0 ? (",
+        "Agent group",
+        "Agent groups",
         "Cost",
         "No session detail available.",
         "Primary session",
+        "Raw sessions",
         "Tokens",
-        "Workstream breakdown"
+        "Workstream breakdown",
+        "visibleRows.length ? ("
       ]
     },
     "dashboard/src/components/settings/AccountSection.jsx": {
@@ -165,68 +164,156 @@
     },
     "dashboard/src/pages/BranchesPage.jsx": {
       "colors": 0,
-      "rawText": 2,
+      "rawText": 7,
       "rawTextTokens": [
-        ") : loading ? (",
-        "0 ? Math.min(branchPage, pageCount - 1) : 0; const pagedRows = filteredRows.slice( boundedPage * BRANCHES_PAGE_SIZE, boundedPage * BRANCHES_PAGE_SIZE + BRANCHES_PAGE_SIZE, ); const emptyMessage = repos.length === 0 ? copy(\"branches.empty.no_repo_rows\") : totalCount === 0 ? copy(\"branches.project.empty\") : copy(\"branches.empty\"); return ("
+        ") : loading && !payload ? (",
+        "0 ? Math.min(branchPage, pageCount - 1) : 0; const pagedRows = filteredRows.slice( boundedPage * BRANCHES_PAGE_SIZE, boundedPage * BRANCHES_PAGE_SIZE + BRANCHES_PAGE_SIZE, ); const emptyMessage = repos.length === 0 ? copy(\"branches.empty.no_repo_rows\") : totalCount === 0 ? copy(\"branches.project.empty\") : copy(\"branches.empty\"); return (",
+        "Loading branch totals...",
+        "Loading branch usage...",
+        "Refreshing",
+        "Refreshing branch usage...",
+        "createPortal("
+      ]
+    },
+    "dashboard/src/pages/ComparePage.jsx": {
+      "colors": 0,
+      "rawText": 6,
+      "rawTextTokens": [
+        ") : error ? (",
+        "Cost",
+        "Loading parity data...",
+        "Sessions",
+        "Tokens",
+        "Totals"
       ]
     },
     "dashboard/src/pages/DashboardPage.jsx": {
-      "colors": 2,
+      "colors": 1,
       "rawText": 0,
       "rawTextTokens": []
     },
-    "dashboard/src/pages/EntirePage.jsx": {
-      "colors": 1,
-      "rawText": 4,
+    "dashboard/src/pages/DashboardPage.test.jsx": {
+      "colors": 0,
+      "rawText": 1,
       "rawTextTokens": [
-        "Actions",
-        "Checkpoint id",
-        "Configure",
-        "Controls"
+        "Dashboard shell"
+      ]
+    },
+    "dashboard/src/pages/ExportPage.jsx": {
+      "colors": 0,
+      "rawText": 6,
+      "rawTextTokens": [
+        "Aggregate totals",
+        "CSV",
+        "From",
+        "JSON",
+        "Loading parity data...",
+        "To"
       ]
     },
     "dashboard/src/pages/LivePage.jsx": {
       "colors": 0,
+      "rawText": 8,
+      "rawTextTokens": [
+        "Branch",
+        "Conf",
+        "Correct attribution for the selected session.",
+        "Cost",
+        "Project",
+        "Provider",
+        "Time",
+        "Tokens"
+      ]
+    },
+    "dashboard/src/pages/ModelsPage.jsx": {
+      "colors": 0,
+      "rawText": 1,
+      "rawTextTokens": [
+        "Loading parity data..."
+      ]
+    },
+    "dashboard/src/pages/OptimizePage.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        "); return (",
+        "Paste fix",
+        "You can save"
+      ]
+    },
+    "dashboard/src/pages/PlanPage.jsx": {
+      "colors": 0,
+      "rawText": 7,
+      "rawTextTokens": [
+        "0 && observedDays",
+        "0; const isInferred = payload?.inferred === true; const isUnknown = payload?.inferred === null; const paygWins = configuredPlan && monthToDateUsd",
+        "Auto-detected",
+        "Current plan",
+        "Forecast unlocks after 7 days of usage.",
+        "No recent activity yet. Once you use Claude or Codex, VibeDeck will pick a plan automatically."
+      ]
+    },
+    "dashboard/src/pages/SettingsPage.jsx": {
+      "colors": 0,
       "rawText": 4,
       "rawTextTokens": [
-        ") : error ? (",
-        "Entire",
-        "Repo",
-        "Select a live session to correct branch attribution."
+        "Display currency",
+        "Display currency only. Exports keep USD cost columns.",
+        "String(left?.displayName || left?.id || \"\").localeCompare(String(right?.displayName || right?.id || \"\"))), [providers], ); return (",
+        "VibeDeck keeps usage data local by default. Exports and provider scans run from this machine."
+      ]
+    },
+    "dashboard/src/pages/SettingsPage.test.jsx": {
+      "colors": 0,
+      "rawText": 4,
+      "rawTextTokens": [
+        "Account placeholder",
+        "Appearance placeholder",
+        "Limits placeholder",
+        "Menu bar placeholder"
       ]
     },
     "dashboard/src/pages/SkillsPage.jsx": {
-      "colors": 2,
-      "rawText": 5,
+      "colors": 0,
+      "rawText": 10,
       "rawTextTokens": [
         ") : null; contentNode = (",
+        ") : rows.length ? (",
         "); const browseLoadingNode = (",
         "0 ? (",
-        "browseItems.slice(boundedBrowsePage * SKILLS_PAGE_SIZE, (boundedBrowsePage + 1) * SKILLS_PAGE_SIZE), [boundedBrowsePage, browseItems], ); const loadingNode = (",
+        "0 || myQueryText || myIsFetchingPage ? (",
+        "Attributed cost",
+        "Invocations",
+        "No skill-level provenance has been recorded yet.",
         "t.id === id)?.label || id) .join(\", \") : copy(\"skills.action.choose_targets\"); return ("
       ]
     },
     "dashboard/src/pages/WidgetsPage.jsx": {
-      "colors": 25,
-      "rawText": 9,
+      "colors": 0,
+      "rawText": 7,
       "rawTextTokens": [
-        "$129.56 ±0%",
-        "$673.61",
         "0 ? (",
         "10.3B",
-        "203.2M",
-        "7 DAYS",
-        "880.9M",
-        "TODAY",
-        "tokens · 202 active days"
+        "Providers",
+        "tokens · 202 active days",
+        "vs yesterday",
+        "widget.id === selectedWidget) || SECONDARY_WIDGETS[0]; const Preview = selected.Preview; return (",
+        "▲ 14%"
+      ]
+    },
+    "dashboard/src/pages/YieldPage.jsx": {
+      "colors": 0,
+      "rawText": 2,
+      "rawTextTokens": [
+        "Loading parity data...",
+        "Number(branch.total_tokens || 0)), 1); return ("
       ]
     },
     "dashboard/src/ui/foundation/CelebrationBadge.jsx": {
       "colors": 4,
       "rawText": 1,
       "rawTextTokens": [
-        "= 7; // Use inline SVG instead of emoji return ("
+        "= 7; // Use inline SVG for the milestone symbol. return ("
       ]
     },
     "dashboard/src/ui/foundation/HoverCard.jsx": {
@@ -275,7 +362,7 @@
       "rawTextTokens": []
     },
     "dashboard/src/ui/matrix-a/components/CostAnalysisModal.jsx": {
-      "colors": 2,
+      "colors": 0,
       "rawText": 3,
       "rawTextTokens": [
         "Cost",
@@ -285,11 +372,18 @@
     },
     "dashboard/src/ui/matrix-a/components/DataDetails.jsx": {
       "colors": 0,
-      "rawText": 3,
+      "rawText": 10,
       "rawTextTokens": [
+        ") : dailyBreakdownRows?.length === 0 ? (",
+        ") : dailyError && dailyBreakdownRows?.length === 0 ? (",
+        ") : projectEntries.length === 0 ? (",
+        ") : projectError && projectEntries.length === 0 ? (",
         "); if (!href) return content; return (",
         "0 ? Math.max(6, Math.round((tokens / maxTokens) * 100)) : 0; const modelName = String(model?.model || \"unknown\"); return (",
-        "1 ? ("
+        "1 ? (",
+        "Loading project usage...",
+        "Loading usage details...",
+        "Refreshing project usage..."
       ]
     },
     "dashboard/src/ui/matrix-a/components/DateRangePopover.jsx": {
@@ -339,6 +433,15 @@
         "1 && count % 2 !== 0 && index === 0; const itemClass = isFirstAndOdd ? \"md:col-span-2\" : \"\"; return ("
       ]
     },
+    "dashboard/src/ui/matrix-a/components/ProjectUsagePanel.jsx": {
+      "colors": 0,
+      "rawText": 3,
+      "rawTextTokens": [
+        ") : displayEntries.length === 0 ? (",
+        "Loading project usage...",
+        "Refreshing project usage..."
+      ]
+    },
     "dashboard/src/ui/matrix-a/components/StatsPanel.jsx": {
       "colors": 0,
       "rawText": 5,
@@ -360,7 +463,7 @@
       "rawTextTokens": []
     },
     "dashboard/src/ui/matrix-a/components/TrendMonitor.jsx": {
-      "colors": 1,
+      "colors": 0,
       "rawText": 1,
       "rawTextTokens": [
         "No data yet"
@@ -373,7 +476,7 @@
     },
     "dashboard/src/ui/matrix-a/components/UsageLimitsPanel.jsx": {
       "colors": 0,
-      "rawText": 10,
+      "rawText": 11,
       "rawTextTokens": [
         "); case \"antigravity\": return (",
         "); case \"codex\": return (",
@@ -382,6 +485,7 @@
         "); case \"gemini\": return (",
         "); case \"kimi\": return (",
         "); case \"kiro\": return (",
+        "); default: return (",
         "0 && rounded === 0 ? \"",
         "0 ? groups :",
         "renderProviderGroup(id, dataById[id])) .filter(Boolean); return ("
@@ -395,7 +499,7 @@
       ]
     },
     "dashboard/src/ui/matrix-a/components/UsageOverview.jsx": {
-      "colors": 8,
+      "colors": 9,
       "rawText": 3,
       "rawTextTokens": [
         "(b.share || 0) - (a.share || 0) ); return (",
@@ -415,15 +519,24 @@
     },
     "dashboard/src/ui/matrix-a/views/DashboardView.jsx": {
       "colors": 0,
-      "rawText": 1,
+      "rawText": 17,
       "rawTextTokens": [
-        "D_LEFT_BASE + STEP * leftIdx++; const D_DATA_DETAILS = D_LEFT_BASE + STEP * 5; return ("
+        ") : attentionProvider ? (",
+        "); return (",
+        "0 ? (asNumber(provider.usage) / total) * 100 : 0; const shade = [\"var(--brand-700)\", \"var(--brand-600)\", \"var(--brand-500)\", \"var(--brand-400)\", \"var(--brand-300)\"][index] || \"var(--oai-gray-400)\"; return (",
+        "0); const display = numeric.length ? numeric.slice(-8) : [2, 4, 3, 6, 8, 7, 5, 6]; const max = Math.max(...display, 1); return (",
+        "Active sessions",
+        "Cache opportunity",
+        "Detect now",
+        "Keep recent work warm to reduce repeated token spend.",
+        "No recent activity for this period.",
+        "Run any AI coding tool to start tracking provider usage.",
+        "Run any AI coding tool to start tracking.",
+        "Run any AI coding tool to start tracking. VibeDeck listens automatically.",
+        "See all",
+        "Setup guide",
+        "Welcome to VibeDeck"
       ]
-    },
-    "dashboard/src/ui/openai/components/ConfirmModal.jsx": {
-      "colors": 2,
-      "rawText": 0,
-      "rawTextTokens": []
     },
     "dashboard/src/ui/openai/components/Counter.jsx": {
       "colors": 1,
@@ -447,10 +560,15 @@
       ]
     },
     "dashboard/src/ui/openai/components/Sidebar.jsx": {
-      "colors": 0,
-      "rawText": 1,
+      "colors": 1,
+      "rawText": 6,
       "rawTextTokens": [
-        "getNavGroups(), [resolvedLocale]); return ("
+        "); return (",
+        "= LG_BREAKPOINT && window.innerWidth",
+        "No matching commands.",
+        "esc",
+        "getNavGroups(), [resolvedLocale]); return (",
+        "macOS setup"
       ]
     }
   }

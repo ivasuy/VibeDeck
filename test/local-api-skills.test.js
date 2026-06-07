@@ -194,16 +194,17 @@ describe("/functions/vibedeck-skills auth + input", () => {
     assert.match(body.error, /owner and name/);
   });
 
-  it("accepts legacy header on legacy route for compatibility", async () => {
-    const { status } = await call({
+  it("accepts legacy header on legacy route before action validation", async () => {
+    const { status, body } = await call({
       method: "POST",
       pathname: LEGACY_ROUTE,
       headers: {
         origin: "http://localhost:7690",
         [LOCAL_AUTH_HEADER_LEGACY]: token,
       },
-      body: { action: "add_repo", repo: { owner: "anthropics", name: "skills" } },
+      body: { action: "not-a-real-action" },
     });
-    assert.equal(status, 200);
+    assert.equal(status, 400);
+    assert.equal(body.ok, false);
   });
 });
